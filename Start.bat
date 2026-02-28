@@ -64,19 +64,14 @@ if not exist "%PYTHON_EXE%" (
 
 echo [SETUP] Installing / verifying dependencies...
 "%PYTHON_EXE%" -m pip install --upgrade pip setuptools wheel -q
-if exist "%APP_DIR%requirements.txt" "%PYTHON_EXE%" -m pip install -r "%APP_DIR%requirements.txt" -q
+if exist "%APP_DIR%requirements.txt" "%PYTHON_EXE%" -m pip install --no-compile -r "%APP_DIR%requirements.txt" -q
 
 :: ── 3. Resolve host / port ─────────────────────────────────────────────────
 if "%HOST%" == "" set "HOST=0.0.0.0"
 if "%PORT%" == "" set "PORT=8088"
 
-:: ── 4. Open browser once server is ready ───────────────────────────────────
-:: Launch a detached helper that polls until the port is open, then opens the browser.
-start "" /b cmd /c ^
-    "for /l %%i in (1,1,30) do (timeout /t 1 /nobreak >nul & ^
-      "%PYTHON_EXE%" -c "import socket,sys;s=socket.socket();s.settimeout(1);r=s.connect_ex(('127.0.0.1',%PORT%));s.close();sys.exit(r)" ^
-      2>nul && start \"\" \"http://localhost:%PORT%\" && exit)" ^
-    2>nul
+:: ── 4. Open browser automatically via Python's webbrowser module ────────────
+set "OPEN_BROWSER=1"
 
 :: ── 5. Start the hub ───────────────────────────────────────────────────────
 echo.

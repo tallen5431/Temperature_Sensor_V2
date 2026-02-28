@@ -43,7 +43,7 @@ def _public_base() -> str:
     base = (os.getenv("PUBLIC_BASE", "") or "").strip()
     if base:
         return base.rstrip("/")
-    port = int(os.getenv("PORT", "8080"))
+    port = int(os.getenv("PORT", "8088"))
     return f"http://{_detect_lan_ip()}:{port}"
 
 api_bp = create_api(cfg, str(CSV_FILE), finder, _public_base, os.getenv('SERVER_TOKEN', ''))
@@ -77,7 +77,7 @@ register_help_callbacks(app)
 
 if __name__ == '__main__':
     host = os.getenv('HOST', '0.0.0.0')
-    port = int(os.getenv('PORT', '8080'))
+    port = int(os.getenv('PORT', '8088'))
     mdns = MdnsAdvert() if (os.getenv('MDNS_ENABLE', '1') not in ('0','false','False')) else None
 
     # Start auto-provisioner if enabled
@@ -93,6 +93,11 @@ if __name__ == '__main__':
         )
         provisioner.start()
         print(f'[auto-provisioner] Started (will provision probes every 10 seconds)')
+
+    # Open browser automatically when launched from a start script
+    if os.getenv('OPEN_BROWSER', '0') == '1':
+        import threading, webbrowser
+        threading.Timer(2.0, lambda: webbrowser.open(f'http://localhost:{port}')).start()
 
     try:
         if mdns:

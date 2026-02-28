@@ -52,35 +52,15 @@ echo "[SETUP] Installing / verifying dependencies..."
 "$PYTHON_EXE" -m pip install --upgrade pip setuptools wheel -q
 
 if [[ -f "$APP_DIR/requirements.txt" ]]; then
-  "$PYTHON_EXE" -m pip install -r "$APP_DIR/requirements.txt" -q
+  "$PYTHON_EXE" -m pip install --no-compile -r "$APP_DIR/requirements.txt" -q
 fi
 
 # ── 3. Resolve host / port ───────────────────────────────────────────────────
 : "${HOST:=0.0.0.0}"
 : "${PORT:=8088}"
 
-# ── 4. Open browser automatically once the server is ready ──────────────────
-_open_browser() {
-  local url="http://localhost:$PORT"
-  # Wait for the server to start accepting connections (up to 30 s)
-  local i=0
-  while ! "$PYTHON_EXE" -c \
-      "import socket,sys; s=socket.socket(); s.settimeout(1); r=s.connect_ex(('127.0.0.1',$PORT)); s.close(); sys.exit(r)" \
-      2>/dev/null; do
-    sleep 1
-    i=$((i+1))
-    if [[ $i -ge 30 ]]; then
-      break
-    fi
-  done
-  if command -v xdg-open &>/dev/null; then
-    xdg-open "$url" &>/dev/null &
-  elif command -v open &>/dev/null; then
-    open "$url"
-  fi
-}
-
-_open_browser &
+# ── 4. Open browser automatically via Python's webbrowser module ─────────────
+export OPEN_BROWSER=1
 
 # ── 5. Start the hub ─────────────────────────────────────────────────────────
 echo ""
