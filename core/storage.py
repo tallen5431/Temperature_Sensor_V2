@@ -7,18 +7,29 @@ import datetime
 REQUIRED_COLS = ["timestamp","temperature_c","temperature_f"]
 OPTIONAL_COLS = ["probe_id"]
 
+# Cache of (csv_path_str, column_name) pairs that are confirmed present.
+# Avoids re-reading the whole file on every append_row call.
+_column_cache: set = set()
+
 def ensure_csv(csv_file: Path) -> None:
     if not csv_file.exists():
         cols = REQUIRED_COLS + OPTIONAL_COLS
         pd.DataFrame(columns=cols).to_csv(csv_file, index=False)
+        # Pre-populate cache so _ensure_column skips the read entirely
+        for col in cols:
+            _column_cache.add((str(csv_file), col))
 
 def _ensure_column(csv_file: Path, col: str) -> None:
     # Upgrade-in-place to add a missing column (keeps data). Small file friendly.
+    cache_key = (str(csv_file), col)
+    if cache_key in _column_cache:
+        return
     try:
         df = pd.read_csv(csv_file)
         if col not in df.columns:
             df[col] = ""
             df.to_csv(csv_file, index=False)
+        _column_cache.add(cache_key)
     except Exception:
         # If anything goes wrong, leave file as-is; app will still run.
         pass

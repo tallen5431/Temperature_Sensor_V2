@@ -208,67 +208,11 @@ def create_api(cfg: Any, csv_path: str, discovery: Any, public_base: Callable[[]
         probe_id = request.headers.get("X-Probe-ID") or (data.get("probe_id") or "")
         try:
             append_row(CSV_PATH, ts, t_c, t_f, probe_id=probe_id)
-            # mark probe as seen (optimized - removed duplicate logic)
             if discovery and probe_id:
                 try:
-                    import time
-                    probes = discovery.list_probes()
-                    matched = False
-
-                    # Try to find and update existing probe
-                    for key, v in probes.items():
-                        if not v:
-                            continue
-
-                        # Match by exact key, name, or properties.id (not substring)
-                        v_id = None
-                        v_name = None
-                        v_props_id = None
-
-                        if isinstance(v, dict):
-                            v_id = v.get('id')
-                            v_name = v.get('name')
-                            v_props_id = v.get('properties', {}).get('id')
-                        else:
-                            v_id = getattr(v, 'id', None)
-                            v_name = getattr(v, 'name', None)
-                            v_props_id = getattr(v, 'properties', {}).get('id')
-
-                        # Exact match only (fixes substring matching bug)
-                        if key == probe_id or v_id == probe_id or v_name == probe_id or v_props_id == probe_id:
-                            try:
-                                if isinstance(v, dict):
-                                    v['last_seen'] = time.time()
-                                else:
-                                    v.last_seen = time.time()
-                                matched = True
-                                break
-                            except Exception:
-                                pass
-
-                    # If no match found, create new probe entry
-                    if not matched:
-                        try:
-                            from probe_discovery import ProbeInfo
-                            probes[probe_id] = ProbeInfo(
-                                name=probe_id,
-                                host=data.get('host') or request.remote_addr or '',
-                                ip=request.remote_addr or '',
-                                port=80,
-                                properties={'id': probe_id},
-                                last_seen=time.time()
-                            )
-                        except Exception:
-                            # Fallback to dict if ProbeInfo fails
-                            probes[probe_id] = {
-                                'id': probe_id,
-                                'name': probe_id,
-                                'host': data.get('host') or request.remote_addr or '',
-                                'ip': request.remote_addr or '',
-                                'port': 80,
-                                'properties': {'id': probe_id},
-                                'last_seen': time.time()
-                            }
+                    host = data.get('host') or request.remote_addr or ''
+                    ip = request.remote_addr or ''
+                    discovery.update_last_seen(probe_id, host=host, ip=ip)
                 except Exception:
                     pass
         except Exception:

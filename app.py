@@ -59,6 +59,8 @@ from werkzeug.utils import safe_join
 
 @server.route('/download/<path:filename>')
 def download_csv(filename):
+    if not filename.endswith('.csv'):
+        return 'Forbidden', 403
     try:
         full_path = safe_join(BASE_DIR, filename)
         return send_file(full_path, as_attachment=True)

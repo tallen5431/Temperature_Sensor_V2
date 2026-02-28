@@ -1,7 +1,23 @@
 from __future__ import annotations
 import threading, time, socket
-from typing import Callable
+from typing import Callable, Optional
 from auto_provision import provision_probe
+
+
+def _resolve_with_timeout(host: str, timeout: float = 3.0) -> Optional[str]:
+    """Resolve hostname to IP in a background thread to avoid blocking the caller."""
+    result: list = [None]
+
+    def _do():
+        try:
+            result[0] = socket.gethostbyname(host)
+        except Exception:
+            pass
+
+    t = threading.Thread(target=_do, daemon=True)
+    t.start()
+    t.join(timeout)
+    return result[0]
 
 
 class AutoProvisioner(threading.Thread):
@@ -42,10 +58,7 @@ class AutoProvisioner(threading.Thread):
                 mdns_host = (p.get("host") or "").rstrip(".")
                 if not mdns_host:
                     return
-                try:
-                    new_ip = socket.gethostbyname(mdns_host)
-                except Exception:
-                    return
+                new_ip = _resolve_with_timeout(mdns_host)
                 if new_ip and new_ip != p.get("ip"):
                     p["ip"] = new_ip
                     p["last_seen"] = time.time()
@@ -53,10 +66,7 @@ class AutoProvisioner(threading.Thread):
                 mdns_host = (getattr(p, "host", "") or "").rstrip(".")
                 if not mdns_host:
                     return
-                try:
-                    new_ip = socket.gethostbyname(mdns_host)
-                except Exception:
-                    return
+                new_ip = _resolve_with_timeout(mdns_host)
                 cur_ip = getattr(p, "ip", None)
                 if new_ip and new_ip != cur_ip:
                     setattr(p, "ip", new_ip)

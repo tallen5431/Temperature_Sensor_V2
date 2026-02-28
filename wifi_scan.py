@@ -74,7 +74,7 @@ def scan_ssids() -> Set[str]:
         if out:
             return _parse_nmcli(out)
     if shutil.which("iwlist"):
-        out = _run(["bash", "-lc", "iwlist scan"])
+        out = _run(["iwlist", "scan"])
         if out:
             return _parse_iwlist(out)
     return set()

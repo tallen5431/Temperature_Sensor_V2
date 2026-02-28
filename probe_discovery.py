@@ -27,23 +27,23 @@ class ProbeDiscovery:
         self.on_change: Optional[Callable[[Dict[str, ProbeInfo]], None]] = None
 
     def _resolve_ip(self, host: str) -> Optional[str]:
-        try:
-            # Resolve mDNS host with timeout to prevent hanging
-            # socket.gethostbyname doesn't support timeout directly, so we use socket.getaddrinfo
-            import socket as sock_module
-            host_clean = host.rstrip(".")
-            # Set default timeout for socket operations (3 seconds)
-            old_timeout = sock_module.getdefaulttimeout()
+        """Resolve mDNS hostname to IP using a background thread to avoid
+        mutating the global socket timeout (which is not thread-safe)."""
+        host_clean = host.rstrip(".")
+        result_holder: list = [None]
+
+        def _do_resolve():
             try:
-                sock_module.setdefaulttimeout(3.0)
-                result = sock_module.getaddrinfo(host_clean, None, sock_module.AF_INET)
-                if result and len(result) > 0:
-                    return result[0][4][0]  # Extract IP address from first result
-                return None
-            finally:
-                sock_module.setdefaulttimeout(old_timeout)
-        except Exception:
-            return None
+                res = socket.getaddrinfo(host_clean, None, socket.AF_INET)
+                if res:
+                    result_holder[0] = res[0][4][0]
+            except Exception:
+                pass
+
+        t = threading.Thread(target=_do_resolve, daemon=True)
+        t.start()
+        t.join(3.0)
+        return result_holder[0]
 
     def _info_to_probe(self, info: ServiceInfo) -> Optional[ProbeInfo]:
         try:
@@ -137,3 +137,26 @@ class ProbeDiscovery:
     def list_probes(self) -> Dict[str, ProbeInfo]:
         with self._lock:
             return dict(self._probes)
+
+    def update_last_seen(self, probe_id: str, host: str = "", ip: str = "") -> None:
+        """Mark a probe as recently seen (called on ingest). If the probe is not
+        yet known via mDNS, register a minimal entry so it appears in the UI."""
+        with self._lock:
+            for p in self._probes.values():
+                p_name = getattr(p, 'name', None) if not isinstance(p, dict) else p.get('name')
+                p_prop_id = (getattr(p, 'properties', {}) or {}).get('id') if not isinstance(p, dict) else (p.get('properties') or {}).get('id')
+                if p_name == probe_id or p_prop_id == probe_id:
+                    if isinstance(p, dict):
+                        p['last_seen'] = time.time()
+                    else:
+                        p.last_seen = time.time()
+                    return
+            # Probe not yet known — add a minimal entry keyed by probe_id
+            self._probes[probe_id] = ProbeInfo(
+                name=probe_id,
+                host=host or probe_id,
+                ip=ip,
+                port=80,
+                properties={'id': probe_id},
+                last_seen=time.time(),
+            )

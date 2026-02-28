@@ -167,7 +167,7 @@ def register_devices_callbacks(app, finder, cfg):
                 current_name = probe_names.get(probe_id, '')
 
                 return True, probe_id, probe_id, current_name
-            except:
+            except Exception:
                 return no_update, no_update, no_update, no_update
 
         # Cancel button clicked
@@ -185,8 +185,7 @@ def register_devices_callbacks(app, finder, cfg):
                     # Remove the friendly name if empty
                     probe_names.pop(stored_probe_id, None)
 
-                cfg.data['probe_names'] = probe_names
-                cfg.save()
+                cfg.update({'probe_names': probe_names})
                 print(f'[devices_panel] Saved friendly name for {stored_probe_id}: {input_value}')
 
             return False, None, '', ''

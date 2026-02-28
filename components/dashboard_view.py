@@ -282,7 +282,7 @@ def register_dashboard_callbacks(app, finder, cfg):
                 try:
                     min_time = pd.to_datetime(min_row['timestamp']).strftime('%I:%M %p')
                     max_time = pd.to_datetime(max_row['timestamp']).strftime('%I:%M %p')
-                except:
+                except Exception:
                     min_time = 'N/A'
                     max_time = 'N/A'
 
