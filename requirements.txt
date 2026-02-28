@@ -1,6 +1,6 @@
-dash
-pandas
-requests
-plotly
-dash-bootstrap-components
+dash~=2.18
+pandas~=2.2
+requests~=2.32
+plotly~=5.24
+dash-bootstrap-components~=1.6
 zeroconf>=0.132,<0.141

@@ -1,70 +1,110 @@
-# Temperature Sensor Hub — Product README
+# Temperature Sensor Hub
 
-This hub app collects temperature readings from ESP32 probes (DS18B20 / thermocouple front-ends), shows live charts in a web UI, and logs data to CSV for Excel/analysis. It’s designed for **end users**: plug in the hub PC, power the probe, and data starts flowing—no manual setup.
-
----
-## Highlights
-- **Auto-discover probes** on your LAN using mDNS (Bonjour/Zeroconf).
-- **Auto-provision probes** (no buttons, no curl): the hub tells each probe where to POST.
-- **Live dashboard** (Dash/Flask) with rolling stats.
-- **CSV logging** to `temperature_log.csv` for easy analysis.
-- **Optional token auth** for secure ingest.
+Collects temperature readings from ESP32 probes over Wi-Fi, shows a live chart in your browser, and logs data to a CSV file. Designed for **end users**: plug in the hub PC, power the probe, and data starts flowing — no manual setup.
 
 ---
-## Quick Start (Windows)
-1. Double-click **`Start.bat`** (creates a venv, installs deps, and starts the hub).
-2. If Windows Firewall prompts, click **Allow** for Python on **Private** networks.
-3. Power the probe (ESP32) via USB. Within ~10–20 seconds, readings should appear.
-4. Open the UI shown in the console, e.g. `http://192.168.1.145:8088`.
-5. CSV grows in real time at **`temperature_log.csv`** in the project folder.
 
-> If you see the probe in the UI but no data, give it ~10 seconds: the background **auto-provisioner** sets the probe’s `server_url` automatically.
+## Prerequisites
+
+| Requirement | Minimum version | Download |
+|---|---|---|
+| **Python** | 3.9 | https://python.org/downloads |
+
+> **Windows users:** During the Python installer tick **"Add Python to PATH"**, then click Install Now.
+
+No other software is required. All Python packages are installed automatically on first run.
 
 ---
+
+## Quick Start
+
+### Windows
+
+1. Double-click **`Start.bat`**
+2. If Windows Firewall prompts, click **Allow** → **Private networks**
+3. Your browser opens automatically at `http://localhost:8088`
+4. Power the ESP32 probe via USB — readings appear within ~20 seconds
+
+### macOS / Linux
+
+```bash
+# First run only — make the script executable:
+chmod +x Start.sh
+
+./Start.sh
+```
+
+Your browser opens automatically at `http://localhost:8088`.
+If it does not open, navigate there manually.
+
+> **Linux note:** If you see a firewall prompt or readings do not arrive, allow UDP port 5353 (mDNS) and TCP port 8088 for the hub process.
+
+---
+
 ## How It Works
+
 ```
-Probe (ESP32) ──mDNS──▶ Hub Discovery ──▶ Auto-Provisioner ──/provision──▶ Probe
-Probe ──HTTP POST /api/ingest──▶ Hub API ──▶ CSV (temperature_log.csv)
-                                  └──────▶ UI charts
+Probe (ESP32) ──mDNS──► Hub Discovery ──► Auto-Provisioner ──/provision──► Probe
+Probe ──HTTP POST /api/ingest──► Hub API ──► temperature_log.csv
+                                   └──────► Live dashboard
 ```
-- **Discovery** finds probes advertising `_temps-probe._tcp`.
-- **Auto-Provisioner** pushes the correct ingest URL (e.g., `http://<hub-ip>:8088/api/ingest`) to each probe **by IP** (no `.local` DNS).
-- **Probe firmware** reads the sensor and POSTs JSON to the hub at the configured interval.
+
+1. **Discovery** — the hub listens for probes advertising `_temps-probe._tcp` via mDNS (Bonjour / Zeroconf).
+2. **Auto-Provisioner** — the hub automatically tells each probe where to POST readings (`http://<hub-ip>:8088/api/ingest`). No manual configuration on the probe is needed.
+3. **Ingest** — the probe POSTs JSON every few seconds; the hub appends to `temperature_log.csv` and updates the dashboard.
 
 ---
+
 ## Configuration (optional)
-You can set these in environment variables (e.g., inside `Start.bat`).
+
+All settings have sensible defaults. You can override them with environment variables before running the script, or edit them directly inside `Start.bat` / `Start.sh`.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `HOST` | `0.0.0.0` | Bind address for the hub |
-| `PORT` | `8088` | HTTP port for UI & API |
-| `PUBLIC_BASE` | computed `http://<LAN-IP>:<PORT>` | Base URL the hub shares with probes |
-| `SERVER_TOKEN` | *(empty)* | Shared secret; probes include it as `X-Token` on POST |
-| `CSV_FILE` | `temperature_log.csv` | Where readings are stored |
+| `PORT` | `8088` | HTTP port for the UI and API |
+| `HOST` | `0.0.0.0` | Bind address (keep as-is for LAN access) |
+| `PUBLIC_BASE` | auto-detected `http://<LAN-IP>:<PORT>` | URL the hub shares with probes |
+| `SERVER_TOKEN` | *(empty)* | Optional shared secret; probes must include it as `X-Token` |
+| `CSV_FILE` | `temperature_log.csv` | Path to the data log |
 
-**PUBLIC_BASE**: if not set, the hub auto-detects your LAN IP and uses `http://<lan-ip>:<port>`.
+The hub's UI also has a **Settings** page for common options (probe names, alert thresholds, auto-provision toggle).
 
 ---
+
 ## File Map
-- **`app.py`** — Bootstraps Flask/Dash, registers the API, starts discovery & auto-provisioner.
-- **`api/routes.py`** — REST endpoints: health, config, probes, provision, and ingest.
-- **`probe_discovery.py`** — Zeroconf browser that finds probes and normalizes info.
-- **`auto_provision.py` / `auto_provisioner.py`** — Provision a probe (single / background all).
-- **`core/mdns_advert.py`** — Advertises the hub on mDNS (Bonjour).
-- **`components/`** — Dash UI parts (`probe_panel.py`, `temp_graph.py`, `setup_helper.py`).
-- **`temperature_log.csv`** — Live data log.
+
+| File | Purpose |
+|---|---|
+| `app.py` | Entry point — bootstraps Flask/Dash, starts discovery and auto-provisioner |
+| `api/routes.py` | REST endpoints: `/health`, `/config`, `/probes`, `/provision`, `/ingest` |
+| `probe_discovery.py` | mDNS browser that finds and tracks probes |
+| `auto_provision.py` / `auto_provisioner.py` | Push ingest URL to probes (single / background) |
+| `core/config.py` | Thread-safe JSON config management |
+| `core/storage.py` | CSV append and payload normalisation |
+| `core/mdns_advert.py` | Advertises the hub on mDNS |
+| `components/` | Dash UI panels (dashboard, devices, probe setup wizard) |
+| `temperature_log.csv` | Live data log (created automatically) |
 
 ---
+
 ## API Quick Test
-Open a browser on the hub PC:
+
+```bash
+# Ingest a test reading (no probe needed)
+curl "http://localhost:8088/api/ingest?temperature_c=22.3"
+# → {"ok": true}
 ```
-http://<hub-ip>:8088/api/ingest?temperature_c=22.3
-```
-You should get `{ "ok": true }` and a new row in the CSV.
+
+Or open the URL directly in your browser — a new row should appear in `temperature_log.csv` and on the dashboard.
 
 ---
+
 ## Troubleshooting
-- **Probe in UI, no data**: wait ~10s for auto-provision; or open `http://<probe-ip>/status`.
-- **401 Unauthorized**: set `SERVER_TOKEN` and restart; hub will re-provision token.
-- **No discovery**: firewall may block UDP 5353; logging still works (IP-based provisioning).
+
+| Symptom | Fix |
+|---|---|
+| **Probe appears in UI but no readings** | Wait ~20 s for auto-provisioner; or open `http://<probe-ip>/status` to verify its `server_url` |
+| **401 Unauthorized on ingest** | Set `SERVER_TOKEN` env var and restart; the hub re-provisions probes with the token automatically |
+| **No probes discovered** | A firewall may be blocking UDP 5353 (mDNS). Readings still work if the probe POSTs directly to the hub IP |
+| **"Python not found" error** | Install Python 3.9+ from https://python.org/downloads and ensure it is on your PATH |
+| **Port already in use** | Set `PORT=XXXX` before running, e.g. `PORT=9000 ./Start.sh` |
