@@ -1,11 +1,18 @@
-// ESP32 + DS18B20 + WiFiManager + mDNS (probe) + OTA + tiny WebServer
-// Advertises _temps-probe._tcp and supports /provision + /whoami + /status
+// ESP32 + DS18B20 + WiFiManager + mDNS + OTA + WebServer
+// v1.4.0 — offline buffer: readings are stored in LittleFS flash while
+//           WiFi is unavailable and uploaded (with original timestamps)
+//           when the connection is restored.
 //
 // Requires (Library Manager):
 //   - WiFiManager by tzapu
 //   - ArduinoJson  (v6 or v7)
 //   - DallasTemperature + OneWire
-//   - ArduinoOTA (bundled with ESP32 Arduino core)
+//   - ArduinoOTA, LittleFS (bundled with ESP32 Arduino core ≥ 2.0)
+//
+// Partition scheme (Arduino IDE → Tools → Partition Scheme):
+//   Use "Default" or any scheme with a SPIFFS/LittleFS partition.
+//   The default ESP32 scheme provides ~1.4 MB of filesystem space,
+//   enough for ~8 hours of readings at the default 5-second interval.
 
 #include <WiFi.h>
 #include <HTTPClient.h>
@@ -17,6 +24,8 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include <ArduinoOTA.h>
+#include <LittleFS.h>
+#include <time.h>
 
 // ---------------- Pins & LED ------------------------------------------------
 #define ONE_WIRE_BUS 5
@@ -37,69 +46,91 @@ inline void ledBlink(uint8_t n, uint16_t onMs = 60, uint16_t offMs = 120) {
 
 // ---------------- Identity --------------------------------------------------
 static const char* SENSOR_NAME = "TempSensor";
-static const char* FW_VERSION  = "1.3.0";
+static const char* FW_VERSION  = "1.4.0";
 
 // ---------------- DS18B20 ---------------------------------------------------
-OneWire          oneWire(ONE_WIRE_BUS);
+OneWire           oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
 
-// 9-bit resolution gives ~94 ms conversion time (vs 750 ms at 12-bit).
-// With setWaitForConversion(false) the loop never blocks waiting for the ADC.
+// 9-bit resolution → ~94 ms conversion. setWaitForConversion(false) means
+// requestTemperatures() returns instantly and the loop never blocks.
 static const uint8_t  DS_RESOLUTION_BITS = 9;
 static const uint16_t DS_CONV_MS         = 94;
 
 // ---------------- Config (NVS) ----------------------------------------------
-Preferences prefs;  // namespace: "tscfg"
-String   cfg_server_url = "";   // e.g. http://<hub>:8088/api/ingest
+Preferences prefs;   // namespace: "tscfg"
+String   cfg_server_url = "";
 String   cfg_token      = "";
-uint32_t cfg_interval   = 5000; // ms between readings
+uint32_t cfg_interval   = 5000;   // ms between readings
 
 // ---------------- WiFiManager parameters ------------------------------------
 WiFiManager wm;
-WiFiManagerParameter p_server  ("server",   "Server URL",                   "",     128);
-WiFiManagerParameter p_token   ("token",    "Ingest token (optional)",      "",      64);
-WiFiManagerParameter p_interval("interval", "Read interval (ms)",           "5000",  10);
+WiFiManagerParameter p_server  ("server",   "Server URL",             "",     128);
+WiFiManagerParameter p_token   ("token",    "Ingest token (optional)","",      64);
+WiFiManagerParameter p_interval("interval", "Read interval (ms)",     "5000",  10);
 
 // ---------------- HTTP server -----------------------------------------------
 WebServer http(80);
 
 // ---------------- Cached identity (computed once in setup) ------------------
-static String g_chipId;        // lower 32-bit of MAC as 8 hex chars
-static String g_romHex;        // DS18B20 ROM as 16 hex chars
-static String g_probeId;       // e.g. TempProbe-3F2A
-static String g_instanceName;  // e.g. TempSensor-12AB3F2A
+static String g_chipId;
+static String g_romHex;
+static String g_probeId;
+static String g_instanceName;
+
+// ---------------- Offline buffer (LittleFS) ---------------------------------
+// Each line in the buffer file: "TIMESTAMP,TEMP_C,TEMP_F,PROBE_ID\n"
+// ~50 bytes/line → 290 KB ≈ 5900 readings ≈ 8+ hours at 5-second intervals.
+static const char*    BUFFER_FILE      = "/buf.csv";
+static const uint32_t BUFFER_MAX_BYTES = 290UL * 1024UL;
+
+// NVS key that tracks how many bytes have already been successfully uploaded
+// from the current buffer file.  Survives reboots mid-flush so we never
+// re-upload the same reading twice.
+static const char*    BUF_POS_KEY = "buf_pos";
 
 // ---------------- State -----------------------------------------------------
-static unsigned long g_lastSend    = 0;     // millis() of last conversion request
-static unsigned long g_convReqAt   = 0;     // millis() when conversion was requested
-static bool          g_convPending = false; // true between request and read
-static float         g_lastC       = NAN;   // last valid reading
-static unsigned long g_lastAtMs    = 0;     // millis() of last valid reading
+static bool          g_timeValid    = false;   // true once NTP has synced
+static unsigned long g_lastSend     = 0;
+static unsigned long g_convReqAt    = 0;
+static bool          g_convPending  = false;
+static float         g_lastC        = NAN;
+static unsigned long g_lastAtMs     = 0;
 static bool          g_wasConnected = false;
 
-// ---------------- Helpers ---------------------------------------------------
-String chipIdHex() {
-  uint32_t lo = (uint32_t)(ESP.getEfuseMac() & 0xFFFFFFFFULL);
-  char buf[9];
-  snprintf(buf, sizeof(buf), "%08X", lo);
+// ============================================================================
+// Time helpers
+// ============================================================================
+
+// Call once after WiFi connects.  Blocks up to 8 s waiting for SNTP.
+void syncTime() {
+  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+  Serial.print("[NTP] Syncing...");
+  struct tm ti;
+  if (getLocalTime(&ti, 8000)) {
+    g_timeValid = true;
+    char buf[32];
+    strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &ti);
+    Serial.printf(" OK (%s)\n", buf);
+  } else {
+    Serial.println(" FAILED — readings will not be buffered until time syncs.");
+  }
+}
+
+// Returns current UTC time as ISO 8601 string, or "" if time is unknown.
+// The ESP32 RTC maintains time through WiFi disconnections once synced.
+String nowIso() {
+  if (!g_timeValid) return "";
+  struct tm ti;
+  if (!getLocalTime(&ti, 0)) return "";
+  char buf[25];
+  strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &ti);
   return String(buf);
 }
 
-String ds18b20RomHex() {
-  DeviceAddress addr;
-  if (!sensors.getAddress(addr, 0)) return "";
-  char buf[17];
-  for (int i = 0; i < 8; i++) sprintf(buf + i * 2, "%02X", addr[i]);
-  buf[16] = '\0';
-  return String(buf);
-}
-
-// Stable probe ID derived from DS18B20 ROM tail; falls back to chip MAC tail.
-String buildProbeId(const String& rom, const String& chip) {
-  if (rom.length() >= 4) return "TempProbe-"  + rom.substring(rom.length() - 4);
-  return                        "TempSensor-" + chip.substring(4);
-}
-
+// ============================================================================
+// NVS helpers
+// ============================================================================
 void loadConfig() {
   if (!prefs.begin("tscfg", true)) return;
   cfg_server_url = prefs.getString("server_url", cfg_server_url);
@@ -116,7 +147,163 @@ void saveConfig() {
   prefs.end();
 }
 
-// ---------------- HTTP helpers ----------------------------------------------
+uint32_t loadBufPos() {
+  if (!prefs.begin("tscfg", true)) return 0;
+  uint32_t pos = prefs.getUInt(BUF_POS_KEY, 0);
+  prefs.end();
+  return pos;
+}
+
+void saveBufPos(uint32_t pos) {
+  if (!prefs.begin("tscfg", false)) return;
+  prefs.putUInt(BUF_POS_KEY, pos);
+  prefs.end();
+}
+
+// ============================================================================
+// Offline buffer
+// ============================================================================
+
+// Append one reading to the local flash buffer.
+// Only called when we have a valid timestamp; readings without a known time
+// are discarded rather than stored with a wrong/missing timestamp.
+void bufferAppend(const String& ts, float tC, float tF) {
+  if (ts.length() == 0) return;   // no valid time — skip
+
+  // Check we haven't exceeded the self-imposed buffer cap
+  if (LittleFS.exists(BUFFER_FILE)) {
+    File f = LittleFS.open(BUFFER_FILE, "r");
+    uint32_t sz = f ? f.size() : 0;
+    if (f) f.close();
+    if (sz >= BUFFER_MAX_BYTES) {
+      Serial.printf("[Buffer] Full (%u KB) — oldest unsynced reading dropped.\n",
+                    sz / 1024);
+      return;
+    }
+  }
+
+  File f = LittleFS.open(BUFFER_FILE, "a");
+  if (!f) { Serial.println("[Buffer] Could not open buffer file."); return; }
+  f.printf("%s,%.3f,%.3f,%s\n", ts.c_str(), tC, tF, g_probeId.c_str());
+  f.close();
+  Serial.printf("[Buffer] Saved (ts=%s tC=%.2f)  free=%u KB\n",
+                ts.c_str(), tC,
+                (LittleFS.totalBytes() - LittleFS.usedBytes()) / 1024);
+}
+
+// POST a single reading with an explicit timestamp.
+// Returns true on HTTP 2xx.
+bool postWithTimestamp(const String& ts, float tC, float tF,
+                       const String& pid) {
+  if (WiFi.status() != WL_CONNECTED || cfg_server_url.length() == 0)
+    return false;
+
+  StaticJsonDocument<256> doc;
+  if (ts.length()) doc["timestamp"]     = ts;
+  doc["temperature_c"] = tC;
+  doc["temperature_f"] = tF;
+  doc["probe_id"]      = pid;
+
+  String body;
+  serializeJson(doc, body);
+
+  HTTPClient httpc;
+  httpc.begin(cfg_server_url);
+  httpc.setTimeout(3000);
+  httpc.addHeader("Content-Type", "application/json");
+  if (cfg_token.length()) httpc.addHeader("X-Token",    cfg_token);
+  httpc.addHeader("X-Probe-ID", pid);
+
+  int code = httpc.POST((uint8_t*)body.c_str(), body.length());
+  httpc.end();
+  return (code >= 200 && code < 300);
+}
+
+// Upload every reading stored in the buffer file, then delete it.
+//
+// Resilience: the byte offset of the next line to upload is persisted in NVS
+// after every successful POST.  If the connection drops mid-flush, the next
+// call picks up exactly where it left off — no duplicates, no data loss.
+//
+// Responsiveness: http.handleClient() and ArduinoOTA.handle() are called
+// inside the loop so the web server stays responsive during a long flush.
+void bufferFlush() {
+  if (!LittleFS.exists(BUFFER_FILE)) return;
+
+  File f = LittleFS.open(BUFFER_FILE, "r");
+  if (!f) return;
+
+  uint32_t fileSize = f.size();
+  uint32_t pos      = loadBufPos();
+
+  if (pos >= fileSize) {
+    // Nothing left to upload — clean up
+    f.close();
+    LittleFS.remove(BUFFER_FILE);
+    saveBufPos(0);
+    return;
+  }
+
+  Serial.printf("[Buffer] Flushing from offset %u / %u bytes...\n",
+                pos, fileSize);
+  f.seek(pos);
+
+  int uploaded = 0;
+  int failed   = 0;
+
+  while (f.available()) {
+    http.handleClient();
+    ArduinoOTA.handle();
+
+    String line = f.readStringUntil('\n');
+    line.trim();
+    if (line.length() == 0) { pos = f.position(); continue; }
+
+    // Parse:  TIMESTAMP , TEMP_C , TEMP_F , PROBE_ID
+    // (probe_id may itself contain commas — take everything after the 3rd)
+    int c1 = line.indexOf(',');
+    int c2 = (c1 >= 0) ? line.indexOf(',', c1 + 1) : -1;
+    int c3 = (c2 >= 0) ? line.indexOf(',', c2 + 1) : -1;
+    if (c1 < 0 || c2 < 0 || c3 < 0) {
+      // Malformed line — skip it
+      pos = f.position();
+      saveBufPos(pos);
+      continue;
+    }
+
+    String ts  = line.substring(0, c1);
+    float  tC  = line.substring(c1 + 1, c2).toFloat();
+    float  tF  = line.substring(c2 + 1, c3).toFloat();
+    String pid = line.substring(c3 + 1);
+
+    if (postWithTimestamp(ts, tC, tF, pid)) {
+      pos = f.position();
+      saveBufPos(pos);   // persist progress so a mid-flush drop can resume here
+      uploaded++;
+      Serial.printf("[Buffer] Uploaded %d  (ts=%s tC=%.1f)\n",
+                    uploaded, ts.c_str(), tC);
+    } else {
+      failed++;
+      Serial.printf("[Buffer] POST failed at offset %u — will retry later.\n", pos);
+      break;  // stop; resume from same pos on next reconnect
+    }
+  }
+
+  f.close();
+
+  if (failed == 0) {
+    LittleFS.remove(BUFFER_FILE);
+    saveBufPos(0);
+    Serial.printf("[Buffer] Flush complete — %d readings uploaded.\n", uploaded);
+  } else {
+    Serial.printf("[Buffer] Partial flush: %d uploaded, stopped. "
+                  "Will retry on next reconnect.\n", uploaded);
+  }
+}
+
+// ============================================================================
+// HTTP helpers
+// ============================================================================
 void addCORS() {
   http.sendHeader("Access-Control-Allow-Origin",  "*");
   http.sendHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
@@ -130,66 +317,43 @@ void sendJSON(int code, const JsonDocument& doc) {
   http.send(code, "application/json", out);
 }
 
-void handleOptions() {
-  addCORS();
-  http.send(204);
-}
+void handleOptions() { addCORS(); http.send(204); }
 
-// ---------------- POST reading to hub ---------------------------------------
-bool postReading(float tC) {
-  if (WiFi.status() != WL_CONNECTED || cfg_server_url.length() == 0) return false;
-
-  float tF = DallasTemperature::toFahrenheit(tC);
-
-  StaticJsonDocument<256> doc;
-  doc["temperature_c"] = tC;
-  doc["temperature_f"] = tF;      // FIX: was computed but never sent
-  doc["probe_id"]      = g_probeId;
-
-  String body;
-  serializeJson(doc, body);
-
-  HTTPClient httpc;
-  httpc.begin(cfg_server_url);
-  httpc.setTimeout(3000);          // FIX: don't hang if hub is unreachable
-  httpc.addHeader("Content-Type", "application/json");
-  if (cfg_token.length()) httpc.addHeader("X-Token",    cfg_token);
-  httpc.addHeader("X-Probe-ID", g_probeId);
-
-  int code = httpc.POST((uint8_t*)body.c_str(), body.length());
-  httpc.end();
-
-  Serial.printf("[POST] %s -> %d (tC=%.2f tF=%.2f id=%s)\n",
-    cfg_server_url.c_str(), code, tC, tF, g_probeId.c_str());
-  return (code >= 200 && code < 300);
-}
-
-// ---------------- mDNS -----------------------------------------------------
-// Called once on boot and again after every WiFi reconnection so the hub
-// always has the current IP address.
+// ============================================================================
+// mDNS
+// ============================================================================
 void mdnsAdvertise() {
-  MDNS.end();  // safe to call even if not previously started
+  MDNS.end();
   String host = g_instanceName;
   host.replace(".", "-");
-  if (!MDNS.begin(host.c_str())) {
-    Serial.println("[mDNS] init failed");
-    return;
-  }
+  if (!MDNS.begin(host.c_str())) { Serial.println("[mDNS] init failed"); return; }
   MDNS.addService("_temps-probe", "_tcp", 80);
   MDNS.addServiceTxt("_temps-probe", "_tcp", "id",   g_probeId);
   MDNS.addServiceTxt("_temps-probe", "_tcp", "name", g_instanceName);
-  Serial.printf("[mDNS] advertising %s (%s) as _temps-probe._tcp\n",
-    g_instanceName.c_str(), host.c_str());
+  Serial.printf("[mDNS] advertising %s as _temps-probe._tcp\n",
+                g_instanceName.c_str());
 }
 
-// ---------------- WebServer handlers ----------------------------------------
+// ============================================================================
+// Web server handlers
+// ============================================================================
 void handleRoot() {
-  // Use cached g_probeId — avoids a 1-Wire bus read on every HTTP request
   String html = String("<!doctype html><meta charset='utf-8'>")
     + "<h3>" + SENSOR_NAME + " " + FW_VERSION + "</h3>"
-    + "<p>ID: "       + g_probeId      + "</p>"
-    + "<p>Server: "   + cfg_server_url + "</p>"
-    + "<p>Interval: " + String(cfg_interval) + " ms</p>";
+    + "<p>ID: "       + g_probeId          + "</p>"
+    + "<p>Server: "   + cfg_server_url     + "</p>"
+    + "<p>Interval: " + String(cfg_interval) + " ms</p>"
+    + "<p>Time valid: " + (g_timeValid ? "yes" : "no") + "</p>";
+
+  // Buffer info
+  if (LittleFS.exists(BUFFER_FILE)) {
+    File f = LittleFS.open(BUFFER_FILE, "r");
+    uint32_t sz = f ? f.size() : 0;
+    if (f) f.close();
+    uint32_t pos = loadBufPos();
+    html += "<p><b>Buffered: " + String((sz - pos) / 50) +
+            " est. readings (" + String((sz - pos) / 1024) + " KB pending)</b></p>";
+  }
   http.send(200, "text/html", html);
 }
 
@@ -202,17 +366,32 @@ void handleWhoAmI() {
   doc["fw_version"]  = FW_VERSION;
   doc["interval_ms"] = cfg_interval;
   doc["server_url"]  = cfg_server_url;
+  doc["time_valid"]  = g_timeValid;
   sendJSON(200, doc);
 }
 
 void handleStatus() {
-  StaticJsonDocument<256> doc;
+  StaticJsonDocument<320> doc;
   doc["id"]          = g_probeId;
   doc["interval_ms"] = cfg_interval;
   doc["server_url"]  = cfg_server_url;
+  doc["time_valid"]  = g_timeValid;
   if (!isnan(g_lastC)) {
     doc["last_c"]  = g_lastC;
     doc["last_ms"] = g_lastAtMs;
+    doc["last_ts"] = nowIso();
+  }
+  // Buffer info
+  if (LittleFS.exists(BUFFER_FILE)) {
+    File f = LittleFS.open(BUFFER_FILE, "r");
+    uint32_t sz = f ? f.size() : 0;
+    if (f) f.close();
+    uint32_t pos = loadBufPos();
+    doc["buffered_bytes"]   = sz - pos;
+    doc["buffered_est_rows"] = (sz - pos) / 50;
+  } else {
+    doc["buffered_bytes"]    = 0;
+    doc["buffered_est_rows"] = 0;
   }
   sendJSON(200, doc);
 }
@@ -252,7 +431,9 @@ void handleProvision() {
   sendJSON(200, out);
 }
 
-// ---------------- WiFi portal -----------------------------------------------
+// ============================================================================
+// WiFi portal
+// ============================================================================
 void startConfigPortal() {
   uint32_t chip = (uint32_t)ESP.getEfuseMac();
   char apName[32];
@@ -262,17 +443,14 @@ void startConfigPortal() {
   wm.setTitle(String(SENSOR_NAME) + " (" + FW_VERSION + ")");
   wm.setConfigPortalBlocking(true);
   wm.setParamsPage(true);
-  // wm.setTimeout(0) intentionally omitted — already set in setup()
 
-  // Pre-fill form fields with current saved values
   p_server.setValue(cfg_server_url.c_str(), cfg_server_url.length());
   p_token.setValue (cfg_token.c_str(),      cfg_token.length());
   char ibuf[12];
   snprintf(ibuf, sizeof(ibuf), "%lu", (unsigned long)cfg_interval);
   p_interval.setValue(ibuf, strlen(ibuf));
 
-  // FIX: parameters were registered in setup() — do NOT call wm.addParameter
-  // again here or they appear twice in the portal form.
+  // Parameters were registered once in setup() — do NOT re-add here.
 
   Serial.println("[WiFi] Starting config portal...");
   ledBlink(2, 50, 100);
@@ -291,17 +469,39 @@ void startConfigPortal() {
   }
 }
 
-// ---------------- OTA -------------------------------------------------------
+// ============================================================================
+// OTA
+// ============================================================================
 void setupOTA() {
   ArduinoOTA.setHostname(g_instanceName.c_str());
-  ArduinoOTA.onStart([]() {
-    Serial.println("[OTA] Starting...");
-    ledBlink(3, 50, 50);
-  });
+  ArduinoOTA.onStart([]() { Serial.println("[OTA] Starting..."); ledBlink(3, 50, 50); });
   ArduinoOTA.onEnd  ([]()              { Serial.println("[OTA] Done."); });
   ArduinoOTA.onError([](ota_error_t e) { Serial.printf("[OTA] Error[%u]\n", e); });
   ArduinoOTA.begin();
-  Serial.println("[OTA] Ready — flash over Wi-Fi using Arduino IDE or espota.py");
+  Serial.println("[OTA] Ready");
+}
+
+// ============================================================================
+// Identity helpers
+// ============================================================================
+String chipIdHex() {
+  uint32_t lo = (uint32_t)(ESP.getEfuseMac() & 0xFFFFFFFFULL);
+  char buf[9]; snprintf(buf, sizeof(buf), "%08X", lo);
+  return String(buf);
+}
+
+String ds18b20RomHex() {
+  DeviceAddress addr;
+  if (!sensors.getAddress(addr, 0)) return "";
+  char buf[17];
+  for (int i = 0; i < 8; i++) sprintf(buf + i * 2, "%02X", addr[i]);
+  buf[16] = '\0';
+  return String(buf);
+}
+
+String buildProbeId(const String& rom, const String& chip) {
+  if (rom.length() >= 4) return "TempProbe-"  + rom.substring(rom.length() - 4);
+  return                        "TempSensor-" + chip.substring(4);
 }
 
 // ============================================================================
@@ -313,27 +513,41 @@ void setup() {
 
   loadConfig();
 
-  // DS18B20: 9-bit resolution, non-blocking conversion
+  // DS18B20: 9-bit, non-blocking
   sensors.begin();
   sensors.setResolution(DS_RESOLUTION_BITS);
-  sensors.setWaitForConversion(false);  // requestTemperatures() returns instantly
+  sensors.setWaitForConversion(false);
   Serial.printf("DS18B20 sensors found: %d\n", sensors.getDeviceCount());
 
-  // Cache identity strings — computed once, reused everywhere
+  // Cache identity strings
   g_chipId       = chipIdHex();
   g_romHex       = ds18b20RomHex();
   g_probeId      = buildProbeId(g_romHex, g_chipId);
   g_instanceName = String(SENSOR_NAME) + "-" + g_chipId.substring(4);
   Serial.printf("Probe ID:  %s\n", g_probeId.c_str());
-  Serial.printf("Instance:  %s\n", g_instanceName.c_str());
+
+  // Mount LittleFS — format on first use (takes ~2 s, one-time only)
+  if (!LittleFS.begin(true)) {
+    Serial.println("[LittleFS] Mount failed — offline buffer disabled.");
+  } else {
+    Serial.printf("[LittleFS] Mounted. Total: %u KB  Used: %u KB\n",
+                  LittleFS.totalBytes() / 1024, LittleFS.usedBytes() / 1024);
+    if (LittleFS.exists(BUFFER_FILE)) {
+      File f = LittleFS.open(BUFFER_FILE, "r");
+      uint32_t sz = f ? f.size() : 0;
+      if (f) f.close();
+      uint32_t pos = loadBufPos();
+      Serial.printf("[Buffer] Pending from previous session: ~%u readings "
+                    "(%u KB)\n", (sz - pos) / 50, (sz - pos) / 1024);
+    }
+  }
 
   WiFi.mode(WIFI_STA);
   wm.setConnectTimeout(20);
   wm.setConfigPortalTimeout(0);
   wm.setHostname(SENSOR_NAME);
 
-  // FIX: register parameters exactly once — shared by autoConnect portal
-  // and startConfigPortal(); duplicate calls caused duplicate form fields.
+  // Register parameters exactly once
   wm.addParameter(&p_server);
   wm.addParameter(&p_token);
   wm.addParameter(&p_interval);
@@ -351,10 +565,15 @@ void setup() {
   Serial.print("[WiFi] Connected. IP: ");
   Serial.println(WiFi.localIP());
   g_wasConnected = true;
-  ledBlink(3, 120, 120);
 
+  syncTime();         // NTP sync — ESP32 RTC holds time through disconnections
+  ledBlink(3, 120, 120);
   mdnsAdvertise();
   setupOTA();
+
+  // Flush any readings buffered during a previous session (e.g. power cycle
+  // while away from the hub)
+  bufferFlush();
 
   http.on("/",          HTTP_GET,     handleRoot);
   http.on("/whoami",    HTTP_GET,     handleWhoAmI);
@@ -369,38 +588,35 @@ void loop() {
   http.handleClient();
   ArduinoOTA.handle();
 
-  unsigned long now = millis();
+  unsigned long now       = millis();
+  bool          connected = (WiFi.status() == WL_CONNECTED);
 
-  // ── WiFi watchdog ──────────────────────────────────────────────────────────
-  bool connected = (WiFi.status() == WL_CONNECTED);
-
+  // ── WiFi watchdog ─────────────────────────────────────────────────────────
   if (!connected) {
     if (g_wasConnected) {
-      Serial.println("[WiFi] Connection lost.");
+      Serial.println("[WiFi] Connection lost — readings will be buffered.");
       g_wasConnected = false;
     }
-    // Retry reconnection once every 5 s rather than hammering the stack
     static unsigned long lastReconnAt = 0;
     if (now - lastReconnAt >= 5000) {
       Serial.println("[WiFi] Attempting reconnect...");
       WiFi.reconnect();
       lastReconnAt = now;
     }
-    return;  // keep serving HTTP / OTA while offline
+    // Fall through — still take readings and buffer them while offline
   }
 
-  if (!g_wasConnected) {
-    // Just reconnected — re-advertise mDNS with the (possibly new) IP
-    // so the hub's mDNS browser can find the probe again.
+  if (connected && !g_wasConnected) {
+    // Just reconnected
     Serial.print("[WiFi] Reconnected. IP: ");
     Serial.println(WiFi.localIP());
     g_wasConnected = true;
+    if (!g_timeValid) syncTime();   // get time if we never had it
     mdnsAdvertise();
+    bufferFlush();   // upload all offline readings before resuming live posts
   }
 
-  // ── Phase 1: kick off a conversion ────────────────────────────────────────
-  // requestTemperatures() returns immediately (setWaitForConversion(false));
-  // the DS18B20 runs its ADC in the background for DS_CONV_MS milliseconds.
+  // ── Phase 1: kick off a non-blocking DS18B20 conversion ───────────────────
   if (!g_convPending && (now - g_lastSend >= cfg_interval)) {
     sensors.requestTemperatures();
     g_convReqAt   = now;
@@ -408,25 +624,40 @@ void loop() {
     g_lastSend    = now;
   }
 
-  // ── Phase 2: read result once conversion window has elapsed ───────────────
-  // The web server keeps running during the DS_CONV_MS gap — no blocking here.
+  // ── Phase 2: read result once the conversion window has elapsed ───────────
   if (g_convPending && (now - g_convReqAt >= DS_CONV_MS)) {
     g_convPending = false;
     float tC = sensors.getTempCByIndex(0);
 
     if (tC == DEVICE_DISCONNECTED_C) {
       Serial.println("[Temp] Sensor disconnected — reinitialising bus...");
-      // Attempt bus recovery rather than waiting for a reboot
       sensors.begin();
       sensors.setResolution(DS_RESOLUTION_BITS);
       sensors.setWaitForConversion(false);
       ledBlink(2, 60, 160);
-    } else {
-      g_lastC    = tC;
-      g_lastAtMs = now;   // FIX: use captured `now`, not a redundant millis() call
-      bool ok = postReading(tC);
-      if (ok) { ledOn(); delay(20); ledOff(); }
-      else    { ledBlink(2, 80, 120); }
+      return;
     }
+
+    float  tF = DallasTemperature::toFahrenheit(tC);
+    String ts = nowIso();   // "" if NTP hasn't synced yet
+    g_lastC    = tC;
+    g_lastAtMs = now;
+
+    if (connected && ts.length() > 0) {
+      // Online and time is known — try a live POST first
+      if (postWithTimestamp(ts, tC, tF, g_probeId)) {
+        ledOn(); delay(20); ledOff();
+        return;
+      }
+      // POST failed (hub unreachable?) — fall through to buffer
+      Serial.println("[POST] Failed — buffering reading.");
+    }
+
+    // Offline OR post failed: store to flash (requires valid time)
+    // If time is not yet known (very first boot, NTP never synced), the
+    // reading is discarded — this only affects the first few seconds of
+    // operation before a successful NTP sync.
+    bufferAppend(ts, tC, tF);
+    ledBlink(2, 80, 120);
   }
 }
