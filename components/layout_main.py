@@ -50,7 +50,7 @@ LAYOUT = html.Div([
     FOOTER
 ])
 
-def register_all_callbacks(app, finder, cfg):
+def register_all_callbacks(app, finder, cfg, public_base_func=None, token=""):
     from components.dashboard_view import register_dashboard_callbacks
     register_dashboard_callbacks(app, finder, cfg)
-    register_devices_callbacks(app, finder, cfg)
+    register_devices_callbacks(app, finder, cfg, public_base_func=public_base_func, token=token)

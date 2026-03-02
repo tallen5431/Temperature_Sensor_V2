@@ -37,6 +37,7 @@ class AutoProvisioner(threading.Thread):
         token: str = "",
         interval_ms: int = 2000,
         period_sec: int = 10,
+        cfg=None,
     ):
         super().__init__(daemon=True)
         self.discovery = discovery
@@ -44,6 +45,7 @@ class AutoProvisioner(threading.Thread):
         self.token = token or ""
         self.interval_ms = int(interval_ms)
         self.period_sec = int(period_sec)
+        self.cfg = cfg
         self._stop = False
 
     def stop(self):
@@ -86,11 +88,25 @@ class AutoProvisioner(threading.Thread):
 
                         # 2) Handle both dict and object-style probes
                         if isinstance(p, dict):
+                            props = p.get("properties", {}) or {}
+                            probe_id = props.get("id") or p.get("probe_id") or p.get("id")
                             host = p.get("ip") or p.get("host") or ""
                             port = int(p.get("port", 80) or 80)
                         else:
+                            props = getattr(p, "properties", {}) or {}
+                            probe_id = props.get("id") or getattr(p, "probe_id", None) or getattr(p, "id", None)
                             host = getattr(p, "ip", None) or getattr(p, "host", None) or ""
                             port = int(getattr(p, "port", 80) or 80)
+
+                        # Per-probe interval override from config, falling back to global default
+                        interval_ms = self.interval_ms
+                        if self.cfg is not None and probe_id:
+                            try:
+                                probe_intervals = self.cfg.get("probe_intervals", {}) or {}
+                                if probe_id in probe_intervals:
+                                    interval_ms = int(float(probe_intervals[probe_id]) * 1000)
+                            except Exception:
+                                pass
 
                         host = (host or "").rstrip(".")
                         if host:
@@ -100,7 +116,7 @@ class AutoProvisioner(threading.Thread):
                                     port,
                                     base,
                                     token=self.token,
-                                    interval_ms=self.interval_ms,
+                                    interval_ms=interval_ms,
                                 )
                             except Exception as e:
                                 # best-effort; we'll retry next cycle

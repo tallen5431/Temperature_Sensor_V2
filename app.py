@@ -72,7 +72,7 @@ def download_csv(filename):
 def display_page(pathname):
     return serve_page(pathname)
 
-register_all_callbacks(app, finder, cfg)
+register_all_callbacks(app, finder, cfg, public_base_func=_public_base, token=os.getenv('SERVER_TOKEN', ''))
 register_help_callbacks(app)
 
 if __name__ == '__main__':
@@ -89,7 +89,8 @@ if __name__ == '__main__':
             public_base_func=_public_base,
             token=cfg.get('provision_token', ''),
             interval_ms=cfg.get('interval_sec', 5) * 1000,
-            period_sec=10
+            period_sec=10,
+            cfg=cfg,
         )
         provisioner.start()
         print(f'[auto-provisioner] Started (will provision probes every 10 seconds)')
