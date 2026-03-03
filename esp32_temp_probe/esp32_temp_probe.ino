@@ -10,9 +10,9 @@
 //   - ArduinoOTA, LittleFS (bundled with ESP32 Arduino core ≥ 2.0)
 //
 // Partition scheme (Arduino IDE → Tools → Partition Scheme):
-//   Use "Default" or any scheme with a SPIFFS/LittleFS partition.
-//   The default ESP32 scheme provides ~1.4 MB of filesystem space,
-//   enough for ~8 hours of readings at the default 5-second interval.
+//   "Minimal SPIFFS (1.9MB APP with OTA/190KB SPIFFS)" gives 190 KB for
+//   LittleFS — enough for ~3200 readings (~4.5 h at 5 s intervals).
+//   The default ESP32 scheme (1.4 MB FS) stores ~8+ hours of readings.
 
 #include <WiFi.h>
 #include <HTTPClient.h>
@@ -80,9 +80,19 @@ static String g_instanceName;
 
 // ---------------- Offline buffer (LittleFS) ---------------------------------
 // Each line in the buffer file: "TIMESTAMP,TEMP_C,TEMP_F,PROBE_ID\n"
-// ~50 bytes/line → 290 KB ≈ 5900 readings ≈ 8+ hours at 5-second intervals.
+// ~50 bytes/line.
+//
+// BUFFER_MAX_BYTES caps the buffer file size.  Set conservatively below the
+// smallest supported partition (190 KB "Minimal SPIFFS") so the cap triggers
+// before the filesystem fills up.  The remaining 30 KB is headroom for
+// LittleFS metadata (superblocks, commit journal) and any other files.
+//
+// BUFFER_MIN_FREE is an additional guard: if the filesystem free space drops
+// below this threshold the append is refused regardless of the file-size cap,
+// protecting the FS from corruption if other files happen to be present.
 static const char*    BUFFER_FILE      = "/buf.csv";
-static const uint32_t BUFFER_MAX_BYTES = 290UL * 1024UL;
+static const uint32_t BUFFER_MAX_BYTES = 160UL * 1024UL;   // 160 KB cap
+static const uint32_t BUFFER_MIN_FREE  =   4UL * 1024UL;   // keep 4 KB free
 
 // NVS key that tracks how many bytes have already been successfully uploaded
 // from the current buffer file.  Survives reboots mid-flush so we never
@@ -170,16 +180,26 @@ void saveBufPos(uint32_t pos) {
 void bufferAppend(const String& ts, float tC, float tF) {
   if (ts.length() == 0) return;   // no valid time — skip
 
-  // Check we haven't exceeded the self-imposed buffer cap
+  // Guard 1: buffer file size cap (prevents exceeding target storage budget)
   if (LittleFS.exists(BUFFER_FILE)) {
     File f = LittleFS.open(BUFFER_FILE, "r");
     uint32_t sz = f ? f.size() : 0;
     if (f) f.close();
     if (sz >= BUFFER_MAX_BYTES) {
-      Serial.printf("[Buffer] Full (%u KB) — oldest unsynced reading dropped.\n",
-                    sz / 1024);
+      Serial.printf("[Buffer] Cap reached (%u KB) — reading dropped."
+                    " Connect to hub to flush.\n", sz / 1024);
       return;
     }
+  }
+
+  // Guard 2: filesystem free-space floor (protects FS metadata even if
+  // another file has consumed space, and catches partitions smaller than
+  // BUFFER_MAX_BYTES such as the 190 KB "Minimal SPIFFS" scheme)
+  uint32_t freeBytes = LittleFS.totalBytes() - LittleFS.usedBytes();
+  if (freeBytes < BUFFER_MIN_FREE) {
+    Serial.printf("[Buffer] Filesystem full (%u bytes free) — reading dropped."
+                  " Connect to hub to flush.\n", freeBytes);
+    return;
   }
 
   File f = LittleFS.open(BUFFER_FILE, "a");
@@ -187,8 +207,7 @@ void bufferAppend(const String& ts, float tC, float tF) {
   f.printf("%s,%.3f,%.3f,%s\n", ts.c_str(), tC, tF, g_probeId.c_str());
   f.close();
   Serial.printf("[Buffer] Saved (ts=%s tC=%.2f)  free=%u KB\n",
-                ts.c_str(), tC,
-                (LittleFS.totalBytes() - LittleFS.usedBytes()) / 1024);
+                ts.c_str(), tC, freeBytes / 1024);
 }
 
 // POST a single reading with an explicit timestamp.
@@ -387,12 +406,14 @@ void handleStatus() {
     uint32_t sz = f ? f.size() : 0;
     if (f) f.close();
     uint32_t pos = loadBufPos();
-    doc["buffered_bytes"]   = sz - pos;
+    doc["buffered_bytes"]    = sz - pos;
     doc["buffered_est_rows"] = (sz - pos) / 50;
   } else {
     doc["buffered_bytes"]    = 0;
     doc["buffered_est_rows"] = 0;
   }
+  doc["fs_total_kb"] = LittleFS.totalBytes() / 1024;
+  doc["fs_free_kb"]  = (LittleFS.totalBytes() - LittleFS.usedBytes()) / 1024;
   sendJSON(200, doc);
 }
 
