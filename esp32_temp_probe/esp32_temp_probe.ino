@@ -10,9 +10,8 @@
 //   - ArduinoOTA, LittleFS (bundled with ESP32 Arduino core ≥ 2.0)
 //
 // Partition scheme (Arduino IDE → Tools → Partition Scheme):
-//   "Minimal SPIFFS (1.9MB APP with OTA/190KB SPIFFS)" gives 190 KB for
-//   LittleFS — enough for ~3200 readings (~4.5 h at 5 s intervals).
-//   The default ESP32 scheme (1.4 MB FS) stores ~8+ hours of readings.
+//   Recommended: "Default 4MB with spiffs (1.2MB APP/1.5MB SPIFFS)"
+//   OTA support + 1.5 MB LittleFS → ~28 000 readings (~38 h at 5 s).
 
 #include <WiFi.h>
 #include <HTTPClient.h>
@@ -82,17 +81,16 @@ static String g_instanceName;
 // Each line in the buffer file: "TIMESTAMP,TEMP_C,TEMP_F,PROBE_ID\n"
 // ~50 bytes/line.
 //
-// BUFFER_MAX_BYTES caps the buffer file size.  Set conservatively below the
-// smallest supported partition (190 KB "Minimal SPIFFS") so the cap triggers
-// before the filesystem fills up.  The remaining 30 KB is headroom for
-// LittleFS metadata (superblocks, commit journal) and any other files.
+// BUFFER_MAX_BYTES caps the buffer file size.  Set below the recommended
+// "Default 4MB with spiffs" LittleFS partition (1.5 MB) to leave headroom
+// for LittleFS metadata (superblocks, commit journal) and any other files.
 //
 // BUFFER_MIN_FREE is an additional guard: if the filesystem free space drops
 // below this threshold the append is refused regardless of the file-size cap,
 // protecting the FS from corruption if other files happen to be present.
 static const char*    BUFFER_FILE      = "/buf.csv";
-static const uint32_t BUFFER_MAX_BYTES = 160UL * 1024UL;   // 160 KB cap
-static const uint32_t BUFFER_MIN_FREE  =   4UL * 1024UL;   // keep 4 KB free
+static const uint32_t BUFFER_MAX_BYTES = 1400UL * 1024UL;  // 1.4 MB cap (fits 1.5 MB partition)
+static const uint32_t BUFFER_MIN_FREE  =    8UL * 1024UL;  // keep 8 KB free for FS metadata
 
 // NVS key that tracks how many bytes have already been successfully uploaded
 // from the current buffer file.  Survives reboots mid-flush so we never
