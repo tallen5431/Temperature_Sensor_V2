@@ -3,9 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 import pandas as pd
 import datetime
+import threading
 
 REQUIRED_COLS = ["timestamp","temperature_c","temperature_f"]
 OPTIONAL_COLS = ["probe_id"]
+
+# Serialise all writes so concurrent Flask threads and the PullLogger thread
+# never interleave rows or produce out-of-order timestamps.
+_write_lock = threading.Lock()
 
 # Cache of (csv_path_str, column_name) pairs that are confirmed present.
 # Avoids re-reading the whole file on every append_row call.
@@ -21,6 +26,7 @@ def ensure_csv(csv_file: Path) -> None:
 
 def _ensure_column(csv_file: Path, col: str) -> None:
     # Upgrade-in-place to add a missing column (keeps data). Small file friendly.
+    # Caller must already hold _write_lock.
     cache_key = (str(csv_file), col)
     if cache_key in _column_cache:
         return
@@ -36,18 +42,19 @@ def _ensure_column(csv_file: Path, col: str) -> None:
 
 # Backwards compatible append: probe_id is optional
 def append_row(csv_file: Path, ts: str, t_c: float, t_f: float, probe_id: str|None = None) -> None:
-    try:
-        # If probe_id present, make sure file has that column
-        if probe_id is not None:
-            _ensure_column(csv_file, "probe_id")
-            df = pd.DataFrame([[ts, t_c, t_f, probe_id]], columns=REQUIRED_COLS + ["probe_id"])
-        else:
-            df = pd.DataFrame([[ts, t_c, t_f]], columns=REQUIRED_COLS)
-        # Write with header only if file empty (pandas handles this automatically when mode='a' with header=False)
-        df.to_csv(csv_file, mode="a", header=False, index=False)
-    except Exception:
-        # Last-resort fallback (try without probe_id)
-        pd.DataFrame([[ts, t_c, t_f]], columns=REQUIRED_COLS).to_csv(csv_file, mode="a", header=False, index=False)
+    with _write_lock:
+        try:
+            # If probe_id present, make sure file has that column
+            if probe_id is not None:
+                _ensure_column(csv_file, "probe_id")
+                df = pd.DataFrame([[ts, t_c, t_f, probe_id]], columns=REQUIRED_COLS + ["probe_id"])
+            else:
+                df = pd.DataFrame([[ts, t_c, t_f]], columns=REQUIRED_COLS)
+            # Write with header only if file empty (pandas handles this automatically when mode='a' with header=False)
+            df.to_csv(csv_file, mode="a", header=False, index=False)
+        except Exception:
+            # Last-resort fallback (try without probe_id)
+            pd.DataFrame([[ts, t_c, t_f]], columns=REQUIRED_COLS).to_csv(csv_file, mode="a", header=False, index=False)
 
 def normalize_payload(payload: dict):
     """

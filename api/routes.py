@@ -5,7 +5,7 @@ from pathlib import Path
 import os, csv, datetime
 
 from auto_provision import provision_probe
-from core.storage import normalize_payload, append_row
+from core.storage import normalize_payload, append_row, _write_lock as _csv_write_lock
 
 
 def create_api(cfg: Any, csv_path: str, discovery: Any, public_base: Callable[[], str], server_token: str = "") -> Blueprint:
@@ -259,10 +259,11 @@ def create_api(cfg: Any, csv_path: str, discovery: Any, public_base: Callable[[]
 
 def _append_csv(csv_path: str, t_c: float, probe_id: str) -> None:
     exists = os.path.exists(csv_path)
-    with open(csv_path, "a", newline="", encoding="utf-8") as f:
-        w = csv.writer(f)
-        if not exists:
-            w.writerow(["timestamp", "temperature_c", "temperature_f", "probe_id"])
-        t_f = (t_c * 9.0 / 5.0) + 32.0
-        ts = datetime.datetime.now().isoformat(timespec="seconds")
-        w.writerow([ts, f"{t_c:.3f}", f"{t_f:.3f}", probe_id])
+    with _csv_write_lock:
+        with open(csv_path, "a", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            if not exists:
+                w.writerow(["timestamp", "temperature_c", "temperature_f", "probe_id"])
+            t_f = (t_c * 9.0 / 5.0) + 32.0
+            ts = datetime.datetime.now().isoformat(timespec="seconds")
+            w.writerow([ts, f"{t_c:.3f}", f"{t_f:.3f}", probe_id])
