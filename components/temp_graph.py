@@ -102,7 +102,7 @@ def _build_figure(df: pd.DataFrame, window: str = "24h", show_rangeslider: bool 
         return fig
 
     df = df.copy()
-    df["_ts"] = pd.to_datetime(df["timestamp"], errors="coerce")
+    df["_ts"] = pd.to_datetime(df["timestamp"].astype(str).str.rstrip('Z'), errors="coerce")
     df = df.dropna(subset=["_ts"]).sort_values(["probe_id", "_ts"])
     df = _apply_window(df, window)
 
@@ -156,7 +156,7 @@ def _badge_row(df: pd.DataFrame):
         return html.Small("(no data yet)", className="text-muted")
 
     last_by_probe = (
-        df.assign(_ts=pd.to_datetime(df["timestamp"], errors="coerce"))
+        df.assign(_ts=pd.to_datetime(df["timestamp"].astype(str).str.rstrip('Z'), errors="coerce"))
           .sort_values(["probe_id","_ts"]).groupby("probe_id").tail(1)
     )
     badges = []

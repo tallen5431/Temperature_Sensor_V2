@@ -56,6 +56,11 @@ def normalize_payload(payload: dict):
     """
     now = datetime.datetime.now().isoformat(timespec="seconds")
     ts = payload.get("timestamp") or payload.get("ts") or now
+    # Normalize: strip trailing "Z" or "+HH:MM" timezone offset so every row
+    # stored in the CSV is plain naive ISO 8601, matching hub-generated timestamps.
+    ts = str(ts).rstrip('Z')
+    if len(ts) > 19 and ts[19] in ('+', '-'):
+        ts = ts[:19]
 
     c_keys = ["temperature_c","temp_c","t_c","c"]
     f_keys = ["temperature_f","temp_f","t_f","f"]

@@ -143,8 +143,8 @@ def register_dashboard_callbacks(app, finder, cfg):
         if time_range == 'all' or df.empty:
             return df
 
-        # Parse timestamps
-        df['dt'] = pd.to_datetime(df['timestamp'])
+        # Parse timestamps — strip "Z"/timezone suffix for pandas/Python < 3.11 compat
+        df['dt'] = pd.to_datetime(df['timestamp'].astype(str).str.rstrip('Z'), errors='coerce')
         now = pd.Timestamp.now()
 
         # Calculate cutoff time based on range
@@ -280,8 +280,8 @@ def register_dashboard_callbacks(app, finder, cfg):
 
                 # Format times
                 try:
-                    min_time = pd.to_datetime(min_row['timestamp']).strftime('%I:%M %p')
-                    max_time = pd.to_datetime(max_row['timestamp']).strftime('%I:%M %p')
+                    min_time = pd.to_datetime(str(min_row['timestamp']).rstrip('Z'), errors='coerce').strftime('%I:%M %p')
+                    max_time = pd.to_datetime(str(max_row['timestamp']).rstrip('Z'), errors='coerce').strftime('%I:%M %p')
                 except Exception:
                     min_time = 'N/A'
                     max_time = 'N/A'
@@ -404,7 +404,7 @@ def register_dashboard_callbacks(app, finder, cfg):
             # Metrics
             probes = len((finder.list_probes() or {}))
             logging_status = 'ON' if cfg.get('pull_enabled', True) else 'OFF'
-            last_dt = datetime.datetime.fromisoformat(ts)
+            last_dt = datetime.datetime.fromisoformat(str(ts).rstrip('Z'))
             delta = (datetime.datetime.now() - last_dt).total_seconds()
             hb = (f'Last sync {int(delta)} s ago'
                   if delta < 60 else
