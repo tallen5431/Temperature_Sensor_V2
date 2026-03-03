@@ -105,24 +105,20 @@ def register_devices_callbacks(app, finder, cfg, public_base_func=None, token=""
                     title='Edit probe'
                 ) if probe_id else html.Span()
 
+                display_name = probe_id or name
                 if friendly_name:
                     title_elements = [
                         html.Div([
                             html.H6([friendly_name, edit_button], className='fw-bold mb-1 d-inline-flex align-items-center')
                         ])
                     ]
-                    if probe_id != name:
-                        title_elements.append(html.Small(f'{name} (ID: {probe_id})', className='text-info d-block mb-1'))
-                    else:
-                        title_elements.append(html.Small(f'ID: {probe_id}', className='text-info d-block mb-1'))
+                    title_elements.append(html.Small(display_name, className='text-info d-block mb-1'))
                 else:
                     title_elements = [
                         html.Div([
-                            html.H6([name, edit_button], className='fw-bold mb-1 d-inline-flex align-items-center')
+                            html.H6([display_name, edit_button], className='fw-bold mb-1 d-inline-flex align-items-center')
                         ])
                     ]
-                    if probe_id and probe_id != name:
-                        title_elements.append(html.Small(f'ID: {probe_id}', className='text-info d-block mb-1'))
 
                 card_body_children = [
                     *title_elements,
