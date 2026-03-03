@@ -7,11 +7,11 @@
 //   - WiFiManager by tzapu
 //   - ArduinoJson  (v6 or v7)
 //   - DallasTemperature + OneWire
-//   - ArduinoOTA, LittleFS (bundled with ESP32 Arduino core ≥ 2.0)
+//   - LittleFS (bundled with ESP32 Arduino core ≥ 2.0)
 //
 // Partition scheme (Arduino IDE → Tools → Partition Scheme):
-//   Recommended: "Default 4MB with spiffs (1.2MB APP/1.5MB SPIFFS)"
-//   OTA support + 1.5 MB LittleFS → ~28 000 readings (~38 h at 5 s).
+//   Recommended: "No OTA (2MB APP/2MB SPIFFS)"
+//   2 MB LittleFS → ~38 000 readings (~26 h at 2 s, ~65 h at 5 s).
 
 #include <WiFi.h>
 #include <HTTPClient.h>
@@ -22,7 +22,6 @@
 #include <ESPmDNS.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
-#include <ArduinoOTA.h>
 #include <LittleFS.h>
 #include <time.h>
 
@@ -82,14 +81,14 @@ static String g_instanceName;
 // ~50 bytes/line.
 //
 // BUFFER_MAX_BYTES caps the buffer file size.  Set below the recommended
-// "Default 4MB with spiffs" LittleFS partition (1.5 MB) to leave headroom
+// "No OTA (2MB APP/2MB SPIFFS)" LittleFS partition (2 MB) to leave headroom
 // for LittleFS metadata (superblocks, commit journal) and any other files.
 //
 // BUFFER_MIN_FREE is an additional guard: if the filesystem free space drops
 // below this threshold the append is refused regardless of the file-size cap,
 // protecting the FS from corruption if other files happen to be present.
 static const char*    BUFFER_FILE      = "/buf.csv";
-static const uint32_t BUFFER_MAX_BYTES = 1400UL * 1024UL;  // 1.4 MB cap (fits 1.5 MB partition)
+static const uint32_t BUFFER_MAX_BYTES = 1900UL * 1024UL;  // 1.9 MB cap (fits 2 MB partition)
 static const uint32_t BUFFER_MIN_FREE  =    8UL * 1024UL;  // keep 8 KB free for FS metadata
 
 // NVS key that tracks how many bytes have already been successfully uploaded
@@ -242,8 +241,8 @@ bool postWithTimestamp(const String& ts, float tC, float tF,
 // after every successful POST.  If the connection drops mid-flush, the next
 // call picks up exactly where it left off — no duplicates, no data loss.
 //
-// Responsiveness: http.handleClient() and ArduinoOTA.handle() are called
-// inside the loop so the web server stays responsive during a long flush.
+// Responsiveness: http.handleClient() is called inside the loop so the web
+// server stays responsive during a long flush.
 void bufferFlush() {
   if (!LittleFS.exists(BUFFER_FILE)) return;
 
@@ -270,7 +269,6 @@ void bufferFlush() {
 
   while (f.available()) {
     http.handleClient();
-    ArduinoOTA.handle();
 
     String line = f.readStringUntil('\n');
     line.trim();
@@ -489,18 +487,6 @@ void startConfigPortal() {
 }
 
 // ============================================================================
-// OTA
-// ============================================================================
-void setupOTA() {
-  ArduinoOTA.setHostname(g_instanceName.c_str());
-  ArduinoOTA.onStart([]() { Serial.println("[OTA] Starting..."); ledBlink(3, 50, 50); });
-  ArduinoOTA.onEnd  ([]()              { Serial.println("[OTA] Done."); });
-  ArduinoOTA.onError([](ota_error_t e) { Serial.printf("[OTA] Error[%u]\n", e); });
-  ArduinoOTA.begin();
-  Serial.println("[OTA] Ready");
-}
-
-// ============================================================================
 // Identity helpers
 // ============================================================================
 String chipIdHex() {
@@ -588,7 +574,6 @@ void setup() {
   syncTime();         // NTP sync — ESP32 RTC holds time through disconnections
   ledBlink(3, 120, 120);
   mdnsAdvertise();
-  setupOTA();
 
   // Flush any readings buffered during a previous session (e.g. power cycle
   // while away from the hub)
@@ -605,7 +590,6 @@ void setup() {
 // ============================================================================
 void loop() {
   http.handleClient();
-  ArduinoOTA.handle();
 
   unsigned long now       = millis();
   bool          connected = (WiFi.status() == WL_CONNECTED);
