@@ -143,6 +143,7 @@ def register_dashboard_callbacks(app, finder, cfg):
         if time_range == 'all' or df.empty:
             return df
 
+        df = df.copy()  # avoid mutating the caller's dataframe
         # Parse timestamps — strip "Z"/timezone suffix for pandas/Python < 3.11 compat
         df['dt'] = pd.to_datetime(df['timestamp'].astype(str).str.rstrip('Z'), errors='coerce')
         now = pd.Timestamp.now()

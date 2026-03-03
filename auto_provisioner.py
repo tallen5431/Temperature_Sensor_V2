@@ -102,9 +102,9 @@ class AutoProvisioner(threading.Thread):
                         interval_ms = self.interval_ms
                         if self.cfg is not None and probe_id:
                             try:
-                                probe_intervals = self.cfg.get("probe_intervals", {}) or {}
-                                if probe_id in probe_intervals:
-                                    interval_ms = int(float(probe_intervals[probe_id]) * 1000)
+                                interval_value = (self.cfg.get("probe_intervals") or {}).get(probe_id)
+                                if interval_value is not None:
+                                    interval_ms = int(float(interval_value) * 1000)
                             except Exception:
                                 pass
 

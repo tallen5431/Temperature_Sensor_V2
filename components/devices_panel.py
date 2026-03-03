@@ -71,7 +71,7 @@ def register_devices_callbacks(app, finder, cfg, public_base_func=None, token=""
                         if isinstance(last, (int, float)):
                             dt = datetime.datetime.fromtimestamp(last)
                         else:
-                            dt = datetime.datetime.fromisoformat(str(last))
+                            dt = datetime.datetime.fromisoformat(str(last).rstrip('Z'))
                         seconds = (now - dt).total_seconds()
                         if seconds < 15:
                             status_color = 'success'
