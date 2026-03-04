@@ -104,6 +104,7 @@ static bool          g_convPending  = false;
 static float         g_lastC        = NAN;
 static unsigned long g_lastAtMs     = 0;
 static bool          g_wasConnected = false;
+static unsigned long g_lastFlushAt  = 0;       // last time bufferFlush() was attempted
 
 // ============================================================================
 // Time helpers
@@ -616,7 +617,19 @@ void loop() {
     g_wasConnected = true;
     if (!g_timeValid) syncTime();   // get time if we never had it
     mdnsAdvertise();
+    g_lastFlushAt = now;
     bufferFlush();   // upload all offline readings before resuming live posts
+  }
+
+  // ── Periodic buffer retry ─────────────────────────────────────────────────
+  // bufferFlush() stops on the first failed POST to avoid hammering an
+  // unreachable server.  Without this retry the remaining readings would
+  // stay stuck until the next disconnect/reconnect cycle.  Retry every 30 s
+  // while connected and the buffer file still exists.
+  if (connected && LittleFS.exists(BUFFER_FILE) &&
+      (now - g_lastFlushAt >= 30000UL)) {
+    g_lastFlushAt = now;
+    bufferFlush();
   }
 
   // ── Phase 1: kick off a non-blocking DS18B20 conversion ───────────────────
