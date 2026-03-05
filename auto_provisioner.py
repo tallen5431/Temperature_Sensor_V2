@@ -1,7 +1,7 @@
 from __future__ import annotations
 import threading, time, socket
 from typing import Callable, Optional, Any
-from auto_provision import provision_probe
+from auto_provision import provision_probe, get_probe_status
 
 
 def _resolve_with_timeout(host: str, timeout: float = 3.0) -> Optional[str]:
@@ -107,6 +107,20 @@ class AutoProvisioner(threading.Thread):
 
                         host = (host or "").rstrip(".")
                         if host:
+                            target_url = f"{base}/api/ingest"
+                            # Only re-provision when the probe's config differs
+                            # from what we would send.  This avoids the ESP32
+                            # doing an NVS write (slow, causes brief stall) on
+                            # every 10-second cycle when nothing has changed.
+                            try:
+                                status = get_probe_status(host, port)
+                                if (status and
+                                        status.get("server_url") == target_url and
+                                        status.get("interval_ms") == interval_ms):
+                                    continue  # already configured correctly
+                            except Exception:
+                                pass  # can't check — fall through and provision
+
                             try:
                                 provision_probe(
                                     host,
