@@ -44,7 +44,7 @@ inline void ledBlink(uint8_t n, uint16_t onMs = 60, uint16_t offMs = 120) {
 
 // ---------------- Identity --------------------------------------------------
 static const char* SENSOR_NAME = "TempSensor";
-static const char* FW_VERSION  = "1.4.0";
+static const char* FW_VERSION  = "1.4.1";
 
 // ---------------- DS18B20 ---------------------------------------------------
 OneWire           oneWire(ONE_WIRE_BUS);
@@ -354,12 +354,47 @@ void mdnsAdvertise() {
 // Web server handlers
 // ============================================================================
 void handleRoot() {
-  String html = String("<!doctype html><meta charset='utf-8'>")
+  // ── Current temperature ────────────────────────────────────────────────────
+  String tempBlock;
+  if (!isnan(g_lastC)) {
+    float tF = DallasTemperature::toFahrenheit(g_lastC);
+    // Age of the reading in seconds
+    unsigned long ageSec = (millis() - g_lastAtMs) / 1000UL;
+    char ageStr[32];
+    if (ageSec < 60)
+      snprintf(ageStr, sizeof(ageStr), "%lus ago", ageSec);
+    else
+      snprintf(ageStr, sizeof(ageStr), "%lum %lus ago", ageSec / 60, ageSec % 60);
+
+    char tBuf[64];
+    snprintf(tBuf, sizeof(tBuf), "%.2f &deg;C &nbsp;/&nbsp; %.2f &deg;F", g_lastC, tF);
+
+    tempBlock = String("<div style='margin:16px 0;padding:14px 20px;"
+                       "background:#f0f4ff;border-left:4px solid #3a7bd5;"
+                       "border-radius:4px;font-family:monospace'>")
+      + "<span style='font-size:2rem;font-weight:bold'>" + tBuf + "</span><br>"
+      + "<small style='color:#555'>Last reading: " + String(nowIso()) + "  (" + ageStr + ")</small>"
+      + "</div>";
+  } else {
+    tempBlock = "<p style='color:#c00'><b>&#9888; No temperature reading yet.</b> "
+                "Check DS18B20 wiring on GPIO " + String(ONE_WIRE_BUS) + ".</p>";
+  }
+
+  String html = String("<!doctype html><meta charset='utf-8'>"
+                        "<meta http-equiv='refresh' content='5'>")
+    + "<style>body{font-family:sans-serif;max-width:520px;margin:32px auto;padding:0 16px}"
+      "table{border-collapse:collapse;width:100%}td{padding:5px 8px}"
+      "tr:nth-child(even){background:#f7f7f7}</style>"
     + "<h3>" + SENSOR_NAME + " " + FW_VERSION + "</h3>"
-    + "<p>ID: "       + g_probeId          + "</p>"
-    + "<p>Server: "   + cfg_server_url     + "</p>"
-    + "<p>Interval: " + String(cfg_interval) + " ms</p>"
-    + "<p>Time valid: " + (g_timeValid ? "yes" : "no") + "</p>";
+    + tempBlock
+    + "<table>"
+    + "<tr><td>ID</td><td><b>"       + g_probeId                          + "</b></td></tr>"
+    + "<tr><td>Server</td><td>"      + cfg_server_url                     + "</td></tr>"
+    + "<tr><td>Interval</td><td>"    + String(cfg_interval)               + " ms</td></tr>"
+    + "<tr><td>Time valid</td><td>"  + (g_timeValid ? "yes" : "no")       + "</td></tr>"
+    + "<tr><td>WiFi RSSI</td><td>"   + String(WiFi.RSSI())                + " dBm</td></tr>"
+    + "<tr><td>Uptime</td><td>"      + String(millis() / 1000UL)          + " s</td></tr>"
+    + "</table>";
 
   // Buffer info
   if (LittleFS.exists(BUFFER_FILE)) {
@@ -370,6 +405,8 @@ void handleRoot() {
     html += "<p><b>Buffered: " + String((sz - pos) / 50) +
             " est. readings (" + String((sz - pos) / 1024) + " KB pending)</b></p>";
   }
+
+  html += "<p style='color:#aaa;font-size:0.8rem'>Page auto-refreshes every 5 s</p>";
   http.send(200, "text/html", html);
 }
 
