@@ -76,6 +76,23 @@ class ProbeDiscovery:
             if not probe:
                 return
             with self._lock:
+                # Remove any stale entry that was created by update_last_seen
+                # before mDNS discovery completed (keyed by probe_id rather than
+                # host).  Without this, the same probe produces two cards.
+                probe_id = probe.properties.get('id', '')
+                if probe_id:
+                    stale = [k for k, p in self._probes.items()
+                             if k != probe.host and (
+                                 (isinstance(p, dict) and
+                                  (p.get('name') == probe_id or
+                                   (p.get('properties') or {}).get('id') == probe_id))
+                                 or
+                                 (not isinstance(p, dict) and
+                                  (p.name == probe_id or
+                                   (p.properties or {}).get('id') == probe_id))
+                             )]
+                    for k in stale:
+                        del self._probes[k]
                 self._probes[probe.host] = probe
                 snapshot = dict(self._probes)
             if self.on_change:
