@@ -105,7 +105,7 @@ class ProbeDiscovery:
                 # exact match, so "TempSensor-9A" never removes "TempSensor-9A3F".
                 to_delete = []
                 for host, p in self._probes.items():
-                    probe_name = p.name if not isinstance(p, dict) else p.get(‘name’, ‘’)
+                    probe_name = p.name if not isinstance(p, dict) else p.get('name', '')
                     if name == probe_name or name.startswith(probe_name + "."):
                         to_delete.append(host)
                 for host in to_delete:
