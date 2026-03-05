@@ -161,7 +161,12 @@ def create_api(cfg: Any, csv_path: str, discovery: Any, public_base: Callable[[]
             return jsonify(ok=False, error="unauthorized"), 401
         data = request.get_json(silent=True) or {}
         host = (data.get("host") or "").strip()
-        port = int(data.get("port") or 80)
+        try:
+            port = int(data.get("port") or 80)
+            if not (1 <= port <= 65535):
+                raise ValueError
+        except (ValueError, TypeError):
+            return jsonify(ok=False, error="invalid port"), 400
         interval_ms = int(data.get("interval_ms") or data.get("interval") or 5000)
         tok = (data.get("token") or TOKEN or "").strip()
         base = public_base().rstrip("/")
@@ -231,6 +236,12 @@ def create_api(cfg: Any, csv_path: str, discovery: Any, public_base: Callable[[]
         probe_id = request.args.get("probe_id") or ""
         try:
             append_row(CSV_PATH, ts, t_c, t_f, probe_id=probe_id)
+            if discovery and probe_id:
+                try:
+                    ip = request.remote_addr or ''
+                    discovery.update_last_seen(probe_id, host=ip, ip=ip)
+                except Exception:
+                    pass
         except Exception:
             _append_csv(str(CSV_PATH), t_c, probe_id)
         return jsonify(ok=True)

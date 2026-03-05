@@ -101,10 +101,12 @@ class ProbeDiscovery:
         elif state_change == ServiceStateChange.Removed:
             with self._lock:
                 # name is like "TempSensor-9A3F._temps-probe._tcp.local."
-                # We don’t always get host here; remove by prefix match
+                # Match only when the probe name is followed by "." or is an
+                # exact match, so "TempSensor-9A" never removes "TempSensor-9A3F".
                 to_delete = []
                 for host, p in self._probes.items():
-                    if name.startswith(p.name):
+                    probe_name = p.name if not isinstance(p, dict) else p.get(‘name’, ‘’)
+                    if name == probe_name or name.startswith(probe_name + "."):
                         to_delete.append(host)
                 for host in to_delete:
                     self._probes.pop(host, None)
@@ -134,18 +136,25 @@ class ProbeDiscovery:
         self._browser = ServiceBrowser(self._zc, SERVICE_TYPE, handlers=[self._handle_compat])
 
     def stop(self):
+        browser, self._browser = self._browser, None
+        if browser:
+            try:
+                browser.cancel()
+                browser.join(timeout=2.0)
+            except Exception:
+                pass
         try:
-            if self._browser:
-                self._browser.cancel()
-        finally:
-            self._browser = None
             self._zc.close()
+        except Exception:
+            pass
+
     def scan(self):
         """Manual refresh: restart the browser to prompt immediate updates."""
         try:
-            if self._browser:
-                self._browser.cancel()
-                self._browser = None
+            old_browser, self._browser = self._browser, None
+            if old_browser:
+                old_browser.cancel()
+                old_browser.join(timeout=1.0)
             self._browser = ServiceBrowser(self._zc, SERVICE_TYPE, handlers=[self._handle_compat])
         except Exception:
             # Best-effort; ignore
@@ -154,6 +163,19 @@ class ProbeDiscovery:
     def list_probes(self) -> Dict[str, ProbeInfo]:
         with self._lock:
             return dict(self._probes)
+
+    def update_probe_ip(self, key: str, new_ip: str) -> None:
+        """Atomically update a probe's IP address under the discovery lock."""
+        with self._lock:
+            p = self._probes.get(key)
+            if p is None:
+                return
+            if isinstance(p, dict):
+                p["ip"] = new_ip
+                p["last_seen"] = time.time()
+            else:
+                p.ip = new_ip
+                p.last_seen = time.time()
 
     def update_last_seen(self, probe_id: str, host: str = "", ip: str = "") -> None:
         """Mark a probe as recently seen (called on ingest). If the probe is not

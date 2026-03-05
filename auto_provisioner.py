@@ -1,6 +1,6 @@
 from __future__ import annotations
 import threading, time, socket
-from typing import Callable, Optional
+from typing import Callable, Optional, Any
 from auto_provision import provision_probe
 
 
@@ -51,51 +51,48 @@ class AutoProvisioner(threading.Thread):
     def stop(self):
         self._stop = True
 
-    def _refresh_ip_best_effort(self, p) -> None:
-        """Try to refresh probe IP from its mDNS hostname (best-effort).
-        Works for both dict-style and object-style probes.
+    def _refresh_ip_best_effort(self, key: str, p) -> Optional[str]:
+        """Resolve probe hostname to a fresh IP (best-effort).
+
+        Returns the new IP string if the address changed, otherwise None.
+        Never mutates the probe object directly — callers must use
+        discovery.update_probe_ip() under the discovery lock.
         """
         try:
-            if isinstance(p, dict):
-                mdns_host = (p.get("host") or "").rstrip(".")
-                if not mdns_host:
-                    return
-                new_ip = _resolve_with_timeout(mdns_host)
-                if new_ip and new_ip != p.get("ip"):
-                    p["ip"] = new_ip
-                    p["last_seen"] = time.time()
-            else:
-                mdns_host = (getattr(p, "host", "") or "").rstrip(".")
-                if not mdns_host:
-                    return
-                new_ip = _resolve_with_timeout(mdns_host)
-                cur_ip = getattr(p, "ip", None)
-                if new_ip and new_ip != cur_ip:
-                    setattr(p, "ip", new_ip)
-                    setattr(p, "last_seen", time.time())
+            mdns_host = (p.get("host") if isinstance(p, dict) else getattr(p, "host", "")) or ""
+            mdns_host = mdns_host.rstrip(".")
+            if not mdns_host:
+                return None
+            new_ip = _resolve_with_timeout(mdns_host)
+            cur_ip = p.get("ip") if isinstance(p, dict) else getattr(p, "ip", None)
+            if new_ip and new_ip != cur_ip:
+                return new_ip
         except Exception:
-            # never let refresh break provisioning loop
-            return
+            pass
+        return None
 
     def run(self):
         while not self._stop:
             try:
                 base = (self.public_base_func() or "").rstrip("/")
                 if base:
-                    for p in (self.discovery.list_probes() or {}).values():
-                        # 1) Best-effort refresh of IP in case DHCP changed it
-                        self._refresh_ip_best_effort(p)
+                    for key, p in (self.discovery.list_probes() or {}).items():
+                        # 1) Best-effort refresh of IP in case DHCP changed it.
+                        # update_probe_ip acquires the discovery lock internally.
+                        new_ip = self._refresh_ip_best_effort(key, p)
+                        if new_ip:
+                            self.discovery.update_probe_ip(key, new_ip)
 
                         # 2) Handle both dict and object-style probes
                         if isinstance(p, dict):
                             props = p.get("properties", {}) or {}
                             probe_id = props.get("id") or p.get("probe_id") or p.get("id")
-                            host = p.get("ip") or p.get("host") or ""
+                            host = new_ip or p.get("ip") or p.get("host") or ""
                             port = int(p.get("port", 80) or 80)
                         else:
                             props = getattr(p, "properties", {}) or {}
                             probe_id = props.get("id") or getattr(p, "probe_id", None) or getattr(p, "id", None)
-                            host = getattr(p, "ip", None) or getattr(p, "host", None) or ""
+                            host = new_ip or getattr(p, "ip", None) or getattr(p, "host", None) or ""
                             port = int(getattr(p, "port", 80) or 80)
 
                         # Per-probe interval override from config, falling back to global default

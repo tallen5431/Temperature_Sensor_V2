@@ -21,8 +21,10 @@ CONFIG_FILE = BASE_DIR / 'config.json'
 ensure_csv(CSV_FILE)
 cfg = Config(CONFIG_FILE)
 finder = ProbeDiscovery()
-try: finder.start()
-except Exception: pass
+try:
+    finder.start()
+except Exception as _e:
+    print(f'[WARNING] Probe discovery failed to start: {_e}. Devices tab will be empty.')
 
 server = Flask(__name__)
 def _detect_lan_ip() -> str:
@@ -55,17 +57,13 @@ app.layout = LAYOUT
 
 # --- CSV Download Route ---
 from flask import send_file
-from werkzeug.utils import safe_join
 
-@server.route('/download/<path:filename>')
-def download_csv(filename):
-    if not filename.endswith('.csv'):
-        return 'Forbidden', 403
+@server.route('/download/temperature_log.csv')
+def download_csv():
     try:
-        full_path = safe_join(BASE_DIR, filename)
-        return send_file(full_path, as_attachment=True)
-    except Exception as e:
-        return f'Error: {e}', 404
+        return send_file(str(CSV_FILE), as_attachment=True)
+    except Exception:
+        return 'File not found', 404
 
 
 @app.callback(Output('page-content', 'children'), Input('url', 'pathname'))

@@ -2,9 +2,12 @@ from dash import html, dcc, Output, Input, no_update
 import dash_bootstrap_components as dbc
 import plotly.graph_objs as go
 import pandas as pd, os, datetime
-from urllib.parse import quote
+from pathlib import Path
 
-CSV_FILE = os.getenv('CSV_FILE', 'temperature_log.csv')
+# Use an absolute path so the dashboard always reads the same file that app.py
+# writes to, regardless of the process working directory.
+_DEFAULT_CSV = str(Path(__file__).resolve().parent.parent / 'temperature_log.csv')
+CSV_FILE = os.getenv('CSV_FILE', _DEFAULT_CSV)
 
 # --- Gauge Card ---
 GaugeCard = dbc.Card(
@@ -385,14 +388,14 @@ def register_dashboard_callbacks(app, finder, cfg):
                         max_threshold = threshold_config.get('max')
                         min_threshold = threshold_config.get('min')
 
-                        if max_threshold and latest_temp > max_threshold:
+                        if max_threshold is not None and latest_temp > max_threshold:
                             alerts.append(
                                 dbc.Alert([
                                     html.Strong(f'⚠️ {friendly_name}: '),
                                     f'{format_temp(latest_temp, temp_unit)} (above threshold: {format_temp(max_threshold, temp_unit)})'
                                 ], color='danger', className='mb-2')
                             )
-                        elif min_threshold and latest_temp < min_threshold:
+                        elif min_threshold is not None and latest_temp < min_threshold:
                             alerts.append(
                                 dbc.Alert([
                                     html.Strong(f'❄️ {friendly_name}: '),
@@ -431,23 +434,10 @@ def register_dashboard_callbacks(app, finder, cfg):
             return (empty, empty, '0', '(no data)', 'OFF', 'No signal', 'No data available',
                     'N/A', '', 'N/A', '', 'N/A', '', [], None)
 
-    # --- CSV Download Button (exports filtered data) ---
+    # --- CSV Download Button ---
     @app.callback(
         Output('download-btn', 'href'),
         Input('filtered-data-store', 'data')
     )
-    def _csv_link(filtered_data_json):
-        try:
-            if not filtered_data_json:
-                # Fallback to full CSV if no filtered data
-                path = quote(str(CSV_FILE))
-                return f'/download/{path}'
-
-            # Create a download link for filtered data
-            # Note: This still points to the full CSV file
-            # For true filtered export, we'd need to implement a separate endpoint
-            # For now, just return the full CSV path
-            path = quote(str(CSV_FILE))
-            return f'/download/{path}'
-        except Exception:
-            return None
+    def _csv_link(_):
+        return '/download/temperature_log.csv'
