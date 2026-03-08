@@ -44,7 +44,7 @@ inline void ledBlink(uint8_t n, uint16_t onMs = 60, uint16_t offMs = 120) {
 
 // ---------------- Identity --------------------------------------------------
 static const char* SENSOR_NAME = "TempSensor";
-static const char* FW_VERSION  = "1.4.1";
+static const char* FW_VERSION  = "1.4.2";
 
 // ---------------- DS18B20 ---------------------------------------------------
 OneWire           oneWire(ONE_WIRE_BUS);
@@ -658,6 +658,18 @@ void loop() {
     bufferFlush();   // upload all offline readings before resuming live posts
   }
 
+  // ── Periodic NTP retry ────────────────────────────────────────────────────
+  // If the initial NTP sync failed (e.g. DNS not ready at boot), retry every
+  // 60 s while connected so the clock eventually becomes valid.
+  if (connected && !g_timeValid) {
+    static unsigned long lastNtpRetry = 0;
+    if (now - lastNtpRetry >= 60000UL) {
+      lastNtpRetry = now;
+      Serial.println("[NTP] Retrying time sync...");
+      syncTime();
+    }
+  }
+
   // ── Periodic buffer retry ─────────────────────────────────────────────────
   // bufferFlush() stops on the first failed POST to avoid hammering an
   // unreachable server.  Without this retry the remaining readings would
@@ -692,12 +704,14 @@ void loop() {
     }
 
     float  tF = DallasTemperature::toFahrenheit(tC);
-    String ts = nowIso();   // "" if NTP hasn't synced yet
+    String ts = nowIso();   // "" if NTP hasn't synced yet; hub will use server time
     g_lastC    = tC;
     g_lastAtMs = now;
 
-    if (connected && ts.length() > 0) {
-      // Online and time is known — try a live POST first
+    if (connected) {
+      // POST to hub whether or not we have a valid timestamp.
+      // postWithTimestamp() omits the "timestamp" field when ts is empty,
+      // and the hub will stamp the reading with its own clock.
       if (postWithTimestamp(ts, tC, tF, g_probeId)) {
         ledOn(); delay(20); ledOff();
         return;
@@ -706,10 +720,10 @@ void loop() {
       Serial.println("[POST] Failed — buffering reading.");
     }
 
-    // Offline OR post failed: store to flash (requires valid time)
-    // If time is not yet known (very first boot, NTP never synced), the
-    // reading is discarded — this only affects the first few seconds of
-    // operation before a successful NTP sync.
+    // Offline or post failed: store to flash.
+    // bufferAppend() requires a valid timestamp (so buffered rows have
+    // accurate times when flushed later); readings without a known time
+    // are discarded here rather than stored with a wrong timestamp.
     bufferAppend(ts, tC, tF);
     ledBlink(2, 80, 120);
   }
