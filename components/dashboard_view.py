@@ -241,6 +241,11 @@ def register_dashboard_callbacks(app, finder, cfg):
             if df.empty:
                 raise ValueError('No data')
 
+            # Sort by timestamp so entries uploaded out-of-order (buffered probes)
+            # are always displayed chronologically.
+            df['_sort_ts'] = pd.to_datetime(df['timestamp'].astype(str).str.rstrip('Z'), errors='coerce')
+            df = df.sort_values('_sort_ts').drop(columns=['_sort_ts']).reset_index(drop=True)
+
             # Get latest reading for gauge (always use most recent)
             row = df.tail(1).iloc[0]
             t_c = float(row['temperature_c'])
