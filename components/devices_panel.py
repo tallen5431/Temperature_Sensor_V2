@@ -27,6 +27,33 @@ DevicesLayout = html.Div([
                     className='mb-2'
                 ),
                 html.Small("How often the probe sends a reading (minimum 0.5 s)", className='text-muted'),
+                html.Hr(),
+                html.Label("Alert Thresholds (°C):", className='fw-bold mb-2 mt-1 d-block'),
+                dbc.Row([
+                    dbc.Col([
+                        html.Small("Min Temperature", className='text-muted d-block mb-1'),
+                        dbc.Input(
+                            id='edit-probe-min-input',
+                            type='number',
+                            step=0.5,
+                            placeholder='e.g. 10',
+                            className='mb-1'
+                        ),
+                        html.Small("Alert when below this value", className='text-muted'),
+                    ], width=6),
+                    dbc.Col([
+                        html.Small("Max Temperature", className='text-muted d-block mb-1'),
+                        dbc.Input(
+                            id='edit-probe-max-input',
+                            type='number',
+                            step=0.5,
+                            placeholder='e.g. 30',
+                            className='mb-1'
+                        ),
+                        html.Small("Alert when above this value", className='text-muted'),
+                    ], width=6),
+                ]),
+                html.Small("Leave blank to disable threshold alerts for this probe", className='text-muted d-block mt-1'),
             ])
         ]),
         dbc.ModalFooter([
@@ -149,6 +176,8 @@ def register_devices_callbacks(app, finder, cfg, public_base_func=None, token=""
         Output('edit-probe-id-display', 'children'),
         Output('edit-probe-name-input', 'value'),
         Output('edit-probe-interval-input', 'value'),
+        Output('edit-probe-min-input', 'value'),
+        Output('edit-probe-max-input', 'value'),
         Input({'type': 'edit-probe-btn', 'index': ALL}, 'n_clicks'),
         Input('edit-probe-cancel', 'n_clicks'),
         Input('edit-probe-save', 'n_clicks'),
@@ -156,13 +185,16 @@ def register_devices_callbacks(app, finder, cfg, public_base_func=None, token=""
         State('edit-probe-id-store', 'data'),
         State('edit-probe-name-input', 'value'),
         State('edit-probe-interval-input', 'value'),
+        State('edit-probe-min-input', 'value'),
+        State('edit-probe-max-input', 'value'),
         prevent_initial_call=True
     )
     def toggle_edit_modal(edit_clicks, cancel_clicks, save_clicks, is_open,
-                          stored_probe_id, name_value, interval_value):
+                          stored_probe_id, name_value, interval_value,
+                          min_value, max_value):
         from dash import callback_context
         if not callback_context.triggered:
-            return no_update, no_update, no_update, no_update, no_update
+            return no_update, no_update, no_update, no_update, no_update, no_update, no_update
 
         button_id = callback_context.triggered[0]['prop_id']
 
@@ -171,9 +203,9 @@ def register_devices_callbacks(app, finder, cfg, public_base_func=None, token=""
             try:
                 triggered_val = callback_context.triggered[0].get('value', None)
                 if not triggered_val:
-                    return no_update, no_update, no_update, no_update, no_update
+                    return no_update, no_update, no_update, no_update, no_update, no_update, no_update
             except Exception:
-                return no_update, no_update, no_update, no_update, no_update
+                return no_update, no_update, no_update, no_update, no_update, no_update, no_update
 
             import json
             try:
@@ -188,13 +220,19 @@ def register_devices_callbacks(app, finder, cfg, public_base_func=None, token=""
                 global_interval_sec = cfg.get('interval_sec', 5)
                 current_interval_sec = probe_intervals.get(probe_id, global_interval_sec)
 
-                return True, probe_id, probe_id, current_name, current_interval_sec
+                # Per-probe alert thresholds
+                alert_thresholds = cfg.get('alert_thresholds', {})
+                probe_thresholds = alert_thresholds.get(probe_id, {})
+                current_min = probe_thresholds.get('min', None)
+                current_max = probe_thresholds.get('max', None)
+
+                return True, probe_id, probe_id, current_name, current_interval_sec, current_min, current_max
             except Exception:
-                return no_update, no_update, no_update, no_update, no_update
+                return no_update, no_update, no_update, no_update, no_update, no_update, no_update
 
         # Cancel button clicked
         elif 'edit-probe-cancel' in button_id:
-            return False, None, '', '', no_update
+            return False, None, '', '', no_update, no_update, no_update
 
         # Save button clicked
         elif 'edit-probe-save' in button_id:
@@ -206,6 +244,26 @@ def register_devices_callbacks(app, finder, cfg, public_base_func=None, token=""
                 else:
                     probe_names.pop(stored_probe_id, None)
                 cfg.update({'probe_names': probe_names})
+
+                # --- Save alert thresholds ---
+                alert_thresholds = cfg.get('alert_thresholds', {})
+                probe_thresholds = {}
+                try:
+                    if min_value not in (None, ''):
+                        probe_thresholds['min'] = float(min_value)
+                except (TypeError, ValueError):
+                    pass
+                try:
+                    if max_value not in (None, ''):
+                        probe_thresholds['max'] = float(max_value)
+                except (TypeError, ValueError):
+                    pass
+                if probe_thresholds:
+                    alert_thresholds[stored_probe_id] = probe_thresholds
+                else:
+                    alert_thresholds.pop(stored_probe_id, None)
+                cfg.update({'alert_thresholds': alert_thresholds})
+                print(f'[devices_panel] Saved thresholds for {stored_probe_id}: {probe_thresholds}')
 
                 # --- Save per-probe interval ---
                 global_interval_sec = cfg.get('interval_sec', 5)
@@ -252,6 +310,6 @@ def register_devices_callbacks(app, finder, cfg, public_base_func=None, token=""
                     except Exception as e:
                         print(f'[devices_panel] Provision-on-save failed: {e}')
 
-            return False, None, '', '', no_update
+            return False, None, '', '', no_update, no_update, no_update
 
-        return no_update, no_update, no_update, no_update, no_update
+        return no_update, no_update, no_update, no_update, no_update, no_update, no_update
