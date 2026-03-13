@@ -1,7 +1,9 @@
 // ESP32 + DS18B20 + WiFiManager + mDNS + OTA + WebServer
-// v1.4.0 — offline buffer: readings are stored in LittleFS flash while
-//           WiFi is unavailable and uploaded (with original timestamps)
-//           when the connection is restored.
+// v1.5.0 — battery sleep: when the read interval is >= DEEP_SLEEP_MIN_MS
+//           (default 10 s) the device enters deep sleep between readings,
+//           cutting idle current from ~100 mA to <1 mA.  For shorter
+//           intervals WiFi modem sleep is used instead, keeping the web
+//           server fully responsive.
 //
 // Requires (Library Manager):
 //   - WiFiManager by tzapu
@@ -24,6 +26,7 @@
 #include <DallasTemperature.h>
 #include <LittleFS.h>
 #include <time.h>
+#include <esp_sleep.h>
 
 // ---------------- Pins & LED ------------------------------------------------
 #define ONE_WIRE_BUS 5
@@ -44,7 +47,29 @@ inline void ledBlink(uint8_t n, uint16_t onMs = 60, uint16_t offMs = 120) {
 
 // ---------------- Identity --------------------------------------------------
 static const char* SENSOR_NAME = "TempSensor";
-static const char* FW_VERSION  = "1.4.2";
+static const char* FW_VERSION  = "1.5.0";
+
+// ---------------- Sleep configuration --------------------------------------
+// Set DEEP_SLEEP_ENABLED to false to revert to always-on behaviour (the web
+// server and mDNS remain continuously reachable, at the cost of higher idle
+// current).
+//
+// DEEP_SLEEP_MIN_MS: deep sleep is only used when the configured interval is
+// at or above this threshold.  Below it the WiFi-reconnect overhead (~1–3 s)
+// would consume more energy than it saves, so WiFi modem sleep is used
+// instead.
+//
+// WEBSERVER_WINDOW_MS: how long the HTTP server stays alive after each wake
+// before the device goes back to sleep.  The hub's auto-provision request
+// and any browser visit must arrive within this window.  Increase it if you
+// need more time to reach /provision after a config change.
+//
+// NTP_RESYNC_INTERVAL: re-sync with NTP every N deep-sleep wakes to correct
+// accumulated RTC drift.
+#define DEEP_SLEEP_ENABLED true
+static const uint32_t DEEP_SLEEP_MIN_MS   = 10000UL;  // 10 s
+static const uint32_t WEBSERVER_WINDOW_MS =  3000UL;  //  3 s
+static const uint32_t NTP_RESYNC_INTERVAL =    30UL;  // every 30 wakes
 
 // ---------------- DS18B20 ---------------------------------------------------
 OneWire           oneWire(ONE_WIRE_BUS);
@@ -70,7 +95,7 @@ WiFiManagerParameter p_interval("interval", "Read interval (ms)",     "5000",  1
 // ---------------- HTTP server -----------------------------------------------
 WebServer http(80);
 
-// ---------------- Cached identity (computed once in setup) ------------------
+// ---------------- Cached identity (computed once per boot) ------------------
 static String g_chipId;
 static String g_romHex;
 static String g_probeId;
@@ -79,32 +104,31 @@ static String g_instanceName;
 // ---------------- Offline buffer (LittleFS) ---------------------------------
 // Each line in the buffer file: "TIMESTAMP,TEMP_C,TEMP_F,PROBE_ID\n"
 // ~50 bytes/line.
-//
-// BUFFER_MAX_BYTES caps the buffer file size.  Set below the recommended
-// "No OTA (2MB APP/2MB SPIFFS)" LittleFS partition (2 MB) to leave headroom
-// for LittleFS metadata (superblocks, commit journal) and any other files.
-//
-// BUFFER_MIN_FREE is an additional guard: if the filesystem free space drops
-// below this threshold the append is refused regardless of the file-size cap,
-// protecting the FS from corruption if other files happen to be present.
 static const char*    BUFFER_FILE      = "/buf.csv";
-static const uint32_t BUFFER_MAX_BYTES = 1900UL * 1024UL;  // 1.9 MB cap (fits 2 MB partition)
-static const uint32_t BUFFER_MIN_FREE  =    8UL * 1024UL;  // keep 8 KB free for FS metadata
-
-// NVS key that tracks how many bytes have already been successfully uploaded
-// from the current buffer file.  Survives reboots mid-flush so we never
-// re-upload the same reading twice.
+static const uint32_t BUFFER_MAX_BYTES = 1900UL * 1024UL;  // 1.9 MB cap
+static const uint32_t BUFFER_MIN_FREE  =    8UL * 1024UL;  // 8 KB FS headroom
 static const char*    BUF_POS_KEY = "buf_pos";
 
+// ---------------- RTC memory (survives deep sleep) --------------------------
+// These variables live in the ESP32 RTC slow-memory SRAM and retain their
+// values across deep-sleep cycles.  They are reset only on a power-cycle or
+// hard chip reset.
+RTC_DATA_ATTR static uint32_t rtc_bootCount    = 0;    // wake counter
+RTC_DATA_ATTR static bool     rtc_timeValid    = false; // true once NTP has synced
+RTC_DATA_ATTR static int64_t  rtc_epochAtSleep = 0;    // unix epoch saved before sleep
+RTC_DATA_ATTR static uint32_t rtc_sleepMs      = 0;    // intended sleep duration
+
 // ---------------- State -----------------------------------------------------
-static bool          g_timeValid    = false;   // true once NTP has synced
-static unsigned long g_lastSend     = 0;
-static unsigned long g_convReqAt    = 0;
-static bool          g_convPending  = false;
-static float         g_lastC        = NAN;
-static unsigned long g_lastAtMs     = 0;
-static bool          g_wasConnected = false;
-static unsigned long g_lastFlushAt  = 0;       // last time bufferFlush() was attempted
+static bool          g_timeValid     = false;
+static unsigned long g_lastSend      = 0;
+static unsigned long g_convReqAt     = 0;
+static bool          g_convPending   = false;
+static float         g_lastC         = NAN;
+static unsigned long g_lastAtMs      = 0;
+static bool          g_wasConnected  = false;
+static unsigned long g_lastFlushAt   = 0;
+static unsigned long g_wakeStart     = 0;   // millis() at top of setup()
+static bool          g_deepSleepMode = false;
 
 // ============================================================================
 // Time helpers
@@ -116,7 +140,7 @@ void syncTime() {
   Serial.print("[NTP] Syncing...");
   struct tm ti;
   if (getLocalTime(&ti, 8000)) {
-    g_timeValid = true;
+    g_timeValid = rtc_timeValid = true;
     char buf[32];
     strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &ti);
     Serial.printf(" OK (%s)\n", buf);
@@ -126,7 +150,6 @@ void syncTime() {
 }
 
 // Returns current UTC time as ISO 8601 string, or "" if time is unknown.
-// The ESP32 RTC maintains time through WiFi disconnections once synced.
 String nowIso() {
   if (!g_timeValid) return "";
   struct tm ti;
@@ -172,13 +195,9 @@ void saveBufPos(uint32_t pos) {
 // Offline buffer
 // ============================================================================
 
-// Append one reading to the local flash buffer.
-// Only called when we have a valid timestamp; readings without a known time
-// are discarded rather than stored with a wrong/missing timestamp.
 void bufferAppend(const String& ts, float tC, float tF) {
-  if (ts.length() == 0) return;   // no valid time — skip
+  if (ts.length() == 0) return;
 
-  // Guard 1: buffer file size cap (prevents exceeding target storage budget)
   if (LittleFS.exists(BUFFER_FILE)) {
     File f = LittleFS.open(BUFFER_FILE, "r");
     uint32_t sz = f ? f.size() : 0;
@@ -190,9 +209,6 @@ void bufferAppend(const String& ts, float tC, float tF) {
     }
   }
 
-  // Guard 2: filesystem free-space floor (protects FS metadata even if
-  // another file has consumed space, and catches partitions smaller than
-  // BUFFER_MAX_BYTES such as the 190 KB "Minimal SPIFFS" scheme)
   uint32_t freeBytes = LittleFS.totalBytes() - LittleFS.usedBytes();
   if (freeBytes < BUFFER_MIN_FREE) {
     Serial.printf("[Buffer] Filesystem full (%u bytes free) — reading dropped."
@@ -208,8 +224,7 @@ void bufferAppend(const String& ts, float tC, float tF) {
                 ts.c_str(), tC, freeBytes / 1024);
 }
 
-// POST a single reading with an explicit timestamp.
-// Returns true on HTTP 2xx.
+// POST a single reading with an explicit timestamp.  Returns true on HTTP 2xx.
 bool postWithTimestamp(const String& ts, float tC, float tF,
                        const String& pid) {
   if (WiFi.status() != WL_CONNECTED || cfg_server_url.length() == 0)
@@ -237,13 +252,8 @@ bool postWithTimestamp(const String& ts, float tC, float tF,
 }
 
 // Upload every reading stored in the buffer file, then delete it.
-//
-// Resilience: the byte offset of the next line to upload is persisted in NVS
-// after every successful POST.  If the connection drops mid-flush, the next
-// call picks up exactly where it left off — no duplicates, no data loss.
-//
-// Responsiveness: http.handleClient() is called inside the loop so the web
-// server stays responsive during a long flush.
+// Byte-offset of the next line is persisted in NVS after every successful
+// POST so a mid-flush drop can resume without duplicates.
 void bufferFlush() {
   if (!LittleFS.exists(BUFFER_FILE)) return;
 
@@ -254,7 +264,6 @@ void bufferFlush() {
   uint32_t pos      = loadBufPos();
 
   if (pos >= fileSize) {
-    // Nothing left to upload — clean up
     f.close();
     LittleFS.remove(BUFFER_FILE);
     saveBufPos(0);
@@ -265,8 +274,7 @@ void bufferFlush() {
                 pos, fileSize);
   f.seek(pos);
 
-  int uploaded = 0;
-  int failed   = 0;
+  int uploaded = 0, failed = 0;
 
   while (f.available()) {
     http.handleClient();
@@ -275,13 +283,10 @@ void bufferFlush() {
     line.trim();
     if (line.length() == 0) { pos = f.position(); continue; }
 
-    // Parse:  TIMESTAMP , TEMP_C , TEMP_F , PROBE_ID
-    // (probe_id may itself contain commas — take everything after the 3rd)
     int c1 = line.indexOf(',');
     int c2 = (c1 >= 0) ? line.indexOf(',', c1 + 1) : -1;
     int c3 = (c2 >= 0) ? line.indexOf(',', c2 + 1) : -1;
     if (c1 < 0 || c2 < 0 || c3 < 0) {
-      // Malformed line — skip it
       pos = f.position();
       saveBufPos(pos);
       continue;
@@ -294,14 +299,14 @@ void bufferFlush() {
 
     if (postWithTimestamp(ts, tC, tF, pid)) {
       pos = f.position();
-      saveBufPos(pos);   // persist progress so a mid-flush drop can resume here
+      saveBufPos(pos);
       uploaded++;
       Serial.printf("[Buffer] Uploaded %d  (ts=%s tC=%.1f)\n",
                     uploaded, ts.c_str(), tC);
     } else {
       failed++;
       Serial.printf("[Buffer] POST failed at offset %u — will retry later.\n", pos);
-      break;  // stop; resume from same pos on next reconnect
+      break;
     }
   }
 
@@ -354,11 +359,9 @@ void mdnsAdvertise() {
 // Web server handlers
 // ============================================================================
 void handleRoot() {
-  // ── Current temperature ────────────────────────────────────────────────────
   String tempBlock;
   if (!isnan(g_lastC)) {
     float tF = DallasTemperature::toFahrenheit(g_lastC);
-    // Age of the reading in seconds
     unsigned long ageSec = (millis() - g_lastAtMs) / 1000UL;
     char ageStr[32];
     if (ageSec < 60)
@@ -380,6 +383,14 @@ void handleRoot() {
                 "Check DS18B20 wiring on GPIO " + String(ONE_WIRE_BUS) + ".</p>";
   }
 
+  String sleepRow;
+  if (g_deepSleepMode) {
+    sleepRow = "<tr><td>Sleep mode</td><td>Deep sleep ("
+               + String(WEBSERVER_WINDOW_MS / 1000) + " s window)</td></tr>";
+  } else {
+    sleepRow = "<tr><td>Sleep mode</td><td>WiFi modem sleep</td></tr>";
+  }
+
   String html = String("<!doctype html><meta charset='utf-8'>"
                         "<meta http-equiv='refresh' content='5'>")
     + "<style>body{font-family:sans-serif;max-width:520px;margin:32px auto;padding:0 16px}"
@@ -394,9 +405,10 @@ void handleRoot() {
     + "<tr><td>Time valid</td><td>"  + (g_timeValid ? "yes" : "no")       + "</td></tr>"
     + "<tr><td>WiFi RSSI</td><td>"   + String(WiFi.RSSI())                + " dBm</td></tr>"
     + "<tr><td>Uptime</td><td>"      + String(millis() / 1000UL)          + " s</td></tr>"
+    + sleepRow
+    + "<tr><td>Wake #</td><td>"      + String(rtc_bootCount)              + "</td></tr>"
     + "</table>";
 
-  // Buffer info
   if (LittleFS.exists(BUFFER_FILE)) {
     File f = LittleFS.open(BUFFER_FILE, "r");
     uint32_t sz = f ? f.size() : 0;
@@ -424,7 +436,7 @@ void handleWhoAmI() {
 }
 
 void handleStatus() {
-  StaticJsonDocument<320> doc;
+  StaticJsonDocument<384> doc;
   doc["id"]          = g_probeId;
   doc["interval_ms"] = cfg_interval;
   doc["server_url"]  = cfg_server_url;
@@ -434,7 +446,6 @@ void handleStatus() {
     doc["last_ms"] = g_lastAtMs;
     doc["last_ts"] = nowIso();
   }
-  // Buffer info
   if (LittleFS.exists(BUFFER_FILE)) {
     File f = LittleFS.open(BUFFER_FILE, "r");
     uint32_t sz = f ? f.size() : 0;
@@ -448,6 +459,8 @@ void handleStatus() {
   }
   doc["fs_total_kb"] = LittleFS.totalBytes() / 1024;
   doc["fs_free_kb"]  = (LittleFS.totalBytes() - LittleFS.usedBytes()) / 1024;
+  doc["sleep_mode"]  = g_deepSleepMode ? "deep" : "modem";
+  doc["wake_count"]  = rtc_bootCount;
   sendJSON(200, doc);
 }
 
@@ -548,11 +561,47 @@ String buildProbeId(const String& rom, const String& chip) {
 }
 
 // ============================================================================
+// Deep sleep
+// ============================================================================
+
+// Persist time, power down WiFi and mDNS, then deep-sleep for durationMs ms.
+// On wakeup the ESP32 runs setup() again from the top; the wakeup cause will
+// be ESP_SLEEP_WAKEUP_TIMER so setup() takes the fast-reconnect path.
+void enterDeepSleep(uint32_t durationMs) {
+  // Save the current epoch so setup() can restore system time on wake without
+  // an NTP round-trip.  The ESP32 RTC timer tracks elapsed time during sleep.
+  rtc_epochAtSleep = (int64_t)time(nullptr);
+  rtc_sleepMs      = durationMs;
+
+  Serial.printf("[Sleep] Deep sleep %.1f s  (next wake #%u)\n",
+                durationMs / 1000.0f, rtc_bootCount + 1);
+  Serial.flush();
+
+  http.stop();
+  MDNS.end();
+  WiFi.disconnect(true);
+  delay(20);
+
+  esp_sleep_enable_timer_wakeup((uint64_t)durationMs * 1000ULL);
+  esp_deep_sleep_start();
+  // never reached
+}
+
+// ============================================================================
 void setup() {
+  g_wakeStart = millis();
   ledInit();
   Serial.begin(115200);
   delay(150);
-  Serial.printf("\n%s FW %s booting...\n", SENSOR_NAME, FW_VERSION);
+
+  // ── Detect wakeup source ──────────────────────────────────────────────────
+  esp_sleep_wakeup_cause_t wakeupCause = esp_sleep_get_wakeup_cause();
+  bool fromDeepSleep = (wakeupCause == ESP_SLEEP_WAKEUP_TIMER);
+  rtc_bootCount++;
+
+  Serial.printf("\n%s FW %s  wake #%u (%s)\n",
+                SENSOR_NAME, FW_VERSION, rtc_bootCount,
+                fromDeepSleep ? "deep-sleep timer" : "cold boot / reset");
 
   loadConfig();
 
@@ -580,42 +629,93 @@ void setup() {
       uint32_t sz = f ? f.size() : 0;
       if (f) f.close();
       uint32_t pos = loadBufPos();
-      Serial.printf("[Buffer] Pending from previous session: ~%u readings "
-                    "(%u KB)\n", (sz - pos) / 50, (sz - pos) / 1024);
+      Serial.printf("[Buffer] Pending: ~%u readings (%u KB)\n",
+                    (sz - pos) / 50, (sz - pos) / 1024);
     }
   }
 
-  WiFi.mode(WIFI_STA);
-  wm.setConnectTimeout(20);
-  wm.setConfigPortalTimeout(0);
-  wm.setHostname(SENSOR_NAME);
+  // ── WiFi ──────────────────────────────────────────────────────────────────
+  if (fromDeepSleep) {
+    // Fast reconnect path: skip the WiFiManager portal.  WiFiManager saves
+    // credentials into the ESP32 WiFi NVS so WiFi.begin() (no args) reconnects
+    // to the same network as before.
+    WiFi.mode(WIFI_STA);
+    WiFi.begin();
+    Serial.print("[WiFi] Reconnecting (deep-sleep wake)...");
+    uint32_t t0 = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - t0 < 15000UL) {
+      delay(100);
+    }
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.printf(" OK (%lu ms)  IP: %s\n",
+                    millis() - t0, WiFi.localIP().toString().c_str());
+      g_wasConnected = true;
+    } else {
+      Serial.println(" FAILED — reading will be buffered.");
+    }
+  } else {
+    // Cold boot: full WiFiManager flow (opens portal if no saved network)
+    WiFi.mode(WIFI_STA);
+    wm.setConnectTimeout(20);
+    wm.setConfigPortalTimeout(0);
+    wm.setHostname(SENSOR_NAME);
 
-  // Register parameters exactly once
-  wm.addParameter(&p_server);
-  wm.addParameter(&p_token);
-  wm.addParameter(&p_interval);
+    // Register parameters exactly once
+    wm.addParameter(&p_server);
+    wm.addParameter(&p_token);
+    wm.addParameter(&p_interval);
 
-  if (!wm.autoConnect(SENSOR_NAME)) {
-    Serial.println("[WiFi] No known network; opening portal.");
-    p_server.setValue(cfg_server_url.c_str(), cfg_server_url.length());
-    p_token.setValue (cfg_token.c_str(),      cfg_token.length());
-    char ibuf[12];
-    snprintf(ibuf, sizeof(ibuf), "%lu", (unsigned long)cfg_interval);
-    p_interval.setValue(ibuf, strlen(ibuf));
-    startConfigPortal();
+    if (!wm.autoConnect(SENSOR_NAME)) {
+      Serial.println("[WiFi] No known network; opening portal.");
+      p_server.setValue(cfg_server_url.c_str(), cfg_server_url.length());
+      p_token.setValue (cfg_token.c_str(),      cfg_token.length());
+      char ibuf[12];
+      snprintf(ibuf, sizeof(ibuf), "%lu", (unsigned long)cfg_interval);
+      p_interval.setValue(ibuf, strlen(ibuf));
+      startConfigPortal();
+    }
+
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.print("[WiFi] Connected. IP: ");
+      Serial.println(WiFi.localIP());
+      g_wasConnected = true;
+    }
   }
 
-  Serial.print("[WiFi] Connected. IP: ");
-  Serial.println(WiFi.localIP());
-  g_wasConnected = true;
+  // ── Decide sleep mode for this cycle ──────────────────────────────────────
+  g_deepSleepMode = DEEP_SLEEP_ENABLED && (cfg_interval >= DEEP_SLEEP_MIN_MS);
 
-  syncTime();         // NTP sync — ESP32 RTC holds time through disconnections
-  ledBlink(3, 120, 120);
-  mdnsAdvertise();
+  // In always-on (non-deep-sleep) mode enable WiFi modem sleep so the radio
+  // powers down between DTIM beacons, saving ~100–150 mA during idle without
+  // affecting HTTP responsiveness.
+  if (!g_deepSleepMode) {
+    WiFi.setSleep(true);
+  }
 
-  // Flush any readings buffered during a previous session (e.g. power cycle
-  // while away from the hub)
-  bufferFlush();
+  // ── NTP / time ────────────────────────────────────────────────────────────
+  if (WiFi.status() == WL_CONNECTED) {
+    if (fromDeepSleep && rtc_timeValid && rtc_epochAtSleep > 0) {
+      // The ESP32 RTC timer ran during sleep so we can reconstruct the current
+      // time accurately without hitting NTP every cycle.
+      time_t approxNow = (time_t)(rtc_epochAtSleep + (int64_t)(rtc_sleepMs / 1000));
+      struct timeval tv = { .tv_sec = approxNow, .tv_usec = 0 };
+      settimeofday(&tv, nullptr);
+      g_timeValid = true;
+      Serial.printf("[Time] Restored from RTC: %s\n", nowIso().c_str());
+
+      // Periodic NTP resync to correct accumulated RTC drift
+      if (rtc_bootCount % NTP_RESYNC_INTERVAL == 0) {
+        Serial.println("[NTP] Scheduled resync...");
+        syncTime();
+      }
+    } else {
+      // Cold boot or first sync — must contact NTP
+      syncTime();
+    }
+    ledBlink(3, 120, 120);
+    mdnsAdvertise();
+    bufferFlush();
+  }
 
   http.on("/",          HTTP_GET,     handleRoot);
   http.on("/whoami",    HTTP_GET,     handleWhoAmI);
@@ -623,6 +723,16 @@ void setup() {
   http.on("/provision", HTTP_POST,    handleProvision);
   http.on("/provision", HTTP_OPTIONS, handleOptions);
   http.begin();
+
+  // In deep-sleep mode take the reading on the very first loop() iteration.
+  // Standard unsigned-arithmetic trick: (millis() - g_lastSend) will equal
+  // cfg_interval on the first call even if millis() < cfg_interval.
+  if (g_deepSleepMode) {
+    g_lastSend = millis() - cfg_interval;
+  }
+
+  Serial.printf("[Setup] Ready. Mode: %s  Interval: %u ms\n",
+                g_deepSleepMode ? "deep-sleep" : "always-on", cfg_interval);
 }
 
 // ============================================================================
@@ -632,53 +742,50 @@ void loop() {
   unsigned long now       = millis();
   bool          connected = (WiFi.status() == WL_CONNECTED);
 
-  // ── WiFi watchdog ─────────────────────────────────────────────────────────
-  if (!connected) {
-    if (g_wasConnected) {
-      Serial.println("[WiFi] Connection lost — readings will be buffered.");
-      g_wasConnected = false;
+  // ── WiFi watchdog & buffer retry (always-on mode only) ───────────────────
+  // In deep-sleep mode we reconnect fresh in setup() every cycle, so these
+  // continuous watchdog tasks are not needed.
+  if (!g_deepSleepMode) {
+    if (!connected) {
+      if (g_wasConnected) {
+        Serial.println("[WiFi] Connection lost — readings will be buffered.");
+        g_wasConnected = false;
+      }
+      static unsigned long lastReconnAt = 0;
+      if (now - lastReconnAt >= 5000) {
+        Serial.println("[WiFi] Attempting reconnect...");
+        WiFi.reconnect();
+        lastReconnAt = now;
+      }
+      // Fall through — still take readings and buffer them while offline
     }
-    static unsigned long lastReconnAt = 0;
-    if (now - lastReconnAt >= 5000) {
-      Serial.println("[WiFi] Attempting reconnect...");
-      WiFi.reconnect();
-      lastReconnAt = now;
+
+    if (connected && !g_wasConnected) {
+      Serial.print("[WiFi] Reconnected. IP: ");
+      Serial.println(WiFi.localIP());
+      g_wasConnected = true;
+      if (!g_timeValid) syncTime();
+      mdnsAdvertise();
+      g_lastFlushAt = now;
+      bufferFlush();
     }
-    // Fall through — still take readings and buffer them while offline
-  }
 
-  if (connected && !g_wasConnected) {
-    // Just reconnected
-    Serial.print("[WiFi] Reconnected. IP: ");
-    Serial.println(WiFi.localIP());
-    g_wasConnected = true;
-    if (!g_timeValid) syncTime();   // get time if we never had it
-    mdnsAdvertise();
-    g_lastFlushAt = now;
-    bufferFlush();   // upload all offline readings before resuming live posts
-  }
-
-  // ── Periodic NTP retry ────────────────────────────────────────────────────
-  // If the initial NTP sync failed (e.g. DNS not ready at boot), retry every
-  // 60 s while connected so the clock eventually becomes valid.
-  if (connected && !g_timeValid) {
-    static unsigned long lastNtpRetry = 0;
-    if (now - lastNtpRetry >= 60000UL) {
-      lastNtpRetry = now;
-      Serial.println("[NTP] Retrying time sync...");
-      syncTime();
+    // Periodic NTP retry
+    if (connected && !g_timeValid) {
+      static unsigned long lastNtpRetry = 0;
+      if (now - lastNtpRetry >= 60000UL) {
+        lastNtpRetry = now;
+        Serial.println("[NTP] Retrying time sync...");
+        syncTime();
+      }
     }
-  }
 
-  // ── Periodic buffer retry ─────────────────────────────────────────────────
-  // bufferFlush() stops on the first failed POST to avoid hammering an
-  // unreachable server.  Without this retry the remaining readings would
-  // stay stuck until the next disconnect/reconnect cycle.  Retry every 30 s
-  // while connected and the buffer file still exists.
-  if (connected && LittleFS.exists(BUFFER_FILE) &&
-      (now - g_lastFlushAt >= 30000UL)) {
-    g_lastFlushAt = now;
-    bufferFlush();
+    // Periodic buffer retry (stops on first failed POST, retries here every 30 s)
+    if (connected && LittleFS.exists(BUFFER_FILE) &&
+        (now - g_lastFlushAt >= 30000UL)) {
+      g_lastFlushAt = now;
+      bufferFlush();
+    }
   }
 
   // ── Phase 1: kick off a non-blocking DS18B20 conversion ───────────────────
@@ -700,31 +807,58 @@ void loop() {
       sensors.setResolution(DS_RESOLUTION_BITS);
       sensors.setWaitForConversion(false);
       ledBlink(2, 60, 160);
+
+      if (g_deepSleepMode) {
+        // Sleep even on error; the sensor will be retried on next wake
+        unsigned long elapsed = millis() - g_wakeStart;
+        uint32_t sleepMs = cfg_interval > elapsed
+                           ? (uint32_t)(cfg_interval - elapsed) : 1000UL;
+        enterDeepSleep(sleepMs);
+      }
       return;
     }
 
     float  tF = DallasTemperature::toFahrenheit(tC);
-    String ts = nowIso();   // "" if NTP hasn't synced yet; hub will use server time
+    String ts = nowIso();
     g_lastC    = tC;
     g_lastAtMs = now;
 
     if (connected) {
-      // POST to hub whether or not we have a valid timestamp.
-      // postWithTimestamp() omits the "timestamp" field when ts is empty,
-      // and the hub will stamp the reading with its own clock.
       if (postWithTimestamp(ts, tC, tF, g_probeId)) {
         ledOn(); delay(20); ledOff();
-        return;
+      } else {
+        // POST failed (hub unreachable?) — fall through to buffer
+        Serial.println("[POST] Failed — buffering reading.");
+        bufferAppend(ts, tC, tF);
+        ledBlink(2, 80, 120);
       }
-      // POST failed (hub unreachable?) — fall through to buffer
-      Serial.println("[POST] Failed — buffering reading.");
+    } else {
+      // Offline: store to flash
+      bufferAppend(ts, tC, tF);
+      ledBlink(2, 80, 120);
     }
 
-    // Offline or post failed: store to flash.
-    // bufferAppend() requires a valid timestamp (so buffered rows have
-    // accurate times when flushed later); readings without a known time
-    // are discarded here rather than stored with a wrong timestamp.
-    bufferAppend(ts, tC, tF);
-    ledBlink(2, 80, 120);
+    // ── Deep sleep ────────────────────────────────────────────────────────
+    if (g_deepSleepMode) {
+      // Keep the HTTP server live for WEBSERVER_WINDOW_MS so the hub's
+      // auto-provision request (and any browser visit) can reach us.
+      // Skip the window when WiFi is down — the server is unreachable anyway.
+      if (connected) {
+        unsigned long windowEnd = millis() + WEBSERVER_WINDOW_MS;
+        while (millis() < windowEnd) {
+          http.handleClient();
+          delay(5);
+        }
+      }
+
+      // Sleep for the remainder of the interval.
+      // Unsigned arithmetic: if elapsed > cfg_interval we sleep 100 ms minimum
+      // to avoid a tight reboot loop.
+      unsigned long elapsed = millis() - g_wakeStart;
+      uint32_t sleepMs = cfg_interval > (uint32_t)elapsed
+                         ? (uint32_t)(cfg_interval - elapsed) : 100UL;
+      enterDeepSleep(sleepMs);
+      // never reached
+    }
   }
 }
