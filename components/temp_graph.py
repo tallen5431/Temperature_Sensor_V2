@@ -1,8 +1,13 @@
+import datetime
 import pandas as pd
 from pathlib import Path
 from dash import html, dcc, Input, Output, no_update
 import dash_bootstrap_components as dbc
 import plotly.graph_objs as go
+
+# Local timezone abbreviation shown on the graph x-axis (e.g. "EST", "CET").
+# Evaluated once at import time; restarts pick up any system TZ change.
+_LOCAL_TZ_NAME = datetime.datetime.now().astimezone().strftime('%Z')
 
 # ---- UI section -------------------------------------------------------------
 GraphSection = dbc.Card(
@@ -96,7 +101,7 @@ def _build_figure(df: pd.DataFrame, window: str = "24h", show_rangeslider: bool 
             margin=dict(l=20, r=10, t=10, b=30),
             height=360,
             showlegend=False,
-            xaxis_title="Time",
+            xaxis_title=f"Time ({_LOCAL_TZ_NAME})",
             yaxis_title="Temperature (°C)",
         )
         return fig
@@ -127,7 +132,7 @@ def _build_figure(df: pd.DataFrame, window: str = "24h", show_rangeslider: bool 
         margin=dict(l=20, r=10, t=10, b=30),
         height=360,
         legend_title_text="Probe",
-        xaxis_title="Time",
+        xaxis_title=f"Time ({_LOCAL_TZ_NAME})",
         yaxis_title="Temperature (°C)",
     )
 

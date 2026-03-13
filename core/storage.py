@@ -56,18 +56,46 @@ def append_row(csv_file: Path, ts: str, t_c: float, t_f: float, probe_id: str|No
             # Last-resort fallback (try without probe_id)
             pd.DataFrame([[ts, t_c, t_f]], columns=REQUIRED_COLS).to_csv(csv_file, mode="a", header=False, index=False)
 
+def _local_iso_now() -> str:
+    """Current local machine time as a naive ISO 8601 string (no timezone suffix)."""
+    return datetime.datetime.now().isoformat(timespec="seconds")
+
+
+def _to_local_naive(ts_str: str) -> str:
+    """Convert a timestamp string to local machine time, returned as a naive ISO string.
+
+    Timestamps that carry explicit timezone info (trailing 'Z' for UTC, or a
+    '+HH:MM'/'-HH:MM' offset) are converted to the local machine timezone before
+    the offset is dropped.  Timestamps that are already naive are assumed to be
+    local time and are returned unchanged (trimmed to second precision).
+    """
+    ts_str = str(ts_str).strip()
+    has_z      = ts_str.endswith('Z')
+    has_offset = len(ts_str) > 19 and ts_str[19] in ('+', '-')
+
+    if has_z or has_offset:
+        try:
+            # Replace 'Z' with '+00:00' so fromisoformat can parse it on Python <3.11
+            aware = datetime.datetime.fromisoformat(ts_str.replace('Z', '+00:00'))
+            # Convert to local wall-clock time and drop tzinfo
+            return aware.astimezone().replace(tzinfo=None).isoformat(timespec="seconds")
+        except Exception:
+            pass  # fall through and use as-is
+
+    # Already naive (or unparseable) — trim to 19 chars (seconds precision)
+    return ts_str[:19]
+
+
 def normalize_payload(payload: dict):
     """
     Accepts keys like temperature_c/temp_c/t_c or temperature_f/temp_f/t_f.
     Returns (timestamp_iso, celsius, fahrenheit)
     """
-    now = datetime.datetime.now().isoformat(timespec="seconds")
-    ts = payload.get("timestamp") or payload.get("ts") or now
-    # Normalize: strip trailing "Z" or "+HH:MM" timezone offset so every row
-    # stored in the CSV is plain naive ISO 8601, matching hub-generated timestamps.
-    ts = str(ts).rstrip('Z')
-    if len(ts) > 19 and ts[19] in ('+', '-'):
-        ts = ts[:19]
+    raw_ts = payload.get("timestamp") or payload.get("ts") or ""
+    # Convert to local naive ISO so every row in the CSV is in the same
+    # timezone (local machine time).  Probe timestamps arrive as UTC (with 'Z')
+    # and must be shifted, not just stripped, to display correctly.
+    ts = _to_local_naive(raw_ts) if raw_ts else _local_iso_now()
 
     c_keys = ["temperature_c","temp_c","t_c","c"]
     f_keys = ["temperature_f","temp_f","t_f","f"]
