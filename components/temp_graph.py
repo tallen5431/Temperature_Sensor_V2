@@ -39,6 +39,7 @@ GraphSection = dbc.Card(
                     id="temp-nav",
                     options=[
                         {"label": "Show range slider", "value": "rangeslider"},
+                        {"label": "12-hour clock",     "value": "12h"},
                     ],
                     value=["rangeslider"],
                     inputStyle={"marginRight": "0.4rem"},
@@ -92,8 +93,18 @@ def _apply_window(df: pd.DataFrame, window: str) -> pd.DataFrame:
     return df[df["_ts"] >= start]
 
 
-def _build_figure(df: pd.DataFrame, window: str = "24h", show_rangeslider: bool = True) -> go.Figure:
+def _build_figure(
+    df: pd.DataFrame,
+    window: str = "24h",
+    show_rangeslider: bool = True,
+    use_12h: bool = False,
+    uirevision: str = "default",
+) -> go.Figure:
     fig = go.Figure()
+
+    # d3 date-format strings used in Plotly hovertemplates
+    hover_fmt = "%I:%M:%S %p" if use_12h else "%H:%M:%S"
+    hover_time_str = f"%Y-%m-%d {hover_fmt}"
 
     if df.empty:
         fig.update_layout(
@@ -103,6 +114,7 @@ def _build_figure(df: pd.DataFrame, window: str = "24h", show_rangeslider: bool 
             showlegend=False,
             xaxis_title=f"Time ({_LOCAL_TZ_NAME})",
             yaxis_title="Temperature (°C)",
+            uirevision=uirevision,
         )
         return fig
 
@@ -120,8 +132,8 @@ def _build_figure(df: pd.DataFrame, window: str = "24h", show_rangeslider: bool 
             line=dict(width=2),
             marker=dict(size=6),
             hovertemplate=(
-                "<b>%{text}</b><br>"  # probe id
-                "%{x|%Y-%m-%d %H:%M:%S}<br>"
+                "<b>%{text}</b><br>"
+                f"%{{x|{hover_time_str}}}<br>"
                 "%{y:.2f} °C<extra></extra>"
             ),
             text=[label] * len(chunk),
@@ -134,6 +146,10 @@ def _build_figure(df: pd.DataFrame, window: str = "24h", show_rangeslider: bool 
         legend_title_text="Probe",
         xaxis_title=f"Time ({_LOCAL_TZ_NAME})",
         yaxis_title="Temperature (°C)",
+        # uirevision stays constant across auto-refreshes so Plotly preserves
+        # the user's zoom/pan.  It changes only when the user changes a control,
+        # which intentionally resets the view.
+        uirevision=uirevision,
     )
 
     # Better time navigation + quick window buttons
@@ -187,7 +203,18 @@ def register_callbacks(app, csv_path: Path):
         prevent_initial_call=False,
     )
     def _refresh(_n, window, nav_values):
+        nav_values = nav_values or []
+        show_rangeslider = "rangeslider" in nav_values
+        use_12h          = "12h" in nav_values
+        window           = window or "24h"
+
+        # uirevision encodes only user-controlled settings (not the refresh
+        # counter) so Plotly keeps the zoom/pan state between data refreshes.
+        uirevision = f"{window}|{show_rangeslider}|{use_12h}"
+
         df = _safe_read(csv_path)
-        show_rangeslider = isinstance(nav_values, list) and ("rangeslider" in nav_values)
-        window = window or "24h"
-        return _build_figure(df, window=window, show_rangeslider=show_rangeslider), _badge_row(df)
+        return (
+            _build_figure(df, window=window, show_rangeslider=show_rangeslider,
+                          use_12h=use_12h, uirevision=uirevision),
+            _badge_row(df),
+        )
