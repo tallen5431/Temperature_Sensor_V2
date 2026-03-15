@@ -242,9 +242,13 @@ def register_dashboard_callbacks(app, finder, cfg):
                 raise ValueError('No data')
 
             # Sort by timestamp so entries uploaded out-of-order (buffered probes)
-            # are always displayed chronologically.
+            # are always displayed chronologically.  Drop rows whose timestamp
+            # can't be parsed (e.g. a partial line written during a power cut)
+            # so they don't poison the tail() lookup below.
             df['_sort_ts'] = pd.to_datetime(df['timestamp'].astype(str).str.rstrip('Z'), errors='coerce')
-            df = df.sort_values('_sort_ts').drop(columns=['_sort_ts']).reset_index(drop=True)
+            df = df.dropna(subset=['_sort_ts']).sort_values('_sort_ts').drop(columns=['_sort_ts']).reset_index(drop=True)
+            if df.empty:
+                raise ValueError('No valid timestamps in data')
 
             # Get latest reading for gauge (always use most recent)
             row = df.tail(1).iloc[0]
@@ -413,13 +417,16 @@ def register_dashboard_callbacks(app, finder, cfg):
             # Metrics
             probes = len((finder.list_probes() or {}))
             logging_status = 'ON' if cfg.get('pull_enabled', True) else 'OFF'
-            last_dt = datetime.datetime.fromisoformat(str(ts).rstrip('Z'))
-            delta = (datetime.datetime.now() - last_dt).total_seconds()
-            hb = (f'Last sync {int(delta)} s ago'
-                  if delta < 60 else
-                  f'Last sync {int(delta//60)} min ago')
-            if delta < 10:
-                hb += ' ✓'
+            try:
+                last_dt = datetime.datetime.fromisoformat(str(ts).rstrip('Z'))
+                delta = (datetime.datetime.now() - last_dt).total_seconds()
+                hb = (f'Last sync {int(delta)} s ago'
+                      if delta < 60 else
+                      f'Last sync {int(delta//60)} min ago')
+                if delta < 10:
+                    hb += ' ✓'
+            except Exception:
+                hb = f'Last reading: {ts}'
 
             # Store filtered data for CSV export
             filtered_csv = df_filtered.to_json(date_format='iso', orient='split')
@@ -429,6 +436,8 @@ def register_dashboard_callbacks(app, finder, cfg):
                     alerts_container, filtered_csv)
 
         except Exception as e:
+            import traceback
+            print(f"[dashboard] update_dashboard error: {e}\n{traceback.format_exc()}", flush=True)
             empty = go.Figure()
             empty.update_layout(
                 template='plotly_dark',
