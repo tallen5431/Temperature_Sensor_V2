@@ -1,6 +1,7 @@
 dash~=2.18
-pandas~=2.2
-requests~=2.32
-plotly~=5.24
 dash-bootstrap-components~=1.6
+pandas~=2.2
+plotly~=5.24
+requests~=2.32
 zeroconf>=0.132,<0.141
+waitress~=3.0

@@ -1,0 +1,9 @@
+{
+  "interval_sec": 5,
+  "pull_enabled": true,
+  "auto_provision": true,
+  "provision_token": "",
+  "probe_online_timeout_sec": 60,
+  "probe_names": {},
+  "alert_thresholds": {}
+}

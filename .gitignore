@@ -14,5 +14,11 @@ env/
 .DS_Store
 Thumbs.db
 
+# Runtime config (seeded from config.example.json on first run)
+config.json
+
 # Logs / data (generated at runtime)
 temperature_log.csv
+*.db
+*.db-wal
+*.db-shm

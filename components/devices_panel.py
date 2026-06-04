@@ -281,7 +281,7 @@ def register_devices_callbacks(app, finder, cfg, public_base_func=None, token=""
                 # --- Push new interval to the probe immediately (best-effort) ---
                 if public_base_func is not None:
                     try:
-                        from auto_provision import provision_probe
+                        from provisioning import provision_probe
                         probes = (finder.list_probes() or {}).values()
                         for p in probes:
                             if isinstance(p, dict):

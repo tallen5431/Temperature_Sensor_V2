@@ -1,6 +1,6 @@
 # Temperature Sensor Hub
 
-Collects temperature readings from ESP32 probes over Wi-Fi, shows a live chart in your browser, and logs data to a CSV file. Designed for **end users**: plug in the hub PC, power the probe, and data starts flowing — no manual setup.
+Collects temperature readings from ESP32 probes over Wi-Fi, shows a live chart in your browser, and logs data to a local SQLite database (exportable to CSV at any time). Designed for **end users**: plug in the hub PC, power the probe, and data starts flowing — no manual setup.
 
 ---
 
@@ -45,13 +45,15 @@ If it does not open, navigate there manually.
 
 ```
 Probe (ESP32) ──mDNS──► Hub Discovery ──► Auto-Provisioner ──/provision──► Probe
-Probe ──HTTP POST /api/ingest──► Hub API ──► temperature_log.csv
-                                   └──────► Live dashboard
+Probe ──HTTP POST /api/ingest──► Hub API ──► temperature_log.db (SQLite)
+                                   └──────► Live dashboard ──► CSV export
 ```
 
 1. **Discovery** — the hub listens for probes advertising `_temps-probe._tcp` via mDNS (Bonjour / Zeroconf).
 2. **Auto-Provisioner** — the hub automatically tells each probe where to POST readings (`http://<hub-ip>:8088/api/ingest`). No manual configuration on the probe is needed.
-3. **Ingest** — the probe POSTs JSON every few seconds; the hub appends to `temperature_log.csv` and updates the dashboard.
+3. **Ingest** — the probe POSTs JSON every few seconds; the hub stores it in `temperature_log.db` and updates the dashboard. Use the dashboard's **Download CSV** button (or `/download/temperature_log.csv`) to export.
+
+> **Upgrading from a CSV-based version?** On first start the hub automatically imports any existing `temperature_log.csv` into the database — no data is lost.
 
 ---
 
@@ -64,10 +66,14 @@ All settings have sensible defaults. You can override them with environment vari
 | `PORT` | `8088` | HTTP port for the UI and API |
 | `HOST` | `0.0.0.0` | Bind address (keep as-is for LAN access) |
 | `PUBLIC_BASE` | auto-detected `http://<LAN-IP>:<PORT>` | URL the hub shares with probes |
-| `SERVER_TOKEN` | *(empty)* | Optional shared secret; probes must include it as `X-Token` |
-| `CSV_FILE` | `temperature_log.csv` | Path to the data log |
+| `SERVER_TOKEN` | *(empty)* | Optional shared secret; when set, every API write (ingest, provision, config) must include it as the `X-Token` header. The auto-provisioner pushes it to probes automatically. |
+| `DB_FILE` | `temperature_log.db` | Path to the SQLite data store |
+| `CSV_FILE` | `temperature_log.csv` | Legacy CSV imported once on first start, then unused |
+| `MDNS_ENABLE` | `1` | Set to `0` to disable hub mDNS advertisement |
 
-The hub's UI also has a **Settings** page for common options (probe names, alert thresholds, auto-provision toggle).
+Per-probe options (friendly names, alert thresholds, read interval) live in `config.json`, which is seeded from `config.example.json` on first run and is **not** tracked in git. The hub's UI **Settings** and **Devices** pages edit these for you.
+
+> **Security:** the hub serves on your LAN with no authentication by default. For anything beyond a trusted home network, set `SERVER_TOKEN` so only probes (and tools) holding the secret can post readings or change configuration.
 
 ---
 
@@ -75,15 +81,19 @@ The hub's UI also has a **Settings** page for common options (probe names, alert
 
 | File | Purpose |
 |---|---|
-| `app.py` | Entry point — bootstraps Flask/Dash, starts discovery and auto-provisioner |
+| `app.py` | Entry point — bootstraps Flask/Dash, runs under waitress, starts discovery and provisioner |
 | `api/routes.py` | REST endpoints: `/health`, `/config`, `/probes`, `/provision`, `/ingest` |
 | `probe_discovery.py` | mDNS browser that finds and tracks probes |
-| `auto_provision.py` / `auto_provisioner.py` | Push ingest URL to probes (single / background) |
+| `provisioning.py` / `provisioner.py` | Push ingest URL to probes (client functions / background thread) |
+| `core/db.py` | SQLite reading store (WAL), windowed queries, CSV export, legacy-CSV import |
 | `core/config.py` | Thread-safe JSON config management |
-| `core/storage.py` | CSV append and payload normalisation |
+| `core/storage.py` | Ingest payload normalisation and timezone handling |
 | `core/mdns_advert.py` | Advertises the hub on mDNS |
+| `core/version.py` | Hub version / product metadata |
 | `components/` | Dash UI panels (dashboard, devices, probe setup wizard) |
-| `temperature_log.csv` | Live data log (created automatically) |
+| `config.example.json` | Default config seeded to `config.json` on first run |
+| `temperature_log.db` | SQLite data store (created automatically) |
+| `tests/` | Pytest suite for the data layer, API, and dashboard logic |
 
 ---
 
@@ -96,6 +106,25 @@ curl "http://localhost:8088/api/ingest?temperature_c=22.3"
 ```
 
 Or open the URL directly in your browser — a new row should appear in `temperature_log.csv` and on the dashboard.
+
+---
+
+## For Developers
+
+```bash
+# Create an environment and install runtime + test dependencies
+python -m venv .venv
+. .venv/bin/activate          # Windows: .venv\Scripts\activate
+pip install -r requirements-dev.txt
+
+# Run the test suite
+pytest
+```
+
+The hub runs under **waitress** (a production WSGI server) when it's installed,
+and falls back to Flask's development server otherwise. Tests cover the SQLite
+data layer, REST API, ingest/timezone normalisation, and the dashboard
+computation. CI runs the same suite on every push (`.github/workflows/ci.yml`).
 
 ---
 

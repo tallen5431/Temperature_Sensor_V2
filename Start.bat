@@ -62,9 +62,25 @@ if not exist "%PYTHON_EXE%" (
     )
 )
 
-echo [SETUP] Installing / verifying dependencies...
-"%PYTHON_EXE%" -m pip install --upgrade pip setuptools wheel -q
-if exist "%APP_DIR%requirements.txt" "%PYTHON_EXE%" -m pip install --no-compile -r "%APP_DIR%requirements.txt" -q
+:: Only (re)install dependencies when requirements.txt changes since the last
+:: successful install, so normal launches are fast and work offline.
+set "REQ_FILE=%APP_DIR%requirements.txt"
+set "REQ_LOCK=%VENV_DIR%\requirements.lock"
+set "NEED_INSTALL=1"
+if exist "%REQ_LOCK%" (
+    fc /b "%REQ_FILE%" "%REQ_LOCK%" >nul 2>&1
+    if not errorlevel 1 set "NEED_INSTALL=0"
+)
+if "%NEED_INSTALL%" == "1" (
+    echo [SETUP] Installing / verifying dependencies...
+    "%PYTHON_EXE%" -m pip install --upgrade pip setuptools wheel -q
+    if exist "%REQ_FILE%" (
+        "%PYTHON_EXE%" -m pip install --no-compile -r "%REQ_FILE%" -q
+        if not errorlevel 1 copy /y "%REQ_FILE%" "%REQ_LOCK%" >nul
+    )
+) else (
+    echo [INFO] Dependencies up to date — skipping install.
+)
 
 :: ── 3. Resolve host / port ─────────────────────────────────────────────────
 if "%HOST%" == "" set "HOST=0.0.0.0"

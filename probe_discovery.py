@@ -164,6 +164,23 @@ class ProbeDiscovery:
         with self._lock:
             return dict(self._probes)
 
+    def prune_stale(self, max_age_sec: float = 3600.0) -> int:
+        """Drop probes not seen within max_age_sec so the table stays bounded.
+
+        Returns the number of entries removed.  Recently-offline probes are kept
+        (the UI shows them greyed out); only long-gone devices are evicted.
+        """
+        cutoff = time.time() - max_age_sec
+        removed = 0
+        with self._lock:
+            for key in list(self._probes.keys()):
+                p = self._probes[key]
+                last = p.get("last_seen") if isinstance(p, dict) else getattr(p, "last_seen", None)
+                if isinstance(last, (int, float)) and last < cutoff:
+                    del self._probes[key]
+                    removed += 1
+        return removed
+
     def update_probe_ip(self, key: str, new_ip: str) -> None:
         """Atomically update a probe's IP address under the discovery lock."""
         with self._lock:

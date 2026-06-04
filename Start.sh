@@ -48,11 +48,23 @@ if [[ ! -x "$PYTHON_EXE" ]]; then
   "$PYTHON_BIN" -m venv "$VENV_DIR"
 fi
 
-echo "[SETUP] Installing / verifying dependencies..."
-"$PYTHON_EXE" -m pip install --upgrade pip setuptools wheel -q
-
-if [[ -f "$APP_DIR/requirements.txt" ]]; then
-  "$PYTHON_EXE" -m pip install --no-compile -r "$APP_DIR/requirements.txt" -q
+# Only (re)install dependencies when requirements.txt has changed since the last
+# successful install.  This keeps day-to-day launches fast and offline-friendly.
+REQ_FILE="$APP_DIR/requirements.txt"
+REQ_STAMP="$VENV_DIR/.requirements.sha"
+if [[ -f "$REQ_FILE" ]]; then
+  REQ_HASH=$( (sha256sum "$REQ_FILE" 2>/dev/null || shasum -a 256 "$REQ_FILE" 2>/dev/null) | awk '{print $1}')
+  if [[ ! -f "$REQ_STAMP" || "$(cat "$REQ_STAMP" 2>/dev/null)" != "$REQ_HASH" ]]; then
+    echo "[SETUP] Installing / verifying dependencies..."
+    "$PYTHON_EXE" -m pip install --upgrade pip setuptools wheel -q
+    if "$PYTHON_EXE" -m pip install --no-compile -r "$REQ_FILE" -q; then
+      echo "$REQ_HASH" > "$REQ_STAMP"
+    else
+      echo "[WARN] Dependency install failed; continuing with what is available."
+    fi
+  else
+    echo "[INFO] Dependencies up to date — skipping install."
+  fi
 fi
 
 # ── 3. Resolve host / port ───────────────────────────────────────────────────

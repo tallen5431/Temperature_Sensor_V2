@@ -1,7 +1,7 @@
 from __future__ import annotations
 import threading, time, socket
 from typing import Callable, Optional, Any
-from auto_provision import provision_probe, get_probe_status
+from provisioning import provision_probe, get_probe_status
 
 
 def _resolve_with_timeout(host: str, timeout: float = 3.0) -> Optional[str]:
@@ -74,6 +74,16 @@ class AutoProvisioner(threading.Thread):
     def run(self):
         while not self._stop:
             try:
+                # Evict probes that have been gone long enough that they should
+                # no longer occupy the Devices list (bounds memory over time).
+                try:
+                    prune_after = 3600
+                    if self.cfg is not None:
+                        prune_after = int(self.cfg.get("probe_prune_after_sec", 3600) or 3600)
+                    self.discovery.prune_stale(prune_after)
+                except Exception:
+                    pass
+
                 base = (self.public_base_func() or "").rstrip("/")
                 if base:
                     for key, p in (self.discovery.list_probes() or {}).items():
@@ -131,8 +141,8 @@ class AutoProvisioner(threading.Thread):
                                 )
                             except Exception as e:
                                 # best-effort; we'll retry next cycle
-                                print(f"[auto_provisioner] Failed to provision {host}:{port}: {e}")
+                                print(f"[provisioner] Failed to provision {host}:{port}: {e}")
             except Exception as e:
-                print(f"[auto_provisioner] Error in provisioning cycle: {e}")
+                print(f"[provisioner] Error in provisioning cycle: {e}")
 
             time.sleep(self.period_sec)
