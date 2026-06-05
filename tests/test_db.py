@@ -106,6 +106,16 @@ def test_iso_to_epoch_roundtrip():
     assert abs(iso_to_epoch("not-a-date") - time.time()) < 2
 
 
+def test_last_reading_epoch_per_probe(db):
+    now = datetime.datetime.now()
+    db.append(_iso(now - datetime.timedelta(seconds=30)), 10.0, 0.0, "A")
+    db.append(_iso(now), 11.0, 0.0, "A")              # newer for A
+    db.append(_iso(now - datetime.timedelta(seconds=5)), 20.0, 0.0, "B")
+    last = db.last_reading_epoch_per_probe()
+    assert set(last.keys()) == {"A", "B"}
+    assert last["A"] >= last["B"]  # A's newest is more recent than B's
+
+
 def test_bulk_insert(db):
     now = datetime.datetime.now()
     rows = [(_iso(now - datetime.timedelta(seconds=i)), float(i), float(i) * 2, "p")

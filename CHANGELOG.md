@@ -4,6 +4,19 @@ All notable changes to the Temperature Hub (the PC-side application) are
 documented here. The ESP32 firmware is versioned separately (see
 `esp32_temp_probe/esp32_temp_probe.ino`).
 
+## [2.2.0] — Offline-probe alerts
+
+### Added
+- **Offline / back-online notifications.** The alert monitor now flags a probe
+  that stops reporting for longer than `offline_after_sec` (default 5 min) and
+  notifies again when it resumes — essential for unattended monitoring, where a
+  dead probe is as bad as an out-of-range one. Pure, unit-tested logic
+  (`core/alerts.evaluate_offline`).
+- The first monitor cycle seeds connectivity state silently, so a hub restart
+  never emits a burst of "offline" for probes that were already quiet.
+- Settings → Notifications: "Alert when a probe goes offline" toggle and an
+  "Offline after (minutes)" field.
+
 ## [2.1.0] — Notifications, calibration, retention & backups
 
 ### Added

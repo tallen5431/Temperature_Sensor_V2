@@ -42,3 +42,8 @@ def test_strips_whitespace_and_coerces_bools():
     assert cfg["email"]["smtp_host"] == "smtp.y"
     assert cfg["enabled"] is True
     assert cfg["email"]["enabled"] is False
+
+
+def test_offline_alerts_default_and_override():
+    assert build_notifications_config(*_form())["offline_alerts"] is True
+    assert build_notifications_config(*_form(), offline_alerts=False)["offline_alerts"] is False

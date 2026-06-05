@@ -37,6 +37,19 @@ NotificationSettings = dbc.Card(dbc.CardBody([
         ], md=6),
     ], className="g-2 mt-1"),
 
+    dbc.Row([
+        dbc.Col([
+            dbc.Switch(id="notif-offline-enabled", label="Alert when a probe goes offline",
+                       value=True),
+        ], md=6),
+        dbc.Col([
+            html.Small("Offline after (minutes)", className="text-muted d-block"),
+            dbc.Input(id="offline-after-min", type="number", min=1, step=1, value=5),
+            html.Small("Flag a probe that stops reporting for this long.",
+                       className="text-muted"),
+        ], md=6),
+    ], className="g-2 mt-1"),
+
     _section_title("Email (SMTP)"),
     dbc.Switch(id="notif-email-enabled", label="Enable email", value=False),
     dbc.Row([
@@ -109,7 +122,7 @@ def _err(msg):
 
 def build_notifications_config(enabled, cooldown_min, recovery, email_enabled, host, port,
                                tls, user, sender, to, webhook_enabled, url, password,
-                               existing_password=""):
+                               offline_alerts=True, existing_password=""):
     """Turn raw Settings form values into a notifications config dict.
 
     Pure and module-level so it can be unit-tested.  A blank password means
@@ -127,6 +140,7 @@ def build_notifications_config(enabled, cooldown_min, recovery, email_enabled, h
         "enabled": bool(enabled),
         "cooldown_sec": cooldown_sec,
         "notify_recovery": bool(recovery),
+        "offline_alerts": bool(offline_alerts),
         "email": {
             "enabled": bool(email_enabled),
             "smtp_host": (host or "").strip(),
@@ -156,6 +170,8 @@ def register_settings_callbacks(app, cfg):
         Output("notif-webhook-enabled", "value"),
         Output("webhook-url", "value"),
         Output("retention-days", "value"),
+        Output("notif-offline-enabled", "value"),
+        Output("offline-after-min", "value"),
         Input("settings-loaded", "n_intervals"),
     )
     def _load(_n):
@@ -176,11 +192,9 @@ def register_settings_callbacks(app, cfg):
             bool(webhook.get("enabled", False)),
             webhook.get("url", ""),
             int(cfg.get("retention_days", 0) or 0),
+            bool(n.get("offline_alerts", True)),
+            max(1, int(cfg.get("offline_after_sec", 300) or 300) // 60),
         )
-
-    def _collect_notifications(*form_values):
-        existing = ((cfg.get("notifications", {}) or {}).get("email", {}) or {}).get("password", "")
-        return build_notifications_config(*form_values, existing_password=existing)
 
     @app.callback(
         Output("notif-status", "children"),
@@ -188,6 +202,8 @@ def register_settings_callbacks(app, cfg):
         State("notif-enabled", "value"),
         State("notif-cooldown-min", "value"),
         State("notif-recovery", "value"),
+        State("notif-offline-enabled", "value"),
+        State("offline-after-min", "value"),
         State("notif-email-enabled", "value"),
         State("email-host", "value"),
         State("email-port", "value"),
@@ -200,9 +216,20 @@ def register_settings_callbacks(app, cfg):
         State("email-pass", "value"),
         prevent_initial_call=True,
     )
-    def _save(_n, *args):
+    def _save(_n, enabled, cooldown_min, recovery, offline_enabled, offline_after_min,
+              email_enabled, host, port, tls, user, sender, to, webhook_enabled, url, password):
         try:
-            cfg.update({"notifications": _collect_notifications(*args)})
+            existing = ((cfg.get("notifications", {}) or {}).get("email", {}) or {}).get("password", "")
+            notif = build_notifications_config(
+                enabled, cooldown_min, recovery, email_enabled, host, port, tls, user,
+                sender, to, webhook_enabled, url, password,
+                offline_alerts=offline_enabled, existing_password=existing)
+            updates = {"notifications": notif}
+            try:
+                updates["offline_after_sec"] = max(60, int(float(offline_after_min)) * 60)
+            except (TypeError, ValueError):
+                pass
+            cfg.update(updates)
             return _ok("✅ Notification settings saved.")
         except Exception as e:  # noqa: BLE001
             return _err(f"Could not save: {e}")

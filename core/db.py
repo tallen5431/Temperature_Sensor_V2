@@ -131,6 +131,23 @@ class Database:
         ).fetchone()
         return dict(row) if row else None
 
+    def last_reading_epoch_per_probe(self, window_seconds: Optional[int] = None) -> dict:
+        """Map ``probe_id -> epoch of its most recent reading`` within the window.
+
+        Used for offline detection: a probe whose newest reading is older than
+        the offline threshold has gone silent.  The window bounds which probes
+        are tracked, so long-retired probes drop out instead of alerting forever.
+        """
+        conn = self._conn()
+        cutoff = self._cutoff(window_seconds)
+        where = "WHERE epoch >= ?" if cutoff is not None else ""
+        params: tuple = (cutoff,) if cutoff is not None else ()
+        rows = conn.execute(
+            f"SELECT probe_id, MAX(epoch) AS last_epoch FROM readings {where} GROUP BY probe_id",
+            params,
+        ).fetchall()
+        return {r["probe_id"]: int(r["last_epoch"]) for r in rows if r["probe_id"]}
+
     def _cutoff(self, window_seconds: Optional[int]) -> Optional[int]:
         if not window_seconds:
             return None

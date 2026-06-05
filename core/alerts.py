@@ -80,6 +80,32 @@ def evaluate(readings: Dict[str, float], thresholds: dict, states: dict,
     return events, new_states
 
 
+def evaluate_offline(last_epochs: Dict[str, int], states: dict,
+                     now: Optional[float] = None, offline_after_sec: int = 300) -> Tuple[List[dict], dict]:
+    """Detect probes that have stopped (or resumed) reporting.
+
+    Parameters
+    ----------
+    last_epochs : ``{probe_id: epoch_of_latest_reading}`` for currently-tracked probes
+    states : previous per-probe ``"online"``/``"offline"`` string
+    offline_after_sec : a probe silent longer than this is considered offline
+
+    Returns ``(events, new_states)``.  Probes absent from ``last_epochs`` (e.g.
+    aged out of the tracking window) are dropped from the returned states.
+    """
+    now = now if now is not None else time.time()
+    new_states: dict = {}
+    events: List[dict] = []
+    for probe_id, last_epoch in last_epochs.items():
+        age = now - last_epoch
+        cond = "offline" if age > offline_after_sec else "online"
+        prev = states.get(probe_id, "online")
+        if cond != prev:
+            events.append({"probe_id": probe_id, "kind": cond, "age_sec": int(age)})
+        new_states[probe_id] = cond
+    return events, new_states
+
+
 def format_event(event: dict, names: Optional[dict] = None) -> Tuple[str, str]:
     """Build a human (subject, message) pair for an event.
 
@@ -88,22 +114,28 @@ def format_event(event: dict, names: Optional[dict] = None) -> Tuple[str, str]:
     names = names or {}
     pid = event["probe_id"]
     label = names.get(pid, pid)
-    c = event["temperature_c"]
-    f = (c * 9.0 / 5.0) + 32.0
-    reading = f"{c:.1f}°C / {f:.1f}°F"
     kind = event["kind"]
     limit = event.get("limit")
 
+    # Connectivity events carry no temperature.
+    if kind == "offline":
+        mins = max(1, int(event.get("age_sec", 0)) // 60)
+        return (f"⚠️ {label}: OFFLINE (silent {mins} min)",
+                f"{label} has stopped reporting — no readings for {mins} minute(s).")
+    if kind == "online":
+        return (f"✅ {label}: back online",
+                f"{label} is reporting again.")
+
+    c = event["temperature_c"]
+    f = (c * 9.0 / 5.0) + 32.0
+    reading = f"{c:.1f}°C / {f:.1f}°F"
     if kind == "high":
-        subject = f"⚠️ {label}: temperature HIGH ({reading})"
-        message = f"{label} is {reading}, above the {limit:.1f}°C maximum threshold."
-    elif kind == "low":
-        subject = f"❄️ {label}: temperature LOW ({reading})"
-        message = f"{label} is {reading}, below the {limit:.1f}°C minimum threshold."
-    elif kind == "recovery":
-        subject = f"✅ {label}: temperature back to normal ({reading})"
-        message = f"{label} has returned to normal and is now {reading}."
-    else:  # test / other
-        subject = f"{label}: {reading}"
-        message = f"{label} is {reading}."
-    return subject, message
+        return (f"⚠️ {label}: temperature HIGH ({reading})",
+                f"{label} is {reading}, above the {limit:.1f}°C maximum threshold.")
+    if kind == "low":
+        return (f"❄️ {label}: temperature LOW ({reading})",
+                f"{label} is {reading}, below the {limit:.1f}°C minimum threshold.")
+    if kind == "recovery":
+        return (f"✅ {label}: temperature back to normal ({reading})",
+                f"{label} has returned to normal and is now {reading}.")
+    return f"{label}: {reading}", f"{label} is {reading}."

@@ -1,5 +1,5 @@
 """Tests for the threshold alert state machine (core.alerts)."""
-from core.alerts import classify, evaluate, format_event, threshold_for
+from core.alerts import classify, evaluate, evaluate_offline, format_event, threshold_for
 
 
 def test_classify():
@@ -58,3 +58,30 @@ def test_format_event_uses_friendly_name():
                              {"p1": "Freezer"})
     assert "Freezer" in subj and "HIGH" in subj
     assert "35.0" in msg and "30.0" in msg
+
+
+def test_offline_transition_and_recovery():
+    now = 10_000
+    # p1 silent for 10 min (> 300s) -> offline; p2 fresh -> online
+    last = {"p1": now - 600, "p2": now - 10}
+    events, states = evaluate_offline(last, {}, now=now, offline_after_sec=300)
+    kinds = {e["probe_id"]: e["kind"] for e in events}
+    assert kinds["p1"] == "offline"
+    assert "p2" not in kinds  # p2 started online; no transition emitted
+    assert states == {"p1": "offline", "p2": "online"}
+    # p1 reports again -> back online
+    events2, states2 = evaluate_offline({"p1": now, "p2": now}, states, now=now, offline_after_sec=300)
+    assert {e["probe_id"]: e["kind"] for e in events2} == {"p1": "online"}
+
+
+def test_offline_probe_drops_out_of_window():
+    # A probe absent from last_epochs (aged out) is forgotten, not alerted forever.
+    events, states = evaluate_offline({}, {"old": "offline"}, now=10_000, offline_after_sec=300)
+    assert events == [] and states == {}
+
+
+def test_format_event_offline_and_online():
+    subj, msg = format_event({"probe_id": "p", "kind": "offline", "age_sec": 660}, {"p": "Garage"})
+    assert "OFFLINE" in subj and "Garage" in subj and "11" in msg  # 660s -> 11 min
+    subj2, _ = format_event({"probe_id": "p", "kind": "online"}, {"p": "Garage"})
+    assert "back online" in subj2.lower()

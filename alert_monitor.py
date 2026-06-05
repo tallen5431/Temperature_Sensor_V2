@@ -10,10 +10,14 @@ import logging
 import threading
 import time
 
-from core.alerts import evaluate, format_event
+from core.alerts import evaluate, evaluate_offline, format_event
 from core.notifications import Notifier
 
 log = logging.getLogger("hub.alert_monitor")
+
+# Track probes for offline detection if they reported within this window. Bounds
+# the set so long-retired probes don't alert forever.
+OFFLINE_MONITOR_WINDOW_SEC = 86400
 
 
 class AlertMonitor(threading.Thread):
@@ -25,6 +29,8 @@ class AlertMonitor(threading.Thread):
         self.period_sec = int(period_sec)
         self._stop = threading.Event()
         self._states: dict = {}
+        self._offline_states: dict = {}
+        self._offline_seeded = False
         self._last_purge = 0.0
 
     def stop(self):
@@ -49,8 +55,16 @@ class AlertMonitor(threading.Thread):
     def check_once(self) -> list:
         conf = self.cfg.get("notifications", {}) or {}
         if not conf.get("enabled"):
-            self._states = {}  # reset so re-enabling re-alerts current breaches
+            # Reset so re-enabling re-alerts current breaches; re-seed offline.
+            self._states = {}
+            self._offline_states = {}
+            self._offline_seeded = False
             return []
+
+        names = self.cfg.get("probe_names", {}) or {}
+        all_events: list = []
+
+        # --- threshold alerts ---
         thresholds = self.cfg.get("alert_thresholds", {}) or {}
         readings = self._readings()
         events, self._states = evaluate(
@@ -58,10 +72,30 @@ class AlertMonitor(threading.Thread):
             cooldown_sec=int(conf.get("cooldown_sec", 1800) or 1800),
             notify_recovery=bool(conf.get("notify_recovery", True)),
         )
-        names = self.cfg.get("probe_names", {}) or {}
-        for ev in events:
+        all_events.extend(events)
+
+        # --- offline / back-online alerts ---
+        if conf.get("offline_alerts", True):
+            all_events.extend(self._check_offline())
+
+        for ev in all_events:
             subject, message = format_event(ev, names)
             self.notifier.dispatch({**ev, "subject": subject, "message": message})
+        return all_events
+
+    def _check_offline(self) -> list:
+        try:
+            offline_after = int(self.cfg.get("offline_after_sec", 300) or 300)
+        except (TypeError, ValueError):
+            offline_after = 300
+        last_epochs = self.db.last_reading_epoch_per_probe(window_seconds=OFFLINE_MONITOR_WINDOW_SEC)
+        events, self._offline_states = evaluate_offline(
+            last_epochs, self._offline_states, offline_after_sec=offline_after)
+        # The first cycle just records current state so we don't emit a burst of
+        # "offline" for probes that were already silent when the hub started.
+        if not self._offline_seeded:
+            self._offline_seeded = True
+            return []
         return events
 
     def maybe_purge(self):

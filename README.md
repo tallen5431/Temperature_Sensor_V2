@@ -93,6 +93,11 @@ You also control a **reminder interval** (how often to re-notify while a probe s
 out of range) and whether to send a **"back to normal"** message on recovery. Use
 **Send test** to verify your settings. Thresholds are in °C.
 
+**Offline alerts:** the hub also notifies you when a probe **stops reporting** for
+longer than *Offline after* (default 5 minutes), and again when it comes back —
+so a dead or unplugged probe doesn't go unnoticed. Toggle it under
+Settings → Notifications.
+
 **Calibration:** if a probe reads slightly high or low, enter a **Calibration Offset (°C)**
 in its Edit dialog — it's added to every reading at ingest, so stored data and alerts
 are corrected.
