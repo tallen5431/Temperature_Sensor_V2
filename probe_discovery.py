@@ -18,6 +18,42 @@ class ProbeInfo:
     properties: Dict[str, str] = field(default_factory=dict)
     last_seen: float = field(default_factory=time.time)
 
+
+def _probe_ip(p) -> str:
+    return (p.get("ip") if isinstance(p, dict) else getattr(p, "ip", None)) or ""
+
+
+def _probe_last_seen(p) -> float:
+    v = p.get("last_seen") if isinstance(p, dict) else getattr(p, "last_seen", None)
+    return float(v) if isinstance(v, (int, float)) else 0.0
+
+
+def dedupe_probes_by_ip(probes: Dict[str, "ProbeInfo"]) -> Dict[str, "ProbeInfo"]:
+    """Collapse entries that share a LAN IP down to the single freshest one.
+
+    A single physical probe can transiently appear under two identities — e.g.
+    the mDNS record advertised at boot (before the DS18B20 ROM is read) and the
+    id it later POSTs to ``/api/ingest`` — which still share one LAN IP.  Keeping
+    only the most recently-seen entry per IP means one device shows as one card
+    (and is counted once in ``/api/health``).  Entries whose IP is unknown are
+    passed through untouched, and the surviving entry keeps its real dict key so
+    callers (provisioner, IP refresh) can still address it.
+    """
+    winners: Dict[str, tuple] = {}   # ip -> (key, probe)
+    out: Dict[str, "ProbeInfo"] = {}
+    for key, p in probes.items():
+        ip = _probe_ip(p)
+        if not ip:
+            out[key] = p
+            continue
+        cur = winners.get(ip)
+        if cur is None or _probe_last_seen(p) > _probe_last_seen(cur[1]):
+            winners[ip] = (key, p)
+    for key, p in winners.values():
+        out[key] = p
+    return out
+
+
 class ProbeDiscovery:
     def __init__(self):
         self._zc = Zeroconf()
@@ -162,7 +198,10 @@ class ProbeDiscovery:
 
     def list_probes(self) -> Dict[str, ProbeInfo]:
         with self._lock:
-            return dict(self._probes)
+            snapshot = dict(self._probes)
+        # Collapse a probe that is transiently known under two identities (e.g.
+        # an mDNS record plus the id it POSTs on ingest) to one entry per IP.
+        return dedupe_probes_by_ip(snapshot)
 
     def prune_stale(self, max_age_sec: float = 3600.0) -> int:
         """Drop probes not seen within max_age_sec so the table stays bounded.

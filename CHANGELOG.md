@@ -4,6 +4,24 @@ All notable changes to the Temperature Hub (the PC-side application) are
 documented here. The ESP32 firmware is versioned separately (see
 `esp32_temp_probe/esp32_temp_probe.ino`).
 
+## [2.2.1] — Stable probe identity (no more duplicate cards)
+
+### Fixed
+- **A single probe could appear twice on the Devices page.** The firmware
+  derived the probe id from the DS18B20 ROM code when that read succeeded
+  (`TempProbe-XXXX`) but fell back to the ESP32 chip id when it failed on a cold
+  boot (`TempSensor-XXXX`). Because the probe re-runs `setup()` on every
+  deep-sleep wake, one physical device could report two identities and show as
+  two cards (same IP). Fixed on both ends:
+  - **Firmware (root cause, requires reflash):** the probe id is now derived
+    once — retrying the ROM read so the first id is the good ROM-based one — then
+    persisted to NVS and reused on every boot, so a later failed read can never
+    flip the identity. Firmware bumped to **v1.6.0**.
+  - **Hub (defensive, no reflash needed):** `list_probes()` now collapses
+    entries that share a LAN IP to the single most recently-seen one, so a
+    device shows as one card and is counted once in `/api/health`. Pure,
+    unit-tested logic (`probe_discovery.dedupe_probes_by_ip`).
+
 ## [2.2.0] — Offline-probe alerts & standalone packaging
 
 ### Added

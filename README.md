@@ -178,6 +178,7 @@ installing Python (plus auto-start service setup for Linux/Windows/macOS), see
 
 | Symptom | Fix |
 |---|---|
+| **Same probe shows twice** | Fixed in firmware **v1.6.0** + hub **v2.2.1** (the probe id is now stable across reboots). The hub also de-duplicates by IP, so older firmware no longer double-lists; reflash the probe to fix it at the source |
 | **Probe appears in UI but no readings** | Wait ~20 s for auto-provisioner; or open `http://<probe-ip>/status` to verify its `server_url` |
 | **401 Unauthorized on ingest** | Set `SERVER_TOKEN` env var and restart; the hub re-provisions probes with the token automatically |
 | **No probes discovered** | A firewall may be blocking UDP 5353 (mDNS). Readings still work if the probe POSTs directly to the hub IP |

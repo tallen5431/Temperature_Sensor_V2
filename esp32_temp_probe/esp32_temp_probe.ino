@@ -1,4 +1,8 @@
 // ESP32 + DS18B20 + WiFiManager + mDNS + OTA + WebServer
+// v1.6.0 — stable probe identity: the probe id is derived once (DS18B20 ROM,
+//           with retry, else the chip id) and persisted to NVS, so a later
+//           failed sensor read can no longer flip the identity and make the hub
+//           list a single probe as two devices.
 // v1.5.0 — battery sleep: when the read interval is >= DEEP_SLEEP_MIN_MS
 //           (default 10 s) the device enters deep sleep between readings,
 //           cutting idle current from ~100 mA to <1 mA.  For shorter
@@ -47,7 +51,7 @@ inline void ledBlink(uint8_t n, uint16_t onMs = 60, uint16_t offMs = 120) {
 
 // ---------------- Identity --------------------------------------------------
 static const char* SENSOR_NAME = "TempSensor";
-static const char* FW_VERSION  = "1.5.0";
+static const char* FW_VERSION  = "1.6.0";
 
 // ---------------- Sleep configuration --------------------------------------
 // Set DEEP_SLEEP_ENABLED to false to revert to always-on behaviour (the web
@@ -560,6 +564,39 @@ String buildProbeId(const String& rom, const String& chip) {
   return                        "TempSensor-" + chip.substring(4);
 }
 
+// Read the DS18B20 ROM with a few retries.  On a cold boot the 1-Wire bus can
+// need a moment to settle; without this the first read sometimes fails and the
+// probe id would fall back to the (different) chip-based name.
+String ds18b20RomHexRetry() {
+  for (uint8_t i = 0; i < 5; i++) {
+    String rom = ds18b20RomHex();
+    if (rom.length()) return rom;
+    sensors.begin();          // re-enumerate the bus, then retry
+    delay(50);
+  }
+  return "";
+}
+
+// Return a STABLE probe id that never changes for the life of the device.
+// The first id we ever derive (ROM-based when the sensor reads, else chip-based)
+// is persisted to NVS and reused on every subsequent boot, so a later failed
+// ROM read cannot flip the identity and make the hub show one probe as two.
+String stableProbeId(const String& rom, const String& chip) {
+  String saved;
+  if (prefs.begin("tscfg", true)) {
+    saved = prefs.getString("probe_id", "");
+    prefs.end();
+  }
+  if (saved.length()) return saved;          // identity already established
+
+  String id = buildProbeId(rom, chip);
+  if (prefs.begin("tscfg", false)) {
+    prefs.putString("probe_id", id);
+    prefs.end();
+  }
+  return id;
+}
+
 // ============================================================================
 // Deep sleep
 // ============================================================================
@@ -611,10 +648,11 @@ void setup() {
   sensors.setWaitForConversion(false);
   Serial.printf("DS18B20 sensors found: %d\n", sensors.getDeviceCount());
 
-  // Cache identity strings
+  // Cache identity strings.  The probe id is derived once and persisted, so it
+  // stays stable across reboots even if a later DS18B20 ROM read fails.
   g_chipId       = chipIdHex();
-  g_romHex       = ds18b20RomHex();
-  g_probeId      = buildProbeId(g_romHex, g_chipId);
+  g_romHex       = ds18b20RomHexRetry();
+  g_probeId      = stableProbeId(g_romHex, g_chipId);
   g_instanceName = String(SENSOR_NAME) + "-" + g_chipId.substring(4);
   Serial.printf("Probe ID:  %s\n", g_probeId.c_str());
 
