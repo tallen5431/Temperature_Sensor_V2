@@ -4,6 +4,33 @@ All notable changes to the Temperature Hub (the PC-side application) are
 documented here. The ESP32 firmware is versioned separately (see
 `esp32_temp_probe/esp32_temp_probe.ino`).
 
+## [2.1.0] — Notifications, calibration, retention & backups
+
+### Added
+- **Threshold notifications** that run server-side on a background thread
+  (`alert_monitor.py`), so alerts fire even when no browser is open. Channels:
+  **email (SMTP)** and **webhook** (Slack-compatible `text` field +
+  structured JSON for Zapier/IFTTT/custom). Per-probe min/max thresholds with a
+  `default` fallback, a configurable reminder cooldown, and optional
+  "back to normal" recovery notices. Alert logic is a pure, unit-tested state
+  machine (`core/alerts.py`) that only emits on transitions/cooldowns — never
+  one message per poll.
+- **Per-probe calibration offset** (`calibration_offsets`), applied at ingest so
+  the stored value is the corrected temperature (DS18B20s vary ~±0.5 °C).
+  Editable from the Devices → Edit Probe modal.
+- **Data retention** (`retention_days`): readings older than N days are purged
+  automatically (hourly), keeping disk bounded. 0 = keep forever.
+- **One-click database backup** (`/download/backup.db`) — a consistent SQLite
+  snapshot.
+- A **Settings UI** to configure notifications and retention without editing
+  JSON, with a "Send test" button.
+- Rotating file logging (`core/logging_setup.py`, `logs/hub.log`) replacing ad-hoc
+  prints in the startup/serving path.
+
+### Fixed
+- `latest_per_probe` now breaks epoch ties by insertion id, so "latest" is
+  deterministic when two readings land in the same second.
+
 ## [2.0.0] — Hub data layer & production hardening
 
 ### Changed

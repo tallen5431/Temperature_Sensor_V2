@@ -54,6 +54,16 @@ DevicesLayout = html.Div([
                     ], width=6),
                 ]),
                 html.Small("Leave blank to disable threshold alerts for this probe", className='text-muted d-block mt-1'),
+                html.Hr(),
+                html.Label("Calibration Offset (°C):", className='fw-bold mb-2 mt-1 d-block'),
+                dbc.Input(
+                    id='edit-probe-cal-input',
+                    type='number',
+                    step=0.1,
+                    placeholder='e.g. -0.5',
+                    className='mb-1'
+                ),
+                html.Small("Added to every reading from this probe to correct sensor error", className='text-muted'),
             ])
         ]),
         dbc.ModalFooter([
@@ -178,6 +188,7 @@ def register_devices_callbacks(app, finder, cfg, public_base_func=None, token=""
         Output('edit-probe-interval-input', 'value'),
         Output('edit-probe-min-input', 'value'),
         Output('edit-probe-max-input', 'value'),
+        Output('edit-probe-cal-input', 'value'),
         Input({'type': 'edit-probe-btn', 'index': ALL}, 'n_clicks'),
         Input('edit-probe-cancel', 'n_clicks'),
         Input('edit-probe-save', 'n_clicks'),
@@ -187,14 +198,15 @@ def register_devices_callbacks(app, finder, cfg, public_base_func=None, token=""
         State('edit-probe-interval-input', 'value'),
         State('edit-probe-min-input', 'value'),
         State('edit-probe-max-input', 'value'),
+        State('edit-probe-cal-input', 'value'),
         prevent_initial_call=True
     )
     def toggle_edit_modal(edit_clicks, cancel_clicks, save_clicks, is_open,
                           stored_probe_id, name_value, interval_value,
-                          min_value, max_value):
+                          min_value, max_value, cal_value):
         from dash import callback_context
         if not callback_context.triggered:
-            return no_update, no_update, no_update, no_update, no_update, no_update, no_update
+            return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
 
         button_id = callback_context.triggered[0]['prop_id']
 
@@ -203,9 +215,9 @@ def register_devices_callbacks(app, finder, cfg, public_base_func=None, token=""
             try:
                 triggered_val = callback_context.triggered[0].get('value', None)
                 if not triggered_val:
-                    return no_update, no_update, no_update, no_update, no_update, no_update, no_update
+                    return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
             except Exception:
-                return no_update, no_update, no_update, no_update, no_update, no_update, no_update
+                return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
 
             import json
             try:
@@ -226,13 +238,16 @@ def register_devices_callbacks(app, finder, cfg, public_base_func=None, token=""
                 current_min = probe_thresholds.get('min', None)
                 current_max = probe_thresholds.get('max', None)
 
-                return True, probe_id, probe_id, current_name, current_interval_sec, current_min, current_max
+                # Per-probe calibration offset
+                current_cal = (cfg.get('calibration_offsets', {}) or {}).get(probe_id, None)
+
+                return True, probe_id, probe_id, current_name, current_interval_sec, current_min, current_max, current_cal
             except Exception:
-                return no_update, no_update, no_update, no_update, no_update, no_update, no_update
+                return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
 
         # Cancel button clicked
         elif 'edit-probe-cancel' in button_id:
-            return False, None, '', '', no_update, no_update, no_update
+            return False, None, '', '', no_update, no_update, no_update, no_update
 
         # Save button clicked
         elif 'edit-probe-save' in button_id:
@@ -263,7 +278,17 @@ def register_devices_callbacks(app, finder, cfg, public_base_func=None, token=""
                 else:
                     alert_thresholds.pop(stored_probe_id, None)
                 cfg.update({'alert_thresholds': alert_thresholds})
-                print(f'[devices_panel] Saved thresholds for {stored_probe_id}: {probe_thresholds}')
+
+                # --- Save per-probe calibration offset ---
+                calibration_offsets = cfg.get('calibration_offsets', {})
+                try:
+                    if cal_value not in (None, ''):
+                        calibration_offsets[stored_probe_id] = float(cal_value)
+                    else:
+                        calibration_offsets.pop(stored_probe_id, None)
+                except (TypeError, ValueError):
+                    calibration_offsets.pop(stored_probe_id, None)
+                cfg.update({'calibration_offsets': calibration_offsets})
 
                 # --- Save per-probe interval ---
                 global_interval_sec = cfg.get('interval_sec', 5)
@@ -310,6 +335,6 @@ def register_devices_callbacks(app, finder, cfg, public_base_func=None, token=""
                     except Exception as e:
                         print(f'[devices_panel] Provision-on-save failed: {e}')
 
-            return False, None, '', '', no_update, no_update, no_update
+            return False, None, '', '', no_update, no_update, no_update, no_update
 
-        return no_update, no_update, no_update, no_update, no_update, no_update, no_update
+        return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update

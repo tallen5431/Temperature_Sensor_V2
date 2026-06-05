@@ -6,6 +6,7 @@ from dash import dcc, html
 from components.dashboard_view import DashboardLayout
 from components.devices_panel import DevicesLayout, register_devices_callbacks
 from components.setup_helper import SetupHelper, register_setup_helper_callbacks
+from components.settings_panel import SettingsPanel, register_settings_callbacks
 from components.help_modal import HelpModal
 from core.version import HUB_VERSION, PRODUCT_NAME
 
@@ -14,7 +15,8 @@ def serve_page(pathname):
     if pathname == "/devices":
         return DevicesLayout
     elif pathname == "/settings":
-        return html.Div([html.H4("Settings & Configuration"), SetupHelper])
+        return html.Div([html.H4("Settings & Configuration", className="mb-3"),
+                         SettingsPanel, SetupHelper])
     elif pathname == "/help":
         return html.Div([HelpModal()])
     else:
@@ -62,3 +64,4 @@ def register_all_callbacks(app, finder, cfg, db, public_base_func=None, token=""
     register_dashboard_callbacks(app, finder, cfg, db)
     register_devices_callbacks(app, finder, cfg, public_base_func=public_base_func, token=token)
     register_setup_helper_callbacks(app)
+    register_settings_callbacks(app, cfg)

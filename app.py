@@ -1,14 +1,17 @@
 import io
+import logging
 import os
 import socket
+import tempfile
 from pathlib import Path
 
 import dash_bootstrap_components as dbc
 from dash import Dash, Input, Output
-from flask import Flask, Response, request
+from flask import Flask, Response, request, send_file
 
 from core.config import Config
 from core.db import Database, migrate_csv_if_present
+from core.logging_setup import configure_logging
 from core.mdns_advert import MdnsAdvert
 from probe_discovery import ProbeDiscovery
 from api.routes import create_api
@@ -16,6 +19,9 @@ from components.layout_main import LAYOUT, serve_page, register_all_callbacks
 from components.help_modal import register_help_callbacks
 
 BASE_DIR = Path(__file__).resolve().parent
+configure_logging(log_dir=str(BASE_DIR / "logs"))
+log = logging.getLogger("hub.app")
+
 DB_FILE = Path(os.getenv("DB_FILE", str(BASE_DIR / "temperature_log.db")))
 LEGACY_CSV = Path(os.getenv("CSV_FILE", str(BASE_DIR / "temperature_log.csv")))
 CONFIG_FILE = BASE_DIR / "config.json"
@@ -27,19 +33,19 @@ if not CONFIG_FILE.exists() and CONFIG_EXAMPLE.exists():
     try:
         CONFIG_FILE.write_text(CONFIG_EXAMPLE.read_text(encoding="utf-8"), encoding="utf-8")
     except Exception as _e:
-        print(f"[WARNING] Could not seed config.json from example: {_e}")
+        log.warning("Could not seed config.json from example: %s", _e)
 
 db = Database(DB_FILE)
 _migrated = migrate_csv_if_present(db, LEGACY_CSV)
 if _migrated:
-    print(f"[migrate] Imported {_migrated} reading(s) from legacy CSV into {DB_FILE.name}")
+    log.info("Imported %d reading(s) from legacy CSV into %s", _migrated, DB_FILE.name)
 
 cfg = Config(CONFIG_FILE)
 finder = ProbeDiscovery()
 try:
     finder.start()
 except Exception as _e:
-    print(f"[WARNING] Probe discovery failed to start: {_e}. Devices tab will be empty.")
+    log.warning("Probe discovery failed to start: %s. Devices tab will be empty.", _e)
 
 server = Flask(__name__)
 
@@ -87,12 +93,33 @@ def download_csv():
     try:
         db.export_csv(buf, window_seconds=window)
     except Exception:
+        log.exception("CSV export failed")
         return "Export failed", 500
     return Response(
         buf.getvalue(),
         mimetype="text/csv",
         headers={"Content-Disposition": "attachment; filename=temperature_log.csv"},
     )
+
+
+@server.route("/download/backup.db")
+def download_backup():
+    """Download a consistent SQLite snapshot of the entire database."""
+    fd, tmp_path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        db.backup(tmp_path)
+        return send_file(tmp_path, as_attachment=True, download_name="temperature_hub_backup.db")
+    except Exception:
+        log.exception("Backup failed")
+        return "Backup failed", 500
+    finally:
+        # send_file streams before this runs; on most platforms the temp file can
+        # be unlinked immediately after the response is built.
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
 
 
 @app.callback(Output("page-content", "children"), Input("url", "pathname"))
@@ -105,15 +132,15 @@ register_help_callbacks(app)
 
 
 def _start_background_services(port: int):
-    """Start mDNS advertisement and the auto-provisioner. Returns a cleanup fn."""
+    """Start mDNS, the auto-provisioner, and the alert monitor. Returns cleanup fn."""
     mdns = None
     if os.getenv("MDNS_ENABLE", "1") not in ("0", "false", "False"):
         mdns = MdnsAdvert()
         try:
             ip = mdns.start(port)
-            print(f"[mDNS] Advertising http://temps-hub.local:{port} (ip {ip})")
+            log.info("mDNS advertising http://temps-hub.local:%s (ip %s)", port, ip)
         except Exception as e:
-            print(f"[WARNING] mDNS advertisement failed: {e}")
+            log.warning("mDNS advertisement failed: %s", e)
             mdns = None
 
     provisioner = None
@@ -128,9 +155,14 @@ def _start_background_services(port: int):
             cfg=cfg,
         )
         provisioner.start()
-        print("[auto-provisioner] Started (provisioning probes every 10 s)")
+        log.info("Auto-provisioner started (every 10 s)")
+
+    from alert_monitor import AlertMonitor
+    monitor = AlertMonitor(db, cfg, period_sec=int(os.getenv("ALERT_CHECK_SEC", "30")))
+    monitor.start()
 
     def _cleanup():
+        monitor.stop()
         if provisioner:
             provisioner.stop()
         if mdns:
@@ -157,10 +189,10 @@ def main():
     try:
         try:
             from waitress import serve
-            print(f"[server] Serving on http://{host}:{port} (waitress, production server)")
+            log.info("Serving on http://%s:%s (waitress)", host, port)
             serve(server, host=host, port=port, threads=8)
         except ImportError:
-            print(f"[server] waitress not installed — using Flask dev server on {host}:{port}")
+            log.warning("waitress not installed — using Flask dev server on %s:%s", host, port)
             app.run(host=host, port=port, debug=False)
     finally:
         cleanup()

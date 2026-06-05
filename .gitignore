@@ -22,3 +22,6 @@ temperature_log.csv
 *.db
 *.db-wal
 *.db-shm
+
+# Application logs
+logs/

@@ -4,6 +4,28 @@
   "auto_provision": true,
   "provision_token": "",
   "probe_online_timeout_sec": 60,
+  "retention_days": 0,
+  "alert_freshness_sec": 600,
   "probe_names": {},
-  "alert_thresholds": {}
+  "alert_thresholds": {},
+  "calibration_offsets": {},
+  "notifications": {
+    "enabled": false,
+    "cooldown_sec": 1800,
+    "notify_recovery": true,
+    "email": {
+      "enabled": false,
+      "smtp_host": "",
+      "smtp_port": 587,
+      "use_tls": true,
+      "username": "",
+      "password": "",
+      "from": "",
+      "to": ""
+    },
+    "webhook": {
+      "enabled": false,
+      "url": ""
+    }
+  }
 }

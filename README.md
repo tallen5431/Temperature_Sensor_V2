@@ -71,9 +71,35 @@ All settings have sensible defaults. You can override them with environment vari
 | `CSV_FILE` | `temperature_log.csv` | Legacy CSV imported once on first start, then unused |
 | `MDNS_ENABLE` | `1` | Set to `0` to disable hub mDNS advertisement |
 
-Per-probe options (friendly names, alert thresholds, read interval) live in `config.json`, which is seeded from `config.example.json` on first run and is **not** tracked in git. The hub's UI **Settings** and **Devices** pages edit these for you.
+Per-probe options (friendly names, alert thresholds, read interval, calibration offset) live in `config.json`, which is seeded from `config.example.json` on first run and is **not** tracked in git. The hub's UI **Settings** and **Devices** pages edit these for you.
 
 > **Security:** the hub serves on your LAN with no authentication by default. For anything beyond a trusted home network, set `SERVER_TOKEN` so only probes (and tools) holding the secret can post readings or change configuration.
+
+---
+
+## Notifications & Alerts
+
+Set a **min/max threshold** per probe on the **Devices** page (✏️ Edit), then turn on
+notifications under **Settings → Notifications**. A background monitor checks the
+latest reading from each probe and notifies you when one goes out of range — it
+runs server-side, so alerts fire even with no browser open.
+
+| Channel | What you need |
+|---|---|
+| **Email** | SMTP host/port, username/password, from + to addresses. Port 465 uses SSL; 587 uses STARTTLS. |
+| **Webhook** | A URL. The hub POSTs JSON with a Slack-compatible `text` field, so Slack/Discord/Zapier/IFTTT and custom relays (e.g. Twilio for SMS) all work. |
+
+You also control a **reminder interval** (how often to re-notify while a probe stays
+out of range) and whether to send a **"back to normal"** message on recovery. Use
+**Send test** to verify your settings. Thresholds are in °C.
+
+**Calibration:** if a probe reads slightly high or low, enter a **Calibration Offset (°C)**
+in its Edit dialog — it's added to every reading at ingest, so stored data and alerts
+are corrected.
+
+**Data retention & backup (Settings → Data Management):** keep readings for a fixed
+number of days (0 = forever), and download a one-click SQLite **backup** of the whole
+database.
 
 ---
 
@@ -81,19 +107,23 @@ Per-probe options (friendly names, alert thresholds, read interval) live in `con
 
 | File | Purpose |
 |---|---|
-| `app.py` | Entry point — bootstraps Flask/Dash, runs under waitress, starts discovery and provisioner |
-| `api/routes.py` | REST endpoints: `/health`, `/config`, `/probes`, `/provision`, `/ingest` |
+| `app.py` | Entry point — bootstraps Flask/Dash, runs under waitress, starts discovery, provisioner, and alert monitor |
+| `api/routes.py` | REST endpoints: `/health`, `/config`, `/probes`, `/provision`, `/ingest` (calibration applied here) |
 | `probe_discovery.py` | mDNS browser that finds and tracks probes |
 | `provisioning.py` / `provisioner.py` | Push ingest URL to probes (client functions / background thread) |
-| `core/db.py` | SQLite reading store (WAL), windowed queries, CSV export, legacy-CSV import |
+| `alert_monitor.py` | Background thread: threshold alerts + data-retention maintenance |
+| `core/db.py` | SQLite reading store (WAL), windowed queries, CSV export, backup, retention, legacy-CSV import |
+| `core/alerts.py` | Pure threshold/alert state machine (transitions, cooldown, recovery) |
+| `core/notifications.py` | Email + webhook channels and the dispatcher |
 | `core/config.py` | Thread-safe JSON config management |
 | `core/storage.py` | Ingest payload normalisation and timezone handling |
+| `core/logging_setup.py` | Rotating file + console logging |
 | `core/mdns_advert.py` | Advertises the hub on mDNS |
 | `core/version.py` | Hub version / product metadata |
-| `components/` | Dash UI panels (dashboard, devices, probe setup wizard) |
+| `components/` | Dash UI panels (dashboard, devices, settings, probe setup wizard) |
 | `config.example.json` | Default config seeded to `config.json` on first run |
 | `temperature_log.db` | SQLite data store (created automatically) |
-| `tests/` | Pytest suite for the data layer, API, and dashboard logic |
+| `tests/` | Pytest suite (data layer, API, alerts, notifications, monitor, dashboard) |
 
 ---
 
@@ -105,7 +135,7 @@ curl "http://localhost:8088/api/ingest?temperature_c=22.3"
 # → {"ok": true}
 ```
 
-Or open the URL directly in your browser — a new row should appear in `temperature_log.csv` and on the dashboard.
+Or open the URL directly in your browser — a new row should appear in the database and on the dashboard.
 
 ---
 

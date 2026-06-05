@@ -178,18 +178,21 @@ class Database:
         }
 
     def latest_per_probe(self, window_seconds: Optional[int] = None) -> pd.DataFrame:
-        """Latest reading for each probe within the window (for alert checks).
+        """Latest reading for each probe within the window (for alerts/display).
 
-        Relies on SQLite's documented guarantee that, with ``GROUP BY`` and a
-        ``MAX()`` aggregate, the bare columns come from the row holding that
-        maximum — so each row returned is the newest reading per probe.
+        Ties on ``epoch`` (two readings in the same second) are broken by
+        insertion ``id`` so "latest" is always the most recently stored row.
         """
         conn = self._conn()
         cutoff = self._cutoff(window_seconds)
         where = "WHERE epoch >= ?" if cutoff is not None else ""
         params: tuple = (cutoff,) if cutoff is not None else ()
         rows = conn.execute(
-            f"SELECT {_SELECT_COLS}, MAX(epoch) AS _m FROM readings {where} GROUP BY probe_id",
+            f"SELECT timestamp, temperature_c, temperature_f, probe_id FROM ("
+            f"  SELECT ts AS timestamp, temperature_c, temperature_f, probe_id, "
+            f"         ROW_NUMBER() OVER (PARTITION BY probe_id ORDER BY epoch DESC, id DESC) AS rn"
+            f"  FROM readings {where}"
+            f") WHERE rn = 1",
             params,
         ).fetchall()
         return pd.DataFrame(
@@ -197,6 +200,27 @@ class Database:
               "temperature_f": r["temperature_f"], "probe_id": r["probe_id"]} for r in rows],
             columns=["timestamp", "temperature_c", "temperature_f", "probe_id"],
         )
+
+    # -- maintenance -----------------------------------------------------------
+    def purge_older_than(self, days: int) -> int:
+        """Delete readings older than ``days`` days. Returns rows removed."""
+        if not days or int(days) <= 0:
+            return 0
+        cutoff = int(time.time()) - int(days) * 86400
+        conn = self._conn()
+        with self._write_lock:
+            cur = conn.execute("DELETE FROM readings WHERE epoch < ?", (cutoff,))
+            conn.commit()
+            return cur.rowcount
+
+    def backup(self, dest_path: str | Path) -> None:
+        """Write a consistent snapshot of the database to ``dest_path``."""
+        dest = sqlite3.connect(str(dest_path))
+        try:
+            with self._write_lock:
+                self._conn().backup(dest)
+        finally:
+            dest.close()
 
     # -- export ----------------------------------------------------------------
     def export_csv(self, file_obj, window_seconds: Optional[int] = None) -> int:

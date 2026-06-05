@@ -106,6 +106,31 @@ def test_iso_to_epoch_roundtrip():
     assert abs(iso_to_epoch("not-a-date") - time.time()) < 2
 
 
+def test_purge_older_than(db):
+    now = datetime.datetime.now()
+    db.append(_iso(now - datetime.timedelta(days=40)), 10.0, 50.0, "p")  # old
+    db.append(_iso(now - datetime.timedelta(days=5)), 20.0, 68.0, "p")   # recent
+    db.append(_iso(now), 21.0, 69.8, "p")                                # recent
+    removed = db.purge_older_than(30)
+    assert removed == 1
+    assert db.count() == 2
+    # 0 days = keep forever (no-op)
+    assert db.purge_older_than(0) == 0
+    assert db.count() == 2
+
+
+def test_backup_snapshot(db, tmp_path):
+    now = datetime.datetime.now()
+    for i in range(5):
+        db.append(_iso(now - datetime.timedelta(seconds=i)), float(i), 0.0, "p")
+    dest = tmp_path / "backup.db"
+    db.backup(dest)
+    assert dest.exists()
+    # The snapshot is a valid, queryable database with the same row count.
+    snap = Database(dest)
+    assert snap.count() == 5
+
+
 def test_migrate_csv(tmp_path):
     csv_path = tmp_path / "legacy.csv"
     csv_path.write_text(

@@ -195,8 +195,22 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
             server_base=base,
         )
 
+    def _calibration_offset(probe_id: str) -> float:
+        if not probe_id:
+            return 0.0
+        try:
+            return float((cfg.get("calibration_offsets", {}) or {}).get(probe_id, 0.0))
+        except (TypeError, ValueError):
+            return 0.0
+
     def _store(data: dict, remote_addr: str, probe_id: str):
         ts, t_c, t_f = normalize_payload(data)
+        # Apply per-probe calibration so the stored value is the corrected
+        # temperature (DS18B20 sensors vary by up to ~0.5 °C).
+        offset = _calibration_offset(probe_id)
+        if offset:
+            t_c += offset
+            t_f = (t_c * 9.0 / 5.0) + 32.0
         db.append(ts, t_c, t_f, probe_id=probe_id)
         if discovery and probe_id:
             try:

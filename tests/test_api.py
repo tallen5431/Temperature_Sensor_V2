@@ -81,6 +81,20 @@ def test_probes_listing_has_online_flag(tmp_path):
     assert any(p["probe_id"] == "p1" and p["online"] is True for p in probes)
 
 
+def test_calibration_offset_applied_at_ingest(tmp_path):
+    client, db, _ = _make_client(tmp_path)
+    # Probe p1 reads 1.5 C too high -> offset corrects it down (set via the API).
+    client.post("/api/config", json={"calibration_offsets": {"p1": -1.5}})
+
+    client.post("/api/ingest", json={"temperature_c": 20.0, "probe_id": "p1"})
+    latest = db.latest()
+    assert latest["temperature_c"] == 18.5            # 20.0 - 1.5
+    assert abs(latest["temperature_f"] - 65.3) < 0.05  # recomputed from corrected C
+    # A probe without an offset is stored unchanged.
+    client.post("/api/ingest", json={"temperature_c": 20.0, "probe_id": "p2"})
+    assert db.latest()["temperature_c"] == 20.0
+
+
 def test_auth_required_when_token_set(tmp_path):
     client, db, _ = _make_client(tmp_path, token="abc123")
     # No token -> rejected
