@@ -153,8 +153,12 @@ pytest
 
 The hub runs under **waitress** (a production WSGI server) when it's installed,
 and falls back to Flask's development server otherwise. Tests cover the SQLite
-data layer, REST API, ingest/timezone normalisation, and the dashboard
-computation. CI runs the same suite on every push (`.github/workflows/ci.yml`).
+data layer, REST API, ingest/timezone normalisation, alerts/notifications, and the
+dashboard computation. CI runs the same suite on every push (`.github/workflows/ci.yml`).
+
+See **[TESTING.md](TESTING.md)** for the full test plan — automated suite,
+hardware-in-the-loop, resilience/failure injection, notification checks, soak/load,
+and a pre-release checklist.
 
 ---
 

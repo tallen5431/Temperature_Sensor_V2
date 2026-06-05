@@ -99,6 +99,26 @@ class Database:
             )
             conn.commit()
 
+    def bulk_insert(self, rows) -> int:
+        """Insert many ``(ts, t_c, t_f, probe_id)`` tuples in one transaction.
+
+        Used for the legacy-CSV migration so importing tens of thousands of rows
+        is a single commit rather than one per row.  Returns rows inserted.
+        """
+        params = [(str(ts), iso_to_epoch(ts), float(t_c), float(t_f), (pid or ""))
+                  for (ts, t_c, t_f, pid) in rows]
+        if not params:
+            return 0
+        conn = self._conn()
+        with self._write_lock:
+            conn.executemany(
+                "INSERT INTO readings (ts, epoch, temperature_c, temperature_f, probe_id) "
+                "VALUES (?, ?, ?, ?, ?)",
+                params,
+            )
+            conn.commit()
+        return len(params)
+
     # -- reads -----------------------------------------------------------------
     def count(self) -> int:
         row = self._conn().execute("SELECT COUNT(*) AS n FROM readings").fetchone()
@@ -250,7 +270,7 @@ def migrate_csv_if_present(db: "Database", csv_path: str | Path) -> int:
     csv_path = Path(csv_path)
     if not csv_path.exists() or db.count() > 0:
         return 0
-    imported = 0
+    rows = []
     try:
         with csv_path.open("r", encoding="utf-8", newline="") as f:
             reader = _csv.DictReader(f)
@@ -266,8 +286,8 @@ def migrate_csv_if_present(db: "Database", csv_path: str | Path) -> int:
                     t_f = float(row.get("temperature_f"))
                 except (TypeError, ValueError):
                     t_f = (t_c * 9.0 / 5.0) + 32.0
-                db.append(ts, t_c, t_f, (row.get("probe_id") or "").strip())
-                imported += 1
+                rows.append((ts, t_c, t_f, (row.get("probe_id") or "").strip()))
+        return db.bulk_insert(rows)
     except Exception:
-        return imported
-    return imported
+        # Partial import is still useful; insert whatever parsed cleanly.
+        return db.bulk_insert(rows)

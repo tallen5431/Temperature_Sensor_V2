@@ -106,6 +106,16 @@ def test_iso_to_epoch_roundtrip():
     assert abs(iso_to_epoch("not-a-date") - time.time()) < 2
 
 
+def test_bulk_insert(db):
+    now = datetime.datetime.now()
+    rows = [(_iso(now - datetime.timedelta(seconds=i)), float(i), float(i) * 2, "p")
+            for i in range(100)]
+    n = db.bulk_insert(rows)
+    assert n == 100
+    assert db.count() == 100
+    assert db.bulk_insert([]) == 0  # empty is a no-op
+
+
 def test_purge_older_than(db):
     now = datetime.datetime.now()
     db.append(_iso(now - datetime.timedelta(days=40)), 10.0, 50.0, "p")  # old

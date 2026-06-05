@@ -107,6 +107,40 @@ def _err(msg):
     return dbc.Alert(msg, color="danger", dismissable=True, className="mb-0")
 
 
+def build_notifications_config(enabled, cooldown_min, recovery, email_enabled, host, port,
+                               tls, user, sender, to, webhook_enabled, url, password,
+                               existing_password=""):
+    """Turn raw Settings form values into a notifications config dict.
+
+    Pure and module-level so it can be unit-tested.  A blank password means
+    "keep the stored one"; cooldown is taken in minutes and stored as seconds.
+    """
+    try:
+        cooldown_sec = max(60, int(float(cooldown_min)) * 60)
+    except (TypeError, ValueError):
+        cooldown_sec = 1800
+    try:
+        port = int(port)
+    except (TypeError, ValueError):
+        port = 587
+    return {
+        "enabled": bool(enabled),
+        "cooldown_sec": cooldown_sec,
+        "notify_recovery": bool(recovery),
+        "email": {
+            "enabled": bool(email_enabled),
+            "smtp_host": (host or "").strip(),
+            "smtp_port": port,
+            "use_tls": bool(tls),
+            "username": (user or "").strip(),
+            "password": password if password else existing_password,
+            "from": (sender or "").strip(),
+            "to": (to or "").strip(),
+        },
+        "webhook": {"enabled": bool(webhook_enabled), "url": (url or "").strip()},
+    }
+
+
 def register_settings_callbacks(app, cfg):
     @app.callback(
         Output("notif-enabled", "value"),
@@ -144,34 +178,9 @@ def register_settings_callbacks(app, cfg):
             int(cfg.get("retention_days", 0) or 0),
         )
 
-    def _collect_notifications(enabled, cooldown_min, recovery, email_enabled, host, port,
-                               tls, user, sender, to, webhook_enabled, url, password):
-        # Blank password means "keep the stored one".
-        existing_pass = ((cfg.get("notifications", {}) or {}).get("email", {}) or {}).get("password", "")
-        try:
-            cooldown_sec = max(60, int(float(cooldown_min)) * 60)
-        except (TypeError, ValueError):
-            cooldown_sec = 1800
-        try:
-            port = int(port)
-        except (TypeError, ValueError):
-            port = 587
-        return {
-            "enabled": bool(enabled),
-            "cooldown_sec": cooldown_sec,
-            "notify_recovery": bool(recovery),
-            "email": {
-                "enabled": bool(email_enabled),
-                "smtp_host": (host or "").strip(),
-                "smtp_port": port,
-                "use_tls": bool(tls),
-                "username": (user or "").strip(),
-                "password": password if password else existing_pass,
-                "from": (sender or "").strip(),
-                "to": (to or "").strip(),
-            },
-            "webhook": {"enabled": bool(webhook_enabled), "url": (url or "").strip()},
-        }
+    def _collect_notifications(*form_values):
+        existing = ((cfg.get("notifications", {}) or {}).get("email", {}) or {}).get("password", "")
+        return build_notifications_config(*form_values, existing_password=existing)
 
     @app.callback(
         Output("notif-status", "children"),

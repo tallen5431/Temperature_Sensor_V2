@@ -138,7 +138,7 @@ def _fmt_clock(ts_str):
         return "N/A"
 
 
-def _online_probe_count(finder):
+def _online_probe_count(finder, timeout_sec=ONLINE_TIMEOUT_SEC):
     try:
         probes = (finder.list_probes() or {}).values()
     except Exception:
@@ -147,7 +147,7 @@ def _online_probe_count(finder):
     n = 0
     for p in probes:
         last = p.get("last_seen") if isinstance(p, dict) else getattr(p, "last_seen", None)
-        if isinstance(last, (int, float)) and (now - last) <= ONLINE_TIMEOUT_SEC:
+        if isinstance(last, (int, float)) and (now - last) <= timeout_sec:
             n += 1
     return n
 
@@ -176,7 +176,7 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit):
     window = RANGE_SECONDS.get(time_range, 86400)
     suffix = " °F" if temp_unit == "fahrenheit" else " °C"
     logging_status = "ON" if cfg.get("pull_enabled", True) else "OFF"
-    probes_online = _online_probe_count(finder)
+    probes_online = _online_probe_count(finder, cfg.get("probe_online_timeout_sec", ONLINE_TIMEOUT_SEC))
 
     try:
         latest = db.latest()

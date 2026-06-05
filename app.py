@@ -7,7 +7,7 @@ from pathlib import Path
 
 import dash_bootstrap_components as dbc
 from dash import Dash, Input, Output
-from flask import Flask, Response, request, send_file
+from flask import Flask, Response, request
 
 from core.config import Config
 from core.db import Database, migrate_csv_if_present
@@ -102,6 +102,28 @@ def download_csv():
     )
 
 
+def _safe_unlink(path):
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
+
+
+def _stream_file_then_delete(path, chunk_size=65536):
+    """Yield a file's bytes, then delete it — the ``finally`` runs after the WSGI
+    server has finished streaming (and closes the generator), so the temp file is
+    always cleaned up, on every platform."""
+    try:
+        with open(path, "rb") as f:
+            while True:
+                chunk = f.read(chunk_size)
+                if not chunk:
+                    break
+                yield chunk
+    finally:
+        _safe_unlink(path)
+
+
 @server.route("/download/backup.db")
 def download_backup():
     """Download a consistent SQLite snapshot of the entire database."""
@@ -109,17 +131,15 @@ def download_backup():
     os.close(fd)
     try:
         db.backup(tmp_path)
-        return send_file(tmp_path, as_attachment=True, download_name="temperature_hub_backup.db")
     except Exception:
         log.exception("Backup failed")
+        _safe_unlink(tmp_path)
         return "Backup failed", 500
-    finally:
-        # send_file streams before this runs; on most platforms the temp file can
-        # be unlinked immediately after the response is built.
-        try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
+    return Response(
+        _stream_file_then_delete(tmp_path),
+        mimetype="application/x-sqlite3",
+        headers={"Content-Disposition": "attachment; filename=temperature_hub_backup.db"},
+    )
 
 
 @app.callback(Output("page-content", "children"), Input("url", "pathname"))
