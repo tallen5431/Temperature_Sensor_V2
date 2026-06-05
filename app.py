@@ -2,6 +2,7 @@ import io
 import logging
 import os
 import socket
+import sys
 import tempfile
 from pathlib import Path
 
@@ -18,14 +19,24 @@ from api.routes import create_api
 from components.layout_main import LAYOUT, serve_page, register_all_callbacks
 from components.help_modal import register_help_callbacks
 
-BASE_DIR = Path(__file__).resolve().parent
-configure_logging(log_dir=str(BASE_DIR / "logs"))
+_FROZEN = getattr(sys, "frozen", False)
+# Read-only bundled resources (assets, config.example.json) live in the
+# PyInstaller temp dir when frozen, or alongside the source in development.
+RESOURCE_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent)) if _FROZEN \
+    else Path(__file__).resolve().parent
+# Writable data (config.json, database, logs) lives next to the executable when
+# frozen (so it persists across runs), or alongside the source in development.
+DATA_DIR = Path(sys.executable).resolve().parent if _FROZEN else Path(__file__).resolve().parent
+DATA_DIR = Path(os.getenv("DATA_DIR", str(DATA_DIR)))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+configure_logging(log_dir=str(DATA_DIR / "logs"))
 log = logging.getLogger("hub.app")
 
-DB_FILE = Path(os.getenv("DB_FILE", str(BASE_DIR / "temperature_log.db")))
-LEGACY_CSV = Path(os.getenv("CSV_FILE", str(BASE_DIR / "temperature_log.csv")))
-CONFIG_FILE = BASE_DIR / "config.json"
-CONFIG_EXAMPLE = BASE_DIR / "config.example.json"
+DB_FILE = Path(os.getenv("DB_FILE", str(DATA_DIR / "temperature_log.db")))
+LEGACY_CSV = Path(os.getenv("CSV_FILE", str(DATA_DIR / "temperature_log.csv")))
+CONFIG_FILE = DATA_DIR / "config.json"
+CONFIG_EXAMPLE = RESOURCE_DIR / "config.example.json"
 
 # Seed a fresh config from the shipped example on first run so customers never
 # start from a file containing someone else's probe names / thresholds.
@@ -77,7 +88,7 @@ api_bp = create_api(cfg, db, finder, _public_base, SERVER_TOKEN)
 server.register_blueprint(api_bp)
 
 app = Dash(__name__, external_stylesheets=[dbc.themes.CYBORG], server=server,
-           suppress_callback_exceptions=True)
+           suppress_callback_exceptions=True, assets_folder=str(RESOURCE_DIR / "assets"))
 app.title = "Temperature Hub"
 app.layout = LAYOUT
 

@@ -165,6 +165,13 @@ See **[TESTING.md](TESTING.md)** for the full test plan — automated suite,
 hardware-in-the-loop, resilience/failure injection, notification checks, soak/load,
 and a pre-release checklist.
 
+### Shipping a no-Python build
+
+To package the hub as a **single executable** customers can run without
+installing Python (plus auto-start service setup for Linux/Windows/macOS), see
+**[packaging/README.md](packaging/README.md)**: `./packaging/build.sh` (or
+`packaging\build.bat` on Windows) produces `dist/temperature-hub`.
+
 ---
 
 ## Troubleshooting

@@ -4,7 +4,7 @@ All notable changes to the Temperature Hub (the PC-side application) are
 documented here. The ESP32 firmware is versioned separately (see
 `esp32_temp_probe/esp32_temp_probe.ino`).
 
-## [2.2.0] — Offline-probe alerts
+## [2.2.0] — Offline-probe alerts & standalone packaging
 
 ### Added
 - **Offline / back-online notifications.** The alert monitor now flags a probe
@@ -16,6 +16,12 @@ documented here. The ESP32 firmware is versioned separately (see
   never emits a burst of "offline" for probes that were already quiet.
 - Settings → Notifications: "Alert when a probe goes offline" toggle and an
   "Offline after (minutes)" field.
+- **Standalone packaging** (`packaging/`): a PyInstaller spec + build scripts
+  produce a single executable so customers run the hub without installing
+  Python, plus a systemd unit and Windows/macOS service instructions. The app is
+  now frozen-aware — `config.json`, the database, and logs are written next to
+  the executable (overridable with `DATA_DIR`), while bundled assets/config load
+  from the packaged resources.
 
 ## [2.1.0] — Notifications, calibration, retention & backups
 

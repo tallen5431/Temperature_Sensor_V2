@@ -25,3 +25,8 @@ temperature_log.csv
 
 # Application logs
 logs/
+
+# PyInstaller build artifacts
+/build/
+/dist/
+*.spec.bak
