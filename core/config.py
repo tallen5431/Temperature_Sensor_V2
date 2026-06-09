@@ -1,7 +1,11 @@
 # core/config.py
 from __future__ import annotations
-import json, threading
+import json, logging, threading
 from pathlib import Path
+
+from core.config_schema import normalize_config
+
+log = logging.getLogger("hub.config")
 
 class Config:
     def __init__(self, path: Path):
@@ -10,9 +14,18 @@ class Config:
         self.data = {"interval_sec": 5, "pull_enabled": True, "auto_provision": True, "provision_token": ""}
         if self.path.exists():
             try:
-                self.data.update(json.loads(self.path.read_text(encoding="utf-8")))
-            except Exception:
-                pass
+                loaded = json.loads(self.path.read_text(encoding="utf-8"))
+                if isinstance(loaded, dict):
+                    self.data.update(loaded)
+                else:
+                    log.warning("config.json is not a JSON object; ignoring its contents")
+            except Exception as e:
+                log.warning("config.json could not be parsed (%s); using defaults", e)
+        # Coerce hand-edited values to safe types/ranges so a bad file can't
+        # crash the hub; surface every correction in the log.
+        self.data, _warnings = normalize_config(self.data)
+        for w in _warnings:
+            log.warning("config: %s", w)
 
     def save(self):
         with self.lock:

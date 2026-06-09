@@ -1,10 +1,13 @@
 import datetime
+import logging
 import time
 
 import dash_bootstrap_components as dbc
 import pandas as pd
 import plotly.graph_objs as go
 from dash import Input, Output, dcc, html, no_update
+
+log = logging.getLogger("hub.dashboard")
 
 # Maps the UI time-range selector to a rolling window in seconds (None = all).
 RANGE_SECONDS = {"1h": 3600, "6h": 21600, "24h": 86400, "7d": 604800, "30d": 2592000, "all": None}
@@ -283,9 +286,8 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit):
         return (gauge, fig, str(probes_online), ts, logging_status, hb, range_info,
                 stat_min, stat_min_time, stat_max, stat_max_time, stat_avg, stat_avg_info, alerts)
 
-    except Exception as e:
-        import traceback
-        print(f"[dashboard] update error: {e}\n{traceback.format_exc()}", flush=True)
+    except Exception:
+        log.exception("dashboard update failed")
         return (_empty_fig(), _empty_fig(), str(probes_online), "(no data)", logging_status,
                 "No signal", "No data available", "N/A", "", "N/A", "", "N/A", "", [])
 

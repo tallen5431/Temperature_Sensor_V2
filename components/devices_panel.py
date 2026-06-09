@@ -1,6 +1,10 @@
+import datetime
+import logging
+
 from dash import html, dcc, Output, Input, State, no_update, ALL
 import dash_bootstrap_components as dbc
-import datetime
+
+log = logging.getLogger("hub.devices")
 
 DevicesLayout = html.Div([
     html.H4('Connected Probes'),
@@ -174,10 +178,8 @@ def register_devices_callbacks(app, finder, cfg, public_base_func=None, token=""
                 return [dbc.Alert('No probes discovered yet.', color='secondary')]
             return cards
         except Exception as e:
-            import traceback
-            error_msg = f'Discovery service error: {str(e)}'
-            print(f'[devices_panel] {error_msg}\n{traceback.format_exc()}')
-            return [dbc.Alert(error_msg, color='danger')]
+            log.exception('Discovery service error')
+            return [dbc.Alert(f'Discovery service error: {e}', color='danger')]
 
     # Open modal when edit button clicked, close on cancel/save
     @app.callback(
@@ -301,7 +303,7 @@ def register_devices_callbacks(app, finder, cfg, public_base_func=None, token=""
                 probe_intervals = cfg.get('probe_intervals', {})
                 probe_intervals[stored_probe_id] = new_interval_sec
                 cfg.update({'probe_intervals': probe_intervals})
-                print(f'[devices_panel] Saved interval for {stored_probe_id}: {new_interval_sec} s')
+                log.info('Saved interval for %s: %s s', stored_probe_id, new_interval_sec)
 
                 # --- Push new interval to the probe immediately (best-effort) ---
                 if public_base_func is not None:
@@ -328,12 +330,12 @@ def register_devices_callbacks(app, finder, cfg, public_base_func=None, token=""
                                     interval_ms=int(new_interval_sec * 1000)
                                 )
                                 if ok:
-                                    print(f'[devices_panel] Provisioned {stored_probe_id} with interval={new_interval_sec} s')
+                                    log.info('Provisioned %s with interval=%s s', stored_probe_id, new_interval_sec)
                                 else:
-                                    print(f'[devices_panel] Could not reach {stored_probe_id} — interval will apply on next auto-provision cycle')
+                                    log.info('Could not reach %s — interval will apply on next auto-provision cycle', stored_probe_id)
                                 break
                     except Exception as e:
-                        print(f'[devices_panel] Provision-on-save failed: {e}')
+                        log.warning('Provision-on-save failed: %s', e)
 
             return False, None, '', '', no_update, no_update, no_update, no_update
 

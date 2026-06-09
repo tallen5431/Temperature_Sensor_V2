@@ -1,6 +1,9 @@
 from __future__ import annotations
+import logging
 import requests, socket
 from typing import Optional
+
+log = logging.getLogger("hub.provisioning")
 
 
 def get_probe_status(base_host: str, port: int, timeout: float = 3.0) -> Optional[dict]:
@@ -55,10 +58,9 @@ def provision_probe(base_host: str, port: int, server_base: str, token: str = ""
         try:
             r = requests.post(url, json=body, timeout=timeout)
             if r.ok:
-                print(f"[provision] {url} OK")
+                log.debug("provision %s OK", url)
                 return True
-            else:
-                print(f"[provision] {url} failed -> {r.status_code}")
+            log.debug("provision %s failed -> %s", url, r.status_code)
         except Exception as e:
-            print(f"[provision] {url} exception: {e}")
+            log.debug("provision %s exception: %s", url, e)
     return False

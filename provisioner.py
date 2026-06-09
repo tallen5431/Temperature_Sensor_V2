@@ -1,7 +1,10 @@
 from __future__ import annotations
+import logging
 import threading, time, socket
 from typing import Callable, Optional, Any
 from provisioning import provision_probe, get_probe_status
+
+log = logging.getLogger("hub.provisioner")
 
 
 def _resolve_with_timeout(host: str, timeout: float = 3.0) -> Optional[str]:
@@ -141,8 +144,8 @@ class AutoProvisioner(threading.Thread):
                                 )
                             except Exception as e:
                                 # best-effort; we'll retry next cycle
-                                print(f"[provisioner] Failed to provision {host}:{port}: {e}")
-            except Exception as e:
-                print(f"[provisioner] Error in provisioning cycle: {e}")
+                                log.warning("Failed to provision %s:%s: %s", host, port, e)
+            except Exception:
+                log.exception("Error in provisioning cycle")
 
             time.sleep(self.period_sec)
