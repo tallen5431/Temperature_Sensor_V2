@@ -53,6 +53,7 @@ _NUMBERS = [
     ("retention_days", 0, 0, True),
     ("alert_freshness_sec", 600, 1, True),
     ("offline_after_sec", 300, 1, True),
+    ("alert_hysteresis_c", 0.5, 0, False),
 ]
 _BOOLS = [("pull_enabled", True), ("auto_provision", True)]
 _DICTS = ["probe_names", "alert_thresholds", "calibration_offsets", "probe_intervals"]

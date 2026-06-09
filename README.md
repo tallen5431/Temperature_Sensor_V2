@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/tallen5431/temperature_sensor_v2/actions/workflows/ci.yml/badge.svg)](https://github.com/tallen5431/temperature_sensor_v2/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue)
-![Hub](https://img.shields.io/badge/hub-v2.3.0-brightgreen)
+![Hub](https://img.shields.io/badge/hub-v2.4.0-brightgreen)
 ![Firmware](https://img.shields.io/badge/firmware-v1.6.0-brightgreen)
 
 Collects temperature readings from ESP32 probes over Wi-Fi, shows a live chart in your browser, and logs data to a local SQLite database (exportable to CSV at any time). Designed for **end users**: plug in the hub PC, power the probe, and data starts flowing — no manual setup.
@@ -95,7 +95,9 @@ runs server-side, so alerts fire even with no browser open.
 | **Webhook** | A URL. The hub POSTs JSON with a Slack-compatible `text` field, so Slack/Discord/Zapier/IFTTT and custom relays (e.g. Twilio for SMS) all work. |
 
 You also control a **reminder interval** (how often to re-notify while a probe stays
-out of range) and whether to send a **"back to normal"** message on recovery. Use
+out of range), an **alert deadband** (°C — a probe must move back inside its limit by
+this much before the alert clears, so a noisy sensor sitting on the threshold doesn't
+flap; default 0.5), and whether to send a **"back to normal"** message on recovery. Use
 **Send test** to verify your settings. Thresholds are in °C.
 
 **Offline alerts:** the hub also notifies you when a probe **stops reporting** for

@@ -39,6 +39,16 @@ NotificationSettings = dbc.Card(dbc.CardBody([
 
     dbc.Row([
         dbc.Col([
+            html.Small("Alert deadband (°C)", className="text-muted d-block"),
+            dbc.Input(id="notif-hysteresis", type="number", min=0, step=0.1, value=0.5),
+            html.Small("A probe must move back inside its limit by this much before the "
+                       "alert clears — stops a noisy sensor from flapping.",
+                       className="text-muted"),
+        ], md=6),
+    ], className="g-2 mt-1"),
+
+    dbc.Row([
+        dbc.Col([
             dbc.Switch(id="notif-offline-enabled", label="Alert when a probe goes offline",
                        value=True),
         ], md=6),
@@ -197,6 +207,16 @@ def register_settings_callbacks(app, cfg):
         )
 
     @app.callback(
+        Output("notif-hysteresis", "value"),
+        Input("settings-loaded", "n_intervals"),
+    )
+    def _load_hysteresis(_n):
+        try:
+            return float(cfg.get("alert_hysteresis_c", 0.5))
+        except (TypeError, ValueError):
+            return 0.5
+
+    @app.callback(
         Output("notif-status", "children"),
         Input("notif-save", "n_clicks"),
         State("notif-enabled", "value"),
@@ -214,10 +234,12 @@ def register_settings_callbacks(app, cfg):
         State("notif-webhook-enabled", "value"),
         State("webhook-url", "value"),
         State("email-pass", "value"),
+        State("notif-hysteresis", "value"),
         prevent_initial_call=True,
     )
     def _save(_n, enabled, cooldown_min, recovery, offline_enabled, offline_after_min,
-              email_enabled, host, port, tls, user, sender, to, webhook_enabled, url, password):
+              email_enabled, host, port, tls, user, sender, to, webhook_enabled, url, password,
+              hysteresis):
         try:
             existing = ((cfg.get("notifications", {}) or {}).get("email", {}) or {}).get("password", "")
             notif = build_notifications_config(
@@ -227,6 +249,10 @@ def register_settings_callbacks(app, cfg):
             updates = {"notifications": notif}
             try:
                 updates["offline_after_sec"] = max(60, int(float(offline_after_min)) * 60)
+            except (TypeError, ValueError):
+                pass
+            try:
+                updates["alert_hysteresis_c"] = max(0.0, float(hysteresis))
             except (TypeError, ValueError):
                 pass
             cfg.update(updates)

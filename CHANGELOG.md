@@ -4,6 +4,17 @@ All notable changes to the Temperature Hub (the PC-side application) are
 documented here. The ESP32 firmware is versioned separately (see
 `esp32_temp_probe/esp32_temp_probe.ino`).
 
+## [2.4.0] — Alert deadband (no more flapping)
+
+### Added
+- **Alert hysteresis / deadband** (`alert_hysteresis_c`, default 0.5 °C). Once a
+  probe is in breach it must move back *inside* its limit by this margin before
+  the alert clears, so a noisy sensor sitting right on a threshold no longer
+  flaps high → recovery → high and spam-notifies. Entering a breach still uses
+  the raw threshold. Configurable per hub under Settings → Notifications
+  ("Alert deadband"), validated on load, and unit-tested (pure logic in
+  `core.alerts.classify`/`evaluate`). Set it to 0 for the previous behaviour.
+
 ## [2.3.0] — Professional polish: diagnostics, onboarding & robustness
 
 ### Added

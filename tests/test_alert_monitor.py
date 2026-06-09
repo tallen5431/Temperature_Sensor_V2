@@ -66,6 +66,20 @@ def test_monitor_recovery(tmp_path):
     assert len(events) == 1 and events[0]["kind"] == "recovery"
 
 
+def test_monitor_hysteresis_suppresses_recovery_flap(tmp_path):
+    db, cfg, notifier, mon = _setup(tmp_path)          # FRIDGE max = 8
+    cfg.update({"alert_hysteresis_c": 0.5})
+    db.append(_iso(datetime.datetime.now()), 9.0, 0.0, "TempProbe-FRIDGE")   # high (> 8)
+    assert mon.check_once()[0]["kind"] == "high"
+    # Hover just below the limit but inside the 0.5 deadband -> must NOT flap.
+    db.append(_iso(datetime.datetime.now()), 7.7, 0.0, "TempProbe-FRIDGE")
+    assert mon.check_once() == []
+    # Clear well past the deadband -> a single recovery.
+    db.append(_iso(datetime.datetime.now()), 7.0, 0.0, "TempProbe-FRIDGE")
+    events = mon.check_once()
+    assert len(events) == 1 and events[0]["kind"] == "recovery"
+
+
 def test_monitor_offline_alert_after_seed(tmp_path):
     import time
     db, cfg, notifier, mon = _setup(tmp_path)

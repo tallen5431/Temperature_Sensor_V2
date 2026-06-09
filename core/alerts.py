@@ -16,14 +16,27 @@ def threshold_for(thresholds: dict, probe_id: str) -> dict:
     return (thresholds.get(probe_id) or thresholds.get("default") or {}) if thresholds else {}
 
 
-def classify(temp_c: float, thr: dict) -> Tuple[str, Optional[float]]:
+def classify(temp_c: float, thr: dict, prev_condition: str = "ok",
+             hysteresis: float = 0.0) -> Tuple[str, Optional[float]]:
     """Classify a reading as 'high', 'low', or 'ok' against a threshold dict.
+
+    ``hysteresis`` is a deadband in °C that damps a noisy sensor sitting right on
+    a limit: once a probe is in breach it must move back *inside* the limit by
+    ``hysteresis`` before it clears, so it won't flap high→ok→high every reading.
+    Entering a breach always uses the raw threshold; ``prev_condition`` is the
+    probe's last condition ('ok'/'high'/'low').
 
     Returns ``(condition, limit)`` where ``limit`` is the breached threshold
     value (or None when ok).
     """
     hi = thr.get("max")
     lo = thr.get("min")
+    h = max(0.0, float(hysteresis or 0.0))
+    # Hold an existing breach until the reading clears the limit by the deadband.
+    if prev_condition == "high" and hi is not None and temp_c > hi - h:
+        return "high", hi
+    if prev_condition == "low" and lo is not None and temp_c < lo + h:
+        return "low", lo
     if hi is not None and temp_c > hi:
         return "high", hi
     if lo is not None and temp_c < lo:
@@ -39,7 +52,7 @@ def _event(probe_id: str, kind: str, temp_c: float, limit: Optional[float],
 
 def evaluate(readings: Dict[str, float], thresholds: dict, states: dict,
              now: Optional[float] = None, cooldown_sec: int = 1800,
-             notify_recovery: bool = True) -> Tuple[List[dict], dict]:
+             notify_recovery: bool = True, hysteresis: float = 0.0) -> Tuple[List[dict], dict]:
     """Compare the latest reading per probe to thresholds and detect events.
 
     Parameters
@@ -60,9 +73,9 @@ def evaluate(readings: Dict[str, float], thresholds: dict, states: dict,
 
     for probe_id, temp_c in readings.items():
         thr = threshold_for(thresholds, probe_id)
-        cond, limit = classify(temp_c, thr)
         prev = states.get(probe_id, {"condition": "ok", "last_notified": 0.0})
         prev_cond = prev.get("condition", "ok")
+        cond, limit = classify(temp_c, thr, prev_condition=prev_cond, hysteresis=hysteresis)
 
         if cond in ("high", "low"):
             transitioned = cond != prev_cond

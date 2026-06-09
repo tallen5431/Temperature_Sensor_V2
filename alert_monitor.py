@@ -71,6 +71,7 @@ class AlertMonitor(threading.Thread):
             readings, thresholds, self._states,
             cooldown_sec=int(conf.get("cooldown_sec", 1800) or 1800),
             notify_recovery=bool(conf.get("notify_recovery", True)),
+            hysteresis=self._hysteresis(),
         )
         all_events.extend(events)
 
@@ -82,6 +83,14 @@ class AlertMonitor(threading.Thread):
             subject, message = format_event(ev, names)
             self.notifier.dispatch({**ev, "subject": subject, "message": message})
         return all_events
+
+    def _hysteresis(self) -> float:
+        """Deadband (°C) a probe must clear before a breach is considered over —
+        stops a noisy sensor at the limit from flapping high→ok→high."""
+        try:
+            return max(0.0, float(self.cfg.get("alert_hysteresis_c", 0.5)))
+        except (TypeError, ValueError):
+            return 0.5
 
     def _check_offline(self) -> list:
         try:

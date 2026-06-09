@@ -7,6 +7,7 @@
   "retention_days": 0,
   "alert_freshness_sec": 600,
   "offline_after_sec": 300,
+  "alert_hysteresis_c": 0.5,
   "probe_names": {},
   "alert_thresholds": {},
   "calibration_offsets": {},

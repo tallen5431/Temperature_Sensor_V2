@@ -53,6 +53,41 @@ def test_probe_without_threshold_never_alerts():
     assert events == []
 
 
+def test_classify_hysteresis_holds_breach_inside_deadband():
+    thr = {"max": 30}
+    # Entering a breach uses the raw threshold (deadband only affects clearing).
+    assert classify(29.9, thr, prev_condition="ok", hysteresis=0.5) == ("ok", None)
+    assert classify(30.1, thr, prev_condition="ok", hysteresis=0.5) == ("high", 30)
+    # While already high, stay high until the reading clears 30 - 0.5 = 29.5.
+    assert classify(29.7, thr, prev_condition="high", hysteresis=0.5) == ("high", 30)
+    assert classify(29.4, thr, prev_condition="high", hysteresis=0.5) == ("ok", None)
+
+
+def test_classify_hysteresis_low_side():
+    thr = {"min": 10}
+    assert classify(9.4, thr, prev_condition="ok", hysteresis=0.5) == ("low", 10)
+    assert classify(10.3, thr, prev_condition="low", hysteresis=0.5) == ("low", 10)   # within deadband
+    assert classify(10.6, thr, prev_condition="low", hysteresis=0.5) == ("ok", None)  # cleared
+
+
+def test_hysteresis_prevents_recovery_flap():
+    thr = {"p": {"max": 30}}
+    # Breach, then hover just below the limit but within the deadband.
+    _, states = evaluate({"p": 31}, thr, {}, now=1000, hysteresis=0.5)
+    events, states = evaluate({"p": 29.8}, thr, states, now=1100, hysteresis=0.5)
+    assert events == []                                  # no flap to "recovery"
+    # Drop clearly past the deadband -> a single recovery.
+    events, _ = evaluate({"p": 29.0}, thr, states, now=1200, hysteresis=0.5)
+    assert len(events) == 1 and events[0]["kind"] == "recovery"
+
+
+def test_zero_hysteresis_matches_legacy_behaviour():
+    thr = {"p": {"max": 30}}
+    _, states = evaluate({"p": 31}, thr, {}, now=1000)            # default hysteresis 0.0
+    events, _ = evaluate({"p": 29.9}, thr, states, now=1100)
+    assert len(events) == 1 and events[0]["kind"] == "recovery"   # clears at the raw limit
+
+
 def test_format_event_uses_friendly_name():
     subj, msg = format_event({"probe_id": "p1", "kind": "high", "temperature_c": 35.0, "limit": 30.0},
                              {"p1": "Freezer"})
