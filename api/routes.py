@@ -8,7 +8,9 @@ from typing import Any, Callable, Dict, List, Tuple
 from flask import Blueprint, jsonify, request
 
 from provisioning import provision_probe
+from core.diagnostics import build_diagnostics
 from core.storage import normalize_payload
+from core.version import HUB_VERSION, PRODUCT_NAME
 
 # A probe is considered "online" if it has been seen within this many seconds.
 DEFAULT_ONLINE_TIMEOUT_SEC = 60
@@ -101,6 +103,12 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
             base=public_base(),
             time=datetime.datetime.now().isoformat(timespec="seconds"),
         )
+
+    @bp.get("/diagnostics")
+    def diagnostics():
+        """A single, secret-free snapshot of hub health for self-service support."""
+        return jsonify(build_diagnostics(cfg, db, discovery, public_base(),
+                                         HUB_VERSION, PRODUCT_NAME))
 
     @bp.get("/config")
     def get_config():

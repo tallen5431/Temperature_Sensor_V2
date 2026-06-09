@@ -74,6 +74,17 @@ def test_health_reports_counts(tmp_path):
     assert body["probes_online"] >= 1
 
 
+def test_diagnostics_endpoint(tmp_path):
+    client, db, _ = _make_client(tmp_path)
+    client.post("/api/ingest", json={"temperature_c": 20, "probe_id": "p1"})
+    body = client.get("/api/diagnostics").get_json()
+    assert body["database"]["readings"] == 1
+    assert body["probes"]["total"] >= 1
+    assert "version" in body
+    # the configured secret must not leak into diagnostics
+    assert "supersecret" not in str(body)
+
+
 def test_probes_listing_has_online_flag(tmp_path):
     client, _, _ = _make_client(tmp_path)
     client.post("/api/ingest", json={"temperature_c": 20, "probe_id": "p1"})

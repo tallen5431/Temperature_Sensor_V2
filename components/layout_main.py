@@ -5,6 +5,7 @@ from dash import Input, Output, dcc, html
 
 from components.dashboard_view import DashboardLayout
 from components.devices_panel import DevicesLayout, register_devices_callbacks
+from components.diagnostics_view import DiagnosticsLayout, register_diagnostics_callbacks
 from components.setup_helper import SetupHelper, register_setup_helper_callbacks
 from components.settings_panel import SettingsPanel, register_settings_callbacks
 from components.help_modal import HelpModal
@@ -35,6 +36,8 @@ def serve_page(pathname):
     elif pathname == "/settings":
         return html.Div([html.H4("Settings & Configuration", className="mb-3"),
                          SettingsPanel, SetupHelper])
+    elif pathname == "/diagnostics":
+        return DiagnosticsLayout
     elif pathname == "/help":
         return html.Div([HelpModal()])
     else:
@@ -54,6 +57,7 @@ NAVBAR = dbc.Navbar(
             dbc.NavItem(dbc.NavLink("Dashboard", href="/", active="exact")),
             dbc.NavItem(dbc.NavLink("Devices", href="/devices", active="exact")),
             dbc.NavItem(dbc.NavLink("Settings", href="/settings", active="exact")),
+            dbc.NavItem(dbc.NavLink("Diagnostics", href="/diagnostics", active="exact")),
             dbc.NavItem(dbc.Button("Help", id="help-open", color="info", size="sm", className="ms-2")),
         ], className="ms-auto", navbar=True),
     ]), color="dark", dark=True, sticky="top",
@@ -98,6 +102,7 @@ def register_all_callbacks(app, finder, cfg, db, public_base_func=None, token=""
     from components.dashboard_view import register_dashboard_callbacks
     register_dashboard_callbacks(app, finder, cfg, db)
     register_devices_callbacks(app, finder, cfg, public_base_func=public_base_func, token=token)
+    register_diagnostics_callbacks(app, finder, cfg, db, public_base_func=public_base_func)
     register_setup_helper_callbacks(app)
     register_settings_callbacks(app, cfg)
     register_footer_callbacks(app, finder, cfg, db)
