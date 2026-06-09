@@ -1,0 +1,42 @@
+name: Bug report
+description: Something isn't working in the Temperature Hub or a probe
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report! The fastest way to help us diagnose: open the hub's
+        **Diagnostics** page, click the copy icon, and paste the snapshot below
+        (it contains no passwords, tokens, or URLs).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you see, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics snapshot
+      description: "Hub → Diagnostics → copy icon (or visit /api/diagnostics)."
+      render: json
+  - type: input
+    id: firmware
+    attributes:
+      label: Probe firmware version
+      description: Shown on the probe's web page / serial log (e.g. 1.6.0). Leave blank if hub-only.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: From logs/hub.log next to the app (or the console window).
+      render: shell

@@ -4,6 +4,34 @@ All notable changes to the Temperature Hub (the PC-side application) are
 documented here. The ESP32 firmware is versioned separately (see
 `esp32_temp_probe/esp32_temp_probe.ino`).
 
+## [2.3.0] — Professional polish: diagnostics, onboarding & robustness
+
+### Added
+- **Diagnostics page** (top nav) and a secret-free `GET /api/diagnostics`
+  endpoint: hub version, LAN URL, readings stored, database size, newest
+  reading, retention, per-probe online/offline, and which notification channels
+  are enabled — with a one-click **copy** for support. Notification channels
+  report on/off only; hosts, URLs, passwords, and tokens are never included.
+- **First-run onboarding.** The dashboard shows a step-by-step "waiting for your
+  first reading…" card until data arrives, then hides itself; the Devices empty
+  state now guides setup instead of a bare "no probes" message.
+- **Live footer status** reflecting real hub state (N probes online / offline /
+  idle / "waiting for first probe") instead of a hardcoded "Status: Ready",
+  driven by pure, tested `core.status.hub_status`.
+- **Config validation** (`core/config_schema.py`): a hand-edited or partial
+  `config.json` is coerced to safe types/ranges on load, with each correction
+  logged — a bad file can no longer crash the hub.
+- Repo hygiene: `CONTRIBUTING.md`, `SECURITY.md`, GitHub issue/PR templates, and
+  README status badges.
+- A rewritten **Help** modal organised around what customers do (get online,
+  name & calibrate, alerts, data & backup, troubleshooting) instead of an API
+  endpoint list.
+
+### Changed
+- All service/UI `print()` calls now use the logging framework
+  (`hub.<area>` loggers). In the packaged no-console build, `print()` output was
+  lost — crash diagnostics now reach the rotating log file.
+
 ## [2.2.1] — Stable probe identity (no more duplicate cards)
 
 ### Fixed

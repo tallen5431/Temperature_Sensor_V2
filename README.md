@@ -1,5 +1,10 @@
 # Temperature Sensor Hub
 
+[![CI](https://github.com/tallen5431/temperature_sensor_v2/actions/workflows/ci.yml/badge.svg)](https://github.com/tallen5431/temperature_sensor_v2/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/python-3.9%2B-blue)
+![Hub](https://img.shields.io/badge/hub-v2.3.0-brightgreen)
+![Firmware](https://img.shields.io/badge/firmware-v1.6.0-brightgreen)
+
 Collects temperature readings from ESP32 probes over Wi-Fi, shows a live chart in your browser, and logs data to a local SQLite database (exportable to CSV at any time). Designed for **end users**: plug in the hub PC, power the probe, and data starts flowing — no manual setup.
 
 ---
@@ -113,22 +118,23 @@ database.
 | File | Purpose |
 |---|---|
 | `app.py` | Entry point — bootstraps Flask/Dash, runs under waitress, starts discovery, provisioner, and alert monitor |
-| `api/routes.py` | REST endpoints: `/health`, `/config`, `/probes`, `/provision`, `/ingest` (calibration applied here) |
-| `probe_discovery.py` | mDNS browser that finds and tracks probes |
+| `api/routes.py` | REST endpoints: `/health`, `/config`, `/probes`, `/provision`, `/ingest` (calibration applied here), `/diagnostics` |
+| `probe_discovery.py` | mDNS browser that finds and tracks probes (de-duplicates a probe seen under two identities) |
 | `provisioning.py` / `provisioner.py` | Push ingest URL to probes (client functions / background thread) |
 | `alert_monitor.py` | Background thread: threshold alerts + data-retention maintenance |
 | `core/db.py` | SQLite reading store (WAL), windowed queries, CSV export, backup, retention, legacy-CSV import |
 | `core/alerts.py` | Pure threshold/alert state machine (transitions, cooldown, recovery) |
 | `core/notifications.py` | Email + webhook channels and the dispatcher |
-| `core/config.py` | Thread-safe JSON config management |
+| `core/config.py` / `core/config_schema.py` | Thread-safe JSON config + validation/normalisation on load |
 | `core/storage.py` | Ingest payload normalisation and timezone handling |
+| `core/status.py` / `core/diagnostics.py` | Live hub status (footer) and the diagnostics snapshot |
 | `core/logging_setup.py` | Rotating file + console logging |
 | `core/mdns_advert.py` | Advertises the hub on mDNS |
 | `core/version.py` | Hub version / product metadata |
-| `components/` | Dash UI panels (dashboard, devices, settings, probe setup wizard) |
+| `components/` | Dash UI panels (dashboard, devices, settings, diagnostics, probe setup wizard) |
 | `config.example.json` | Default config seeded to `config.json` on first run |
 | `temperature_log.db` | SQLite data store (created automatically) |
-| `tests/` | Pytest suite (data layer, API, alerts, notifications, monitor, dashboard) |
+| `tests/` | Pytest suite (data layer, API, alerts, notifications, monitor, dashboard, config, status, diagnostics, discovery) |
 
 ---
 
@@ -141,6 +147,11 @@ curl "http://localhost:8088/api/ingest?temperature_c=22.3"
 ```
 
 Or open the URL directly in your browser — a new row should appear in the database and on the dashboard.
+
+**Self-service support:** the **Diagnostics** page (top nav) shows hub version,
+data store, probe status, retention, and notification health in one place, with
+a one-click **copy** to paste into a bug report. The same secret-free snapshot is
+available at `/api/diagnostics`.
 
 ---
 
@@ -163,7 +174,9 @@ dashboard computation. CI runs the same suite on every push (`.github/workflows/
 
 See **[TESTING.md](TESTING.md)** for the full test plan — automated suite,
 hardware-in-the-loop, resilience/failure injection, notification checks, soak/load,
-and a pre-release checklist.
+and a pre-release checklist. Contributing guidelines are in
+**[CONTRIBUTING.md](CONTRIBUTING.md)**; security/deployment notes in
+**[SECURITY.md](SECURITY.md)**.
 
 ### Shipping a no-Python build
 
