@@ -111,9 +111,31 @@ GraphCard = dbc.Card(
     className="h-100 graph-card",
 )
 
+# --- First-run onboarding banner ---
+def _onboarding_card():
+    return dbc.Alert(
+        [
+            html.H5("👋 Waiting for your first reading…", className="alert-heading"),
+            html.P("No data has arrived yet. To get a probe online:", className="mb-2"),
+            html.Ol([
+                html.Li("Power your probe on the same Wi-Fi network as this hub."),
+                html.Li(["First-time setup? Join the probe’s ", html.B("TempSensor-XXXX"),
+                         " Wi-Fi from your phone and choose your network."]),
+                html.Li("It appears on the Devices page within ~20 seconds and readings begin."),
+            ], className="mb-2"),
+            html.Hr(),
+            html.P(["Just exploring? Send a test reading from a terminal: ",
+                    html.Code("curl \"http://localhost:8088/api/ingest?temperature_c=22.3\"")],
+                   className="mb-0 small"),
+        ],
+        color="info", className="mb-3",
+    )
+
+
 # --- Dashboard Layout ---
 DashboardLayout = html.Div([
     dcc.Store(id="temp-unit-store", storage_type="local", data="celsius"),
+    html.Div(id="dashboard-onboarding"),
     MetricsRow,
     AlertsRow,
     StatsRow,
@@ -294,6 +316,18 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit):
 
 # --- Callbacks ---------------------------------------------------------------
 def register_dashboard_callbacks(app, finder, cfg, db):
+    @app.callback(
+        Output("dashboard-onboarding", "children"),
+        Input("dash-refresh", "n_intervals"),
+    )
+    def _show_onboarding(_):
+        # Guide the customer until the very first reading lands, then get out of
+        # the way.  Cheap COUNT query; runs on the existing 5 s refresh tick.
+        try:
+            return _onboarding_card() if db.count() == 0 else None
+        except Exception:
+            return None
+
     @app.callback(
         Output("temp-unit-store", "data"),
         Input("unit-celsius", "n_clicks"),

@@ -175,7 +175,13 @@ def register_devices_callbacks(app, finder, cfg, public_base_func=None, token=""
                 cards.append(card)
 
             if not cards:
-                return [dbc.Alert('No probes discovered yet.', color='secondary')]
+                return [dbc.Alert([
+                    html.H6('No probes discovered yet', className='alert-heading'),
+                    html.P('Power on a probe on the same Wi-Fi network — it appears here '
+                           'within ~20 seconds.', className='mb-1'),
+                    html.Small('First-time setup? See Settings → Probe Setup Helper.',
+                               className='text-muted'),
+                ], color='secondary')]
             return cards
         except Exception as e:
             log.exception('Discovery service error')
