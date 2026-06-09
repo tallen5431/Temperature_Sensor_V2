@@ -183,7 +183,26 @@ and a pre-release checklist. Contributing guidelines are in
 To package the hub as a **single executable** customers can run without
 installing Python (plus auto-start service setup for Linux/Windows/macOS), see
 **[packaging/README.md](packaging/README.md)**: `./packaging/build.sh` (or
-`packaging\build.bat` on Windows) produces `dist/temperature-hub`.
+`packaging\build.bat` on Windows) produces `dist/temperature-hub/`.
+
+---
+
+## Licensing
+
+The Temperature Hub and its probe firmware are **proprietary** — see
+**[LICENSE](LICENSE)** (all rights reserved). They are built on open-source
+components, each under its own license, catalogued in
+**[THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md)** (regenerate with
+`python packaging/gen_third_party_licenses.py`). Everything bundled is permissive
+(MIT/BSD/Apache/MPL/PSF/ZPL) **except `zeroconf`** (hub) and `DallasTemperature` +
+the ESP32 Arduino core (firmware), which are **LGPL-2.1**: you may ship a closed
+product on top of them provided you carry the source offer in
+`THIRD-PARTY-LICENSES.md` and keep the components replaceable (the packaged hub is
+a PyInstaller *onedir* build, so they are).
+
+> Before selling: replace the `[COPYRIGHT HOLDER]` / `[CONTACT EMAIL]` placeholders
+> in `LICENSE`, and have an attorney review it and prepare an end-user EULA. This
+> repo's files are a solid starting point, not legal advice.
 
 ---
 

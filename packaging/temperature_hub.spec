@@ -1,8 +1,13 @@
-# PyInstaller spec for the Temperature Hub — builds a single self-contained
-# executable so customers don't need Python installed.
+# PyInstaller spec for the Temperature Hub — builds a self-contained, no-Python
+# distribution so customers don't need Python installed.
+#
+# This is a ONEDIR build (dist/temperature-hub/ containing the executable plus an
+# _internal/ folder of dependencies).  Onedir keeps the LGPL-licensed `zeroconf`
+# module as replaceable files on disk, which is the clean way to honour LGPL's
+# "user may modify and relink" requirement (see THIRD-PARTY-LICENSES.md).
 #
 # Build:  pyinstaller --clean --noconfirm packaging/temperature_hub.spec
-# Output: dist/temperature-hub  (or dist\temperature-hub.exe on Windows)
+# Output: dist/temperature-hub/temperature-hub  (…/temperature-hub.exe on Windows)
 import os
 
 from PyInstaller.utils.hooks import collect_all, collect_submodules
@@ -14,6 +19,9 @@ ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))
 datas = [
     (os.path.join(ROOT, "assets"), "assets"),
     (os.path.join(ROOT, "config.example.json"), "."),
+    # Ship the licences inside the bundle so the product always carries them.
+    (os.path.join(ROOT, "LICENSE"), "."),
+    (os.path.join(ROOT, "THIRD-PARTY-LICENSES.md"), "."),
 ]
 binaries = []
 hiddenimports = []
@@ -38,7 +46,10 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     runtime_hooks=[],
-    excludes=["tkinter", "pytest", "_pytest"],
+    # The hub does TLS via stdlib ssl/smtplib (and urllib3 falls back to it), so
+    # the optional `cryptography` package is not needed — excluding it slims the
+    # bundle and avoids urllib3's optional-pyOpenSSL hook chain.
+    excludes=["tkinter", "pytest", "_pytest", "cryptography", "OpenSSL"],
     noarchive=False,
 )
 
@@ -47,9 +58,8 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
+    exclude_binaries=True,   # onedir: binaries/datas are gathered by COLLECT below
     name="temperature-hub",
     debug=False,
     bootloader_ignore_signals=False,
@@ -61,4 +71,14 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=False,
+    upx_exclude=[],
+    name="temperature-hub",
 )
