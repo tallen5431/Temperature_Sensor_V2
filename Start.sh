@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# If invoked as `sh Start.sh` or by a runner that uses /bin/sh, re-exec with bash.
+# Re-exec with bash if invoked via sh.
 if [ -z "${BASH_VERSION:-}" ]; then
   exec /usr/bin/env bash "$0" "$@"
 fi
@@ -7,7 +7,7 @@ fi
 set -eu
 set -o pipefail 2>/dev/null || true
 
-# Temperature Sensor (ESP32 Dashboard)
+# ThermaHub — Temperature Monitoring Hub
 
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$APP_DIR"
@@ -15,25 +15,24 @@ cd "$APP_DIR"
 VENV_DIR="$APP_DIR/.venv"
 PYTHON_EXE="$VENV_DIR/bin/python"
 
+# First-run setup only: create the venv and install dependencies ONCE. Later
+# launches start instantly instead of re-running pip every time.
 if [[ ! -x "$PYTHON_EXE" ]]; then
-  echo "[SETUP] Creating virtual environment..."
+  echo "[SETUP] First run: creating environment and installing dependencies..."
   python3 -m venv "$VENV_DIR"
-fi
-
-echo "[SETUP] Installing dependencies..."
-"$PYTHON_EXE" -m pip install --upgrade pip setuptools wheel >/dev/null
-
-if [[ -f "$APP_DIR/requirements.txt" ]]; then
+  "$PYTHON_EXE" -m pip install --upgrade pip setuptools wheel >/dev/null
   "$PYTHON_EXE" -m pip install -r "$APP_DIR/requirements.txt"
 fi
 
 : "${HOST:=0.0.0.0}"
 : "${PORT:=8080}"
 
-echo "[RUN] Starting ESP32 Temperature Dashboard at http://${HOST}:${PORT}"
+# Open the dashboard in the default browser shortly after startup.
+( sleep 3; (xdg-open "http://localhost:${PORT}" || open "http://localhost:${PORT}") >/dev/null 2>&1 || true ) &
+
+echo "[RUN] Starting ThermaHub at http://localhost:${PORT}"
 "$PYTHON_EXE" "$APP_DIR/app.py"
 
-# Optional pause when run interactively
 if [[ -t 0 ]]; then
   read -r -p "Press Enter to exit..."
 fi

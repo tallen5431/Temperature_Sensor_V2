@@ -4,7 +4,11 @@ import plotly.graph_objs as go
 import pandas as pd, os, datetime
 from urllib.parse import quote
 
-CSV_FILE = os.getenv('CSV_FILE', 'temperature_log.csv')
+from core.paths import get_csv_path
+
+# Resolved once, absolute, shared with the writer (see core/paths.py). The old
+# relative default meant the reader and writer could disagree on the file.
+CSV_FILE = str(get_csv_path())
 
 # --- Gauge Card ---
 GaugeCard = dbc.Card(
@@ -114,19 +118,31 @@ GraphCard = dbc.Card(
     className='h-100 graph-card'
 )
 
-# --- Dashboard Layout ---
-DashboardLayout = html.Div([
-    # Persist unit across reloads (uses browser localStorage)
-    dcc.Store(id='temp-unit-store', storage_type='local', data='celsius'),
-    dcc.Store(id='filtered-data-store', data=None),  # Store for filtered CSV data
-    MetricsRow,
-    AlertsRow,
-    StatsRow,
-    dbc.Row([
-        dbc.Col(GaugeCard, width=4),
-        dbc.Col(GraphCard, width=8)
-    ], className='g-3 align-items-stretch')
-])
+# --- Empty-state banner shown before the first probe reports ---
+EmptyState = dbc.Alert([
+    html.H5("No probes yet — let’s connect one 🌡️", className="alert-heading"),
+    html.P("Plug in a probe, then join its temporary Wi-Fi network to choose your home Wi-Fi. "
+           "Your probe appears here within ~15 seconds."),
+    dbc.Button("Open setup instructions", href="/settings", color="primary", size="sm"),
+], color="secondary", id="empty-state", className="mb-3")
+
+
+# --- Dashboard Layout (built per request so the configured default unit applies) ---
+def build_dashboard_layout(default_unit: str = "celsius"):
+    return html.Div([
+        # Persist unit across reloads (browser localStorage), seeded from the
+        # product's configured default so a US maker can ship °F by default.
+        dcc.Store(id='temp-unit-store', storage_type='local', data=default_unit),
+        dcc.Store(id='filtered-data-store', data=None),
+        EmptyState,
+        MetricsRow,
+        AlertsRow,
+        StatsRow,
+        dbc.Row([
+            dbc.Col(GaugeCard, width=4),
+            dbc.Col(GraphCard, width=8)
+        ], className='g-3 align-items-stretch')
+    ])
 
 
 # --- Callbacks ---
@@ -226,12 +242,14 @@ def register_dashboard_callbacks(app, finder, cfg):
         Output('stat-avg-info', 'children'),
         Output('alerts-container', 'children'),
         Output('filtered-data-store', 'data'),
+        Output('empty-state', 'style'),
         Input('dash-refresh', 'n_intervals'),
         Input('time-range-selector', 'value'),
         Input('temp-unit-store', 'data')
     )
     def update_dashboard(_, time_range, temp_unit):
-        temp_unit = temp_unit or 'celsius'
+        default_unit = (cfg.get('settings', {}) or {}).get('default_unit', 'celsius')
+        temp_unit = temp_unit or default_unit
         try:
             df = pd.read_csv(CSV_FILE)
             if df.empty:
@@ -417,7 +435,7 @@ def register_dashboard_callbacks(app, finder, cfg):
 
             return (gauge, fig, probes, ts, logging_status, hb, range_info,
                     stat_min, stat_min_time, stat_max, stat_max_time, stat_avg, stat_avg_info,
-                    alerts_container, filtered_csv)
+                    alerts_container, filtered_csv, {'display': 'none'})
 
         except Exception as e:
             empty = go.Figure()
@@ -428,7 +446,7 @@ def register_dashboard_callbacks(app, finder, cfg):
                 yaxis={'visible': False}
             )
             return (empty, empty, '0', '(no data)', 'OFF', 'No signal', 'No data available',
-                    'N/A', '', 'N/A', '', 'N/A', '', [], None)
+                    'N/A', '', 'N/A', '', 'N/A', '', [], None, {})
 
     # --- CSV Download Button (exports filtered data) ---
     @app.callback(

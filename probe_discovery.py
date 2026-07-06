@@ -11,28 +11,28 @@ SERVICE_TYPE = "_temps-probe._tcp.local."
 
 @dataclass
 class ProbeInfo:
-    name: str                 # e.g. TempSensor-9A3F
-    host: str                 # e.g. temps-probe-9a3f.local.
+    name: str                 # e.g. ThermaProbe-9A3F2C
+    host: str                 # e.g. thermaprobe-9a3f2c.local.
     ip: str                   # resolved IPv4 string
     port: int                 # advertised port (80)
     properties: Dict[str, str] = field(default_factory=dict)
     last_seen: float = field(default_factory=time.time)
+    service_name: str = ""    # full mDNS instance name (exact key for removal)
+    source: str = "mdns"      # "mdns" or "ingest"
 
 class ProbeDiscovery:
     def __init__(self):
         self._zc = Zeroconf()
         self._browser = None
         self._lock = threading.RLock()
-        self._probes: Dict[str, ProbeInfo] = {}  # key by host
+        self._probes: Dict[str, ProbeInfo] = {}  # key by host (mdns) or probe_id (ingest)
         self.on_change: Optional[Callable[[Dict[str, ProbeInfo]], None]] = None
 
     def _resolve_ip(self, host: str) -> Optional[str]:
         try:
             # Resolve mDNS host with timeout to prevent hanging
-            # socket.gethostbyname doesn't support timeout directly, so we use socket.getaddrinfo
             import socket as sock_module
             host_clean = host.rstrip(".")
-            # Set default timeout for socket operations (3 seconds)
             old_timeout = sock_module.getdefaulttimeout()
             try:
                 sock_module.setdefaulttimeout(3.0)
@@ -52,7 +52,8 @@ class ProbeDiscovery:
             props = {}
             for k, v in (info.properties or {}).items():
                 try:
-                    props[k.decode()] = v.decode() if isinstance(v, (bytes, bytearray)) else str(v)
+                    key = k.decode() if isinstance(k, (bytes, bytearray)) else str(k)
+                    props[key] = v.decode() if isinstance(v, (bytes, bytearray)) else str(v)
                 except Exception:
                     pass
             name = (props.get("name") or info.name or host).replace("." + SERVICE_TYPE, "")
@@ -63,6 +64,8 @@ class ProbeDiscovery:
                 port=info.port or 80,
                 properties=props,
                 last_seen=time.time(),
+                service_name=info.name or "",
+                source="mdns",
             )
         except Exception:
             return None
@@ -83,33 +86,62 @@ class ProbeDiscovery:
 
         elif state_change == ServiceStateChange.Removed:
             with self._lock:
-                # name is like "TempSensor-9A3F._temps-probe._tcp.local."
-                # We don’t always get host here; remove by prefix match
-                to_delete = []
-                for host, p in self._probes.items():
-                    if name.startswith(p.name):
-                        to_delete.append(host)
-                for host in to_delete:
-                    self._probes.pop(host, None)
+                # Remove ONLY the probe whose full mDNS instance name matches
+                # exactly. The previous `name.startswith(p.name)` could delete a
+                # different probe whose name was a prefix of the one going away.
+                to_delete = [
+                    key for key, p in self._probes.items()
+                    if p.source == "mdns" and (p.service_name == name or key == name)
+                ]
+                for key in to_delete:
+                    self._probes.pop(key, None)
                 snapshot = dict(self._probes)
             if self.on_change:
                 self.on_change(snapshot)
+
     # --- zeroconf callback compatibility wrapper ---
     def _handle_compat(self, *args, **kwargs):
-        """Accept both new-style keyword args (zeroconf=..., service_type=..., name=..., state_change=...)
-        and old-style positional args, then forward to the original _handle.
-        """
         zc = kwargs.get('zeroconf') or kwargs.get('zc')
         stype = kwargs.get('service_type') or kwargs.get('stype')
         name = kwargs.get('name')
         state_change = kwargs.get('state_change')
-        # Fill missing from positional args
         if zc is None and len(args) >= 1: zc = args[0]
         if stype is None and len(args) >= 2: stype = args[1]
         if name is None and len(args) >= 3: name = args[2]
         if state_change is None and len(args) >= 4: state_change = args[3]
-        # Call _handle with all 4 required parameters
         return self._handle(zc, stype, name, state_change)
+
+    def register_seen(self, probe_id: str, ip: str = "", port: int = 80, host: str = "") -> None:
+        """Record that a probe just POSTed data.
+
+        If the probe was already discovered over mDNS, we only refresh its
+        last_seen/ip. Otherwise (mDNS blocked by a firewall, but ingest works)
+        we create an entry keyed by probe_id so it still appears in the UI.
+        This mutates the REAL probe dict under lock — the old ingest code
+        mutated a throwaway copy from list_probes(), so posting-only probes and
+        last_seen updates were silently lost.
+        """
+        if not probe_id:
+            return
+        now = time.time()
+        with self._lock:
+            for p in self._probes.values():
+                pid = (p.properties or {}).get("id") or p.name
+                if pid == probe_id or p.name == probe_id:
+                    p.last_seen = now
+                    if ip:
+                        p.ip = ip
+                    return
+            self._probes[probe_id] = ProbeInfo(
+                name=probe_id,
+                host=host or ip or "",
+                ip=ip,
+                port=port or 80,
+                properties={"id": probe_id},
+                last_seen=now,
+                service_name="",
+                source="ingest",
+            )
 
     def start(self):
         if self._browser:
@@ -123,6 +155,7 @@ class ProbeDiscovery:
         finally:
             self._browser = None
             self._zc.close()
+
     def scan(self):
         """Manual refresh: restart the browser to prompt immediate updates."""
         try:
@@ -131,7 +164,6 @@ class ProbeDiscovery:
                 self._browser = None
             self._browser = ServiceBrowser(self._zc, SERVICE_TYPE, handlers=[self._handle_compat])
         except Exception:
-            # Best-effort; ignore
             pass
 
     def list_probes(self) -> Dict[str, ProbeInfo]:

@@ -32,3 +32,6 @@ Thumbs.db
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Runtime config (seeded from config.example.json on first run)
+config.json

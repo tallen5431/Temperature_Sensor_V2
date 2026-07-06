@@ -1,0 +1,38 @@
+{
+  "interval_sec": 5,
+  "auto_provision": true,
+  "pull_enabled": true,
+  "provision_token": "",
+  "branding": {
+    "product_name": "ThermaHub",
+    "brand_name": "ThermaHub",
+    "support_url": "https://example.com/support",
+    "primary_color": "#00bcd4",
+    "copyright": "ThermaHub",
+    "logo_path": "/assets/logo.svg"
+  },
+  "settings": {
+    "default_unit": "celsius",
+    "timezone": ""
+  },
+  "notifications": {
+    "enabled": false,
+    "recipients": [],
+    "webhook_url": "",
+    "debounce_sec": 900,
+    "smtp_host": "",
+    "smtp_port": 587,
+    "smtp_user": "",
+    "smtp_password": "",
+    "smtp_from": "",
+    "smtp_tls": true
+  },
+  "calibration": {},
+  "alert_thresholds": {
+    "default": {
+      "min": 2,
+      "max": 8
+    }
+  },
+  "probe_names": {}
+}

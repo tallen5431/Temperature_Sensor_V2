@@ -104,4 +104,7 @@ class SSIDWatcher:
         self._stop.set()
 
     def seen(self) -> bool:
-        return self.target in self.latest
+        # Match either an exact SSID or any SSID that begins with the target,
+        # so a per-probe SoftAP like "ThermaProbe-9A3F2C" is detected from the
+        # brand prefix "ThermaProbe".
+        return any(s == self.target or s.startswith(self.target) for s in self.latest)

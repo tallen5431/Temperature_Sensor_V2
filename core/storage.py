@@ -1,63 +1,202 @@
 # core/storage.py
 from __future__ import annotations
-from pathlib import Path
-import pandas as pd
-import datetime
 
-REQUIRED_COLS = ["timestamp","temperature_c","temperature_f"]
-OPTIONAL_COLS = ["probe_id"]
+import csv
+import datetime
+import math
+import os
+import re
+import threading
+from contextlib import contextmanager
+from pathlib import Path
+
+import pandas as pd
+
+from core.applog import HEALTH, get_logger
+
+log = get_logger("storage")
+
+COLUMNS = ["timestamp", "temperature_c", "temperature_f", "probe_id"]
+
+# Physically plausible bounds for the supported sensors (DS18B20/thermocouple).
+# Anything outside this — including sensor fault codes (85.0 power-on, -127
+# disconnected) and NaN/inf — is rejected so it can't corrupt dashboard stats.
+MIN_TEMP_C = -60.0
+MAX_TEMP_C = 150.0
+
+PROBE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
+
+# One process-wide lock serializes every writer (multiple Flask/waitress threads
+# ingest concurrently). The old code had no lock and a second divergent writer,
+# which could interleave partial rows.
+_write_lock = threading.Lock()
+
+
+# --- cross-platform advisory file lock (best-effort, for multi-process safety) --
+@contextmanager
+def _os_lock(fh):
+    locked = False
+    try:
+        try:
+            import fcntl  # POSIX
+
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+            locked = True
+        except Exception:
+            try:
+                import msvcrt  # Windows
+
+                msvcrt.locking(fh.fileno(), msvcrt.LK_LOCK, 1)
+                locked = True
+            except Exception:
+                locked = False
+        yield
+    finally:
+        if locked:
+            try:
+                import fcntl
+
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+            except Exception:
+                try:
+                    import msvcrt
+
+                    msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+                except Exception:
+                    pass
+
 
 def ensure_csv(csv_file: Path) -> None:
+    """Create the log with headers, or upgrade an older 3-column file ONCE.
+
+    This is the only place a whole-file rewrite may happen, and it runs at
+    startup — never on the per-write hot path.
+    """
+    csv_file = Path(csv_file)
     if not csv_file.exists():
-        cols = REQUIRED_COLS + OPTIONAL_COLS
-        pd.DataFrame(columns=cols).to_csv(csv_file, index=False)
-
-def _ensure_column(csv_file: Path, col: str) -> None:
-    # Upgrade-in-place to add a missing column (keeps data). Small file friendly.
+        csv_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(csv_file, "w", newline="", encoding="utf-8") as f:
+            csv.writer(f).writerow(COLUMNS)
+        return
+    # One-time schema upgrade: add probe_id column if an older log lacks it.
     try:
-        df = pd.read_csv(csv_file)
-        if col not in df.columns:
-            df[col] = ""
-            df.to_csv(csv_file, index=False)
-    except Exception:
-        # If anything goes wrong, leave file as-is; app will still run.
-        pass
+        df = pd.read_csv(csv_file, nrows=0)
+        if "probe_id" not in df.columns:
+            full = pd.read_csv(csv_file)
+            full["probe_id"] = ""
+            full.to_csv(csv_file, index=False)
+            log.info("Upgraded %s to include probe_id column", csv_file.name)
+    except Exception as e:
+        log.warning("Could not verify/upgrade CSV schema for %s: %s", csv_file, e)
 
-# Backwards compatible append: probe_id is optional
-def append_row(csv_file: Path, ts: str, t_c: float, t_f: float, probe_id: str|None = None) -> None:
+
+def _escape_csv_field(value: str) -> str:
+    """Neutralize spreadsheet formula injection.
+
+    A malicious/malfunctioning probe could send probe_id='=HYPERLINK(...)'; if
+    the customer opens the exported CSV in Excel/Sheets it would execute. Prefix
+    any field beginning with a formula trigger with a single quote.
+    """
+    s = "" if value is None else str(value)
+    if s and s[0] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + s
+    return s
+
+
+def sanitize_probe_id(probe_id) -> str:
+    """Constrain probe_id to a safe, bounded identifier. Empty string if invalid."""
+    if not probe_id:
+        return ""
+    s = str(probe_id).strip()
+    return s if PROBE_ID_RE.match(s) else ""
+
+
+def append_row(csv_file: Path, ts: str, t_c: float, t_f: float, probe_id: str | None = None) -> None:
+    """Append exactly one 4-column row through the single serialized writer.
+
+    Always writes all four columns (probe_id or "") so rows are never ragged.
+    """
+    csv_file = Path(csv_file)
+    pid = _escape_csv_field(probe_id or "")
+    row = [
+        ts,
+        f"{float(t_c):.3f}",
+        f"{float(t_f):.3f}",
+        pid,
+    ]
     try:
-        # If probe_id present, make sure file has that column
-        if probe_id is not None:
-            _ensure_column(csv_file, "probe_id")
-            df = pd.DataFrame([[ts, t_c, t_f, probe_id]], columns=REQUIRED_COLS + ["probe_id"])
-        else:
-            df = pd.DataFrame([[ts, t_c, t_f]], columns=REQUIRED_COLS)
-        # Write with header only if file empty (pandas handles this automatically when mode='a' with header=False)
-        df.to_csv(csv_file, mode="a", header=False, index=False)
+        with _write_lock:
+            need_header = (not csv_file.exists()) or csv_file.stat().st_size == 0
+            with open(csv_file, "a", newline="", encoding="utf-8") as f:
+                with _os_lock(f):
+                    w = csv.writer(f)
+                    if need_header:
+                        w.writerow(COLUMNS)
+                    w.writerow(row)
+                    f.flush()
+                    os.fsync(f.fileno())
+        HEALTH.record_write()
+    except Exception as e:
+        HEALTH.record_failure()
+        log.error("Failed to append reading to %s: %s", csv_file, e)
+        raise
+
+
+def apply_calibration(t_c: float, probe_id: str, calibration: dict | None) -> float:
+    """Apply a per-probe calibration (gain then offset) before logging.
+
+    Temperature instruments drift unit-to-unit; a customer trims to a reference
+    (e.g. ice bath) and the correction lives in config, not in firmware.
+    """
+    if not calibration or not probe_id:
+        return t_c
+    cal = calibration.get(probe_id) or calibration.get("default")
+    if not isinstance(cal, dict):
+        return t_c
+    try:
+        gain = float(cal.get("gain", 1.0) or 1.0)
+        offset = float(cal.get("offset_c", 0.0) or 0.0)
+        return (t_c * gain) + offset
     except Exception:
-        # Last-resort fallback (try without probe_id)
-        pd.DataFrame([[ts, t_c, t_f]], columns=REQUIRED_COLS).to_csv(csv_file, mode="a", header=False, index=False)
+        return t_c
+
 
 def normalize_payload(payload: dict):
-    """
-    Accepts keys like temperature_c/temp_c/t_c or temperature_f/temp_f/t_f.
-    Returns (timestamp_iso, celsius, fahrenheit)
+    """Parse and *validate* an ingest payload.
+
+    Accepts temperature_c/temp_c/t_c/c or temperature_f/temp_f/t_f/f. Rejects
+    non-finite values and anything outside the plausible sensor range so a fault
+    code or NaN can never poison the log or the auto-scaled dashboard axis.
+
+    Returns (timestamp_iso, celsius, fahrenheit).
+    Raises ValueError on missing or out-of-range input.
     """
     now = datetime.datetime.now().isoformat(timespec="seconds")
     ts = payload.get("timestamp") or payload.get("ts") or now
 
-    c_keys = ["temperature_c","temp_c","t_c","c"]
-    f_keys = ["temperature_f","temp_f","t_f","f"]
+    c_keys = ["temperature_c", "temp_c", "t_c", "c"]
+    f_keys = ["temperature_f", "temp_f", "t_f", "f"]
 
-    t_c = next((float(payload[k]) for k in c_keys if k in payload), None)
-    t_f = next((float(payload[k]) for k in f_keys if k in payload), None)
+    def _first_float(keys):
+        for k in keys:
+            if k in payload and payload[k] not in (None, ""):
+                return float(payload[k])
+        return None
+
+    t_c = _first_float(c_keys)
+    t_f = _first_float(f_keys)
 
     if t_c is None and t_f is None:
         raise ValueError("No temperature value found")
 
-    if t_c is None:  # compute from F
+    if t_c is None:
         t_c = (t_f - 32.0) * 5.0 / 9.0
-    if t_f is None:  # compute from C
+    if t_f is None:
         t_f = (t_c * 9.0 / 5.0) + 32.0
+
+    if not math.isfinite(t_c):
+        raise ValueError("Temperature is not a finite number")
+    if not (MIN_TEMP_C <= t_c <= MAX_TEMP_C):
+        raise ValueError(f"Temperature {t_c:.2f}C outside valid range [{MIN_TEMP_C}, {MAX_TEMP_C}]")
 
     return ts, float(t_c), float(t_f)
