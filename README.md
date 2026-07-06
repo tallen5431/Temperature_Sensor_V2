@@ -1,70 +1,78 @@
-# Temperature Sensor Hub — Product README
+# ThermaHub
 
-This hub app collects temperature readings from ESP32 probes (DS18B20 / thermocouple front-ends), shows live charts in a web UI, and logs data to CSV for Excel/analysis. It’s designed for **end users**: plug in the hub PC, power the probe, and data starts flowing—no manual setup.
+**Local-first temperature monitoring for your fridge, freezer, fermentation, server closet, or greenhouse — with no cloud, no account, and no telemetry.**
 
----
-## Highlights
-- **Auto-discover probes** on your LAN using mDNS (Bonjour/Zeroconf).
-- **Auto-provision probes** (no buttons, no curl): the hub tells each probe where to POST.
-- **Live dashboard** (Dash/Flask) with rolling stats.
-- **CSV logging** to `temperature_log.csv` for easy analysis.
-- **Optional token auth** for secure ingest.
+ThermaHub is a small appliance app that runs on your own Windows or Linux PC. Wireless **ThermaProbe** sensors send their readings to it over your home or office network, and you watch everything live in your web browser. Your data never leaves your computer. There is nothing to sign up for and nothing phoning home.
 
 ---
-## Quick Start (Windows)
-1. Double-click **`Start.bat`** (creates a venv, installs deps, and starts the hub).
-2. If Windows Firewall prompts, click **Allow** for Python on **Private** networks.
-3. Power the probe (ESP32) via USB. Within ~10–20 seconds, readings should appear.
-4. Open the UI shown in the console, e.g. `http://192.168.1.145:8088`.
-5. CSV grows in real time at **`temperature_log.csv`** in the project folder.
 
-> If you see the probe in the UI but no data, give it ~10 seconds: the background **auto-provisioner** sets the probe’s `server_url` automatically.
+## Why ThermaHub
 
----
-## How It Works
-```
-Probe (ESP32) ──mDNS──▶ Hub Discovery ──▶ Auto-Provisioner ──/provision──▶ Probe
-Probe ──HTTP POST /api/ingest──▶ Hub API ──▶ CSV (temperature_log.csv)
-                                  └──────▶ UI charts
-```
-- **Discovery** finds probes advertising `_temps-probe._tcp`.
-- **Auto-Provisioner** pushes the correct ingest URL (e.g., `http://<hub-ip>:8088/api/ingest`) to each probe **by IP** (no `.local` DNS).
-- **Probe firmware** reads the sensor and POSTs JSON to the hub at the configured interval.
+- **Your data stays yours.** Readings are stored in a plain CSV file on your PC. No cloud service, no account, no tracking.
+- **Plug and play.** Power a ThermaProbe on your Wi-Fi and it shows up automatically — the hub finds it and configures it for you.
+- **Live dashboard.** A clean web page shows current temperature, charts, and rolling statistics for every probe.
+- **Export anytime.** One click downloads a spreadsheet-ready CSV for Excel, Google Sheets, or your own analysis.
+- **Calibrate & alert.** Trim each probe against a reference (ice bath) and get notified when a temperature goes out of range.
+- **Secure by default.** The hub generates a private device token on first run and shares it only with your own probes over your local network.
 
 ---
-## Configuration (optional)
-You can set these in environment variables (e.g., inside `Start.bat`).
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `HOST` | `0.0.0.0` | Bind address for the hub |
-| `PORT` | `8088` | HTTP port for UI & API |
-| `PUBLIC_BASE` | computed `http://<LAN-IP>:<PORT>` | Base URL the hub shares with probes |
-| `SERVER_TOKEN` | *(empty)* | Shared secret; probes include it as `X-Token` on POST |
-| `CSV_FILE` | `temperature_log.csv` | Where readings are stored |
+## Quick start
 
-**PUBLIC_BASE**: if not set, the hub auto-detects your LAN IP and uses `http://<lan-ip>:<port>`.
+1. **Start the hub.**
+   - **Windows:** double-click **`Start.bat`**.
+   - **Linux/macOS:** run **`./Start.sh`**.
 
----
-## File Map
-- **`app.py`** — Bootstraps Flask/Dash, registers the API, starts discovery & auto-provisioner.
-- **`api/routes.py`** — REST endpoints: health, config, probes, provision, and ingest.
-- **`probe_discovery.py`** — Zeroconf browser that finds probes and normalizes info.
-- **`auto_provision.py` / `auto_provisioner.py`** — Provision a probe (single / background all).
-- **`core/mdns_advert.py`** — Advertises the hub on mDNS (Bonjour).
-- **`components/`** — Dash UI parts (`probe_panel.py`, `temp_graph.py`, `setup_helper.py`).
-- **`temperature_log.csv`** — Live data log.
+   The first launch sets up its environment automatically (this takes a minute); later launches start instantly.
 
----
-## API Quick Test
-Open a browser on the hub PC:
-```
-http://<hub-ip>:8088/api/ingest?temperature_c=22.3
-```
-You should get `{ "ok": true }` and a new row in the CSV.
+2. **Open the dashboard.** Your browser opens to **http://localhost:8080** on its own. If it doesn't, type that address in yourself. If Windows Firewall asks, click **Allow** on **Private** networks so probes can reach the hub.
+
+3. **Connect a probe.** Power a ThermaProbe (USB adapter or battery) and follow the sticker on the unit to join it to your Wi-Fi. Within a few seconds the probe appears on the dashboard and readings begin. Full step-by-step instructions are in the **[User Manual](docs/USER_MANUAL.md)**.
+
+4. **See readings.** Watch live temperature and charts update on the dashboard.
+
+5. **Export CSV.** Click the download link to save `temperature_log.csv` for Excel or Sheets.
+
+6. **Calibrate.** Trim a probe to a known reference with the one-point (ice-bath) procedure in the User Manual.
+
+7. **Set alerts.** Choose a safe minimum/maximum for a probe and get notified when it drifts out of range.
+
+> **New here?** The **[User Manual](docs/USER_MANUAL.md)** walks you through unboxing, joining Wi-Fi, reading data, calibrating, and troubleshooting — no technical background needed.
 
 ---
-## Troubleshooting
-- **Probe in UI, no data**: wait ~10s for auto-provision; or open `http://<probe-ip>/status`.
-- **401 Unauthorized**: set `SERVER_TOKEN` and restart; hub will re-provision token.
-- **No discovery**: firewall may block UDP 5353; logging still works (IP-based provisioning).
+
+## For makers & developers
+
+ThermaHub is a Python (Flask + Dash) app served by [waitress](https://pypi.org/project/waitress/) on port **8080**, plus open ESP32 firmware for the probes. If you want to build, extend, white-label, or self-assemble hardware:
+
+- **[PROTOCOL.md](PROTOCOL.md)** — the hub⇄probe wire protocol (mDNS discovery, provisioning, ingest, probe HTTP endpoints).
+- **[docs/DEVELOPING.md](docs/DEVELOPING.md)** — architecture, accurate file map, full REST API reference, config schema, environment variables, and how to run the tests.
+- **[firmware/](firmware/)** — ESP32 probe firmware (PlatformIO project) and the factory-flash tooling.
+- **[docs/BOM.md](docs/BOM.md)** — bill of materials for building your own probe hardware. See also **[docs/ASSEMBLY.md](docs/ASSEMBLY.md)**.
+
+---
+
+## What's in this repo
+
+| Path | What it is |
+|---|---|
+| `Start.bat` / `Start.sh` | One-click launchers (Windows / Linux-macOS). |
+| `app.py` | Application entry point: builds the Dash UI, registers the API, starts discovery and auto-provisioning, serves on port 8080. |
+| `api/routes.py` | REST API blueprint (`/api/...`). |
+| `core/` | Config, storage/CSV, logging, mDNS advertising, notifications, paths, version. |
+| `components/` | Dash dashboard UI pieces. |
+| `probe_discovery.py` | Zeroconf browser that finds probes on the LAN. |
+| `auto_provisioner.py` / `auto_provision.py` | Background provisioner / single-probe provision helper. |
+| `config.example.json` | Shipped defaults; copied to `config.json` on first run. |
+| `firmware/` | ESP32 probe firmware and flashing tools. |
+| `docs/` | User manual, developer docs, BOM, assembly, and more. |
+| `PROTOCOL.md` | Hub⇄probe protocol specification. |
+| `temperature_log.csv` | Your live data log (created on first run; not in version control). |
+
+> **Note:** Earlier versions of this README referenced files and a port (`8088`) that no longer match the app. The hub runs on **8080** and the layout above reflects what actually ships.
+
+---
+
+## License
+
+See [LICENSE](LICENSE), [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), and [docs/EULA.md](docs/EULA.md).
