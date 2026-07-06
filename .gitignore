@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Runtime data & logs (customer data must never be committed)
+temperature_log.csv
+*.log
+data/
+logs/
+
+# Local overrides
+config.local.json
+.env
+.env.*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
