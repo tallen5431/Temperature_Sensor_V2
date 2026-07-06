@@ -10,10 +10,12 @@ from flask import Flask, send_file
 from werkzeug.utils import safe_join
 
 from core.paths import BASE_DIR, get_csv_path, get_log_dir
-from core.applog import setup_logging
+from core.applog import setup_logging, HEALTH
 from core.config import Config, ensure_config_file
 from core.storage import ensure_csv
 from core.mdns_advert import MdnsAdvert
+from core.metrics import LATEST, render_prometheus
+from core.mqtt_publish import MQTT
 from core.version import __version__
 from probe_discovery import ProbeDiscovery
 from api.routes import create_api
@@ -21,7 +23,7 @@ from components.layout_main import build_layout, serve_page, register_all_callba
 from components.help_modal import register_help_callbacks
 
 CSV_FILE = get_csv_path()
-CONFIG_FILE = BASE_DIR / "config.json"
+CONFIG_FILE = Path(os.getenv("CONFIG_FILE") or (BASE_DIR / "config.json"))
 EXAMPLE_CONFIG = BASE_DIR / "config.example.json"
 
 log = setup_logging(get_log_dir())
@@ -136,6 +138,19 @@ def download_csv(filename):
         return "Not found", 404
 
 
+# --- Prometheus metrics (homelab / Grafana integration) ---
+@server.route("/metrics")
+def metrics():
+    if not (cfg.get("metrics", {}) or {}).get("enabled", True):
+        return "metrics disabled", 404
+    try:
+        probes = len(finder.list_probes() or {})
+    except Exception:
+        probes = 0
+    body = render_prometheus(HEALTH.snapshot(), LATEST.snapshot(), probes, __version__)
+    return body, 200, {"Content-Type": "text/plain; version=0.0.4; charset=utf-8"}
+
+
 @app.callback(Output("page-content", "children"), Input("url", "pathname"))
 def display_page(pathname):
     return serve_page(pathname, cfg)
@@ -164,6 +179,12 @@ def main():
         provisioner.start()
         log.info("Auto-provisioner started (provisioning discovered probes every 10s).")
 
+    # Optional MQTT publishing (Home Assistant auto-discovery) — off by default.
+    try:
+        MQTT.start(cfg)
+    except Exception as e:
+        log.warning("MQTT start failed: %s", e)
+
     lan_ip = _detect_lan_ip()
     try:
         if mdns:
@@ -189,6 +210,10 @@ def main():
     finally:
         if provisioner:
             provisioner.stop()
+        try:
+            MQTT.stop()
+        except Exception:
+            pass
         if mdns:
             mdns.stop()
         try:

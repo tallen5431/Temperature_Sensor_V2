@@ -5,6 +5,28 @@ All notable changes to ThermaHub are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Refinements aimed at the homelab / self-hosted beachhead (see `docs/GO_TO_MARKET.md`).
+
+### Added
+- **Prometheus `/metrics` endpoint** — per-probe temperature gauges plus health
+  counters, for scraping into Grafana. Toggle via `metrics.enabled`.
+- **MQTT publishing with Home Assistant auto-discovery** (optional, `mqtt` config
+  block) — each probe appears automatically as a Home Assistant temperature sensor.
+- **Docker / headless deployment** — `Dockerfile`, `docker-compose.yml`, and a
+  `CONFIG_FILE` env override so the hub runs on a NAS/server with a persistent volume.
+- **Go-to-market strategy** — `docs/GO_TO_MARKET.md`.
+
+### Fixed
+- **CSV download button** returned the dashboard HTML instead of the log after the
+  absolute-path refactor (the link had a double slash that missed the download
+  route). It now links by basename; regression-tested.
+
+### Removed
+- Dead modules: `core/logger.py` (unused `PullLogger`) and the orphaned
+  `components/temp_graph.py` / `components/probe_panel.py`.
+
 ## [2.0.0] - 2026-07-06
 
 First public release. 1.0 was never shipped — it was an internal prototype used

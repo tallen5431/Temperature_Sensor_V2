@@ -34,5 +34,18 @@
       "max": 8
     }
   },
-  "probe_names": {}
+  "probe_names": {},
+  "metrics": {
+    "enabled": true
+  },
+  "mqtt": {
+    "enabled": false,
+    "host": "localhost",
+    "port": 1883,
+    "username": "",
+    "password": "",
+    "base_topic": "thermahub",
+    "discovery_prefix": "homeassistant",
+    "discovery_enabled": true
+  }
 }

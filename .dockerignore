@@ -1,0 +1,13 @@
+.git
+.venv
+__pycache__/
+*.pyc
+data/
+logs/
+temperature_log.csv
+config.json
+config.local.json
+.pytest_cache/
+firmware/
+docs/
+tests/

@@ -5,3 +5,4 @@ plotly>=5.18
 dash-bootstrap-components>=1.5
 zeroconf>=0.132,<0.141
 waitress>=3.0
+paho-mqtt>=1.6

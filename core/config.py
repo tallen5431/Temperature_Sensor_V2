@@ -51,6 +51,18 @@ DEFAULTS: dict = {
     "calibration": {},          # {"<probe_id>": {"offset_c": 0.0, "gain": 1.0}}
     "alert_thresholds": {"default": {"min": 2, "max": 8}},  # fridge defaults
     "probe_names": {},
+    # Homelab / self-hosted integrations.
+    "metrics": {"enabled": True},   # Prometheus /metrics endpoint
+    "mqtt": {                       # off by default; publishes to Home Assistant etc.
+        "enabled": False,
+        "host": "localhost",
+        "port": 1883,
+        "username": "",
+        "password": "",
+        "base_topic": "thermahub",
+        "discovery_prefix": "homeassistant",
+        "discovery_enabled": True,
+    },
 }
 
 

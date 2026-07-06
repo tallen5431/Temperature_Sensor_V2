@@ -49,6 +49,15 @@ ThermaHub is a Python (Flask + Dash) app served by [waitress](https://pypi.org/p
 - **[docs/DEVELOPING.md](docs/DEVELOPING.md)** — architecture, accurate file map, full REST API reference, config schema, environment variables, and how to run the tests.
 - **[firmware/](firmware/)** — ESP32 probe firmware (PlatformIO project) and the factory-flash tooling.
 - **[docs/BOM.md](docs/BOM.md)** — bill of materials for building your own probe hardware. See also **[docs/ASSEMBLY.md](docs/ASSEMBLY.md)**.
+- **[docs/GO_TO_MARKET.md](docs/GO_TO_MARKET.md)** — market research and a go-to-market plan (niches, positioning, pricing, channels) for selling this at small scale.
+
+### Homelab / self-hosted
+
+ThermaHub drops into an existing self-hosted stack:
+
+- **Prometheus** — scrape `http://<hub>:8080/metrics` (per-probe temperature + health counters) straight into Grafana.
+- **Home Assistant / MQTT** — enable the `mqtt` block in config and each probe appears automatically as a temperature sensor (MQTT auto-discovery).
+- **Docker** — `docker compose up -d` runs the hub headless with a persistent `./data` volume (see `docker-compose.yml`; use host networking for mDNS discovery).
 
 ---
 

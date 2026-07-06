@@ -175,8 +175,28 @@ CSV columns are fixed: `timestamp,temperature_c,temperature_f,probe_id`.
 | `PUBLIC_BASE` | `http://<detected-LAN-IP>:<PORT>` | Base URL advertised to probes; set to override auto-detection. |
 | `SERVER_TOKEN` | *(empty → generated)* | Forces the device token; takes precedence over config. |
 | `CSV_FILE` | `<repo>/temperature_log.csv` | Path to the readings log. |
+| `CONFIG_FILE` | `<repo>/config.json` | Path to the runtime config (override for Docker volumes). |
 | `LOG_DIR` | `<repo>/logs` | Directory for application logs. |
 | `MDNS_ENABLE` | `1` | Set to `0`/`false` to disable the hub's mDNS advertising. |
+
+---
+
+## Homelab / self-hosted integrations
+
+**Prometheus** — `GET /metrics` exposes the exposition format for scraping (per-probe
+`thermahub_probe_temperature_celsius`, plus health counters). Enabled by default; disable with
+`metrics.enabled: false` in config. It is unauthenticated by design (scrape it on a trusted LAN).
+
+**MQTT + Home Assistant auto-discovery** — off by default. Enable the `mqtt` block in config
+(`enabled`, `host`, `port`, `username`, `password`, `base_topic`, `discovery_prefix`,
+`discovery_enabled`). Each reading is published to `<base_topic>/<probe_id>/state`, and (once per
+probe) a retained HA discovery config to `<discovery_prefix>/sensor/thermahub_<probe_id>/config`,
+so probes appear automatically as temperature sensors in Home Assistant. Requires `paho-mqtt`
+(in `requirements.txt`); a missing package degrades to a warning.
+
+**Docker** — `docker compose up -d` runs the hub with a persistent `./data` volume. mDNS
+auto-discovery needs the host network (`network_mode: host`, the default in `docker-compose.yml`);
+on Docker Desktop, use the bridge override and point probes at the host's LAN IP.
 
 ---
 

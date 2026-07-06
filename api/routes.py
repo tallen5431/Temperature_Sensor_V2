@@ -9,6 +9,8 @@ from core.storage import normalize_payload, append_row, apply_calibration, sanit
 from core.notifications import NOTIFIER
 from core.applog import HEALTH, get_logger
 from core.config import redact_secrets
+from core.metrics import LATEST
+from core.mqtt_publish import MQTT
 from core.version import __version__, PROTOCOL_VERSION
 
 log = get_logger("api")
@@ -195,13 +197,19 @@ def create_api(cfg: Any, csv_path: str, discovery: Any, public_base: Callable[[]
         except Exception as e:
             return False, 500, str(e)
 
-        if probe_id and discovery is not None:
-            try:
-                discovery.register_seen(probe_id, ip=request.remote_addr or "", port=80)
-            except Exception:
-                pass
+        if probe_id:
+            # Latest-reading registry powers the Prometheus /metrics endpoint.
+            LATEST.record(probe_id, t_c)
+            if discovery is not None:
+                try:
+                    discovery.register_seen(probe_id, ip=request.remote_addr or "", port=80)
+                except Exception:
+                    pass
+            friendly = _friendly(probe_id)
             # Server-side threshold evaluation → email/webhook if configured.
-            NOTIFIER.evaluate(cfg, probe_id, t_c, _friendly(probe_id))
+            NOTIFIER.evaluate(cfg, probe_id, t_c, friendly)
+            # Optional MQTT publish (Home Assistant auto-discovery).
+            MQTT.publish_reading(probe_id, t_c, friendly)
         return True, 200, ""
 
     @bp.post("/ingest")
