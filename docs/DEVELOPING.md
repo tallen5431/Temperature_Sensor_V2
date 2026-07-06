@@ -79,9 +79,8 @@ ThermaProbe ──POST /api/ingest {temperature_c, probe_id, timestamp}──▶
 | `core/notifications.py` | `NOTIFIER` — threshold evaluation → email/webhook with debounce. |
 | `core/mdns_advert.py` | `MdnsAdvert` — advertises the hub over mDNS. |
 | `core/version.py` | `__version__` (2.0.0) and `PROTOCOL_VERSION` (1). |
-| `core/storage.py` / `core/logger.py` | Storage + legacy logger module. |
 | `components/layout_main.py` | Builds the Dash layout, page routing, callback registration. |
-| `components/dashboard_view.py`, `temp_graph.py`, `probe_panel.py`, `devices_panel.py`, `setup_helper.py`, `help_modal.py` | Dashboard UI pieces. |
+| `components/dashboard_view.py`, `devices_panel.py`, `setup_helper.py`, `help_modal.py` | Dashboard UI pieces (dashboard, devices, settings, help). |
 | `config.example.json` | Shipped default config; copied to `config.json` on first run. |
 | `tests/` | Pytest suite (`test_api_routes.py`, `test_config.py`, `test_storage.py`, `test_probe_discovery.py`, `conftest.py`). |
 | `firmware/` | ESP32 probe firmware (PlatformIO) + `factory_flash.py`. |

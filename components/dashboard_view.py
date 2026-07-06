@@ -448,23 +448,14 @@ def register_dashboard_callbacks(app, finder, cfg):
             return (empty, empty, '0', '(no data)', 'OFF', 'No signal', 'No data available',
                     'N/A', '', 'N/A', '', 'N/A', '', [], None, {})
 
-    # --- CSV Download Button (exports filtered data) ---
+    # --- CSV Download Button ---
     @app.callback(
         Output('download-btn', 'href'),
         Input('filtered-data-store', 'data')
     )
-    def _csv_link(filtered_data_json):
-        try:
-            if not filtered_data_json:
-                # Fallback to full CSV if no filtered data
-                path = quote(str(CSV_FILE))
-                return f'/download/{path}'
-
-            # Create a download link for filtered data
-            # Note: This still points to the full CSV file
-            # For true filtered export, we'd need to implement a separate endpoint
-            # For now, just return the full CSV path
-            path = quote(str(CSV_FILE))
-            return f'/download/{path}'
-        except Exception:
-            return None
+    def _csv_link(_filtered_data_json):
+        # The hardened /download route serves only the log file, resolved
+        # relative to BASE_DIR — so link by BASENAME, not the absolute path.
+        # (Using the absolute path here produced '/download//home/.../log.csv',
+        # a double-slash that missed the route and returned the dashboard HTML.)
+        return f'/download/{quote(os.path.basename(CSV_FILE))}'
