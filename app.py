@@ -12,6 +12,7 @@ from werkzeug.utils import safe_join
 
 from core.paths import BASE_DIR, get_csv_path, get_log_dir
 from core.applog import setup_logging, HEALTH
+from core.audit import AUDIT
 from core.config import Config, ensure_config_file
 from core.storage import ensure_csv
 from core.mdns_advert import MdnsAdvert
@@ -28,6 +29,7 @@ CONFIG_FILE = Path(os.getenv("CONFIG_FILE") or (BASE_DIR / "config.json"))
 EXAMPLE_CONFIG = BASE_DIR / "config.example.json"
 
 log = setup_logging(get_log_dir())
+AUDIT.configure(get_log_dir() / "audit.log")
 
 # First run: seed config.json from the shipped example so a customer never sees
 # someone else's data, then load layered config (+ config.local.json overrides).
@@ -171,6 +173,7 @@ def download_csv(filename):
         candidate = Path(candidate).resolve()
         if candidate != CSV_FILE.resolve() or not candidate.exists():
             return "Not found", 404
+        AUDIT.record("data.export", detail="temperature_log.csv", actor=request.remote_addr or "?")
         return send_file(str(candidate), as_attachment=True, download_name="temperature_log.csv")
     except Exception:
         return "Not found", 404
@@ -223,6 +226,7 @@ def main():
     except Exception as e:
         log.warning("MQTT start failed: %s", e)
 
+    AUDIT.record("hub.start", detail=f"v{__version__} port={port}")
     lan_ip = _detect_lan_ip()
     try:
         if mdns:

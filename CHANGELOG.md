@@ -25,7 +25,15 @@ Refinements aimed at the homelab / self-hosted beachhead (see `docs/GO_TO_MARKET
   block) — each probe appears automatically as a Home Assistant temperature sensor.
 - **Docker / headless deployment** — `Dockerfile`, `docker-compose.yml`, and a
   `CONFIG_FILE` env override so the hub runs on a NAS/server with a persistent volume.
-- **Go-to-market strategy** — `docs/GO_TO_MARKET.md`.
+- **Optional dashboard login** — HTTP Basic auth on the dashboard + CSV download for
+  shared office/lab LANs (`ui_auth` config or `UI_USERNAME`/`UI_PASSWORD`), off by
+  default; `/api/*` and `/metrics` are exempt.
+- **Tamper-evident audit trail** — a hash-chained, append-only log of config changes
+  and data exports (`logs/audit.log`), with an integrity check at
+  `GET /api/audit/verify`. A B2B/procurement differentiator and a foundation for any
+  future regulated (Part 11 / Annex 11) path.
+- **Go-to-market & compliance strategy** — `docs/GO_TO_MARKET.md` and
+  `docs/COMPLIANCE.md` (certification path, calibration tiers, sellable B2B segments).
 
 ### Fixed
 - **CSV download button** returned the dashboard HTML instead of the log after the

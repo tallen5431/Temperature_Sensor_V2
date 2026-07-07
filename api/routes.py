@@ -11,6 +11,7 @@ from core.storage import (
 )
 from core.notifications import NOTIFIER
 from core.applog import HEALTH, get_logger
+from core.audit import AUDIT
 from core.config import redact_secrets
 from core.metrics import LATEST
 from core.mqtt_publish import MQTT
@@ -138,6 +139,13 @@ def create_api(cfg: Any, csv_path: str, discovery: Any, public_base: Callable[[]
     @bp.get("/probes")
     def list_probes():
         return jsonify(_iter_probes())
+
+    @bp.get("/audit/verify")
+    def audit_verify():
+        """Report tamper-evident audit-chain integrity (auth required)."""
+        if not _check_auth():
+            return jsonify(ok=False, error="unauthorized"), 401
+        return jsonify(AUDIT.verify())
 
     @bp.post("/provision")
     def provision():

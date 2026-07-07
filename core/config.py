@@ -153,6 +153,13 @@ class Config:
         with self.lock:
             self.data = _deep_merge(self.data, mapping)
             self.save()
+        # Record the change (top-level keys only — never the values, which may
+        # include secrets) in the tamper-evident audit trail.
+        try:
+            from core.audit import AUDIT
+            AUDIT.record("config.update", detail=",".join(sorted(mapping.keys())))
+        except Exception:
+            pass
 
     def to_dict(self) -> dict:
         with self.lock:

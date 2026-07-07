@@ -204,6 +204,11 @@ on Docker Desktop, use the bridge override and point probes at the host's LAN IP
 HTTP Basic auth on the dashboard and CSV download for a shared office/lab LAN. `/api/*` (device-token
 auth) and `/metrics` (Prometheus scrape) are intentionally exempt.
 
+**Audit trail** — config changes and CSV exports are recorded to a hash-chained, append-only
+`logs/audit.log` (each entry hashes the previous one, so silent edits break the chain — only key
+names are logged, never secret values). `GET /api/audit/verify` (auth) reports chain integrity and
+entry count. See `docs/COMPLIANCE.md` for how this fits a B2B / regulated path.
+
 ---
 
 ## Running tests
