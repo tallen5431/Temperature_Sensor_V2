@@ -10,6 +10,7 @@ will drift apart.
 - Default sensor: DS18B20 on **GPIO4**, 4.7 kΩ pull-up to **3V3**
 - Status LED: **GPIO2** (active-high; on-board LED on most dev boards)
 - Optional MAX31855 (SPI): CS **GPIO5**, SCK **GPIO18**, MISO/SO **GPIO19**
+- Optional SHT4x temp+humidity (I2C, grow variant): SDA **GPIO21**, SCL **GPIO22**
 
 ---
 
@@ -23,6 +24,8 @@ will drift apart.
 | MAX31855 CS *(opt)* | **GPIO5** | `MAX31855_CS` | MAX31855 CS |
 | MAX31855 SCK *(opt)* | **GPIO18** | `MAX31855_SCK` (VSPI SCK) | MAX31855 SCK |
 | MAX31855 SO *(opt)* | **GPIO19** | `MAX31855_MISO` (VSPI MISO) | MAX31855 SO (read-only, no MOSI) |
+| SHT4x SDA *(opt)* | **GPIO21** | `I2C_SDA` | SHT4x SDA (I2C data) |
+| SHT4x SCL *(opt)* | **GPIO22** | `I2C_SCL` | SHT4x SCL (I2C clock) |
 | Power | 3V3, GND | — | sensor VDD/GND, LED cathode |
 
 Powered over the ESP32 dev board's **USB-C** connector (5 V in; the on-board
@@ -67,6 +70,20 @@ regulator supplies the 3V3 rail used by the sensor).
                                        T+ / T-  ---> K-type thermocouple
 ```
 
+### Optional SHT4x temp + humidity build (I2C, grow variant)
+
+Wire this *instead of* the DS18B20. The SHT4x is a digital I2C part: no pull-up
+resistor and no waterproof probe — the sensor body itself must sit in free (vented)
+air to read humidity.
+
+```
+        ESP32                         SHT4x breakout
+   GPIO21 (SDA)  <------------------>  SDA
+   GPIO22 (SCL)  ------------------->  SCL
+   3V3           ------------------->  VIN / 3V3
+   GND           ------------------->  GND
+```
+
 ```mermaid
 graph LR
   subgraph ESP32[ESP32-WROOM-32]
@@ -105,6 +122,11 @@ graph LR
 5. *(Optional MAX31855)* Solder CS→**GPIO5**, SCK→**GPIO18**, SO→**GPIO19**,
    plus 3V3 and GND. Attach the K-type thermocouple to T+/T−. Rebuild firmware
    with `-D SENSOR_MAX31855`.
+   *(Optional SHT4x grow variant, instead of the DS18B20)* Solder SDA→**GPIO21**,
+   SCL→**GPIO22**, plus 3V3 and GND — **no** pull-up needed. Mount the sensor so it
+   sits in vented free air (it reads humidity), not sealed in the box. Rebuild
+   firmware with `-D SENSOR_SHT4x`; readings then carry `humidity_pct` and the hub
+   computes VPD.
 6. **Route the probe lead through the enclosure gland/grommet** *before* final
    soldering so you don't have to re-thread it. Leave a service loop inside.
 7. **Add strain relief:** tighten the cable gland, or anchor the lead to an

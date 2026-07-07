@@ -38,8 +38,8 @@
   differentiator to them. **Win on packaging** — auto-discovery, a bundled dashboard, no YAML —
   vs. Shelly/ESPHome, and monetize DIYers with a cheap firmware/white-label tier.
 - **Product moves that unlock it (shipped in this repo):** ✅ Prometheus `/metrics`, ✅ optional
-  MQTT + Home Assistant auto-discovery, ✅ Docker/headless deployment. Still on the roadmap:
-  dashboard login for shared office LANs, syslog/SNMP alert channels, site/rack grouping.
+  MQTT + Home Assistant auto-discovery, ✅ Docker/headless deployment, ✅ optional dashboard login
+  for shared office LANs. Still on the roadmap: syslog/SNMP alert channels, site/rack grouping.
 
 ### #2 — Indoor grow tents / small greenhouse / cannabis
 - **Why:** highest willingness-to-pay of any well-fit niche and the clearest *subscription-pain*
@@ -47,13 +47,18 @@
   reviewers cite that paywall as a top complaint. Growers are technical, run a home PC, need
   multiple probes, and (for cannabis) have a genuine privacy motive.
 - **WTP:** $129–499 observed (Pulse Zero $129 / One $199 / Pro $499).
-- **The blocker (honest):** this niche buys on **VPD**, which needs **humidity** — and ThermaHub
-  is temperature-only today. It serves growers at ~half value until an RH sensor ships. Gated on
-  a product change, hence rank 2.
-- **Product moves to unlock:** add an SHT4x/BME280 humidity option in firmware (a `SENSOR_SHT4x`
-  build flag), add an RH field to the protocol + storage, compute/display **VPD**, and support
-  VPD-based alerts + day/night schedules. Then price a no-subscription VPD kit at ~$149–199 and
-  hammer *"VPD alerts never behind a paywall."*
+- **The old blocker — now cleared (shipped in this repo):** this niche buys on **VPD**, which
+  needs **humidity**. ThermaHub was temperature-only; that gap is now closed. A **SHT4x
+  temperature + humidity** firmware variant (`-D SENSOR_SHT4x`) ships, the hub **computes VPD
+  itself** (Tetens formula, with an optional leaf-temperature offset) from every reading, and
+  Humidity + VPD now surface on the dashboard, in Prometheus `/metrics`, and via MQTT/Home
+  Assistant discovery — with **per-probe humidity and VPD alert thresholds**. The core VPD
+  wedge is met, with **no paywall** (directly vs. Pulse's gated VPD).
+- **Product moves — shipped vs. remaining:** ✅ SHT4x humidity firmware variant, ✅ hub-computed
+  **VPD** (+ optional leaf offset), ✅ Humidity/VPD on dashboard, `/metrics`, and MQTT, ✅ VPD +
+  humidity alerts. Still on the roadmap: day/night VPD schedules and a **CO₂** sensor option
+  (the main remaining grow variable). Now that RH/VPD ships, price a no-subscription VPD kit at
+  ~$149–199 and hammer *"VPD alerts never behind a paywall."*
 
 ### #3 — Homebrewing / fermentation / cheese & charcuterie curing
 - **Why:** strongest ethos/community fit (technical, fee-averse, want local data, multi-vessel).
@@ -115,7 +120,7 @@ savings" (rivals already match no-fee).
 | 2-probe | **~$109** (~$55/probe) | Visible per-probe quantity anchor. |
 | 4-probe "Whole-Closet / Whole-Grow" kit | **~$189** (~$47/probe) | Beats the equivalent SensorPush/Temp Stick multi-sensor total; healthy margin on ~$14–17 BOM. |
 | Maker / white-label tier | bare boards or firmware + BOM | Converts DIY cannibalization into a low-support revenue line. |
-| VPD kit (after RH ships) | **~$149–199** | *"VPD alerts never behind a paywall"* vs. Pulse. |
+| VPD kit (RH/VPD now shipped) | **~$149–199** | *"VPD alerts never behind a paywall"* vs. Pulse. |
 
 Frame the sale on **5-year total cost of ownership**: competitors are "subscription-free" but you
 re-buy a $100 gateway per ecosystem or rent Pulse's cloud goodwill; ThermaHub has nothing to rent
@@ -153,8 +158,9 @@ and off-strategy.
    people to pay real money is the truest pre-100-unit signal.
 5. **Fake-door price test:** Shopify pre-order deposits / Tindie favorites at each price point.
 6. **Ship review units** to 2–3 niche reviewers; track referral traffic and pre-orders.
-7. **For the grow niche:** validate VPD-paywall frustration on grow forums *before* investing in
-   RH/VPD firmware. The temp-only product can launch to homelab first.
+7. **For the grow niche:** the RH/VPD firmware (SHT4x) now ships, so validate VPD-paywall
+   frustration on grow forums to confirm the switcher pool *before* committing grow-kit
+   inventory. Homelab still leads the launch.
 
 ### Demand signals to watch
 - Upvotes / "take my money" replies on a build-in-public post (the cheapest early read).
@@ -174,8 +180,9 @@ and off-strategy.
   and lead on no-cloud/can't-be-bricked.
 - **Self-hosted-PC friction** blocks the highest-demand *consumer* niche (cabins/RVs) — don't
   lead there without a standalone/relay option.
-- **Temperature-only** under-serves grow/curing/mushroom (humidity is the binding variable) —
-  ship RH/VPD before entering those.
+- **Humidity is the binding variable** for grow/curing/mushroom — RH/VPD now ships for the grow
+  variant (SHT4x + hub-computed VPD); a **CO₂** option and humidity set-point control are the
+  remaining gaps before a full push into those niches.
 - **Power-outage failure mode** — never overclaim "works when the internet is down"; pair with a
   UPS recommendation.
 - **Solo-maker trust gap & support burden** vs polished incumbent apps — lean on reviews,

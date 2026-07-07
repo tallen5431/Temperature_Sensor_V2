@@ -10,6 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Refinements aimed at the homelab / self-hosted beachhead (see `docs/GO_TO_MARKET.md`).
 
 ### Added
+- **Humidity + VPD support (grow variant)** — an optional `-D SENSOR_SHT4x` firmware
+  build reads an SHT4x temperature+humidity sensor over I2C (GPIO21/22) and adds an
+  optional `humidity_pct` field to ingest (backward-compatible, still protocol v1).
+  The hub computes **VPD** (vapour pressure deficit) from temperature + humidity using
+  the Tetens formula with an optional `settings.vpd_leaf_offset_c` leaf offset, adds
+  `humidity_pct,vpd_kpa` CSV columns (old logs auto-upgraded), shows Humidity + VPD on
+  the dashboard, exposes `thermahub_probe_humidity_percent` / `thermahub_probe_vpd_kpa`
+  Prometheus gauges, publishes separate humidity and VPD MQTT/Home Assistant sensors,
+  and evaluates `humidity_min/max` and `vpd_min/max` per-probe alert thresholds.
 - **Prometheus `/metrics` endpoint** — per-probe temperature gauges plus health
   counters, for scraping into Grafana. Toggle via `metrics.enabled`.
 - **MQTT publishing with Home Assistant auto-discovery** (optional, `mqtt` config

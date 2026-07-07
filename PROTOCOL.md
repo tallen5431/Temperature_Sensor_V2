@@ -147,6 +147,15 @@ The probe persists `server_url`, `token`, and `interval_ms` to NVS and begins po
 `sensor_ok` is `false` when the sensor reports a fault (see §8); in that state the
 probe skips posting.
 
+On the humidity build variant (firmware built with `-D SENSOR_SHT4x`, see §8) the
+response carries one extra field, `humidity_pct` (0–100):
+
+```json
+{ "…": "…", "temperature_c": 24.1, "humidity_pct": 58.3, "sensor_ok": true }
+```
+
+Temperature-only builds (DS18B20 / MAX31855) omit `humidity_pct` entirely.
+
 ---
 
 ## 5. Ingest — probe → hub
@@ -178,6 +187,31 @@ Every `interval_ms`, the probe POSTs the latest good reading to the provisioned
 - `probe_id` in the body is optional but SHOULD be sent and MUST match `X-Probe-ID`.
 - `timestamp` is optional ISO-8601; if omitted the hub stamps receipt time. (Aliases
   `ts` also accepted.)
+- **`humidity_pct`** is **optional** (0–100 %RH). Only the SHT4x build variant emits
+  it; temperature-only probes omit it. The hub validates it (finite, 0–100) and
+  silently ignores anything invalid. (Aliases `humidity`/`rh`/`h` also accepted.)
+  A reading *with* humidity looks like:
+
+```json
+{
+  "temperature_c": 24.1,
+  "humidity_pct": 58.3,
+  "probe_id": "ThermaProbe-9A3F2C",
+  "timestamp": "2026-07-06T14:03:11"
+}
+```
+
+#### Humidity & VPD
+
+The probe only ever reports **temperature** and (on the SHT4x variant) **humidity**.
+**VPD (vapour pressure deficit) is not part of the wire protocol** — the probe never
+sends it. The **hub computes VPD** from the temperature + humidity of each reading
+using the **Tetens** saturation-vapour-pressure formula, optionally applying a
+leaf-temperature offset from hub config `settings.vpd_leaf_offset_c` (default `0.0`;
+growers commonly use `~2.0` to model leaf-below-air temperature). VPD is derived,
+stored, and displayed entirely hub-side, so adding it required **no `proto` change**:
+`humidity_pct` is a backward-compatible optional field and this document remains
+`proto = 1`.
 
 **Success** `200 OK`
 
@@ -213,15 +247,21 @@ The hub validates every reading before it touches the log:
 5. **Method:** `GET /api/ingest` returns `405`; only `POST` mutates the log. (A prior
    version accepted `GET`, letting a drive-by `<img>` poison the CSV — closed.)
 6. **Size:** bodies over **64 KiB** are rejected `413`.
+7. **Humidity (optional):** if `humidity_pct` is present it must be finite and within
+   `0 ≤ rh ≤ 100`, else it is dropped (the reading is still accepted — humidity is
+   never a reason to reject a good temperature). When a valid humidity is present the
+   hub derives **VPD** from it (see §5, *Humidity & VPD*).
 
 Accepted readings are persisted to the CSV log with columns:
 
 ```
-timestamp,temperature_c,temperature_f,probe_id
+timestamp,temperature_c,temperature_f,humidity_pct,vpd_kpa,probe_id
 ```
 
-Per-probe calibration (`gain` then `offset_c`, from hub config) is applied before
-logging, and fahrenheit is recomputed from the calibrated celsius.
+`humidity_pct` and `vpd_kpa` are blank for temperature-only probes; older logs are
+auto-upgraded to this header on load. Per-probe calibration (`gain` then `offset_c`,
+from hub config) is applied to temperature before logging, and fahrenheit is recomputed
+from the calibrated celsius.
 
 ---
 
@@ -274,11 +314,12 @@ and is the value probes echo on ingest.
 
 ## 8. Sensor faults
 
-Sensor: **DS18B20** on a GPIO with a 4.7 kΩ pull-up (thermocouple **MAX31855**
-optional at build time). Known fault readings — `85.0 °C` (power-on default),
-`-127 °C` / `NaN` (disconnected) — MUST cause the probe to set `sensor_ok = false`
-and **skip posting** that cycle. As defense in depth, any such value that did reach the
-hub is rejected by the range/finite checks in §6.
+Sensor: **DS18B20** on a GPIO with a 4.7 kΩ pull-up (thermocouple **MAX31855** or
+temp+humidity **SHT4x** optional at build time — see firmware `build_flags`
+`-D SENSOR_MAX31855` / `-D SENSOR_SHT4x`). Known fault readings — `85.0 °C` (power-on
+default), `-127 °C` / `NaN` (disconnected) — MUST cause the probe to set
+`sensor_ok = false` and **skip posting** that cycle. As defense in depth, any such
+value that did reach the hub is rejected by the range/finite checks in §6.
 
 ---
 

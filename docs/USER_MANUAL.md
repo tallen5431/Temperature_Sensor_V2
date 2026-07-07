@@ -77,7 +77,7 @@ That's it — the hub found the probe and set it up for you automatically. Readi
 ## 7. Read and export your data
 
 - **Live view:** each probe shows its current temperature, a chart over time, and summary statistics.
-- **Export to a spreadsheet:** click the **download** link on the dashboard to save **`temperature_log.csv`**. Open it in Excel or Google Sheets. Each row is a reading with a timestamp, the temperature in °C and °F, and which probe it came from.
+- **Export to a spreadsheet:** click the **download** link on the dashboard to save **`temperature_log.csv`**. Open it in Excel or Google Sheets. Each row is a reading with a timestamp, the temperature in °C and °F, and which probe it came from. Grow-variant probes (see Section 11) also fill in **humidity** and **VPD** columns; those columns stay blank for temperature-only probes.
 
 Your data lives only on this PC. Backing up the CSV file is as simple as copying it.
 
@@ -122,7 +122,20 @@ When a reading crosses your limits, ThermaHub can notify you. To receive emails 
 
 ---
 
-## 11. Troubleshooting FAQ
+## 11. Humidity & VPD (grow variant)
+
+Some ThermaProbes ship with a **humidity sensor (SHT4x)** for grow tents and greenhouses — the "grow variant." These probes measure **temperature and humidity**, and the hub uses both to calculate **VPD**.
+
+- **Which probes report it:** only grow-variant probes (the ones with the humidity sensor). Standard temperature-only probes show temperature just as before.
+- **Where it shows:** when a probe reports humidity, its card on the dashboard adds a **Humidity** readout (in %) and a **VPD** readout (in kPa) next to the temperature.
+- **What VPD means (for growers):** VPD (vapour pressure deficit) rolls temperature and humidity into one number, in kPa, that describes how much "drying power" the air has for your plants — most growers aim to keep it in a target band for healthy transpiration.
+- **How VPD is worked out:** you don't set it up — the hub computes VPD automatically from each temperature + humidity reading. A grower can optionally have an installer set a small **leaf-temperature offset** (growers commonly use about 2 °C) so the VPD reflects leaf, not just air, temperature.
+
+**Humidity and VPD alerts.** In a grow-variant probe's alert settings (Section 10) you can set a **humidity minimum/maximum** (in %) and a **VPD minimum/maximum** (in kPa) alongside the temperature limits. ThermaHub checks each one independently, so you can be warned if humidity or VPD drifts out of range even while the temperature is fine — with the same email/webhook notifications.
+
+---
+
+## 12. Troubleshooting FAQ
 
 **The dashboard won't open at http://localhost:8080.**
 Make sure the hub program (`Start.bat` / `Start.sh`) is still running. Look for its window. If it closed, start it again.

@@ -11,6 +11,8 @@ that pairs with a ThermaHub install. Pin assignments referenced here come from
   external LED is optional if you use a bare dev board).
 - **Optional sensor:** MAX31855 + K-type thermocouple (SPI) for high-temp /
   probe-abuse builds. Only populated when firmware is built with `-D SENSOR_MAX31855`.
+- **Optional sensor:** SHT4x temperature **+ humidity** (I2C) for the humidity/VPD
+  "grow" variant. Only populated when firmware is built with `-D SENSOR_SHT4x`.
 
 ---
 
@@ -44,6 +46,21 @@ high-temperature or fast-response probes and build firmware with `-D SENSOR_MAX3
 
 Adds **~$21** to the unit; **thermocouple per-unit material cost ≈ $36** (offset
 by removing the DS18B20 + pull-up, −$3.52 → net **~$34.50**).
+
+### Optional: SHT4x temperature + humidity build ("grow" variant)
+
+Populate this *instead of* the DS18B20 (items 2 + 3 above) when you want humidity and
+hub-computed **VPD** for grow tents / greenhouses, and build firmware with
+`-D SENSOR_SHT4x`. The SHT4x is a digital I2C part, so it needs **no** 4.7 kΩ pull-up
+(item 3) and no waterproof stainless probe (item 2).
+
+| # | Component | Spec / part example | Qty | Example supplier | Unit cost (USD) |
+|---|-----------|---------------------|-----|------------------|-----------------|
+| S | SHT4x breakout | SHT40/SHT41/SHT45 temp + humidity, I2C (SDA/SCL), 3.3 V | 1 | Adafruit #4885 (SHT40) / Amazon | 4.95 |
+
+Adds **~$5** for the module and removes the DS18B20 + pull-up (−$3.52), so the
+**grow per-unit material cost ≈ $19** (net **~$18.90**). For a vented (non-immersed)
+grow-tent enclosure the sensor must sit in free air — see ASSEMBLY.md.
 
 ---
 

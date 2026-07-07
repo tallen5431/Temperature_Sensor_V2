@@ -8,7 +8,8 @@ of ThermaHub protocol **v1**.
 - **MCU:** ESP32-WROOM-32E (`esp32dev`)
 - **Framework:** Arduino via [PlatformIO](https://platformio.org/)
 - **Firmware version:** 2.0.0 · **Protocol:** 1
-- **Sensor:** DS18B20 (default) or MAX31855 K-type thermocouple (build option)
+- **Sensor:** DS18B20 (default), MAX31855 K-type thermocouple, or SHT4x
+  temperature **+ humidity** (build options)
 
 All GPIO/pin assignments live in [`src/protocol.h`](src/protocol.h), which is
 the single source of truth shared with the hardware docs
@@ -41,15 +42,31 @@ Add a **4.7 kΩ pull-up** from DATA to 3V3 (required for 1-Wire).
 
 **MAX31855 thermocouple (optional)** — CS=GPIO5, SCK=GPIO18, SO(MISO)=GPIO19.
 
+**SHT4x temp + humidity (optional, "grow" variant)** — I2C:
+
+| SHT4x | ESP32 |
+|-------|-------|
+| VDD  | 3V3 |
+| GND  | GND |
+| SDA  | GPIO21 (`I2C_SDA`) |
+| SCL  | GPIO22 (`I2C_SCL`) |
+
+This variant *replaces* the DS18B20 and adds a `humidity_pct` field to each reading;
+the hub uses it to compute VPD (vapour pressure deficit).
+
 Status LED: GPIO2 (on-board LED on most dev boards).
 
 ## 3. Select the sensor back-end
 
-In [`platformio.ini`](platformio.ini) `build_flags`:
+In [`platformio.ini`](platformio.ini) `build_flags`, comment the DS18B20 line and
+uncomment exactly one alternative:
 
-- `-D SENSOR_DS18B20` — default, 1-Wire DS18B20.
+- `-D SENSOR_DS18B20` — default, 1-Wire DS18B20 (temperature only).
 - `-D SENSOR_MAX31855` — thermocouple. Also uncomment the `adafruit/Adafruit
   MAX31855 library` line in `lib_deps`.
+- `-D SENSOR_SHT4x` — temperature **+ humidity** over I2C (the grow variant, enables
+  VPD). Also uncomment both the `adafruit/Adafruit SHT4x Library` and its
+  `adafruit/Adafruit BusIO` dependency lines in `lib_deps`.
 
 ## 4. Build & flash
 
@@ -112,7 +129,7 @@ Service `_temps-probe._tcp.local.` on TCP port 80, TXT records:
 |---------------|---------|
 | `POST /provision` | Body `{server_url, token, interval_ms}`. Requires header `X-Provision-Secret` **only when the unit has a secret stored** (see note below). Persists settings to NVS. Returns `{id,name,fw,accepted:true}`. |
 | `GET /whoami`  | `{id,name,fw,mac}` |
-| `GET /status`  | `{id,wifi_rssi,uptime_s,last_post_ok,last_post_code,server_url,temperature_c,sensor_ok}` |
+| `GET /status`  | `{id,wifi_rssi,uptime_s,last_post_ok,last_post_code,server_url,temperature_c,sensor_ok}` (SHT4x builds also include `humidity_pct`) |
 | `GET /` (SoftAP) | Wi-Fi setup page; `POST /save` stores creds and reboots. |
 
 **Provision secret note:** the spec defines a per-unit `X-Provision-Secret`
@@ -135,6 +152,11 @@ Content-Type: application/json
 
 {"temperature_c": 4.31, "probe_id": "ThermaProbe-9A3F2C", "timestamp": "uptime+123s"}
 ```
+
+On the SHT4x variant the body carries an extra optional `humidity_pct` (0–100), e.g.
+`{"temperature_c": 24.1, "humidity_pct": 58.3, ...}`; the hub computes VPD from it.
+Temperature-only builds omit the field, and it is a backward-compatible addition, so
+this stays protocol v1.
 
 The hub validates the value is finite and within −60…150 °C and stamps the
 authoritative timestamp. Post result is tracked in `/status`
