@@ -49,6 +49,7 @@ ThermaHub is a Python (Flask + Dash) app served by [waitress](https://pypi.org/p
 - **[docs/DEVELOPING.md](docs/DEVELOPING.md)** — architecture, accurate file map, full REST API reference, config schema, environment variables, and how to run the tests.
 - **[firmware/](firmware/)** — ESP32 probe firmware (PlatformIO project) and the factory-flash tooling.
 - **[docs/BOM.md](docs/BOM.md)** — bill of materials for building your own probe hardware. See also **[docs/ASSEMBLY.md](docs/ASSEMBLY.md)**.
+- **[docs/LAUNCH.md](docs/LAUNCH.md)** — the step-by-step runbook to start selling small batches ASAP (validate → clear FCC → first batch → scale).
 - **[docs/GO_TO_MARKET.md](docs/GO_TO_MARKET.md)** — market research and a go-to-market plan (niches, positioning, pricing, channels) for selling this at small scale.
 - **[docs/COMPLIANCE.md](docs/COMPLIANCE.md)** — certification path (FCC/CE), calibration tiers, and which business segments you can realistically sell into.
 
