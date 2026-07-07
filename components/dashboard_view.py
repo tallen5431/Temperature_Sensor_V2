@@ -1,7 +1,7 @@
 from dash import html, dcc, Output, Input, no_update
 import dash_bootstrap_components as dbc
 import plotly.graph_objs as go
-import pandas as pd, os, datetime
+import pandas as pd, os, datetime, threading
 from urllib.parse import quote
 
 from core.paths import get_csv_path
@@ -9,6 +9,31 @@ from core.paths import get_csv_path
 # Resolved once, absolute, shared with the writer (see core/paths.py). The old
 # relative default meant the reader and writer could disagree on the file.
 CSV_FILE = str(get_csv_path())
+
+# Cache the parsed CSV keyed on (mtime, size) so the dashboard doesn't re-parse
+# the whole file on every 5 s tick and once per open browser tab. Callers treat
+# the returned frame as read-only (copy before mutating).
+_read_cache = {"key": None, "df": None}
+_read_cache_lock = threading.Lock()
+
+
+def _read_csv_cached() -> pd.DataFrame:
+    try:
+        st = os.stat(CSV_FILE)
+        key = (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return pd.DataFrame()
+    with _read_cache_lock:
+        if _read_cache["key"] == key and _read_cache["df"] is not None:
+            return _read_cache["df"]
+    try:
+        df = pd.read_csv(CSV_FILE)
+    except Exception:
+        df = pd.DataFrame()
+    with _read_cache_lock:
+        _read_cache["key"] = key
+        _read_cache["df"] = df
+    return df
 
 # --- Gauge Card ---
 GaugeCard = dbc.Card(
@@ -161,7 +186,8 @@ def register_dashboard_callbacks(app, finder, cfg):
         if time_range == 'all' or df.empty:
             return df
 
-        # Parse timestamps
+        # Copy before adding the helper column (df may be the shared read cache).
+        df = df.copy()
         df['dt'] = pd.to_datetime(df['timestamp'])
         now = pd.Timestamp.now()
 
@@ -253,7 +279,7 @@ def register_dashboard_callbacks(app, finder, cfg):
         default_unit = (cfg.get('settings', {}) or {}).get('default_unit', 'celsius')
         temp_unit = temp_unit or default_unit
         try:
-            df = pd.read_csv(CSV_FILE)
+            df = _read_csv_cached()
             if df.empty:
                 raise ValueError('No data')
 
@@ -432,12 +458,11 @@ def register_dashboard_callbacks(app, finder, cfg):
             if delta < 10:
                 hb += ' ✓'
 
-            # Store filtered data for CSV export
-            filtered_csv = df_filtered.to_json(date_format='iso', orient='split')
-
+            # Download links to the full CSV by basename (see _csv_link); we no
+            # longer serialize the whole filtered frame into a store every tick.
             return (gauge, fig, probes, ts, logging_status, hb, range_info,
                     stat_min, stat_min_time, stat_max, stat_max_time, stat_avg, stat_avg_info,
-                    alerts_container, filtered_csv, {'display': 'none'})
+                    alerts_container, None, {'display': 'none'})
 
         except Exception as e:
             empty = go.Figure()
@@ -457,15 +482,16 @@ def register_dashboard_callbacks(app, finder, cfg):
     )
     def _update_env(_):
         try:
-            df = pd.read_csv(CSV_FILE)
-            if 'humidity_pct' not in df.columns:
+            df = _read_csv_cached()
+            if df.empty or 'humidity_pct' not in df.columns:
                 return []
-            df['humidity_pct'] = pd.to_numeric(df['humidity_pct'], errors='coerce')
-            h = df.dropna(subset=['humidity_pct'])
+            # Don't mutate the shared cache frame — work on a derived Series.
+            hum_series = pd.to_numeric(df['humidity_pct'], errors='coerce')
+            h = df[hum_series.notna()]
             if h.empty:
                 return []
             row = h.tail(1).iloc[0]
-            hum = float(row['humidity_pct'])
+            hum = float(pd.to_numeric(row['humidity_pct'], errors='coerce'))
             cards = [dbc.Col(dbc.Card(dbc.CardBody([
                 html.H6('Humidity', className='text-muted mb-1'),
                 html.H3(f'{hum:.1f} %', className='fw-bold text-info mb-0')

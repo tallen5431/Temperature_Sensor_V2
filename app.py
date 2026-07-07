@@ -226,6 +226,14 @@ def main():
     except Exception as e:
         log.warning("MQTT start failed: %s", e)
 
+    # Keep the log bounded (retention + downsampling) for 24/7 operation.
+    retention = None
+    if (cfg.get("retention", {}) or {}).get("enabled", True):
+        from core.retention import RetentionManager
+        retention = RetentionManager(CSV_FILE, cfg)
+        retention.start()
+        log.info("Retention manager started.")
+
     AUDIT.record("hub.start", detail=f"v{__version__} port={port}")
     lan_ip = _detect_lan_ip()
     try:
@@ -252,6 +260,8 @@ def main():
     finally:
         if provisioner:
             provisioner.stop()
+        if retention:
+            retention.stop()
         try:
             MQTT.stop()
         except Exception:

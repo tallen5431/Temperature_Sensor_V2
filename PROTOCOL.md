@@ -185,8 +185,9 @@ Every `interval_ms`, the probe POSTs the latest good reading to the provisioned
   other. (For robustness the hub also accepts the aliases `temp_c`/`t_c`/`c` and
   `temp_f`/`t_f`/`f`, but firmware SHOULD emit `temperature_c`.)
 - `probe_id` in the body is optional but SHOULD be sent and MUST match `X-Probe-ID`.
-- `timestamp` is optional ISO-8601; if omitted the hub stamps receipt time. (Aliases
-  `ts` also accepted.)
+- `timestamp` is optional ISO-8601. The hub holds the authoritative clock, so if
+  the field is omitted **or not a valid ISO datetime** (probes have no RTC) the hub
+  stamps its own receipt time. (Alias `ts` also accepted.) Firmware SHOULD omit it.
 - **`humidity_pct`** is **optional** (0–100 %RH). Only the SHT4x build variant emits
   it; temperature-only probes omit it. The hub validates it (finite, 0–100) and
   silently ignores anything invalid. (Aliases `humidity`/`rh`/`h` also accepted.)

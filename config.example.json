@@ -36,6 +36,12 @@
     }
   },
   "probe_names": {},
+  "retention": {
+    "enabled": true,
+    "raw_days": 14,
+    "downsample_days": 365,
+    "downsample_interval_min": 15
+  },
   "ui_auth": {
     "enabled": false,
     "username": "",

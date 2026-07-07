@@ -102,6 +102,19 @@ def test_append_row_escapes_probe_id(tmp_path):
     assert rows[1][PID_COL].startswith("'=")
 
 
+def test_relative_probe_timestamp_is_replaced_with_server_time():
+    # Firmware sends a relative marker ("uptime+123s") — the hub must stamp its
+    # own ISO time instead of writing an unparseable timestamp.
+    ts, _, _ = normalize_payload({"temperature_c": 20, "timestamp": "uptime+123s"})
+    import datetime as _dt
+    _dt.datetime.fromisoformat(ts)  # must parse — raises if it's the relative marker
+
+
+def test_valid_iso_timestamp_is_preserved():
+    ts, _, _ = normalize_payload({"temperature_c": 20, "timestamp": "2026-01-01T10:00:00"})
+    assert ts == "2026-01-01T10:00:00"
+
+
 def test_extract_humidity():
     assert extract_humidity({"humidity_pct": 55.2}) == 55.2
     assert extract_humidity({"rh": "48"}) == 48.0

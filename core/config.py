@@ -52,6 +52,14 @@ DEFAULTS: dict = {
     "calibration": {},          # {"<probe_id>": {"offset_c": 0.0, "gain": 1.0}}
     "alert_thresholds": {"default": {"min": 2, "max": 8}},  # fridge defaults
     "probe_names": {},
+    # Log retention: keep recent readings full-resolution, thin older ones, and
+    # drop anything past downsample_days — so a 24/7 log can't fill the disk.
+    "retention": {
+        "enabled": True,
+        "raw_days": 14,                 # keep every reading for this many days
+        "downsample_days": 365,         # keep thinned readings up to here, then drop
+        "downsample_interval_min": 15,  # older data: ~1 reading per probe per N min
+    },
     # Optional dashboard login (shared office/lab LANs). Off by default so a
     # single-user home setup stays frictionless.
     "ui_auth": {"enabled": False, "username": "", "password": ""},

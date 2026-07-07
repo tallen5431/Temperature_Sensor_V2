@@ -94,16 +94,6 @@ static void ledSet(bool on) {
 #endif
 }
 
-// ISO-8601-ish local timestamp based on uptime. The probe has no RTC; the hub
-// stamps the authoritative time on ingest when "timestamp" is absent/relative,
-// so we send a best-effort monotonic marker the hub is free to override.
-static String uptimeStamp() {
-  uint32_t s = (millis() - g_bootMs) / 1000UL;
-  char buf[32];
-  snprintf(buf, sizeof(buf), "uptime+%lus", (unsigned long)s);
-  return String(buf);
-}
-
 // Derive probe_id / hostname / SoftAP creds from the efuse MAC.
 static void deriveIdentity() {
   uint8_t mac[6] = {0};
@@ -448,7 +438,9 @@ static void postReading(float tempC) {
   doc["temperature_c"] = tempC;
   if (g_hasRH) doc["humidity_pct"] = g_lastRH;   // hub computes VPD from temp+RH
   doc["probe_id"]      = g_probeId;
-  doc["timestamp"]     = uptimeStamp();
+  // No timestamp: the probe has no real-time clock, so the hub (which does)
+  // stamps the authoritative ingest time. Sending a relative marker would only
+  // be discarded server-side.
   String body; serializeJson(doc, body);
 
   HTTPClient http;

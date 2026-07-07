@@ -32,10 +32,21 @@ Refinements aimed at the homelab / self-hosted beachhead (see `docs/GO_TO_MARKET
   and data exports (`logs/audit.log`), with an integrity check at
   `GET /api/audit/verify`. A B2B/procurement differentiator and a foundation for any
   future regulated (Part 11 / Annex 11) path.
+- **Log retention + downsampling** (`retention` config) — a background maintenance
+  task keeps recent readings full-resolution, thins older ones to one per probe per
+  interval, and drops anything past `downsample_days`, so a 24/7 log stays bounded
+  instead of filling the disk. Bounds a 230k-row file to ~75k in ~340 ms.
 - **Go-to-market & compliance strategy** — `docs/GO_TO_MARKET.md` and
   `docs/COMPLIANCE.md` (certification path, calibration tiers, sellable B2B segments).
 
 ### Fixed
+- **Authoritative timestamps** — the hub now stamps its own receipt time when a probe
+  sends no timestamp *or an invalid/relative one* (probes have no clock and sent
+  `uptime+<n>s`, which was being written verbatim and broke time filtering/retention).
+  Firmware no longer sends the relative marker.
+- **Dashboard efficiency** — the CSV is parsed once per change (mtime-cached) instead
+  of re-read on every 5 s tick and per browser tab, and the whole filtered frame is no
+  longer serialized into an unused store each tick.
 - **CSV download button** returned the dashboard HTML instead of the log after the
   absolute-path refactor (the link had a double slash that missed the download
   route). It now links by basename; regression-tested.

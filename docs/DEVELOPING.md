@@ -209,6 +209,12 @@ auth) and `/metrics` (Prometheus scrape) are intentionally exempt.
 names are logged, never secret values). `GET /api/audit/verify` (auth) reports chain integrity and
 entry count. See `docs/COMPLIANCE.md` for how this fits a B2B / regulated path.
 
+**Log retention** — a background task (`core/retention.py`) keeps the CSV bounded for 24/7 use:
+readings newer than `retention.raw_days` are kept full-resolution, older ones are thinned to one per
+probe per `downsample_interval_min`, and anything past `downsample_days` is dropped. Runs hourly +
+shortly after startup, atomically under the write lock. Set `retention.enabled: false` to keep
+everything (and manage disk yourself).
+
 ---
 
 ## Running tests

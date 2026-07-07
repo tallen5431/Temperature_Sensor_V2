@@ -180,7 +180,11 @@ def normalize_payload(payload: dict):
     Raises ValueError on missing or out-of-range input.
     """
     now = datetime.datetime.now().isoformat(timespec="seconds")
-    ts = payload.get("timestamp") or payload.get("ts") or now
+    # The hub has the authoritative clock; probes often have none and send a
+    # relative marker (e.g. "uptime+123s"). Only trust a client timestamp if it
+    # is a real ISO datetime, otherwise stamp server time — so the timestamp
+    # column is always parseable for the dashboard and retention.
+    ts = _valid_iso_ts(payload.get("timestamp") or payload.get("ts")) or now
 
     c_keys = ["temperature_c", "temp_c", "t_c", "c"]
     f_keys = ["temperature_f", "temp_f", "t_f", "f"]
@@ -208,6 +212,17 @@ def normalize_payload(payload: dict):
         raise ValueError(f"Temperature {t_c:.2f}C outside valid range [{MIN_TEMP_C}, {MAX_TEMP_C}]")
 
     return ts, float(t_c), float(t_f)
+
+
+def _valid_iso_ts(value):
+    """Return the value if it parses as an ISO-8601 datetime, else None."""
+    if not value:
+        return None
+    try:
+        datetime.datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return str(value)
+    except (ValueError, TypeError):
+        return None
 
 
 def extract_humidity(payload: dict):
@@ -242,3 +257,94 @@ def compute_vpd(temp_c: float, rh_pct: float, leaf_offset_c: float = 0.0) -> flo
     leaf_t = temp_c - float(leaf_offset_c or 0.0)
     vpd = svp(leaf_t) - svp(temp_c) * (float(rh_pct) / 100.0)
     return max(0.0, vpd)
+
+
+# --- Retention / downsampling ------------------------------------------------
+# A 24/7 appliance writing every 5 s produces ~17k rows/probe/day; unbounded,
+# it eventually fills the disk and slows the dashboard. Retention keeps recent
+# data full-resolution and thins older data (preserving long-term trends)
+# instead of dropping it outright, so "local history" stays true but bounded.
+
+def retain_df(df: pd.DataFrame, now: datetime.datetime, raw_days: int,
+              downsample_days: int, interval_min: int) -> pd.DataFrame:
+    """Return the rows to KEEP: recent rows verbatim, older rows thinned to one
+    per (probe, ``interval_min`` bucket), rows past ``downsample_days`` dropped.
+
+    Rows with an unparseable timestamp are always kept (never lose data we can't
+    classify). Pure function — no I/O — so it is easy to test.
+    """
+    if df.empty or "timestamp" not in df.columns:
+        return df
+    # Reset to a unique RangeIndex so index-based group selection is unambiguous
+    # even if the caller passed a concatenated / non-unique index.
+    df = df.copy().reset_index(drop=True)
+    ts = pd.to_datetime(df["timestamp"], errors="coerce", format="ISO8601")
+    now_ts = pd.Timestamp(now)
+    raw_cut = now_ts - pd.Timedelta(days=max(0, int(raw_days)))
+    drop_cut = (now_ts - pd.Timedelta(days=int(downsample_days))) if downsample_days and downsample_days > 0 else None
+
+    unclassifiable = df[ts.isna()]                      # keep as-is
+    dated = df[ts.notna()]
+    dated_ts = ts[ts.notna()]
+
+    recent = dated[dated_ts >= raw_cut]                 # full resolution
+
+    older_mask = dated_ts < raw_cut
+    if drop_cut is not None:
+        older_mask &= dated_ts >= drop_cut              # anything older is dropped
+    older = dated[older_mask]
+    older_ts = dated_ts[older_mask]
+
+    if not older.empty and interval_min and interval_min > 0:
+        bucket = older_ts.dt.floor(f"{int(interval_min)}min")
+        pid = older["probe_id"] if "probe_id" in older.columns else ""
+        # Keep the first row in each (probe, time-bucket) group.
+        keep_idx = older.assign(_b=bucket.values, _p=pid).groupby(["_p", "_b"], sort=False).head(1).index
+        older = older.loc[keep_idx]
+
+    kept = pd.concat([unclassifiable, recent, older], axis=0)
+    # Restore chronological order (NaT timestamps sort to the end).
+    kept = kept.assign(_o=pd.to_datetime(kept["timestamp"], errors="coerce", format="ISO8601")) \
+               .sort_values("_o", na_position="last").drop(columns="_o")
+    return kept
+
+
+def apply_retention(csv_file: Path, raw_days: int, downsample_days: int = 365,
+                    interval_min: int = 15, now: datetime.datetime | None = None) -> tuple[int, int]:
+    """Prune/downsample the log in place, atomically, under the write lock.
+
+    Returns (rows_before, rows_after). A no-op (and no rewrite) when nothing is
+    dropped, so an already-bounded file costs only a read.
+    """
+    csv_file = Path(csv_file)
+    now = now or datetime.datetime.now()
+    with _write_lock:
+        if not csv_file.exists() or csv_file.stat().st_size == 0:
+            return (0, 0)
+        try:
+            df = pd.read_csv(csv_file, dtype=str, keep_default_na=False)
+        except Exception as e:
+            log.warning("retention: could not read %s: %s", csv_file, e)
+            return (0, 0)
+        before = len(df)
+        kept = retain_df(df, now, raw_days, downsample_days, interval_min)
+        after = len(kept)
+        if after >= before:
+            return (before, after)  # nothing to prune
+        fd, tmp = None, None
+        try:
+            import tempfile
+            fd, tmp = tempfile.mkstemp(dir=str(csv_file.parent), prefix=".log-", suffix=".tmp")
+            os.close(fd)
+            kept.to_csv(tmp, index=False)
+            os.replace(tmp, csv_file)
+        except Exception as e:
+            log.error("retention: rewrite failed for %s: %s", csv_file, e)
+            if tmp and os.path.exists(tmp):
+                try:
+                    os.remove(tmp)
+                except Exception:
+                    pass
+            return (before, before)
+    log.info("retention: pruned %s from %d to %d rows", csv_file.name, before, after)
+    return (before, after)
