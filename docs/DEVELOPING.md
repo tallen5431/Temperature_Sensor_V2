@@ -174,6 +174,7 @@ CSV columns are fixed: `timestamp,temperature_c,temperature_f,probe_id`.
 | `PORT` | `8080` | HTTP port for UI + API. |
 | `PUBLIC_BASE` | `http://<detected-LAN-IP>:<PORT>` | Base URL advertised to probes; set to override auto-detection. |
 | `SERVER_TOKEN` | *(empty → generated)* | Forces the device token; takes precedence over config. |
+| `UI_USERNAME` / `UI_PASSWORD` | *(unset)* | Enable HTTP Basic auth on the dashboard + CSV download (also configurable via the `ui_auth` config block). |
 | `CSV_FILE` | `<repo>/temperature_log.csv` | Path to the readings log. |
 | `CONFIG_FILE` | `<repo>/config.json` | Path to the runtime config (override for Docker volumes). |
 | `LOG_DIR` | `<repo>/logs` | Directory for application logs. |
@@ -197,6 +198,11 @@ so probes appear automatically as temperature sensors in Home Assistant. Require
 **Docker** — `docker compose up -d` runs the hub with a persistent `./data` volume. mDNS
 auto-discovery needs the host network (`network_mode: host`, the default in `docker-compose.yml`);
 on Docker Desktop, use the bridge override and point probes at the host's LAN IP.
+
+**Dashboard login** — off by default (single-user home setups stay frictionless). Set
+`ui_auth.enabled` + `username`/`password` in config, or `UI_USERNAME`/`UI_PASSWORD` env, to require
+HTTP Basic auth on the dashboard and CSV download for a shared office/lab LAN. `/api/*` (device-token
+auth) and `/metrics` (Prometheus scrape) are intentionally exempt.
 
 ---
 

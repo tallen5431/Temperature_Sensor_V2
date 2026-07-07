@@ -7,11 +7,16 @@ from core.storage import (
     append_row,
     apply_calibration,
     sanitize_probe_id,
+    extract_humidity,
+    compute_vpd,
     _escape_csv_field,
     COLUMNS,
     MIN_TEMP_C,
     MAX_TEMP_C,
 )
+
+PID_COL = COLUMNS.index("probe_id")
+HUM_COL = COLUMNS.index("humidity_pct")
 
 
 def test_celsius_passthrough():
@@ -60,17 +65,27 @@ def test_out_of_range_rejected():
         normalize_payload({"temperature_c": -127})
 
 
-def test_append_row_always_four_columns(tmp_path):
+def test_append_row_never_ragged(tmp_path):
     p = tmp_path / "log.csv"
     append_row(p, "2026-01-01T00:00:00", 21.0, 69.8, probe_id="ThermaProbe-9A3F2C")
-    append_row(p, "2026-01-01T00:00:05", 22.0, 71.6, probe_id=None)  # no probe id
+    append_row(p, "2026-01-01T00:00:05", 22.0, 71.6, probe_id=None)  # no probe id / no humidity
     with open(p, newline="") as f:
         rows = list(csv.reader(f))
     assert rows[0] == COLUMNS
-    # Every data row must have exactly 4 fields — no ragged rows.
+    # Every data row must have exactly len(COLUMNS) fields — no ragged rows.
     for r in rows[1:]:
-        assert len(r) == 4
-    assert rows[2][3] == ""  # missing probe_id becomes empty string, not absent
+        assert len(r) == len(COLUMNS)
+    assert rows[2][PID_COL] == ""   # missing probe_id -> empty string
+    assert rows[2][HUM_COL] == ""   # missing humidity -> empty string
+
+
+def test_append_row_writes_humidity_and_vpd(tmp_path):
+    p = tmp_path / "log.csv"
+    append_row(p, "2026-01-01T00:00:00", 25.0, 77.0, probe_id="P1", humidity_pct=60.0, vpd_kpa=1.27)
+    with open(p, newline="") as f:
+        rows = list(csv.reader(f))
+    assert rows[1][HUM_COL] == "60.00"
+    assert rows[1][COLUMNS.index("vpd_kpa")] == "1.270"
 
 
 def test_formula_injection_escaped():
@@ -84,7 +99,25 @@ def test_append_row_escapes_probe_id(tmp_path):
     append_row(p, "2026-01-01T00:00:00", 21.0, 69.8, probe_id="=cmd()")
     with open(p, newline="") as f:
         rows = list(csv.reader(f))
-    assert rows[1][3].startswith("'=")
+    assert rows[1][PID_COL].startswith("'=")
+
+
+def test_extract_humidity():
+    assert extract_humidity({"humidity_pct": 55.2}) == 55.2
+    assert extract_humidity({"rh": "48"}) == 48.0
+    assert extract_humidity({"temperature_c": 20}) is None       # no humidity
+    assert extract_humidity({"humidity": 150}) is None           # out of range
+    assert extract_humidity({"humidity": "nope"}) is None        # unparseable
+
+
+def test_compute_vpd():
+    # At 25 C / 50% RH, air VPD ~ 1.58 kPa (Tetens).
+    v = compute_vpd(25.0, 50.0)
+    assert v == pytest.approx(1.58, abs=0.05)
+    # 100% RH -> VPD 0 (saturated).
+    assert compute_vpd(20.0, 100.0) == pytest.approx(0.0, abs=1e-9)
+    # Leaf offset raises deficit vs air VPD.
+    assert compute_vpd(25.0, 50.0, leaf_offset_c=2.0) < compute_vpd(25.0, 50.0)
 
 
 def test_sanitize_probe_id():

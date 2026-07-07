@@ -35,6 +35,7 @@ DEFAULTS: dict = {
     "settings": {
         "default_unit": "celsius",  # "celsius" | "fahrenheit"
         "timezone": "",  # empty = server local time
+        "vpd_leaf_offset_c": 0.0,  # leaf-below-air offset for VPD (growers use ~2.0)
     },
     "notifications": {
         "enabled": False,
@@ -51,6 +52,9 @@ DEFAULTS: dict = {
     "calibration": {},          # {"<probe_id>": {"offset_c": 0.0, "gain": 1.0}}
     "alert_thresholds": {"default": {"min": 2, "max": 8}},  # fridge defaults
     "probe_names": {},
+    # Optional dashboard login (shared office/lab LANs). Off by default so a
+    # single-user home setup stays frictionless.
+    "ui_auth": {"enabled": False, "username": "", "password": ""},
     # Homelab / self-hosted integrations.
     "metrics": {"enabled": True},   # Prometheus /metrics endpoint
     "mqtt": {                       # off by default; publishes to Home Assistant etc.

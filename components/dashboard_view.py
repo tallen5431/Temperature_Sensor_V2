@@ -136,6 +136,8 @@ def build_dashboard_layout(default_unit: str = "celsius"):
         dcc.Store(id='filtered-data-store', data=None),
         EmptyState,
         MetricsRow,
+        # Humidity / VPD readout — only rendered for probes that report humidity.
+        html.Div(id='env-readout', className='mb-3'),
         AlertsRow,
         StatsRow,
         dbc.Row([
@@ -447,6 +449,37 @@ def register_dashboard_callbacks(app, finder, cfg):
             )
             return (empty, empty, '0', '(no data)', 'OFF', 'No signal', 'No data available',
                     'N/A', '', 'N/A', '', 'N/A', '', [], None, {})
+
+    # --- Humidity / VPD readout (only for probes with an RH sensor) ---
+    @app.callback(
+        Output('env-readout', 'children'),
+        Input('dash-refresh', 'n_intervals')
+    )
+    def _update_env(_):
+        try:
+            df = pd.read_csv(CSV_FILE)
+            if 'humidity_pct' not in df.columns:
+                return []
+            df['humidity_pct'] = pd.to_numeric(df['humidity_pct'], errors='coerce')
+            h = df.dropna(subset=['humidity_pct'])
+            if h.empty:
+                return []
+            row = h.tail(1).iloc[0]
+            hum = float(row['humidity_pct'])
+            cards = [dbc.Col(dbc.Card(dbc.CardBody([
+                html.H6('Humidity', className='text-muted mb-1'),
+                html.H3(f'{hum:.1f} %', className='fw-bold text-info mb-0')
+            ]), className='h-100 text-center'), width=6, md=3)]
+            vpd_val = pd.to_numeric(pd.Series([row.get('vpd_kpa')]), errors='coerce').iloc[0]
+            if pd.notna(vpd_val):
+                cards.append(dbc.Col(dbc.Card(dbc.CardBody([
+                    html.H6('VPD', className='text-muted mb-1'),
+                    html.H3(f'{float(vpd_val):.2f} kPa', className='fw-bold text-success mb-0'),
+                    html.Small('vapour pressure deficit', className='text-muted')
+                ]), className='h-100 text-center'), width=6, md=3))
+            return dbc.Row(cards, className='g-3')
+        except Exception:
+            return []
 
     # --- CSV Download Button ---
     @app.callback(

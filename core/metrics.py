@@ -19,11 +19,17 @@ class LatestReadings:
         self._lock = threading.Lock()
         self._data: dict[str, dict] = {}
 
-    def record(self, probe_id: str, temp_c: float, ts_epoch: float | None = None) -> None:
+    def record(self, probe_id: str, temp_c: float, ts_epoch: float | None = None,
+               humidity: float | None = None, vpd: float | None = None) -> None:
         if not probe_id:
             return
         with self._lock:
-            self._data[probe_id] = {"temp_c": float(temp_c), "ts": ts_epoch or time.time()}
+            entry = {"temp_c": float(temp_c), "ts": ts_epoch or time.time()}
+            if humidity is not None:
+                entry["humidity"] = float(humidity)
+            if vpd is not None:
+                entry["vpd"] = float(vpd)
+            self._data[probe_id] = entry
 
     def snapshot(self) -> dict[str, dict]:
         with self._lock:
@@ -70,6 +76,20 @@ def render_prometheus(health: dict, latest: dict, probes_count: int, version: st
     lines.append("# TYPE thermahub_probe_temperature_celsius gauge")
     for pid, r in sorted(latest.items()):
         lines.append(f'thermahub_probe_temperature_celsius{{probe_id="{_esc_label(pid)}"}} {r["temp_c"]:.3f}')
+
+    if any("humidity" in r for r in latest.values()):
+        lines.append("# HELP thermahub_probe_humidity_percent Most recent relative humidity per probe.")
+        lines.append("# TYPE thermahub_probe_humidity_percent gauge")
+        for pid, r in sorted(latest.items()):
+            if "humidity" in r:
+                lines.append(f'thermahub_probe_humidity_percent{{probe_id="{_esc_label(pid)}"}} {r["humidity"]:.2f}')
+
+    if any("vpd" in r for r in latest.values()):
+        lines.append("# HELP thermahub_probe_vpd_kpa Most recent vapour pressure deficit per probe.")
+        lines.append("# TYPE thermahub_probe_vpd_kpa gauge")
+        for pid, r in sorted(latest.items()):
+            if "vpd" in r:
+                lines.append(f'thermahub_probe_vpd_kpa{{probe_id="{_esc_label(pid)}"}} {r["vpd"]:.3f}')
 
     lines.append("# HELP thermahub_probe_last_reading_age_seconds Seconds since a probe last reported.")
     lines.append("# TYPE thermahub_probe_last_reading_age_seconds gauge")

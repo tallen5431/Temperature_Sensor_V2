@@ -34,6 +34,10 @@
   #include <SPI.h>
   #include <Adafruit_MAX31855.h>
   static Adafruit_MAX31855 thermocouple(MAX31855_SCK, MAX31855_CS, MAX31855_MISO);
+#elif defined(SENSOR_SHT4x)
+  #include <Wire.h>
+  #include <Adafruit_SHT4x.h>
+  static Adafruit_SHT4x sht4;
 #else
   #ifndef SENSOR_DS18B20
     #define SENSOR_DS18B20 1   // default when nothing is defined
@@ -71,6 +75,8 @@ static uint32_t g_intervalMs = DEFAULT_INTERVAL_MS;
 // Runtime state.
 static bool     g_apMode = false;         // true while serving the setup SoftAP
 static float    g_lastTempC = NAN;
+static float    g_lastRH     = NAN;       // last relative humidity (SHT4x only)
+static bool     g_hasRH      = false;     // true if this build reports humidity
 static bool     g_sensorOk  = false;
 static bool     g_lastPostOk   = false;
 static int      g_lastPostCode = 0;
@@ -161,12 +167,27 @@ static void saveProvision(const String& serverUrl, const String& token, uint32_t
 // ---------------------------------------------------------------------------
 // Sensor read (fault handling per spec: reject 85.0 power-on, -127/NaN discon.)
 // ---------------------------------------------------------------------------
-static bool readSensor(float& outC) {
+// Reads temperature (always) and, on humidity-capable builds, relative humidity.
+// outRH/hasRH are left untouched on temperature-only builds.
+static bool readSensor(float& outC, float& outRH, bool& hasRH) {
 #if defined(SENSOR_MAX31855)
   double c = thermocouple.readCelsius();
   if (isnan(c)) return false;                      // open/short/fault
   if (c < TEMP_MIN_C || c > TEMP_MAX_C) return false;
   outC = (float)c;
+  return true;
+#elif defined(SENSOR_SHT4x)
+  sensors_event_t hum, temp;
+  if (!sht4.getEvent(&hum, &temp)) return false;   // I2C read failed
+  float c = temp.temperature;
+  float rh = hum.relative_humidity;
+  if (isnan(c) || isnan(rh)) return false;
+  if (c < TEMP_MIN_C || c > TEMP_MAX_C) return false;
+  if (rh < 0.0f) rh = 0.0f;
+  if (rh > 100.0f) rh = 100.0f;
+  outC = c;
+  outRH = rh;
+  hasRH = true;
   return true;
 #else
   ds18b20.requestTemperatures();
@@ -263,6 +284,7 @@ static void handleStatus() {
   doc["server_url"]     = g_serverUrl;
   if (g_sensorOk) doc["temperature_c"] = g_lastTempC;
   else            doc["temperature_c"] = (const char*)nullptr;   // JSON null
+  if (g_hasRH && g_sensorOk) doc["humidity_pct"] = g_lastRH;
   doc["sensor_ok"]      = g_sensorOk;
   String out; serializeJson(doc, out);
   httpServer.send(200, "application/json", out);
@@ -424,6 +446,7 @@ static void postReading(float tempC) {
 
   StaticJsonDocument<192> doc;
   doc["temperature_c"] = tempC;
+  if (g_hasRH) doc["humidity_pct"] = g_lastRH;   // hub computes VPD from temp+RH
   doc["probe_id"]      = g_probeId;
   doc["timestamp"]     = uptimeStamp();
   String body; serializeJson(doc, body);
@@ -472,6 +495,16 @@ void setup() {
 #if defined(SENSOR_MAX31855)
   Serial.println("[sensor] MAX31855 thermocouple");
   // Adafruit_MAX31855 begins lazily on first read; nothing to init here.
+#elif defined(SENSOR_SHT4x)
+  g_hasRH = true;
+  Wire.begin(I2C_SDA, I2C_SCL);
+  if (sht4.begin()) {
+    sht4.setPrecision(SHT4X_HIGH_PRECISION);
+    sht4.setHeater(SHT4X_NO_HEATER);
+    Serial.printf("[sensor] SHT4x (temp+humidity) on I2C SDA=%d SCL=%d\n", I2C_SDA, I2C_SCL);
+  } else {
+    Serial.println("[sensor] SHT4x not found on I2C");
+  }
 #else
   ds18b20.begin();
   ds18b20.setResolution(12);
@@ -510,11 +543,14 @@ void loop() {
   uint32_t now = millis();
   if ((now - lastPost) >= g_intervalMs) {
     lastPost = now;
-    float c;
-    g_sensorOk = readSensor(c);
+    float c = NAN, rh = NAN;
+    bool hasRH = false;
+    g_sensorOk = readSensor(c, rh, hasRH);
     if (g_sensorOk) {
       g_lastTempC = c;
-      Serial.printf("[sensor] %.2f C\n", c);
+      if (hasRH) { g_lastRH = rh; }
+      if (hasRH) Serial.printf("[sensor] %.2f C  %.1f %%RH\n", c, rh);
+      else       Serial.printf("[sensor] %.2f C\n", c);
       ledSet(true);
       postReading(c);      // updates last_post_ok/code
       g_lastPostAt = now;

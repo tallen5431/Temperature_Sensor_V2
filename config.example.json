@@ -13,7 +13,8 @@
   },
   "settings": {
     "default_unit": "celsius",
-    "timezone": ""
+    "timezone": "",
+    "vpd_leaf_offset_c": 0.0
   },
   "notifications": {
     "enabled": false,
@@ -35,6 +36,11 @@
     }
   },
   "probe_names": {},
+  "ui_auth": {
+    "enabled": false,
+    "username": "",
+    "password": ""
+  },
   "metrics": {
     "enabled": true
   },

@@ -5,7 +5,10 @@ from pathlib import Path
 import datetime
 
 from auto_provision import provision_probe
-from core.storage import normalize_payload, append_row, apply_calibration, sanitize_probe_id
+from core.storage import (
+    normalize_payload, append_row, apply_calibration, sanitize_probe_id,
+    extract_humidity, compute_vpd,
+)
 from core.notifications import NOTIFIER
 from core.applog import HEALTH, get_logger
 from core.config import redact_secrets
@@ -192,14 +195,22 @@ def create_api(cfg: Any, csv_path: str, discovery: Any, public_base: Callable[[]
         t_c = apply_calibration(t_c, probe_id, cal)
         t_f = (t_c * 9.0 / 5.0) + 32.0
 
+        # Optional humidity → Vapour Pressure Deficit (grow niche).
+        humidity = extract_humidity(data)
+        vpd = None
+        if humidity is not None:
+            leaf_offset = (_cfg_get("settings", {}) or {}).get("vpd_leaf_offset_c", 0.0)
+            vpd = compute_vpd(t_c, humidity, leaf_offset)
+
         try:
-            append_row(CSV_PATH, ts, t_c, t_f, probe_id=probe_id)
+            append_row(CSV_PATH, ts, t_c, t_f, probe_id=probe_id,
+                       humidity_pct=humidity, vpd_kpa=vpd)
         except Exception as e:
             return False, 500, str(e)
 
         if probe_id:
             # Latest-reading registry powers the Prometheus /metrics endpoint.
-            LATEST.record(probe_id, t_c)
+            LATEST.record(probe_id, t_c, humidity=humidity, vpd=vpd)
             if discovery is not None:
                 try:
                     discovery.register_seen(probe_id, ip=request.remote_addr or "", port=80)
@@ -207,9 +218,9 @@ def create_api(cfg: Any, csv_path: str, discovery: Any, public_base: Callable[[]
                     pass
             friendly = _friendly(probe_id)
             # Server-side threshold evaluation → email/webhook if configured.
-            NOTIFIER.evaluate(cfg, probe_id, t_c, friendly)
+            NOTIFIER.evaluate(cfg, probe_id, t_c, friendly, humidity=humidity, vpd=vpd)
             # Optional MQTT publish (Home Assistant auto-discovery).
-            MQTT.publish_reading(probe_id, t_c, friendly)
+            MQTT.publish_reading(probe_id, t_c, friendly, humidity=humidity, vpd=vpd)
         return True, 200, ""
 
     @bp.post("/ingest")

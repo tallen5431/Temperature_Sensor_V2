@@ -16,7 +16,7 @@ from core.applog import HEALTH, get_logger
 
 log = get_logger("storage")
 
-COLUMNS = ["timestamp", "temperature_c", "temperature_f", "probe_id"]
+COLUMNS = ["timestamp", "temperature_c", "temperature_f", "humidity_pct", "vpd_kpa", "probe_id"]
 
 # Physically plausible bounds for the supported sensors (DS18B20/thermocouple).
 # Anything outside this — including sensor fault codes (85.0 power-on, -127
@@ -67,10 +67,11 @@ def _os_lock(fh):
 
 
 def ensure_csv(csv_file: Path) -> None:
-    """Create the log with headers, or upgrade an older 3-column file ONCE.
+    """Create the log with headers, or upgrade an older/narrower file ONCE.
 
     This is the only place a whole-file rewrite may happen, and it runs at
-    startup — never on the per-write hot path.
+    startup — never on the per-write hot path. Any columns missing from an older
+    log (e.g. probe_id, humidity_pct, vpd_kpa) are added so name-based reads work.
     """
     csv_file = Path(csv_file)
     if not csv_file.exists():
@@ -78,14 +79,16 @@ def ensure_csv(csv_file: Path) -> None:
         with open(csv_file, "w", newline="", encoding="utf-8") as f:
             csv.writer(f).writerow(COLUMNS)
         return
-    # One-time schema upgrade: add probe_id column if an older log lacks it.
+    # One-time schema upgrade: add any missing columns.
     try:
         df = pd.read_csv(csv_file, nrows=0)
-        if "probe_id" not in df.columns:
+        missing = [c for c in COLUMNS if c not in df.columns]
+        if missing:
             full = pd.read_csv(csv_file)
-            full["probe_id"] = ""
+            for c in missing:
+                full[c] = ""
             full.to_csv(csv_file, index=False)
-            log.info("Upgraded %s to include probe_id column", csv_file.name)
+            log.info("Upgraded %s to include columns: %s", csv_file.name, ", ".join(missing))
     except Exception as e:
         log.warning("Could not verify/upgrade CSV schema for %s: %s", csv_file, e)
 
@@ -111,10 +114,13 @@ def sanitize_probe_id(probe_id) -> str:
     return s if PROBE_ID_RE.match(s) else ""
 
 
-def append_row(csv_file: Path, ts: str, t_c: float, t_f: float, probe_id: str | None = None) -> None:
-    """Append exactly one 4-column row through the single serialized writer.
+def append_row(csv_file: Path, ts: str, t_c: float, t_f: float, probe_id: str | None = None,
+               humidity_pct: float | None = None, vpd_kpa: float | None = None) -> None:
+    """Append exactly one row (in COLUMNS order) through the single serialized writer.
 
-    Always writes all four columns (probe_id or "") so rows are never ragged.
+    Always writes every column (empty string when a value is absent) so rows are
+    never ragged. humidity_pct/vpd_kpa are populated only for probes with an RH
+    sensor; temperature-only probes leave them blank.
     """
     csv_file = Path(csv_file)
     pid = _escape_csv_field(probe_id or "")
@@ -122,6 +128,8 @@ def append_row(csv_file: Path, ts: str, t_c: float, t_f: float, probe_id: str | 
         ts,
         f"{float(t_c):.3f}",
         f"{float(t_f):.3f}",
+        "" if humidity_pct is None else f"{float(humidity_pct):.2f}",
+        "" if vpd_kpa is None else f"{float(vpd_kpa):.3f}",
         pid,
     ]
     try:
@@ -200,3 +208,37 @@ def normalize_payload(payload: dict):
         raise ValueError(f"Temperature {t_c:.2f}C outside valid range [{MIN_TEMP_C}, {MAX_TEMP_C}]")
 
     return ts, float(t_c), float(t_f)
+
+
+def extract_humidity(payload: dict):
+    """Return a validated relative-humidity percentage from an ingest payload, or None.
+
+    Accepts humidity_pct / humidity / rh / h. Values must be finite and within
+    0..100 %RH; anything else is treated as 'no humidity reading' (returns None)
+    rather than corrupting the log — a temperature-only probe simply omits it.
+    """
+    for k in ("humidity_pct", "humidity", "rh", "h"):
+        if k in payload and payload[k] not in (None, ""):
+            try:
+                rh = float(payload[k])
+            except (TypeError, ValueError):
+                return None
+            if math.isfinite(rh) and 0.0 <= rh <= 100.0:
+                return rh
+            return None
+    return None
+
+
+def compute_vpd(temp_c: float, rh_pct: float, leaf_offset_c: float = 0.0) -> float:
+    """Vapour Pressure Deficit in kPa — the metric indoor growers actually buy on.
+
+    Uses the Tetens saturation-vapour-pressure formula. ``leaf_offset_c`` models
+    leaf temperature below air temperature (growers typically use ~2 °C); 0 gives
+    plain air VPD. Returned value is clamped to be non-negative.
+    """
+    def svp(t):  # saturation vapour pressure (kPa)
+        return 0.6108 * math.exp((17.27 * t) / (t + 237.3))
+
+    leaf_t = temp_c - float(leaf_offset_c or 0.0)
+    vpd = svp(leaf_t) - svp(temp_c) * (float(rh_pct) / 100.0)
+    return max(0.0, vpd)

@@ -24,30 +24,42 @@ def state_topic(base_topic: str, probe_id: str) -> str:
     return f"{base_topic.rstrip('/')}/{probe_id}/state"
 
 
-def discovery_topic(discovery_prefix: str, probe_id: str) -> str:
-    # HA requires an object_id with no problematic chars.
+# Per-metric Home Assistant sensor definitions. Each reads the same state JSON.
+_METRICS = {
+    "temperature": {"field": "temperature_c", "unit": "°C", "device_class": "temperature", "label": "Temperature"},
+    "humidity": {"field": "humidity_pct", "unit": "%", "device_class": "humidity", "label": "Humidity"},
+    "vpd": {"field": "vpd_kpa", "unit": "kPa", "device_class": None, "label": "VPD"},
+}
+
+
+def discovery_topic(discovery_prefix: str, probe_id: str, metric: str = "temperature") -> str:
+    # HA object_id must be unique per entity and use only safe chars.
     node = probe_id.replace("-", "_")
-    return f"{discovery_prefix.rstrip('/')}/sensor/thermahub_{node}/config"
+    return f"{discovery_prefix.rstrip('/')}/sensor/thermahub_{node}_{metric}/config"
 
 
-def discovery_payload(probe_id: str, friendly_name: str, base_topic: str) -> dict:
-    """Home Assistant MQTT-discovery config for one temperature sensor."""
-    return {
-        "name": friendly_name or probe_id,
-        "unique_id": f"thermahub_{probe_id}",
+def discovery_payload(probe_id: str, friendly_name: str, base_topic: str, metric: str = "temperature") -> dict:
+    """Home Assistant MQTT-discovery config for one metric of one probe."""
+    m = _METRICS[metric]
+    name = friendly_name or probe_id
+    payload = {
+        "name": f"{name} {m['label']}",
+        "unique_id": f"thermahub_{probe_id}_{metric}",
         "state_topic": state_topic(base_topic, probe_id),
-        "value_template": "{{ value_json.temperature_c }}",
-        "unit_of_measurement": "°C",
-        "device_class": "temperature",
+        "value_template": f"{{{{ value_json.{m['field']} }}}}",
+        "unit_of_measurement": m["unit"],
         "state_class": "measurement",
         "expire_after": 120,
         "device": {
             "identifiers": [f"thermahub_{probe_id}"],
-            "name": friendly_name or probe_id,
+            "name": name,
             "manufacturer": "ThermaHub",
             "model": "ThermaProbe",
         },
     }
+    if m["device_class"]:
+        payload["device_class"] = m["device_class"]
+    return payload
 
 
 class MqttPublisher:
@@ -88,24 +100,36 @@ class MqttPublisher:
         except Exception as e:
             log.warning("Could not connect to MQTT broker: %s", e)
 
-    def publish_reading(self, probe_id: str, temp_c: float, friendly_name: str = "") -> None:
+    def publish_reading(self, probe_id: str, temp_c: float, friendly_name: str = "",
+                        humidity: float | None = None, vpd: float | None = None) -> None:
         with self._lock:
             client, enabled = self._client, self._enabled
         if not (enabled and client and probe_id):
             return
         try:
-            if self._discovery_enabled and probe_id not in self._announced:
-                client.publish(
-                    discovery_topic(self._discovery_prefix, probe_id),
-                    json.dumps(discovery_payload(probe_id, friendly_name, self._base_topic)),
-                    retain=True,
-                )
-                self._announced.add(probe_id)
-            client.publish(
-                state_topic(self._base_topic, probe_id),
-                json.dumps({"temperature_c": round(float(temp_c), 3), "probe_id": probe_id}),
-                retain=False,
-            )
+            metrics = ["temperature"]
+            if humidity is not None:
+                metrics.append("humidity")
+            if vpd is not None:
+                metrics.append("vpd")
+            # Announce each metric once per (probe, metric) so a probe that later
+            # gains humidity still gets its humidity/VPD entities in HA.
+            if self._discovery_enabled:
+                for metric in metrics:
+                    key = f"{probe_id}:{metric}"
+                    if key not in self._announced:
+                        client.publish(
+                            discovery_topic(self._discovery_prefix, probe_id, metric),
+                            json.dumps(discovery_payload(probe_id, friendly_name, self._base_topic, metric)),
+                            retain=True,
+                        )
+                        self._announced.add(key)
+            state = {"temperature_c": round(float(temp_c), 3), "probe_id": probe_id}
+            if humidity is not None:
+                state["humidity_pct"] = round(float(humidity), 2)
+            if vpd is not None:
+                state["vpd_kpa"] = round(float(vpd), 3)
+            client.publish(state_topic(self._base_topic, probe_id), json.dumps(state), retain=False)
         except Exception as e:
             log.debug("MQTT publish failed for %s: %s", probe_id, e)
 

@@ -1,6 +1,9 @@
 import csv
 
 from conftest import make_client, FakeDiscovery
+from core.storage import COLUMNS
+
+PID_COL = COLUMNS.index("probe_id")
 
 
 def _rows(csv_path):
@@ -14,7 +17,18 @@ def test_ingest_open_writes_row(tmp_csv):
     assert r.status_code == 200 and r.get_json()["ok"] is True
     rows = _rows(tmp_csv)
     assert len(rows) == 2  # header + one reading
-    assert rows[1][3] == "ThermaProbe-1"
+    assert rows[1][PID_COL] == "ThermaProbe-1"
+
+
+def test_ingest_with_humidity_logs_vpd(tmp_csv):
+    client, _ = make_client(tmp_csv, token="")
+    r = client.post("/api/ingest", json={"temperature_c": 25, "humidity_pct": 50, "probe_id": "P1"})
+    assert r.status_code == 200
+    rows = _rows(tmp_csv)
+    hum = rows[1][COLUMNS.index("humidity_pct")]
+    vpd = rows[1][COLUMNS.index("vpd_kpa")]
+    assert hum == "50.00"
+    assert float(vpd) > 1.0  # VPD computed and logged
 
 
 def test_ingest_registers_posting_only_probe(tmp_csv):

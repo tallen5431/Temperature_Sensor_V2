@@ -26,7 +26,26 @@ def test_render_prometheus_format():
             assert len(line.rsplit(" ", 1)) == 2
 
 
+def test_render_prometheus_includes_humidity_and_vpd():
+    health = {"rows_written": 1, "healthy": True}
+    latest = {"P1": {"temp_c": 25.0, "ts": 1000.0, "humidity": 55.0, "vpd": 1.4}}
+    out = render_prometheus(health, latest, probes_count=1, version="2.0.0")
+    assert 'thermahub_probe_humidity_percent{probe_id="P1"} 55.00' in out
+    assert 'thermahub_probe_vpd_kpa{probe_id="P1"} 1.400' in out
+    # Temperature-only probes must NOT emit humidity/vpd lines.
+    out2 = render_prometheus(health, {"P2": {"temp_c": 4.0, "ts": 1000.0}}, 1, "2.0.0")
+    assert "thermahub_probe_humidity_percent" not in out2
+
+
 def test_ingest_records_latest_reading(tmp_csv):
     client, _ = make_client(tmp_csv, token="")
     client.post("/api/ingest", json={"temperature_c": 7.7, "probe_id": "ThermaProbe-METRIC"})
     assert LATEST.snapshot().get("ThermaProbe-METRIC", {}).get("temp_c") == 7.7
+
+
+def test_ingest_records_humidity_and_vpd(tmp_csv):
+    client, _ = make_client(tmp_csv, token="")
+    client.post("/api/ingest", json={"temperature_c": 25, "humidity_pct": 50, "probe_id": "ThermaProbe-HUM"})
+    entry = LATEST.snapshot().get("ThermaProbe-HUM", {})
+    assert entry.get("humidity") == 50.0
+    assert entry.get("vpd", 0) > 1.0

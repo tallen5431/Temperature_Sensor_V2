@@ -39,6 +39,11 @@
 #define MAX31855_MISO  19    // GPIO19 -> MAX31855 SO   (VSPI MISO)
 // (MAX31855 has no MOSI; it is read-only.)
 
+// Optional SHT4x temperature + humidity sensor (only when -D SENSOR_SHT4x).
+// I2C on the ESP32's default bus; the hub computes VPD from temp + RH.
+#define I2C_SDA        21    // GPIO21 -> SHT4x SDA
+#define I2C_SCL        22    // GPIO22 -> SHT4x SCL
+
 // ---------------------------------------------------------------------------
 // SoftAP setup network (used when the probe has no saved Wi-Fi credentials)
 // ---------------------------------------------------------------------------

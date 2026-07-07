@@ -29,56 +29,70 @@ class NotificationManager:
         self._state: dict[str, dict] = {}
 
     # -- evaluation -----------------------------------------------------------
-    def evaluate(self, cfg, probe_id: str, temp_c: float, friendly_name: str | None = None) -> None:
-        """Check a fresh reading against thresholds and fire on transitions."""
+    def evaluate(self, cfg, probe_id: str, temp_c: float, friendly_name: str | None = None,
+                 humidity: float | None = None, vpd: float | None = None) -> None:
+        """Check a fresh reading against thresholds and fire on transitions.
+
+        Evaluates temperature and, when present, humidity and VPD — each against
+        its own threshold pair and tracked independently, so a grower gets VPD
+        alerts without a subscription.
+        """
         try:
             notif = cfg.get("notifications", {}) or {}
             if not notif.get("enabled"):
                 return
             thresholds = cfg.get("alert_thresholds", {}) or {}
             tcfg = thresholds.get(probe_id) or thresholds.get("default") or {}
-            hi = tcfg.get("max")
-            lo = tcfg.get("min")
-
-            new_state = "ok"
-            if hi is not None and temp_c > float(hi):
-                new_state = "high"
-            elif lo is not None and temp_c < float(lo):
-                new_state = "low"
-
-            debounce = int(notif.get("debounce_sec", 900) or 0)
             name = friendly_name or probe_id or "probe"
+            debounce = int(notif.get("debounce_sec", 900) or 0)
 
-            with self._lock:
-                prev = self._state.get(probe_id, {"state": "ok", "last_notified": 0.0})
-                now = time.time()
-                should_send = False
-                subject = body = ""
+            checks = [("temperature", temp_c, tcfg.get("min"), tcfg.get("max"), "°C")]
+            if humidity is not None:
+                checks.append(("humidity", humidity, tcfg.get("humidity_min"), tcfg.get("humidity_max"), "%"))
+            if vpd is not None:
+                checks.append(("vpd", vpd, tcfg.get("vpd_min"), tcfg.get("vpd_max"), "kPa"))
 
-                if new_state != "ok" and prev["state"] != new_state:
-                    if now - prev.get("last_notified", 0.0) >= debounce:
-                        should_send = True
-                        limit = hi if new_state == "high" else lo
-                        arrow = "above" if new_state == "high" else "below"
-                        subject = f"[{name}] temperature {arrow} threshold"
-                        body = (
-                            f"{name} is reading {temp_c:.1f} C, which is {arrow} the "
-                            f"{new_state} threshold of {float(limit):.1f} C."
-                        )
-                elif new_state == "ok" and prev["state"] != "ok":
-                    should_send = True
-                    subject = f"[{name}] temperature back to normal"
-                    body = f"{name} has returned to normal range ({temp_c:.1f} C)."
-
-                self._state[probe_id] = {
-                    "state": new_state,
-                    "last_notified": now if should_send else prev.get("last_notified", 0.0),
-                }
-
-            if should_send:
-                self._dispatch(notif, subject, body)
+            for metric, value, lo, hi, unit in checks:
+                if lo is None and hi is None:
+                    continue
+                self._eval_metric(notif, probe_id, name, metric, value, lo, hi, unit, debounce)
         except Exception as e:
             log.warning("notification evaluation failed for %s: %s", probe_id, e)
+
+    def _eval_metric(self, notif, probe_id, name, metric, value, lo, hi, unit, debounce):
+        new_state = "ok"
+        if hi is not None and value > float(hi):
+            new_state = "high"
+        elif lo is not None and value < float(lo):
+            new_state = "low"
+
+        skey = f"{probe_id}:{metric}"
+        with self._lock:
+            prev = self._state.get(skey, {"state": "ok", "last_notified": 0.0})
+            now = time.time()
+            should_send = False
+            subject = body = ""
+
+            if new_state != "ok" and prev["state"] != new_state:
+                if now - prev.get("last_notified", 0.0) >= debounce:
+                    should_send = True
+                    limit = hi if new_state == "high" else lo
+                    arrow = "above" if new_state == "high" else "below"
+                    subject = f"[{name}] {metric} {arrow} threshold"
+                    body = (f"{name} {metric} is {value:.1f} {unit}, {arrow} the "
+                            f"{new_state} threshold of {float(limit):.1f} {unit}.")
+            elif new_state == "ok" and prev["state"] != "ok":
+                should_send = True
+                subject = f"[{name}] {metric} back to normal"
+                body = f"{name} {metric} has returned to normal range ({value:.1f} {unit})."
+
+            self._state[skey] = {
+                "state": new_state,
+                "last_notified": now if should_send else prev.get("last_notified", 0.0),
+            }
+
+        if should_send:
+            self._dispatch(notif, subject, body)
 
     # -- delivery -------------------------------------------------------------
     def _dispatch(self, notif: dict, subject: str, body: str) -> None:

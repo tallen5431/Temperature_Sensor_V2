@@ -1,12 +1,13 @@
 import os
 import socket
 import secrets
+import hmac
 from pathlib import Path
 
 import dash
 from dash import Dash, html, Input, Output
 import dash_bootstrap_components as dbc
-from flask import Flask, send_file
+from flask import Flask, send_file, request, Response
 from werkzeug.utils import safe_join
 
 from core.paths import BASE_DIR, get_csv_path, get_log_dir
@@ -87,6 +88,43 @@ def _resolve_token() -> str:
 
 
 DEVICE_TOKEN = _resolve_token()
+
+
+def _resolve_ui_auth():
+    """Optional HTTP Basic auth for the dashboard on a shared LAN.
+
+    Credentials come from env (UI_USERNAME/UI_PASSWORD) or the `ui_auth` config
+    block. Off unless enabled AND both a username and password are set.
+    """
+    ua = cfg.get("ui_auth", {}) or {}
+    user = (os.getenv("UI_USERNAME") or ua.get("username") or "").strip()
+    pw = os.getenv("UI_PASSWORD") or ua.get("password") or ""
+    enabled = bool((ua.get("enabled") or os.getenv("UI_USERNAME")) and user and pw)
+    return enabled, user, pw
+
+
+UI_AUTH_ENABLED, UI_AUTH_USER, UI_AUTH_PW = _resolve_ui_auth()
+
+
+@server.before_request
+def _ui_auth_gate():
+    """Guard the dashboard (and CSV download) when ui_auth is on.
+
+    Exempts the machine-facing surfaces: /api/* (its own device-token auth),
+    /metrics (Prometheus scraping), and static /assets so the login page styles.
+    """
+    if not UI_AUTH_ENABLED:
+        return None
+    p = request.path or "/"
+    if p.startswith("/api/") or p == "/metrics" or p.startswith("/assets/"):
+        return None
+    auth = request.authorization
+    if auth and hmac.compare_digest(auth.username or "", UI_AUTH_USER) \
+            and hmac.compare_digest(auth.password or "", UI_AUTH_PW):
+        return None
+    return Response("Authentication required", 401,
+                    {"WWW-Authenticate": 'Basic realm="ThermaHub"'})
+
 
 api_bp = create_api(cfg, str(CSV_FILE), finder, _public_base, DEVICE_TOKEN)
 server.register_blueprint(api_bp)
