@@ -5,9 +5,11 @@ All notable changes to ThermaHub are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.1.0] - 2026-07-08
 
-Refinements aimed at the homelab / self-hosted beachhead (see `docs/GO_TO_MARKET.md`).
+The "first sellable build." Refinements aimed at the homelab / self-hosted beachhead
+(see `docs/GO_TO_MARKET.md`), humidity/VPD for the grow niche, B2B + reliability
+hardening, and the launch/compliance playbooks (`docs/LAUNCH.md`, `docs/COMPLIANCE.md`).
 
 ### Added
 - **Humidity + VPD support (grow variant)** — an optional `-D SENSOR_SHT4x` firmware

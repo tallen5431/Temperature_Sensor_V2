@@ -6,7 +6,7 @@ customer can always tell which build they are running.
 """
 from __future__ import annotations
 
-__version__ = "2.0.0"
+__version__ = "2.1.0"
 
 # Firmware<->hub protocol version the hub speaks. Probes advertise `proto` in
 # their mDNS TXT record; the hub warns (not crashes) on a mismatch.

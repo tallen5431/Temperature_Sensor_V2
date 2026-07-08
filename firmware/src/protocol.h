@@ -19,7 +19,7 @@
 // ---------------------------------------------------------------------------
 // Versioning (matches ThermaHub CANONICAL SPEC: fw semver, proto v1)
 // ---------------------------------------------------------------------------
-#define THERMAPROBE_FW_VERSION "2.0.0"   // semver, advertised as TXT fw=<...>
+#define THERMAPROBE_FW_VERSION "2.1.0"   // semver, advertised as TXT fw=<...>
 #define THERMAPROBE_PROTO      1         // wire protocol version, TXT proto=1
 
 // ---------------------------------------------------------------------------
