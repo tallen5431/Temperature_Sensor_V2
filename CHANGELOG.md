@@ -5,6 +5,14 @@ All notable changes to ThermaHub are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **Store listing** (`docs/LISTING.md`) rewritten as a ready-to-paste, homelab/server-room-first
+  listing for the lead product (always-on USB DS18B20 probe): honest spec table (accuracy vs
+  resolution), can't-be-bricked/local positioning, homelab-stack integrations, photo shot list,
+  and FAQ — reviewed against the compliance honesty rules.
+
 ## [2.1.0] - 2026-07-08
 
 The "first sellable build." Refinements aimed at the homelab / self-hosted beachhead
