@@ -85,10 +85,13 @@ def ensure_csv(csv_file: Path) -> None:
         missing = [c for c in COLUMNS if c not in df.columns]
         if missing:
             full = pd.read_csv(csv_file)
-            for c in missing:
-                full[c] = ""
+            # Reorder to the canonical COLUMNS layout — NOT just append. An older
+            # log has probe_id in position 4; if we only appended humidity/vpd,
+            # append_row (which writes in COLUMNS order) would then misalign every
+            # new row against the header.
+            full = full.reindex(columns=COLUMNS, fill_value="")
             full.to_csv(csv_file, index=False)
-            log.info("Upgraded %s to include columns: %s", csv_file.name, ", ".join(missing))
+            log.info("Upgraded %s to columns: %s", csv_file.name, ", ".join(COLUMNS))
     except Exception as e:
         log.warning("Could not verify/upgrade CSV schema for %s: %s", csv_file, e)
 

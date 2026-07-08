@@ -112,7 +112,10 @@ def _notifications_card(cfg):
             dbc.Col([dbc.Label("SMTP username"),
                      dbc.Input(id="set-smtp-user", type="text", value=n.get("smtp_user", ""))], md=6),
             dbc.Col([dbc.Label("SMTP password"),
-                     dbc.Input(id="set-smtp-pass", type="password", value=n.get("smtp_password", ""),
+                     # Never render the stored secret into the page (it would be
+                     # sent to every browser that can open /settings). The save
+                     # handler keeps the existing password when this is left blank.
+                     dbc.Input(id="set-smtp-pass", type="password", value="",
                                placeholder="(unchanged if left blank)")], md=6),
         ], className="gy-2"),
         dbc.Row([

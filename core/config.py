@@ -12,8 +12,9 @@ from core.applog import get_logger
 
 log = get_logger("config")
 
-# Keys that must never be serialized into an API response.
-SECRET_KEYS = {"provision_token", "server_token", "smtp_password"}
+# Keys that must never be serialized into an API response. "password" covers the
+# generic password fields under ui_auth and mqtt (in addition to smtp_password).
+SECRET_KEYS = {"provision_token", "server_token", "smtp_password", "password"}
 
 # Neutral factory defaults. A shipped unit shows *no* personal data, *no* joke
 # labels, and a professional, white-labelable brand. Everything here is

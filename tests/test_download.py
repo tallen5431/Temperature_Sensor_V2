@@ -16,14 +16,18 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 
-def _build_download_app(base_dir: Path, csv_file: Path):
-    """Mirror app.py's hardened download route for isolated testing."""
+def _build_download_app(csv_file: Path):
+    """Mirror app.py's hardened download route for isolated testing.
+
+    Resolves against the CSV file's OWN directory (matching the fix), so a
+    Docker/custom CSV_FILE path outside the project dir still serves correctly.
+    """
     server = Flask(__name__)
 
     @server.route("/download/<path:filename>")
     def download_csv(filename):
         try:
-            candidate = safe_join(str(base_dir), filename)
+            candidate = safe_join(str(csv_file.parent), filename)
             if not candidate:
                 return "Not found", 404
             candidate = Path(candidate).resolve()
@@ -40,7 +44,19 @@ def _build_download_app(base_dir: Path, csv_file: Path):
 def dl(tmp_path):
     csv = tmp_path / "temperature_log.csv"
     csv.write_text("timestamp,temperature_c,temperature_f,probe_id\n", encoding="utf-8")
-    return _build_download_app(tmp_path, csv), csv
+    return _build_download_app(csv), csv
+
+
+def test_download_works_when_csv_outside_project_dir(tmp_path):
+    # Docker case: CSV_FILE lives in /data, not the repo dir. Must still serve.
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    csv = data_dir / "temperature_log.csv"
+    csv.write_text("timestamp,temperature_c,temperature_f,probe_id\n", encoding="utf-8")
+    client = _build_download_app(csv)
+    r = client.get("/download/temperature_log.csv")
+    assert r.status_code == 200
+    assert "attachment" in r.headers.get("Content-Disposition", "")
 
 
 def test_download_by_basename_works(dl):

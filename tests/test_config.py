@@ -51,6 +51,19 @@ def test_redact_secrets():
     assert red["ok"] == 1
 
 
+def test_redact_generic_password_fields():
+    # ui_auth.password and mqtt.password use the generic "password" key and must
+    # also be redacted from any API config dump.
+    red = redact_secrets({
+        "ui_auth": {"password": "p", "username": "admin"},
+        "mqtt": {"password": "q", "host": "localhost"},
+    })
+    assert red["ui_auth"]["password"] == "***set***"
+    assert red["ui_auth"]["username"] == "admin"      # non-secret preserved
+    assert red["mqtt"]["password"] == "***set***"
+    assert red["mqtt"]["host"] == "localhost"
+
+
 def test_ensure_config_file_seeds_from_example(tmp_path):
     example = tmp_path / "config.example.json"
     example.write_text(json.dumps({"interval_sec": 7}), encoding="utf-8")

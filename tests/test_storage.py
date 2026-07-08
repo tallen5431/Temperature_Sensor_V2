@@ -79,6 +79,31 @@ def test_append_row_never_ragged(tmp_path):
     assert rows[2][HUM_COL] == ""   # missing humidity -> empty string
 
 
+def test_upgrade_reorders_old_schema_to_canonical(tmp_path):
+    # An OLD 4-column log has probe_id in position 4. After the schema upgrade,
+    # the header must be reordered to COLUMNS so append_row (which writes in
+    # COLUMNS order) stays aligned — otherwise humidity lands under probe_id, etc.
+    import pandas as pd
+    p = tmp_path / "log.csv"
+    p.write_text(
+        "timestamp,temperature_c,temperature_f,probe_id\n"
+        "2026-01-01T00:00:00,20.0,68.0,ThermaProbe-1\n",
+        encoding="utf-8",
+    )
+    from core.storage import ensure_csv
+    ensure_csv(p)
+    df = pd.read_csv(p)
+    assert list(df.columns) == COLUMNS
+    assert df.iloc[0]["probe_id"] == "ThermaProbe-1"  # value stayed with its column
+
+    append_row(p, "2026-01-01T00:00:05", 21.0, 69.8, probe_id="ThermaProbe-2",
+               humidity_pct=55.0, vpd_kpa=1.2)
+    last = pd.read_csv(p).iloc[-1]
+    assert last["probe_id"] == "ThermaProbe-2"      # not humidity
+    assert last["humidity_pct"] == 55.0             # not vpd
+    assert last["vpd_kpa"] == 1.2
+
+
 def test_append_row_writes_humidity_and_vpd(tmp_path):
     p = tmp_path / "log.csv"
     append_row(p, "2026-01-01T00:00:00", 25.0, 77.0, probe_id="P1", humidity_pct=60.0, vpd_kpa=1.27)

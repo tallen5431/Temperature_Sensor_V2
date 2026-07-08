@@ -167,7 +167,11 @@ def download_csv(filename):
     """Serve ONLY the temperature log. The previous version served any file
     under the project directory (config.json with the token, all source)."""
     try:
-        candidate = safe_join(str(BASE_DIR), filename)
+        # Resolve against the CSV file's OWN directory, not BASE_DIR — otherwise a
+        # Docker/custom deployment (CSV_FILE=/data/...) would always 404 while the
+        # dashboard links to /download/<basename>. The equality check still ensures
+        # only the log file is ever served.
+        candidate = safe_join(str(CSV_FILE.parent), filename)
         if not candidate:
             return "Not found", 404
         candidate = Path(candidate).resolve()
