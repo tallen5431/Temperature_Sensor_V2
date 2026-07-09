@@ -13,8 +13,9 @@ from core.applog import get_logger
 log = get_logger("config")
 
 # Keys that must never be serialized into an API response. "password" covers the
-# generic password fields under ui_auth and mqtt (in addition to smtp_password).
-SECRET_KEYS = {"provision_token", "server_token", "smtp_password", "password"}
+# generic password fields under ui_auth and mqtt (in addition to smtp_password);
+# "webhook_url" is a bearer secret (possession = ability to post to the channel).
+SECRET_KEYS = {"provision_token", "server_token", "smtp_password", "password", "webhook_url"}
 
 # Neutral factory defaults. A shipped unit shows *no* personal data, *no* joke
 # labels, and a professional, white-labelable brand. Everything here is

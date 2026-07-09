@@ -93,8 +93,10 @@ def _notifications_card(cfg):
             ], md=6),
             dbc.Col([
                 dbc.Label("Webhook URL (Slack/Discord/etc — optional)"),
-                dbc.Input(id="set-notif-webhook", type="text", value=n.get("webhook_url", ""),
-                          placeholder="https://hooks.slack.com/..."),
+                # A webhook URL is a bearer secret — never seed it into the page
+                # (the dashboard is open by default). Blank; kept on save when empty.
+                dbc.Input(id="set-notif-webhook", type="text", value="",
+                          placeholder="(unchanged if left blank)"),
             ], md=6),
         ], className="gy-2"),
         html.Hr(),
@@ -193,7 +195,6 @@ def register_settings_callbacks(app, cfg):
             notif = {
                 "enabled": bool(notif_on),
                 "recipients": recips,
-                "webhook_url": (webhook or "").strip(),
                 "smtp_host": (smtp_host or "").strip(),
                 "smtp_port": int(smtp_port or 587),
                 "smtp_from": (smtp_from or "").strip(),
@@ -201,9 +202,12 @@ def register_settings_callbacks(app, cfg):
                 "smtp_tls": bool(smtp_tls),
                 "debounce_sec": int(debounce or 0),
             }
-            # Only overwrite the stored password if a new one was typed.
+            # Secret-bearing fields are rendered blank; only overwrite them when
+            # the user actually typed a replacement (else keep the stored value).
             if smtp_pass:
                 notif["smtp_password"] = smtp_pass
+            if webhook and webhook.strip():
+                notif["webhook_url"] = webhook.strip()
             cfg.update({
                 "settings": {"default_unit": unit or "celsius", "timezone": (tz or "").strip()},
                 "auto_provision": bool(auto_prov),

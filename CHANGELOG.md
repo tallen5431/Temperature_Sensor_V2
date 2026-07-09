@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- Security review of the release. Hub core auth verified sound (no injection, auth bypass,
+  path traversal, or unsafe deserialization). Fixes:
+  - Don't seed the notification **webhook URL** (a bearer secret) into the Settings page, and
+    redact `webhook_url` from `GET /api/config` — the dashboard is open by default, so any LAN
+    device could otherwise read it.
+  - Firmware: reject Wi-Fi reconfiguration (`POST /save`) when the probe is in station mode — it
+    is only valid during SoftAP setup; otherwise a LAN device or CSRF could repoint/disconnect a
+    probe. HTML-escape reflected input on the probe's setup/landing pages.
+- Added `SECURITY.md` (threat model + hardening roadmap, incl. the MAC-derived SoftAP-password and
+  default-open `/provision` firmware items slated for the next firmware revision).
+
 ### Changed
 - **Store listing** (`docs/LISTING.md`) rewritten as a ready-to-paste, homelab/server-room-first
   listing for the lead product (always-on USB DS18B20 probe): honest spec table (accuracy vs

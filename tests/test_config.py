@@ -64,6 +64,14 @@ def test_redact_generic_password_fields():
     assert red["mqtt"]["host"] == "localhost"
 
 
+def test_redact_webhook_url():
+    # A Slack/Discord webhook URL is a bearer secret and must be redacted.
+    red = redact_secrets({"notifications": {"webhook_url": "https://hooks.slack.com/services/XXX",
+                                            "recipients": ["a@b.com"]}})
+    assert red["notifications"]["webhook_url"] == "***set***"
+    assert red["notifications"]["recipients"] == ["a@b.com"]  # non-secret preserved
+
+
 def test_ensure_config_file_seeds_from_example(tmp_path):
     example = tmp_path / "config.example.json"
     example.write_text(json.dumps({"interval_sec": 7}), encoding="utf-8")

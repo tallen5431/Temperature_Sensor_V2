@@ -283,6 +283,24 @@ static void handleStatus() {
 // ---------------------------------------------------------------------------
 // SoftAP captive-portal config page
 // ---------------------------------------------------------------------------
+// Minimal HTML entity escaping for any user-supplied string reflected into a page.
+static String escapeHtml(const String& in) {
+  String out;
+  out.reserve(in.length() + 8);
+  for (size_t i = 0; i < in.length(); i++) {
+    char c = in[i];
+    switch (c) {
+      case '&': out += "&amp;";  break;
+      case '<': out += "&lt;";   break;
+      case '>': out += "&gt;";   break;
+      case '"': out += "&quot;"; break;
+      case '\'': out += "&#39;"; break;
+      default:  out += c;        break;
+    }
+  }
+  return out;
+}
+
 static String configPageHtml(const String& msg) {
   String h;
   h += "<!doctype html><html><head><meta name=viewport "
@@ -314,13 +332,20 @@ static void handleRoot() {
     // In station mode, a tiny status landing page is friendlier than a 404.
     String h = "<!doctype html><meta name=viewport content='width=device-width'>";
     h += "<body style='font-family:sans-serif'><h1>" + g_probeId + "</h1>";
-    h += "<p>Firmware " THERMAPROBE_FW_VERSION " &middot; connected to " + g_wifiSsid + "</p>";
+    h += "<p>Firmware " THERMAPROBE_FW_VERSION " &middot; connected to " + escapeHtml(g_wifiSsid) + "</p>";
     h += "<p>See <code>/whoami</code> and <code>/status</code>.</p></body>";
     httpServer.send(200, "text/html", h);
   }
 }
 
 static void handleSave() {
+  // Wi-Fi reconfiguration is only accepted while in SoftAP setup mode. In station
+  // mode this endpoint would let any LAN device (or a CSRF auto-POST from a site
+  // the user visits) overwrite the probe's Wi-Fi and reboot it off the network.
+  if (!g_apMode) {
+    httpServer.send(403, "text/plain", "setup unavailable in station mode");
+    return;
+  }
   String ssid = httpServer.arg("ssid");
   String pass = httpServer.arg("pass");
   if (ssid.length() == 0) {
@@ -329,7 +354,7 @@ static void handleSave() {
   }
   saveWifi(ssid, pass);
   httpServer.send(200, "text/html",
-      configPageHtml("Saved. Rebooting to join \"" + ssid + "\"..."));
+      configPageHtml("Saved. Rebooting to join \"" + escapeHtml(ssid) + "\"..."));
   Serial.printf("[setup] saved wifi ssid=%s, rebooting\n", ssid.c_str());
   delay(800);
   ESP.restart();
