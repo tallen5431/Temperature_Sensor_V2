@@ -228,6 +228,24 @@ def _valid_iso_ts(value):
         return None
 
 
+def threshold_breach(value, lo, hi):
+    """Single source of truth for 'is this reading out of range?'.
+
+    Returns "high" if value > hi, "low" if value < lo, else None. A None bound is
+    ignored — but a bound of 0 is a REAL threshold (freezer/greenhouse), so this
+    checks ``is not None`` rather than truthiness. Both the dashboard alert banner
+    and the server-side notifier use this so they can't diverge.
+    """
+    try:
+        if hi is not None and value > float(hi):
+            return "high"
+        if lo is not None and value < float(lo):
+            return "low"
+    except (TypeError, ValueError):
+        return None
+    return None
+
+
 def extract_humidity(payload: dict):
     """Return a validated relative-humidity percentage from an ingest payload, or None.
 

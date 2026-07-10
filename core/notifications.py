@@ -60,11 +60,8 @@ class NotificationManager:
             log.warning("notification evaluation failed for %s: %s", probe_id, e)
 
     def _eval_metric(self, notif, probe_id, name, metric, value, lo, hi, unit, debounce):
-        new_state = "ok"
-        if hi is not None and value > float(hi):
-            new_state = "high"
-        elif lo is not None and value < float(lo):
-            new_state = "low"
+        from core.storage import threshold_breach
+        new_state = threshold_breach(value, lo, hi) or "ok"
 
         skey = f"{probe_id}:{metric}"
         with self._lock:

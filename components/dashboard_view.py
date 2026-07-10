@@ -5,6 +5,7 @@ import pandas as pd, os, datetime, threading
 from urllib.parse import quote
 
 from core.paths import get_csv_path
+from core.storage import threshold_breach
 
 # Resolved once, absolute, shared with the writer (see core/paths.py). The old
 # relative default meant the reader and writer could disagree on the file.
@@ -430,14 +431,17 @@ def register_dashboard_callbacks(app, finder, cfg):
                         max_threshold = threshold_config.get('max')
                         min_threshold = threshold_config.get('min')
 
-                        if max_threshold and latest_temp > max_threshold:
+                        # Shared breach logic (handles a 0 threshold correctly and
+                        # stays in lockstep with the server-side notifier).
+                        breach = threshold_breach(latest_temp, min_threshold, max_threshold)
+                        if breach == 'high':
                             alerts.append(
                                 dbc.Alert([
                                     html.Strong(f'⚠️ {friendly_name}: '),
                                     f'{format_temp(latest_temp, temp_unit)} (above threshold: {format_temp(max_threshold, temp_unit)})'
                                 ], color='danger', className='mb-2')
                             )
-                        elif min_threshold and latest_temp < min_threshold:
+                        elif breach == 'low':
                             alerts.append(
                                 dbc.Alert([
                                     html.Strong(f'❄️ {friendly_name}: '),

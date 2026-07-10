@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Alert threshold of 0 was silently ignored on the dashboard.** The dashboard
+  alert banner used a truthiness check (`if min_threshold`), so a valid `min: 0`
+  (freezer/greenhouse) never triggered the banner — even though the server-side
+  notifier (which uses `is not None`) still emailed/webhooked it. Extracted a
+  single shared `threshold_breach()` helper used by both the dashboard and the
+  notifier so they can't diverge again; unit-tested incl. the 0-bound case.
+
 ### Security
 - Security review of the release. Hub core auth verified sound (no injection, auth bypass,
   path traversal, or unsafe deserialization). Fixes:

@@ -165,6 +165,21 @@ def test_sanitize_probe_id():
     assert sanitize_probe_id("") == ""
 
 
+def test_threshold_breach():
+    from core.storage import threshold_breach
+    assert threshold_breach(10, 2, 8) == "high"
+    assert threshold_breach(1, 2, 8) == "low"
+    assert threshold_breach(5, 2, 8) is None
+    # A 0 bound is a REAL threshold, not "unset" (the falsy-zero regression).
+    assert threshold_breach(-1, 0, 8) == "low"     # below a min of 0
+    assert threshold_breach(1, 0, 8) is None        # above a min of 0 → ok
+    assert threshold_breach(-5, -60, 0) is None      # in range [-60, 0]
+    assert threshold_breach(5, -60, 0) == "high"    # above a max of 0
+    # None bounds are ignored; unparseable bounds don't crash.
+    assert threshold_breach(100, None, None) is None
+    assert threshold_breach(100, None, "bad") is None
+
+
 def test_apply_calibration():
     cal = {"ThermaProbe-1": {"offset_c": 1.5, "gain": 1.0}}
     assert apply_calibration(20.0, "ThermaProbe-1", cal) == pytest.approx(21.5)
