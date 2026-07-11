@@ -7,6 +7,8 @@ import pandas as pd
 import plotly.graph_objs as go
 from dash import Input, Output, dcc, html, no_update
 
+from core.storage import threshold_breach
+
 log = logging.getLogger("hub.dashboard")
 
 # Maps the UI time-range selector to a rolling window in seconds (None = all).
@@ -77,6 +79,11 @@ StatsRow = dbc.Row([
 # --- Alerts Row ---
 AlertsRow = html.Div(id="alerts-container", className="mb-3")
 
+# Per-probe status cards — one per probe that has reported, with its current
+# temperature and an at-a-glance OK / HIGH / LOW / stale state. Populated by an
+# independent callback (keyed off ingest, so deep-sleep probes still show).
+ProbesRow = html.Div(id="probes-row", className="mb-3")
+
 # Humidity / VPD cards — only rendered for probes that report humidity (grow
 # variant). A temperature-only deployment leaves this empty. Populated by an
 # independent callback so it never disturbs the main temperature refresh.
@@ -143,6 +150,7 @@ DashboardLayout = html.Div([
     html.Div(id="dashboard-onboarding"),
     MetricsRow,
     AlertsRow,
+    ProbesRow,
     StatsRow,
     EnvironmentRow,
     dbc.Row([
@@ -183,6 +191,31 @@ def _online_probe_count(finder, timeout_sec=ONLINE_TIMEOUT_SEC):
     return n
 
 
+def _age_text(age_sec):
+    if age_sec is None:
+        return "—"
+    if age_sec < 15:
+        return "just now"
+    if age_sec < 60:
+        return f"{int(age_sec)} s ago"
+    if age_sec < 3600:
+        return f"{int(age_sec // 60)} min ago"
+    return f"{int(age_sec // 3600)} h ago"
+
+
+def _reporting_probe_count(db, finder, timeout_sec=ONLINE_TIMEOUT_SEC):
+    """Count probes that actually sent a reading within ``timeout_sec``.
+
+    Keyed off ingest, not mDNS: a deep-sleep battery probe keeps its radio off
+    between readings so it is never mDNS-discovered, yet it is clearly "connected"
+    if it is still posting. Falls back to mDNS discovery if the DB query fails.
+    """
+    try:
+        return len(db.last_reading_epoch_per_probe(window_seconds=int(timeout_sec)))
+    except Exception:
+        return _online_probe_count(finder, timeout_sec)
+
+
 def _empty_fig():
     fig = go.Figure()
     fig.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
@@ -207,7 +240,8 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit):
     window = RANGE_SECONDS.get(time_range, 86400)
     suffix = " °F" if temp_unit == "fahrenheit" else " °C"
     logging_status = "ON" if cfg.get("pull_enabled", True) else "OFF"
-    probes_online = _online_probe_count(finder, cfg.get("probe_online_timeout_sec", ONLINE_TIMEOUT_SEC))
+    probes_online = _reporting_probe_count(db, finder,
+                                           cfg.get("probe_online_timeout_sec", ONLINE_TIMEOUT_SEC))
 
     try:
         latest = db.latest()
@@ -366,6 +400,55 @@ def register_dashboard_callbacks(app, finder, cfg, db):
     def _csv_link(time_range):
         tr = time_range or "24h"
         return "/download/temperature_log.csv" + ("" if tr == "all" else f"?window={tr}")
+
+    @app.callback(
+        Output("probes-row", "children"),
+        Input("dash-refresh", "n_intervals"),
+        Input("temp-unit-store", "data"),
+    )
+    def _update_probe_cards(_n, temp_unit):
+        """One status card per probe: current temperature + OK/HIGH/LOW/stale."""
+        temp_unit = temp_unit or "celsius"
+        try:
+            latest = db.latest_per_probe(window_seconds=7 * 86400)
+        except Exception:
+            return []
+        if latest is None or latest.empty:
+            return []
+        thresholds = cfg.get("alert_thresholds", {}) or {}
+        online_to = cfg.get("probe_online_timeout_sec", ONLINE_TIMEOUT_SEC)
+        now = datetime.datetime.now()
+        cards = []
+        for _, row in latest.iterrows():
+            pid = row["probe_id"]
+            if not str(pid).strip():
+                continue
+            t_c = row["temperature_c"]
+            age = None
+            try:
+                dt = datetime.datetime.fromisoformat(str(row["timestamp"]).rstrip("Z"))
+                age = (now - dt).total_seconds()
+            except Exception:
+                pass
+            thr = thresholds.get(pid, thresholds.get("default", {})) or {}
+            breach = threshold_breach(t_c, thr.get("min"), thr.get("max"))
+            if age is not None and age > max(int(online_to), 120):
+                color, badge = "secondary", "● stale"
+            elif breach == "high":
+                color, badge = "danger", "▲ HIGH"
+            elif breach == "low":
+                color, badge = "info", "▼ LOW"
+            else:
+                color, badge = "success", "● OK"
+            cards.append(dbc.Col(dbc.Card(dbc.CardBody([
+                html.Div([
+                    html.Span(_friendly_name(cfg, pid), className="fw-bold text-truncate"),
+                    dbc.Badge(badge, color=color, className="ms-2 flex-shrink-0"),
+                ], className="d-flex justify-content-between align-items-center"),
+                html.H3(_fmt(t_c, temp_unit), className=f"fw-bold text-{color} my-1"),
+                html.Small(_age_text(age), className="text-muted"),
+            ]), className="h-100"), xl=3, md=4, sm=6, className="mb-2"))
+        return dbc.Row(cards, className="g-3")
 
     @app.callback(
         Output("env-row", "children"),

@@ -8,7 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Per-probe status cards on the dashboard** — one card per probe showing its current temperature and
+  an at-a-glance **OK / HIGH / LOW / stale** state (colour-coded, with a freshness age), so a
+  multi-probe deployment is legible at a glance instead of a single gauge showing whichever probe
+  reported last.
+
 ### Changed
+- **Dashboard styling is now fully offline** — the Bootstrap/CYBORG theme is vendored locally
+  (`assets/bootstrap-cyborg.min.css`) instead of loaded from a CDN, so the hub renders correctly with
+  no internet (offline homelabs, air-gapped networks) — matching the local-first promise. Dash already
+  serves its own JS/Plotly locally, so the hub now needs zero external hosts.
+- **"Connected Probes" counts probes that are actually reporting** (from the readings DB within the
+  online window), not just mDNS-discovered ones — so a **deep-sleep battery probe** (radio off between
+  readings, never mDNS-visible) is correctly counted while it is posting.
 - **Rebranded to `TempSensor`** — the hub, the probe, the firmware, the Prometheus metric prefix
   (`tempsensor_*`), the MQTT base topic, and all documentation now use **TempSensor** in place of
   ThermaHub/ThermaProbe. The probe's setup-AP SSID and probe ID become **`TempSensor-<HEX6>`**.
