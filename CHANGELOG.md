@@ -16,8 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   committed; needs a hardware bench build.)
 - **Hobbyist go-to-market ladder** in `docs/LAUNCH.md` — a lowest-barrier path (software/BYO →
   kits → assembled+SDoC → B2B), tied to the browser-flash on-ramp.
+- **`docs/TINDIE_LISTING.md`** — a ready-to-paste Tindie listing (title, summary, tags, kit/assembled
+  price options, Markdown description, shipping, photo order) with a pre-publish checklist covering
+  Tindie's exclusivity clause and the FCC-for-assembled caveat.
 
 ### Changed
+- `docs/LAUNCH.md`: noted Tindie's web-exclusivity (pick one paid channel for the probe) and pointed
+  the kit/direct-sell steps at `TINDIE_LISTING.md`.
 - Corrected the README **Humidity & VPD** section to the shipped reality: the hub computes VPD
   from any probe that reports humidity, but the SHT4x probe *firmware build* and humidity/VPD
   *alert thresholds* are not yet implemented (temperature-only alerting for now).

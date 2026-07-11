@@ -1,5 +1,8 @@
 # Online Store Listing — ThermaProbe (Homelab / Server-Room edition)
 
+> _Selling on **Tindie**? See [`TINDIE_LISTING.md`](TINDIE_LISTING.md) — the same copy mapped
+> field-by-field onto Tindie's listing form, with kit/assembled options and the exclusivity/FCC notes._
+
 > _**Maker note (delete before publishing):** this is a ready-to-paste template for the **lead
 > product** — the always-on, USB-powered, DS18B20 temperature probe aimed at homelab / server-room
 > buyers. Replace **ThermaHub**/**ThermaProbe** with your brand, set your real **price**, drop in your
