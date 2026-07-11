@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Smarter CSV export.** "Download CSV" now exports exactly what you're viewing — the selected time
+  range and, in focus mode, just that probe. A new **Export** dialog adds a custom **date range** and
+  **per-probe** selection. Backed by `Database.export_csv(probe_id=…, start_epoch=…, end_epoch=…)` and
+  `?probe=`/`?from=`/`?to=` query params on the download route.
+- **Unambiguous timestamps in exports.** Every CSV row now carries a `timestamp_utc` column derived
+  from the reading's epoch, alongside the existing local `timestamp`, so exported data stays correct
+  across daylight-saving changes and different machines. The export dialog names the hub's timezone.
+- **System health panel (Diagnostics).** An at-a-glance health card — status (Healthy / Needs
+  attention), uptime, readings in the last 24 h, last write, rows written this run, rejected ingests,
+  write failures, and free disk — with a low-disk warning. So you can trust the logger is recording.
+- **Try it with demo data.** The first-run empty state has a **▶ Load demo data** button that seeds a
+  day of realistic sample readings (clearly-labelled `Demo …` probes) so a new user can explore the
+  dashboard, charts, export and per-probe views before any hardware arrives; a banner offers one-click
+  **Clear demo data**, which never touches real probes.
 - **Remove a device.** The Devices edit dialog now has a **🗑 Remove device** button (with a
   confirmation) that deletes all of a probe's readings and its saved name / thresholds / calibration /
   interval, and forgets it from discovery — so accumulated test devices can be cleared. New

@@ -91,9 +91,35 @@ def test_export_csv_roundtrip(db):
     n = db.export_csv(buf)
     assert n == 1
     content = buf.getvalue()
-    assert "timestamp,temperature_c,temperature_f,probe_id" in content
+    assert "timestamp,timestamp_utc,temperature_c,temperature_f,probe_id" in content
     assert "probeX" in content
     assert "22.123" in content
+    # every data row carries an unambiguous UTC timestamp ending in Z
+    assert content.splitlines()[1].split(",")[1].endswith("Z")
+
+
+def test_export_csv_filters(db):
+    now = datetime.datetime.now()
+    old = now - datetime.timedelta(days=3)
+    db.append(_iso(old), 10.0, 50.0, "A")     # 3 days ago
+    db.append(_iso(now), 20.0, 68.0, "A")     # today
+    db.append(_iso(now), 4.0, 39.2, "B")      # today, other probe
+
+    def rows(**kw):
+        buf = io.StringIO()
+        n = db.export_csv(buf, **kw)
+        return n
+
+    assert rows() == 3
+    assert rows(probe_id="A") == 2
+    assert rows(probe_id="B") == 1
+    # absolute date range: only today's readings
+    start = int(now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
+    assert rows(start_epoch=start) == 2
+    # combine probe + range
+    assert rows(probe_id="A", start_epoch=start) == 1
+    # end_epoch excludes today
+    assert rows(end_epoch=start - 1) == 1  # only the 3-days-ago row
 
 
 def test_iso_to_epoch_roundtrip():

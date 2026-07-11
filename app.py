@@ -1,7 +1,9 @@
+import datetime
 import hmac
 import io
 import logging
 import os
+import re
 import socket
 import sys
 import tempfile
@@ -160,21 +162,46 @@ def metrics():
     return body, 200, {"Content-Type": "text/plain; version=0.0.4; charset=utf-8"}
 
 
+def _parse_date_epoch(s, end_of_day=False):
+    """Parse a hub-local ``YYYY-MM-DD`` (or full ISO) string to a unix epoch.
+    A bare date maps to the start (or, for ``end_of_day``, the last second) of
+    that day. Returns None for blank/invalid input so the filter is skipped."""
+    s = (s or "").strip()
+    if not s:
+        return None
+    try:
+        d = datetime.datetime.fromisoformat(s.replace("Z", ""))
+        if len(s) == 10 and end_of_day:  # bare date -> inclusive end of day
+            d = d.replace(hour=23, minute=59, second=59)
+        return int(d.timestamp())
+    except (ValueError, TypeError):
+        return None
+
+
 @server.route("/download/temperature_log.csv")
 def download_csv():
-    """Stream the log as CSV, optionally limited to a time window (?window=24h)."""
-    window = WINDOW_SECONDS.get((request.args.get("window") or "all").strip())
+    """Stream the log as CSV. Optional filters: ?window=24h, ?probe=<id>, and an
+    absolute ?from=YYYY-MM-DD&to=YYYY-MM-DD range (inclusive, hub-local dates)."""
+    args = request.args
+    window = WINDOW_SECONDS.get((args.get("window") or "all").strip())
+    probe = (args.get("probe") or "").strip() or None
+    start_epoch = _parse_date_epoch(args.get("from"), end_of_day=False)
+    end_epoch = _parse_date_epoch(args.get("to"), end_of_day=True)
     buf = io.StringIO()
     try:
-        db.export_csv(buf, window_seconds=window)
+        db.export_csv(buf, window_seconds=window, probe_id=probe,
+                      start_epoch=start_epoch, end_epoch=end_epoch)
     except Exception:
         log.exception("CSV export failed")
         return "Export failed", 500
-    AUDIT.record("data.export", detail="temperature_log.csv", actor=request.remote_addr or "?")
+    fname = "temperature_log.csv"
+    if probe:
+        fname = "temperature_" + re.sub(r"[^A-Za-z0-9_.-]", "_", probe) + ".csv"
+    AUDIT.record("data.export", detail=fname, actor=request.remote_addr or "?")
     return Response(
         buf.getvalue(),
         mimetype="text/csv",
-        headers={"Content-Disposition": "attachment; filename=temperature_log.csv"},
+        headers={"Content-Disposition": f"attachment; filename={fname}"},
     )
 
 

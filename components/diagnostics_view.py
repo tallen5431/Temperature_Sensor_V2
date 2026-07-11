@@ -40,6 +40,56 @@ def _kv_table(rows):
     ])], bordered=False, hover=False, size="sm", className="mb-0")
 
 
+def _fmt_uptime(sec):
+    if not isinstance(sec, (int, float)) or sec < 0:
+        return "—"
+    sec = int(sec)
+    d, rem = divmod(sec, 86400)
+    h, rem = divmod(rem, 3600)
+    m, _ = divmod(rem, 60)
+    if d:
+        return f"{d}d {h}h"
+    if h:
+        return f"{h}h {m}m"
+    return f"{m}m"
+
+
+def _fmt_age(sec):
+    if not isinstance(sec, (int, float)):
+        return "—"
+    if sec < 60:
+        return "just now"
+    if sec < 3600:
+        return f"{int(sec // 60)} min ago"
+    return f"{int(sec // 3600)} h ago"
+
+
+def _health_card(h):
+    healthy = h.get("healthy")
+    disk = h.get("disk_free_bytes")
+    low_disk = isinstance(disk, (int, float)) and disk < 512 * 1024 * 1024  # < 512 MB
+    disk_cell = html.Span(human_size(disk),
+                          className="text-warning fw-bold" if low_disk else "")
+    rows = [
+        ("Status", dbc.Badge("● Healthy" if healthy else "● Needs attention",
+                             color="success" if healthy else "warning")),
+        ("Uptime", _fmt_uptime(h.get("uptime_sec"))),
+        ("Readings (last 24 h)",
+         f"{h['readings_24h']:,}" if isinstance(h.get("readings_24h"), int) else "—"),
+        ("Last write", _fmt_age(h.get("last_write_age_sec"))),
+        ("Rows written (this run)", f"{h.get('rows_written', 0):,}"),
+        ("Rejected ingests", f"{h.get('ingest_rejected', 0):,}"),
+        ("Write failures", f"{h.get('write_failures', 0):,}"),
+        ("Disk free", disk_cell),
+    ]
+    body = [html.H6("System health", className="text-info"), _kv_table(rows)]
+    if low_disk:
+        body.append(dbc.Alert("⚠ Low disk space — consider setting a retention limit "
+                              "(Settings → Data & storage) or freeing space.",
+                              color="warning", className="mt-2 mb-0 py-2 small"))
+    return dbc.Card(dbc.CardBody(body), className="mb-3")
+
+
 def _notif_summary(n):
     if not n.get("enabled"):
         return "Off"
@@ -66,6 +116,9 @@ def _render(d):
 
     children = [dbc.Card(dbc.CardBody([html.H6("Summary", className="text-info"), summary]),
                          className="mb-3")]
+
+    if d.get("health"):
+        children.append(_health_card(d["health"]))
 
     if pr["list"]:
         head = html.Thead(html.Tr([html.Th("Name"), html.Th("Probe ID"),

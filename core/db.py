@@ -339,24 +339,45 @@ class Database:
             dest.close()
 
     # -- export ----------------------------------------------------------------
-    def export_csv(self, file_obj, window_seconds: Optional[int] = None) -> int:
-        """Write readings to a file-like object as CSV. Returns the row count."""
+    def export_csv(self, file_obj, window_seconds: Optional[int] = None,
+                   probe_id: Optional[str] = None,
+                   start_epoch: Optional[int] = None,
+                   end_epoch: Optional[int] = None) -> int:
+        """Write readings to a file-like object as CSV. Returns the row count.
+
+        Filters (all AND-ed, any may be omitted): a rolling ``window_seconds``, a
+        single ``probe_id``, and an absolute ``start_epoch``/``end_epoch`` range.
+        Every row carries both the stored local ``timestamp`` and an unambiguous
+        ``timestamp_utc`` derived from the row's epoch, so exported data stays
+        correct across machines and daylight-saving changes.
+        """
         conn = self._conn()
+        clauses, params_list = [], []
         cutoff = self._cutoff(window_seconds)
-        where = "WHERE epoch >= ?" if cutoff is not None else ""
-        params: tuple = (cutoff,) if cutoff is not None else ()
+        if cutoff is not None:
+            clauses.append("epoch >= ?"); params_list.append(cutoff)
+        if start_epoch is not None:
+            clauses.append("epoch >= ?"); params_list.append(int(start_epoch))
+        if end_epoch is not None:
+            clauses.append("epoch <= ?"); params_list.append(int(end_epoch))
+        if probe_id:
+            clauses.append("probe_id = ?"); params_list.append(probe_id)
+        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        params: tuple = tuple(params_list)
         writer = _csv.writer(file_obj)
-        writer.writerow(["timestamp", "temperature_c", "temperature_f", "probe_id",
-                         "humidity_pct", "vpd_kpa"])
+        writer.writerow(["timestamp", "timestamp_utc", "temperature_c", "temperature_f",
+                         "probe_id", "humidity_pct", "vpd_kpa"])
         n = 0
         for r in conn.execute(
-            f"SELECT ts, temperature_c, temperature_f, probe_id, humidity_pct, vpd_kpa "
+            f"SELECT ts, epoch, temperature_c, temperature_f, probe_id, humidity_pct, vpd_kpa "
             f"FROM readings {where} ORDER BY epoch ASC",
             params,
         ):
             hum = "" if r["humidity_pct"] is None else f"{r['humidity_pct']:.2f}"
             vpd = "" if r["vpd_kpa"] is None else f"{r['vpd_kpa']:.3f}"
-            writer.writerow([_csv_safe(r["ts"]), f"{r['temperature_c']:.3f}",
+            utc = datetime.datetime.fromtimestamp(
+                int(r["epoch"]), tz=datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            writer.writerow([_csv_safe(r["ts"]), utc, f"{r['temperature_c']:.3f}",
                              f"{r['temperature_f']:.3f}", _csv_safe(r["probe_id"]), hum, vpd])
             n += 1
         return n
