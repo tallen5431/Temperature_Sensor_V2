@@ -407,17 +407,22 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all"):
 
         thresholds = cfg.get("alert_thresholds", {}) or {}
         if focus is not None:
-            # --- Focus mode: the gauge shows the SELECTED probe. ---
+            # --- Focus mode: the gauge shows the SELECTED probe's most recent
+            # reading. Look it up over the SAME 7-day window the selector and the
+            # per-probe cards use (not the chosen time range) so focus is retained
+            # even when the probe has no reading inside a short range — otherwise
+            # the gauge/graph/stats would silently revert to the all-probes
+            # overview while the dropdown and its card still show the probe. ---
             frow = None
             try:
-                lp = db.latest_per_probe(window)
+                lp = db.latest_per_probe(7 * 86400)
                 match = lp[lp["probe_id"] == focus]
                 if not match.empty:
                     frow = match.iloc[0]
             except Exception:
                 frow = None
             if frow is None:
-                # Selected probe has no data in this window — fall back to overview.
+                # Probe genuinely unknown (not seen in a week) — fall back to overview.
                 focus = None
             else:
                 focus_pid = focus

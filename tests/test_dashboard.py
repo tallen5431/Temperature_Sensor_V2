@@ -175,3 +175,23 @@ def test_focus_mode_unknown_probe_falls_back(tmp_path):
     _seed(db)  # two probes A/B
     out = build_dashboard(db, cfg, FakeFinder(), "24h", "celsius", "does-not-exist")
     assert len(out[1].data) == 2  # overview graph with both probes
+
+
+def test_focus_stays_on_probe_with_no_in_range_data(tmp_path):
+    # A probe whose last reading is older than the chosen range but within the
+    # last week (so it's still selectable) must STAY focused — the gauge shows its
+    # last value and the graph/stats are its own (empty), never silently reverting
+    # to the all-probes overview while the selector still names it.
+    db = Database(tmp_path / "d.db")
+    cfg = Config(tmp_path / "c.json")
+    cfg.update({"probe_names": {"A": "Freezer", "B": "Room"}})
+    now = datetime.datetime.now()
+    three_h_ago = _iso(now - datetime.timedelta(hours=3))
+    db.append(three_h_ago, -18.0, 0.0, "A")     # A: only an old reading
+    db.append(_iso(now), 22.0, 0.0, "B")        # B: live
+    out = build_dashboard(db, cfg, FakeFinder(), "1h", "celsius", "A")
+    assert len(out[0].data) == 1        # gauge shows the focused probe (last value)
+    assert abs(out[0].data[0].value - (-18.0)) < 0.01
+    assert len(out[1].data) == 0        # no A data in the last hour -> empty graph
+    assert "Freezer" in out[6]          # range info stays scoped to A
+    assert out[7] == "N/A"              # stats are A's own (none in range)
