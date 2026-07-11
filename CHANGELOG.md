@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the hover "lift" is limited to the interactive probe cards instead of every card.
 
 ### Added
+- **Per-probe Min / Avg / Max statistics** — when 2+ probes have data, the dashboard adds a per-probe
+  statistics breakdown below the overall row, so a mixed deployment isn't collapsed into one
+  meaningless aggregate (an "average" across a −18 °C freezer and a 22 °C room is nonsense). A
+  single-probe deployment is unchanged — the global row already tells the whole story. Backed by a new
+  `Database.stats_per_probe()` query.
 - **Per-probe status cards on the dashboard** — one card per probe showing its current temperature and
   an at-a-glance **OK / HIGH / LOW / stale** state (colour-coded, with a freshness age), so a
   multi-probe deployment is legible at a glance instead of a single gauge showing whichever probe

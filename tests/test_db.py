@@ -116,6 +116,26 @@ def test_last_reading_epoch_per_probe(db):
     assert last["A"] >= last["B"]  # A's newest is more recent than B's
 
 
+def test_stats_per_probe(db):
+    now = datetime.datetime.now()
+    # Freezer probe A: cold range; room probe B: warm range.
+    for t in (-20.0, -18.0, -16.0):
+        db.append(_iso(now), t, 0.0, "A")
+    for t in (20.0, 22.0, 24.0):
+        db.append(_iso(now), t, 0.0, "B")
+    stats = db.stats_per_probe()
+    assert set(stats.keys()) == {"A", "B"}
+    assert stats["A"]["min"] == -20.0 and stats["A"]["max"] == -16.0
+    assert stats["A"]["count"] == 3
+    assert abs(stats["A"]["avg"] - (-18.0)) < 1e-6
+    assert stats["B"]["min"] == 20.0 and stats["B"]["max"] == 24.0
+    assert abs(stats["B"]["avg"] - 22.0) < 1e-6
+
+
+def test_stats_per_probe_empty(db):
+    assert db.stats_per_probe() == {}
+
+
 def test_bulk_insert(db):
     now = datetime.datetime.now()
     rows = [(_iso(now - datetime.timedelta(seconds=i)), float(i), float(i) * 2, "p")

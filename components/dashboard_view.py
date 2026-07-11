@@ -76,6 +76,12 @@ StatsRow = dbc.Row([
     ]), className="h-100 text-center"), width=4),
 ], className="g-3 mb-3")
 
+# Per-probe Min/Max/Average — only rendered when 2+ probes have data, so a
+# multi-probe deployment doesn't collapse into one misleading aggregate (an
+# average across a freezer and a room means nothing). A single-probe deployment
+# leaves this empty; the global StatsRow above already tells the whole story.
+ProbeStatsRow = html.Div(id="probe-stats-row", className="mb-3")
+
 # --- Alerts Row ---
 AlertsRow = html.Div(id="alerts-container", className="mb-3")
 
@@ -152,6 +158,7 @@ DashboardLayout = html.Div([
     AlertsRow,
     ProbesRow,
     StatsRow,
+    ProbeStatsRow,
     EnvironmentRow,
     dbc.Row([
         dbc.Col(GaugeCard, width=4),
@@ -314,6 +321,47 @@ def _make_gauge(name, t_c, lo, hi, temp_unit, suffix):
     fig.update_layout(margin=dict(t=40, b=10, l=20, r=20), height=250,
                       paper_bgcolor="rgba(0,0,0,0)", font_color="white")
     return fig
+
+
+def build_probe_stats(db, cfg, time_range, temp_unit):
+    """Per-probe Min / Avg / Max cards, shown only when 2+ probes have data in
+    the window — so a mixed deployment (a −18 °C freezer + a 22 °C room) isn't
+    reduced to one meaningless aggregate. A single probe returns ``[]``; the
+    global StatsRow already tells that story. Kept Dash-free for direct testing.
+    """
+    temp_unit = temp_unit or "celsius"
+    window = RANGE_SECONDS.get(time_range or "24h", 86400)
+    try:
+        stats = db.stats_per_probe(window_seconds=window)
+    except Exception:
+        return []
+    named = {pid: s for pid, s in stats.items() if str(pid).strip()}
+    use = named if named else stats
+    if len(use) < 2:
+        return []
+    items = sorted(use.items(), key=lambda kv: _friendly_name(cfg, kv[0]).lower())
+    cards = []
+    for pid, s in items:
+        name = _friendly_name(cfg, pid)
+        cards.append(dbc.Col(dbc.Card(dbc.CardBody([
+            html.H6(name, className="text-truncate mb-2", title=name),
+            html.Div([
+                html.Div([html.Small("Min", className="text-muted d-block"),
+                          html.Span(_fmt(s["min"], temp_unit), className="fw-bold text-info")],
+                         className="text-center"),
+                html.Div([html.Small("Avg", className="text-muted d-block"),
+                          html.Span(_fmt(s["avg"], temp_unit), className="fw-bold text-success")],
+                         className="text-center"),
+                html.Div([html.Small("Max", className="text-muted d-block"),
+                          html.Span(_fmt(s["max"], temp_unit), className="fw-bold text-danger")],
+                         className="text-center"),
+            ], className="d-flex justify-content-between"),
+            html.Small(f"{s['count']:,} readings", className="text-muted d-block mt-2 text-center"),
+        ]), className="h-100"), xl=3, md=4, sm=6, className="mb-2"))
+    return html.Div([
+        html.H6("Per-probe statistics", className="text-muted mb-2"),
+        dbc.Row(cards, className="g-3"),
+    ])
 
 
 def build_dashboard(db, cfg, finder, time_range, temp_unit):
@@ -546,6 +594,15 @@ def register_dashboard_callbacks(app, finder, cfg, db):
                 html.Small(_age_text(age), className="text-muted"),
             ]), className="h-100"), xl=3, md=4, sm=6, className="mb-2"))
         return dbc.Row(cards, className="g-3")
+
+    @app.callback(
+        Output("probe-stats-row", "children"),
+        Input("dash-refresh", "n_intervals"),
+        Input("time-range-selector", "value"),
+        Input("temp-unit-store", "data"),
+    )
+    def _update_probe_stats(_n, time_range, temp_unit):
+        return build_probe_stats(db, cfg, time_range, temp_unit)
 
     @app.callback(
         Output("env-row", "children"),

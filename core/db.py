@@ -239,6 +239,31 @@ class Database:
             "max_ts": max_ts["ts"] if max_ts else None,
         }
 
+    def stats_per_probe(self, window_seconds: Optional[int] = None) -> dict:
+        """Per-probe min/max/avg/count over the full (un-downsampled) window.
+
+        Returns ``{probe_id: {count, min, max, avg}}``. Used for the dashboard's
+        per-probe statistics breakdown, where a single global average across
+        probes of different ranges (a −18 °C freezer + a 22 °C room) would be
+        meaningless. Rows with an empty ``probe_id`` are grouped under ``""``.
+        """
+        conn = self._conn()
+        cutoff = self._cutoff(window_seconds)
+        where = "WHERE epoch >= ?" if cutoff is not None else ""
+        params: tuple = (cutoff,) if cutoff is not None else ()
+        rows = conn.execute(
+            f"SELECT probe_id, COUNT(*) AS n, MIN(temperature_c) AS mn, "
+            f"MAX(temperature_c) AS mx, AVG(temperature_c) AS av "
+            f"FROM readings {where} GROUP BY probe_id",
+            params,
+        ).fetchall()
+        return {
+            (r["probe_id"] or ""): {
+                "count": int(r["n"]), "min": r["mn"], "max": r["mx"], "avg": r["av"],
+            }
+            for r in rows if r["n"]
+        }
+
     def latest_per_probe(self, window_seconds: Optional[int] = None) -> pd.DataFrame:
         """Latest reading for each probe within the window (for alerts/display).
 
