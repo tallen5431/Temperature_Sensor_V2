@@ -82,3 +82,25 @@ coll = COLLECT(
     upx_exclude=[],
     name="temperature-hub",
 )
+
+# On macOS, also wrap the onedir output in a double-clickable TempSensor.app so it
+# can be shipped as a signed/notarized .dmg. The .app writes its data to
+# ~/Library/Application Support/TempSensor (see app.py _default_data_dir), so it
+# runs fine from a read-only /Applications.
+import sys as _sys  # noqa: E402
+
+if _sys.platform == "darwin":
+    app = BUNDLE(
+        coll,
+        name="TempSensor.app",
+        icon=None,
+        bundle_identifier="com.tempsensor.hub",
+        version=os.getenv("TEMPSENSOR_VERSION", "0.0.0"),
+        info_plist={
+            "CFBundleName": "TempSensor",
+            "CFBundleDisplayName": "TempSensor",
+            "CFBundleShortVersionString": os.getenv("TEMPSENSOR_VERSION", "0.0.0"),
+            "NSHighResolutionCapable": True,
+            "LSUIElement": False,
+        },
+    )

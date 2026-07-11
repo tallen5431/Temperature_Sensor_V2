@@ -32,10 +32,33 @@ _FROZEN = getattr(sys, "frozen", False)
 # PyInstaller temp dir when frozen, or alongside the source in development.
 RESOURCE_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent)) if _FROZEN \
     else Path(__file__).resolve().parent
-# Writable data (config.json, database, logs) lives next to the executable when
-# frozen (so it persists across runs), or alongside the source in development.
-DATA_DIR = Path(sys.executable).resolve().parent if _FROZEN else Path(__file__).resolve().parent
-DATA_DIR = Path(os.getenv("DATA_DIR", str(DATA_DIR)))
+
+
+def _default_data_dir() -> Path:
+    """Where the app keeps writable data (config.json, database, logs).
+
+    In development: alongside the source.  When frozen: a per-user, writable
+    location so a copy installed in a read-only place (Program Files,
+    /Applications) works without admin rights.  A pre-existing "portable" install
+    that already keeps its data next to the executable is honoured so updates
+    don't strand old data.  ``DATA_DIR`` env always overrides.
+    """
+    if not _FROZEN:
+        return Path(__file__).resolve().parent
+    exe_dir = Path(sys.executable).resolve().parent
+    if (exe_dir / "config.json").exists() or (exe_dir / "temperature_log.db").exists():
+        return exe_dir  # existing portable install — keep using it
+    app_name = "TempSensor"
+    if sys.platform == "win32":
+        base = os.getenv("LOCALAPPDATA") or os.path.expanduser("~")
+        return Path(base) / app_name
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / app_name
+    base = os.getenv("XDG_DATA_HOME") or os.path.join(os.path.expanduser("~"), ".local", "share")
+    return Path(base) / app_name
+
+
+DATA_DIR = Path(os.getenv("DATA_DIR", str(_default_data_dir())))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 configure_logging(log_dir=str(DATA_DIR / "logs"))
@@ -318,7 +341,9 @@ def main():
 
     cleanup = _start_background_services(port)
 
-    if os.getenv("OPEN_BROWSER", "0") == "1":
+    # A double-clicked desktop install should open the dashboard on its own; a
+    # headless/service install can set OPEN_BROWSER=0. Dev default stays off.
+    if os.getenv("OPEN_BROWSER", "1" if _FROZEN else "0") == "1":
         import threading
         import webbrowser
         threading.Timer(2.0, lambda: webbrowser.open(f"http://localhost:{port}")).start()
