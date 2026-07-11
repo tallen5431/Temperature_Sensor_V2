@@ -229,6 +229,53 @@ def _friendly_name(cfg, probe_id):
     return cfg.get("probe_names", {}).get(probe_id, probe_id)
 
 
+def _make_gauge(name, t_c, lo, hi, temp_unit, suffix):
+    """A temperature gauge that shows ONE probe in context: coloured threshold
+    zones (blue below min, green in the safe band, red above max), a bar coloured
+    by state, and an axis ranged around the band (or the value) — so a −18 °C
+    freezer and a 32 °C office each read sensibly instead of on a fixed 0–100.
+    """
+    val = _convert(t_c, temp_unit)
+    breach = threshold_breach(t_c, lo, hi)
+    bar = {"high": "#e74c3c", "low": "#45b7d1"}.get(breach, "#2ecc71")
+
+    # Axis range in Celsius, then converted — padded to always include the value.
+    if lo is not None and hi is not None:
+        span = max(hi - lo, 1.0)
+        a_lo, a_hi = lo - span, hi + span
+    elif hi is not None:
+        a_lo, a_hi = hi - 20, hi + 10
+    elif lo is not None:
+        a_lo, a_hi = lo - 10, lo + 20
+    else:
+        a_lo, a_hi = t_c - 15, t_c + 15
+    a_lo, a_hi = min(a_lo, t_c - 2), max(a_hi, t_c + 2)
+    ax = sorted((_convert(a_lo, temp_unit), _convert(a_hi, temp_unit)))
+
+    steps = []
+    if lo is not None or hi is not None:
+        lo_u = _convert(lo, temp_unit) if lo is not None else ax[0]
+        hi_u = _convert(hi, temp_unit) if hi is not None else ax[1]
+        steps = [
+            {"range": [ax[0], lo_u], "color": "rgba(69,183,209,0.25)"},
+            {"range": [lo_u, hi_u], "color": "rgba(46,204,113,0.25)"},
+            {"range": [hi_u, ax[1]], "color": "rgba(231,76,60,0.25)"},
+        ]
+
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=val,
+        number={"suffix": suffix, "font": {"size": 40}},
+        title={"text": name, "font": {"size": 15}},
+        gauge={"axis": {"range": ax}, "bar": {"color": bar, "thickness": 0.28},
+               "steps": steps, "borderwidth": 0},
+        domain={"x": [0, 1], "y": [0, 1]},
+    ))
+    fig.update_layout(margin=dict(t=40, b=10, l=20, r=20), height=250,
+                      paper_bgcolor="rgba(0,0,0,0)", font_color="white")
+    return fig
+
+
 def build_dashboard(db, cfg, finder, time_range, temp_unit):
     """Pure(ish) computation behind the dashboard refresh callback.
 
@@ -248,18 +295,30 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit):
         if not latest:
             raise ValueError("no data")
 
-        # --- Gauge (latest reading overall) ---
-        gauge_value = _convert(float(latest["temperature_c"]), temp_unit)
-        gauge = go.Figure(go.Indicator(
-            mode="gauge+number",
-            value=gauge_value,
-            number={"suffix": suffix},
-            gauge={"axis": {"range": [32, 212] if temp_unit == "fahrenheit" else [0, 100]},
-                   "bar": {"color": "#00bcd4"}},
-            domain={"x": [0, 1], "y": [0, 1]},
-        ))
-        gauge.update_layout(margin=dict(t=10, b=30, l=10, r=10), height=250,
-                            paper_bgcolor="rgba(0,0,0,0)", font_color="white")
+        # --- Gauge: the probe that needs attention (worst active breach), else
+        # the latest reading overall — shown with its own threshold zones. ---
+        thresholds = cfg.get("alert_thresholds", {}) or {}
+        focus_pid = latest.get("probe_id")
+        focus_c = float(latest["temperature_c"])
+        thr = thresholds.get(focus_pid, thresholds.get("default", {})) or {}
+        focus_lo, focus_hi = thr.get("min"), thr.get("max")
+        try:
+            best = None  # (severity, pid, t_c, lo, hi)
+            for _, r in db.latest_per_probe(window).iterrows():
+                pid = r["probe_id"]
+                tc = float(r["temperature_c"])
+                t = thresholds.get(pid, thresholds.get("default", {})) or {}
+                lo, hi = t.get("min"), t.get("max")
+                b = threshold_breach(tc, lo, hi)
+                sev = (tc - hi) if b == "high" else (lo - tc) if b == "low" else None
+                if sev is not None and (best is None or sev > best[0]):
+                    best = (sev, pid, tc, lo, hi)
+            if best:
+                _, focus_pid, focus_c, focus_lo, focus_hi = best
+        except Exception:
+            pass
+        gauge = _make_gauge(_friendly_name(cfg, focus_pid), focus_c,
+                            focus_lo, focus_hi, temp_unit, suffix)
 
         # --- Windowed series for the graph ---
         df = db.window_df(window_seconds=window)

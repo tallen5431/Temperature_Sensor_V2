@@ -101,7 +101,7 @@ def register_footer_callbacks(app, finder, cfg, db):
 def register_all_callbacks(app, finder, cfg, db, public_base_func=None, token=""):
     from components.dashboard_view import register_dashboard_callbacks
     register_dashboard_callbacks(app, finder, cfg, db)
-    register_devices_callbacks(app, finder, cfg, public_base_func=public_base_func, token=token)
+    register_devices_callbacks(app, finder, cfg, db, public_base_func=public_base_func, token=token)
     register_diagnostics_callbacks(app, finder, cfg, db, public_base_func=public_base_func)
     register_setup_helper_callbacks(app)
     register_settings_callbacks(app, cfg)

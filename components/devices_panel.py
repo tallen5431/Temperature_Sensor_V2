@@ -79,31 +79,61 @@ DevicesLayout = html.Div([
 ])
 
 
-def register_devices_callbacks(app, finder, cfg, public_base_func=None, token=""):
+def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None, token=""):
     @app.callback(Output('device-grid', 'children'), Input('device-refresh', 'n_intervals'))
     def update_devices(_):
         try:
-            probes = (finder.list_probes() or {}).values()
-            cards = []
             now = datetime.datetime.now()
             probe_names = cfg.get('probe_names', {})
             probe_intervals = cfg.get('probe_intervals', {})
-            for p in probes:
-                # Handle both dicts and object-style probes
+
+            # Normalise every mDNS-discovered probe into a plain dict, keyed by id.
+            merged = {}
+            for p in (finder.list_probes() or {}).values():
                 if isinstance(p, dict):
                     props = p.get('properties', {}) or {}
-                    name = p.get('name') or props.get('name') or props.get('id') or p.get('id') or 'Unknown'
-                    probe_id = props.get('id') or p.get('probe_id') or p.get('id')
-                    ip = p.get('ip') or p.get('host') or 'N/A'
-                    port = p.get('port', 80)
-                    last = p.get('last_seen')
+                    nm = p.get('name') or props.get('name') or props.get('id') or p.get('id') or 'Unknown'
+                    pid = props.get('id') or p.get('probe_id') or p.get('id')
+                    ipx = p.get('ip') or p.get('host') or 'N/A'
+                    prt = p.get('port', 80)
+                    lst = p.get('last_seen')
                 else:
                     props = getattr(p, 'properties', {}) or {}
-                    name = getattr(p, 'name', None) or getattr(p, 'id', None) or props.get('name') or props.get('id') or 'Unknown'
-                    probe_id = props.get('id') or getattr(p, 'probe_id', None) or getattr(p, 'id', None)
-                    ip = getattr(p, 'ip', None) or getattr(p, 'host', None) or 'N/A'
-                    port = getattr(p, 'port', 80)
-                    last = getattr(p, 'last_seen', None)
+                    nm = getattr(p, 'name', None) or getattr(p, 'id', None) or props.get('name') or props.get('id') or 'Unknown'
+                    pid = props.get('id') or getattr(p, 'probe_id', None) or getattr(p, 'id', None)
+                    ipx = getattr(p, 'ip', None) or getattr(p, 'host', None) or 'N/A'
+                    prt = getattr(p, 'port', 80)
+                    lst = getattr(p, 'last_seen', None)
+                key = pid or nm
+                merged[key] = {'name': nm, 'probe_id': pid, 'ip': ipx, 'port': prt, 'last_seen': lst}
+
+            # Add probes known only from ingest (e.g. deep-sleep probes whose radio
+            # is off between readings, so mDNS never discovers them) so they are
+            # still visible and manageable here.
+            if db is not None:
+                try:
+                    for _, r in db.latest_per_probe(window_seconds=7 * 86400).iterrows():
+                        pid = r['probe_id']
+                        if not str(pid).strip() or pid in merged:
+                            continue
+                        last = None
+                        try:
+                            last = datetime.datetime.fromisoformat(
+                                str(r['timestamp']).rstrip('Z')).timestamp()
+                        except Exception:
+                            pass
+                        merged[pid] = {'name': pid, 'probe_id': pid, 'ip': 'via readings',
+                                       'port': '', 'last_seen': last}
+                except Exception:
+                    log.debug('devices: DB probe merge failed', exc_info=True)
+
+            cards = []
+            for info in merged.values():
+                name = info['name']
+                probe_id = info['probe_id']
+                ip = info['ip']
+                port = info['port']
+                last = info['last_seen']
 
                 delta = ''
                 status_color = 'secondary'
@@ -163,7 +193,7 @@ def register_devices_callbacks(app, finder, cfg, public_base_func=None, token=""
 
                 card_body_children = [
                     *title_elements,
-                    html.Small(f'{ip}:{port}', className='text-muted'),
+                    html.Small(f'{ip}:{port}' if port else str(ip), className='text-muted'),
                 ]
                 if interval_note:
                     card_body_children.append(interval_note)
