@@ -136,6 +136,37 @@ def test_stats_per_probe_empty(db):
     assert db.stats_per_probe() == {}
 
 
+def test_window_stats_probe_filter(db):
+    now = datetime.datetime.now()
+    for t in (-20.0, -18.0, -16.0):
+        db.append(_iso(now), t, 0.0, "A")
+    for t in (20.0, 22.0, 24.0):
+        db.append(_iso(now), t, 0.0, "B")
+    alls = db.window_stats()
+    assert alls["min"] == -20.0 and alls["max"] == 24.0 and alls["count"] == 6
+    a = db.window_stats(probe_id="A")
+    assert a["min"] == -20.0 and a["max"] == -16.0 and a["count"] == 3
+    assert abs(a["avg"] - (-18.0)) < 1e-6
+    assert db.window_stats(probe_id="nope")["count"] == 0
+
+
+def test_delete_probe(db):
+    now = datetime.datetime.now()
+    for i in range(4):
+        db.append(_iso(now), 20.0 + i, 0.0, "keep")
+    for i in range(3):
+        db.append(_iso(now), 5.0 + i, 0.0, "gone")
+    assert db.count() == 7
+    removed = db.delete_probe("gone")
+    assert removed == 3
+    assert db.count() == 4
+    assert set(db.stats_per_probe().keys()) == {"keep"}
+    # Deleting again removes nothing; a blank id is a guarded no-op.
+    assert db.delete_probe("gone") == 0
+    assert db.delete_probe("") == 0
+    assert db.count() == 4
+
+
 def test_bulk_insert(db):
     now = datetime.datetime.now()
     rows = [(_iso(now - datetime.timedelta(seconds=i)), float(i), float(i) * 2, "p")

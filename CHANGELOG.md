@@ -8,7 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Remove a device.** The Devices edit dialog now has a **🗑 Remove device** button (with a
+  confirmation) that deletes all of a probe's readings and its saved name / thresholds / calibration /
+  interval, and forgets it from discovery — so accumulated test devices can be cleared. New
+  `Database.delete_probe()` and `ProbeDiscovery.forget_probe()`. A still-powered probe will reappear on
+  its next reading (the dialog says so) — power it off first to remove it for good.
+- **Dashboard focus mode.** A "🔍 Viewing" selector lets you drill from the all-probes overview into a
+  single probe: the gauge, history graph and Min/Avg/Max statistics then show only that probe (with its
+  own threshold band and auto-ranged axis), and the per-probe overview grids collapse to just that one.
+  A many-probe hub can now be read either at a glance or one probe at a time, instead of an
+  ever-growing wall of cards. New `Database.window_stats(probe_id=…)`; the graph palette grew to 12
+  colours so more probes stay distinct.
+
 ### Changed
+- **Settings page is clearer.** The alerts card is split into **When to alert** and **Where to send
+  alerts**; the Email and Webhook fields stay collapsed until you enable that channel (progressive
+  disclosure); the retention field shows a live "0 = keep everything, forever" / "⚠ older readings are
+  permanently deleted" note and reads in plain-language sections; and there's a direct link to the
+  Devices page where per-probe alert limits are actually set.
 - **Form styling polish (Settings, edit dialogs).** Inputs and selects were bright white against the
   dark UI; they are now dark-themed to match, section headers are brightened with a divider line, and
   the hover "lift" is limited to the interactive probe cards instead of every card.

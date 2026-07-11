@@ -778,6 +778,11 @@ void setup() {
   http.on("/status",    HTTP_GET,     handleStatus);
   http.on("/provision", HTTP_POST,    handleProvision);
   http.on("/provision", HTTP_OPTIONS, handleOptions);
+  // NOTE: this must stay AFTER the WiFiManager config portal (autoConnect/
+  // startConfigPortal above). During setup WiFiManager owns port 80 (its captive
+  // portal) and port 53 (the DNS redirector that makes phones auto-pop the setup
+  // page). Starting our own server here before the portal closes would clash on
+  // port 80 and break the captive-portal auto-redirect.
   http.begin();
 
   // In deep-sleep mode take the reading on the very first loop() iteration.

@@ -208,12 +208,23 @@ class Database:
         return pd.DataFrame([dict(r) for r in rows],
                             columns=["timestamp", "temperature_c", "temperature_f", "probe_id"])
 
-    def window_stats(self, window_seconds: Optional[int] = None) -> dict:
-        """Accurate min/max/avg/count over the full (un-downsampled) window."""
+    def window_stats(self, window_seconds: Optional[int] = None,
+                     probe_id: Optional[str] = None) -> dict:
+        """Accurate min/max/avg/count over the full (un-downsampled) window.
+
+        When ``probe_id`` is given, the stats cover only that probe — used by the
+        dashboard's "focus one probe" mode so the min/max/avg describe the single
+        selected probe instead of all probes mixed together.
+        """
         conn = self._conn()
         cutoff = self._cutoff(window_seconds)
-        where = "WHERE epoch >= ?" if cutoff is not None else ""
-        params: tuple = (cutoff,) if cutoff is not None else ()
+        clauses, params_list = [], []
+        if cutoff is not None:
+            clauses.append("epoch >= ?"); params_list.append(cutoff)
+        if probe_id:
+            clauses.append("probe_id = ?"); params_list.append(probe_id)
+        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        params: tuple = tuple(params_list)
 
         agg = conn.execute(
             f"SELECT COUNT(*) AS n, MIN(temperature_c) AS mn, MAX(temperature_c) AS mx, "
@@ -299,6 +310,22 @@ class Database:
         conn = self._conn()
         with self._write_lock:
             cur = conn.execute("DELETE FROM readings WHERE epoch < ?", (cutoff,))
+            conn.commit()
+            return cur.rowcount
+
+    def delete_probe(self, probe_id: str) -> int:
+        """Delete every reading for a single probe. Returns rows removed.
+
+        Used by "remove device" so a decommissioned/test probe's history stops
+        showing up in the dashboard, stats and CSV export. An empty probe_id is
+        a no-op guard so a blank id can't wipe the unlabelled bucket by accident.
+        """
+        pid = (probe_id or "").strip()
+        if not pid:
+            return 0
+        conn = self._conn()
+        with self._write_lock:
+            cur = conn.execute("DELETE FROM readings WHERE probe_id = ?", (pid,))
             conn.commit()
             return cur.rowcount
 
