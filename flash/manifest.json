@@ -1,0 +1,13 @@
+{
+  "name": "ThermaProbe",
+  "version": "2.4.0",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "chipFamily": "ESP32",
+      "parts": [
+        { "path": "thermaprobe-esp32.merged.bin", "offset": 0 }
+      ]
+    }
+  ]
+}

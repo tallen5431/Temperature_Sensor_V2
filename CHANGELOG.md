@@ -8,6 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Browser-based firmware flashing** (`flash/`) — an [ESP Web Tools](https://esphome.github.io/esp-web-tools/)
+  page that flashes the ThermaProbe firmware onto an ESP32 from Chrome/Edge with no toolchain,
+  plus `build_merged_bin.sh` to produce the merged image and a README for hosting it (GitHub
+  Pages). The lowest-friction on-ramp for kit/BYO-hardware hobbyists. (Binary is generated, not
+  committed; needs a hardware bench build.)
+- **Hobbyist go-to-market ladder** in `docs/LAUNCH.md` — a lowest-barrier path (software/BYO →
+  kits → assembled+SDoC → B2B), tied to the browser-flash on-ramp.
+
+### Changed
+- Corrected the README **Humidity & VPD** section to the shipped reality: the hub computes VPD
+  from any probe that reports humidity, but the SHT4x probe *firmware build* and humidity/VPD
+  *alert thresholds* are not yet implemented (temperature-only alerting for now).
+- `docs/LAUNCH.md`: the deep-sleep **battery** capability now ships in the firmware, so it's a
+  packaging option rather than a future architecture change; refreshed the release checklist.
+
 ### Security
 - **Ingest now bounds `probe_id`** — sanitized to `[A-Za-z0-9_-]`, capped at 32
   chars, before it reaches the database, CSV export, or an MQTT topic. A real
