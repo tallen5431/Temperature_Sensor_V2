@@ -30,7 +30,7 @@ Usage:
     python factory_flash.py                       # flash, capture label, QC
     python factory_flash.py --no-flash            # just capture label + QC (already flashed)
     python factory_flash.py --port /dev/ttyUSB0   # serial port for arduino-cli/esptool/pyserial
-    python factory_flash.py --fqbn esp32:esp32:esp32
+    python factory_flash.py --fqbn esp32:esp32:esp32c3
 """
 from __future__ import annotations
 
@@ -47,11 +47,12 @@ THIS_DIR   = os.path.dirname(os.path.abspath(__file__))
 SKETCH_DIR = os.path.normpath(os.path.join(THIS_DIR, "..", "esp32_temp_probe"))
 
 # Default board target -- NEEDS BENCH VALIDATION for your board + esp32 core:
-#   * ESP32-WROOM-32E DevKitC -> FQBN "esp32:esp32:esp32"
+#   * ESP32-C3 dev board -> FQBN "esp32:esp32:esp32c3" (the shipping hardware)
 #   * Partition scheme "No OTA (2MB APP/2MB SPIFFS)" gives the ~2 MB LittleFS the
-#     offline buffer expects; expressed as a board option below. Confirm the exact
-#     option key/value with `arduino-cli board details --fqbn esp32:esp32:esp32`.
-DEFAULT_FQBN     = "esp32:esp32:esp32"
+#     offline buffer expects (and the sketch is too big for the default scheme);
+#     expressed as a board option below. Confirm the exact option key/value with
+#     `arduino-cli board details --fqbn esp32:esp32:esp32c3`.
+DEFAULT_FQBN     = "esp32:esp32:esp32c3"
 PARTITION_OPTION = "PartitionScheme=no_ota"   # verify key/value for your core version
 
 # Documentation only -- kept identical to firmware/src/protocol.h. The real
