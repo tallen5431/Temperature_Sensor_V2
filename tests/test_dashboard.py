@@ -93,3 +93,18 @@ def test_reporting_probe_count(tmp_path):
     db.append(old, 4.0, 39.2, "b")                                  # stale → not counted
     out = build_dashboard(db, cfg, FakeFinder(), "24h", "celsius")
     assert out[2] == "1"  # only the probe that reported within the online window
+
+
+def test_reporting_probe_count_deep_sleep_not_flickering(tmp_path):
+    # A deep-sleep battery probe wakes, posts, and sleeps for minutes — so its
+    # newest reading is often older than the old 60 s bar but well within the
+    # 5-min offline threshold the alert monitor uses. It must still count as
+    # connected, otherwise "Connected Probes" flickers to 0 between wakes.
+    import datetime
+    db = Database(tmp_path / "d.db")
+    cfg = Config(tmp_path / "c.json")
+    now = datetime.datetime.now()
+    ninety_s_ago = (now - datetime.timedelta(seconds=90)).isoformat(timespec="seconds")
+    db.append(ninety_s_ago, 22.0, 71.6, "sleepy")   # 90 s > old 60 s bar
+    out = build_dashboard(db, cfg, FakeFinder(), "24h", "celsius")
+    assert out[2] == "1"  # counts under the interval-aware / 5-min freshness window

@@ -34,6 +34,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **"Connected Probes" counts probes that are actually reporting** (from the readings DB within the
   online window), not just mDNS-discovered ones — so a **deep-sleep battery probe** (radio off between
   readings, never mDNS-visible) is correctly counted while it is posting.
+
+### Fixed
+- **Dashboard freshness no longer flickers deep-sleep probes offline.** The "Connected Probes" count and
+  the per-probe **stale** badge used a fixed 60 s online window, so a battery probe that wakes every few
+  minutes read as offline between wakes even while healthily reporting. The window is now the larger of
+  the online timeout, the alert monitor's `offline_after_sec` (default 5 min — so the dashboard and the
+  offline **alerts** now agree), and ~2.5× the probe's configured reporting interval. A typical
+  deep-sleep probe now stays "connected" between wakes with no per-probe configuration.
 - **Rebranded to `TempSensor`** — the hub, the probe, the firmware, the Prometheus metric prefix
   (`tempsensor_*`), the MQTT base topic, and all documentation now use **TempSensor** in place of
   ThermaHub/ThermaProbe. The probe's setup-AP SSID and probe ID become **`TempSensor-<HEX6>`**.
