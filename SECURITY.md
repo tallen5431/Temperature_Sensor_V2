@@ -44,16 +44,16 @@ and medium severity, but a maker shipping to customers should plan to address th
    and the SMTP host/user entered in Settings are visible to anyone who can open the dashboard —
    gate it with `ui_auth`.
 
-2. **Probe SoftAP password (firmware) — FIXED, pending a hardware build test.** Earlier the deep-sleep
-   firmware's setup network was **open and shared one SSID** across units. The firmware now brings up a
-   **per-unit unique** setup AP (SSID == the probe id) protected by a **per-unit 64-bit random** WPA2
-   password generated once at first boot, stored in NVS, and printed on the serial `[label]` line for
-   the factory tool to put on the unit label (`ensureApPassword()` in
-   `esp32_temp_probe/esp32_temp_probe.ino`; captured by `firmware/factory_flash.py`). Note: the
-   WiFiManager portal still transmits the home Wi-Fi credentials over plain HTTP within that
-   WPA2-protected SoftAP — acceptable given a strong random key, but do first setup away from untrusted
-   RF. **Like all firmware changes here, this must be validated with a real Arduino build + flash +
-   bench test before manufacturing.**
+2. **Probe setup SoftAP is open (firmware) — an intentional usability trade-off.** On first boot the
+   probe brings up a **per-unit-unique but OPEN** setup network (SSID == the probe id) and serves the
+   WiFiManager captive portal at `192.168.4.1`. It is open (no password) so setup is one-tap; the AP
+   only exists during first-time provisioning and disappears once the probe joins the home Wi-Fi. The
+   residual risk is narrow: during that one-time setup window the portal transmits the home Wi-Fi
+   credentials over plain HTTP, so someone within RF range at that exact moment could observe them —
+   do first setup away from untrusted RF. This is the same posture as most consumer IoT. **For a
+   higher-security deployment**, the firmware can be built to bring up a **per-unit random WPA2** setup
+   AP instead (printed on the `[label]` serial line for the unit label) — the code for this is in the
+   project history; reintroduce it if you sell into an environment that requires it.
 
 3. **Probe `/provision` is unauthenticated by default (firmware).** To keep zero-touch plug-and-play
    working, the probe accepts `/provision` (which sets its ingest `server_url`) without a secret

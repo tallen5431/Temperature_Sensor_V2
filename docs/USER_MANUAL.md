@@ -15,7 +15,7 @@ Welcome! TempSensor lets you watch the temperature of your fridge, freezer, ferm
 
 - A **TempSensor** sensor with a temperature probe on a lead.
 - A **USB power adapter** and cable.
-- A **label / QR sticker** on the unit. It shows the probe's name (like **TempSensor-9A3F2C**), a **setup Wi-Fi password**, and a **setup secret**. Keep this label — you'll use it during setup.
+- A **label / QR sticker** on the unit. It shows the probe's name (like **TempSensor-9A3F2C**) and a **setup secret**. Keep this label — you'll use it during setup.
 
 ---
 
@@ -46,7 +46,7 @@ The **first time** a probe is powered (or before it knows your Wi-Fi), it create
 
 1. On your phone or laptop, open the **Wi-Fi settings**.
 2. Look for a network named **`TempSensor-XXXXXX`** (the same code as on the unit's label).
-3. Connect to it. When asked for a password, type the **setup Wi-Fi password** printed on the unit's label.
+3. Connect to it. It's an **open** network — there's no password to type. Just tap it and connect.
 
 You are now connected directly to the probe. Your phone may warn that this network "has no internet" — that's expected during setup.
 

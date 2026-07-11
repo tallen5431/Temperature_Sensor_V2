@@ -16,7 +16,7 @@
 // What this header pins down:
 //   * firmware version + protocol version reported by the sketch
 //   * GPIO pin assignments for the DS18B20 sensor + status LED
-//   * SoftAP setup-network parameters (WPA2, per-unit key)
+//   * SoftAP setup-network parameters (open network, per-unit SSID)
 //   * the probe-id / SSID / mDNS-host derivation rules
 // ============================================================================
 #pragma once
@@ -59,11 +59,11 @@
 // ---------------------------------------------------------------------------
 // SoftAP setup network (used when the probe has no saved Wi-Fi credentials)
 // ---------------------------------------------------------------------------
-// SSID == the probe id, e.g. "TempSensor-9A3F2C".  The AP is WPA2-protected
-// with a PER-UNIT RANDOM password (see identity rules below); WiFiManager serves
-// the captive setup portal at 192.168.4.1.  (Earlier firmware used an open,
-// shared setup AP; the current firmware makes it unique + WPA2 -- a security
-// improvement pending a hardware bench test.)
+// SSID == the probe id, e.g. "TempSensor-9A3F2C" (per-unit unique).  The AP is
+// OPEN (no password) -- it only exists during first-time setup and is torn down
+// once the probe joins the home Wi-Fi, so an open network keeps setup one-tap
+// simple.  WiFiManager serves the captive setup portal at 192.168.4.1.  (A
+// per-unit WPA2 key can be reintroduced for higher-security deployments.)
 #define AP_CHANNEL          1
 #define AP_MAX_CONNECTIONS  4
 #define CAPTIVE_PORTAL_IP   "192.168.4.1"   // WiFiManager config page lives here
@@ -107,15 +107,13 @@
 //               flip the identity (see stableProbeId() in the .ino).
 //   mDNS host = probe_id -> "<probe_id>.local"   e.g. "TempSensor-9A3F2C.local"
 //   SoftAP SSID = probe_id                        (same string as probe_id)
-//   AP password = "TS-" + 16 random hex chars (64-bit), generated ONCE at first
-//                 boot and stored in NVS -> a 19-char WPA2 key. Deliberately NOT
-//                 derived from the MAC (the SSID already exposes MAC/ROM bytes),
-//                 so a captured handshake stays uncrackable.  The firmware prints
-//                 it on the boot "[label]" line so factory_flash.py can put it on
-//                 the unit label.  See ensureApPassword().
+//   AP password = NONE. The setup AP is OPEN -- it only exists during first-time
+//                 setup and disappears once the probe joins the home Wi-Fi, so an
+//                 open network keeps setup one-tap simple. (A per-unit WPA2 key
+//                 can be reintroduced for higher-security deployments.)
 //
 // Machine-readable boot line consumed by factory_flash.py (printed every boot):
-//   [label] probe_id=<id> ap_ssid=<id> ap_pass=TS-XXXXXXXXXXXXXXXX
+//   [label] probe_id=<id> ap_ssid=<id> ap_pass=none
 //
 // The probe_id is echoed three ways that MUST all agree at runtime:
 //   * mDNS TXT  id=<probe_id>   (and name=<probe_id>)
@@ -124,7 +122,7 @@
 // The sketch logs the id and the "[label]" line at boot.
 // ---------------------------------------------------------------------------
 #define PROBE_ID_PREFIX     "TempSensor-"
-#define AP_PASSWORD_PREFIX  "TS-"
+// (The setup AP is open, so there is no AP-password prefix.)
 
 // mDNS service advertised by the probe (hub browses for this).
 //   Full type: _temps-probe._tcp.local. on TCP port 80, TXT id=<probe_id>,

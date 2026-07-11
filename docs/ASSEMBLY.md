@@ -161,12 +161,11 @@ graph LR
 
 1. **Power up** (battery fitted, or on USB-C). The **GPIO2 status LED** should
    light/blink per the firmware boot pattern.
-2. **Setup Wi-Fi:** a fresh unit with no saved credentials brings up a **WPA2**
-   SoftAP whose SSID **is the probe id**, `TempSensor-<HEX6>`, protected by the
-   per-unit password `TS-<16 hex>` printed on the unit label / `[label]` serial
-   line. Join it and open **http://192.168.4.1** (WiFiManager captive portal) to
-   pick your home Wi-Fi. Credentials persist to NVS; on later deep-sleep wakes the
-   probe fast-reconnects without re-opening the portal.
+2. **Setup Wi-Fi:** a fresh unit with no saved credentials brings up an **open**
+   SoftAP (no password) whose SSID **is the probe id**, `TempSensor-<HEX6>`. Join
+   it and open **http://192.168.4.1** (WiFiManager captive portal) to pick your
+   home Wi-Fi. Credentials persist to NVS; on later deep-sleep wakes the probe
+   fast-reconnects without re-opening the portal.
 3. **Verify identity/sensor:** on the same network, GET
    `http://TempSensor-<HEX6>.local/whoami` →
    `{id,name,mac,ds18b20_rom,fw_version,...}` (`fw_version` == `2.4.0`) and

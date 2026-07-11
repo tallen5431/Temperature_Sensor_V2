@@ -31,7 +31,6 @@
 #include <LittleFS.h>
 #include <time.h>
 #include <esp_sleep.h>
-#include <esp_random.h>
 
 // ---------------- Pins & LED ------------------------------------------------
 #define ONE_WIRE_BUS 5
@@ -54,10 +53,10 @@ inline void ledBlink(uint8_t n, uint16_t onMs = 60, uint16_t offMs = 120) {
 static const char* SENSOR_NAME = "TempSensor";
 static const char* FW_VERSION  = "2.4.0";
 
-// Per-unit setup-AP (WPA2) password, generated once and kept in NVS. Holds the
-// value returned by ensureApPassword() so setup() can print it on the [label]
-// line and pass it to WiFiManager.
-String g_apPassword;
+// The setup SoftAP is intentionally OPEN (no password): it only exists during
+// first-time Wi-Fi setup and is torn down once the probe joins the home network,
+// so an open AP keeps setup one-tap simple. (A per-unit WPA2 key can be
+// reintroduced for higher-security deployments — see git history / SECURITY.md.)
 
 // ---------------- Sleep configuration --------------------------------------
 // Set DEEP_SLEEP_ENABLED to false to revert to always-on behaviour (the web
@@ -513,9 +512,8 @@ void handleProvision() {
 // WiFi portal
 // ============================================================================
 void startConfigPortal() {
-  // The setup AP is the per-unit probe id (unique) with the per-unit WPA2 key.
+  // The setup AP is the per-unit probe id (unique SSID) and is OPEN (no password).
   String apName = g_probeId;
-  if (g_apPassword.length() < 8) g_apPassword = ensureApPassword();
 
   wm.setClass("invert");
   wm.setTitle(String(SENSOR_NAME) + " (" + FW_VERSION + ")");
@@ -533,7 +531,7 @@ void startConfigPortal() {
   Serial.println("[WiFi] Starting config portal...");
   ledBlink(2, 50, 100);
 
-  if (wm.startConfigPortal(apName.c_str(), g_apPassword.c_str())) {
+  if (wm.startConfigPortal(apName.c_str())) {   // open AP (no password)
     cfg_server_url = String(p_server.getValue());
     cfg_token      = String(p_token.getValue());
     cfg_interval   = strtoul(p_interval.getValue(), nullptr, 10);
@@ -575,29 +573,6 @@ String buildProbeId(const String& rom, const String& chip) {
   else hex = (rom.length() ? rom : chip);
   hex.toUpperCase();
   return "TempSensor-" + hex;
-}
-
-// Generate (once) and return the per-unit WPA2 password for the setup SoftAP.
-// It is a 64-bit random value ("TS-" + 16 hex, 19 chars), stored in NVS and
-// printed on the boot [label] line so factory_flash.py can put it on the unit
-// label. Deliberately NOT derived from the MAC (the SSID already exposes MAC
-// bytes), so a captured handshake stays uncrackable.
-String ensureApPassword() {
-  String pw;
-  if (prefs.begin("tscfg", true)) {
-    pw = prefs.getString("ap_pass", "");
-    prefs.end();
-  }
-  if (pw.length() >= 8) return pw;
-  char buf[20];
-  uint32_t a = esp_random(), b = esp_random();
-  snprintf(buf, sizeof(buf), "TS-%08X%08X", a, b);
-  pw = String(buf);
-  if (prefs.begin("tscfg", false)) {
-    prefs.putString("ap_pass", pw);
-    prefs.end();
-  }
-  return pw;
 }
 
 // Read the DS18B20 ROM with a few retries.  On a cold boot the 1-Wire bus can
@@ -690,11 +665,11 @@ void setup() {
   g_romHex       = ds18b20RomHexRetry();
   g_probeId      = stableProbeId(g_romHex, g_chipId);
   g_instanceName = g_probeId;                 // mDNS / setup-AP SSID == probe id
-  g_apPassword   = ensureApPassword();
   Serial.printf("Probe ID:  %s\n", g_probeId.c_str());
-  // Machine-readable line for factory_flash.py: id, setup-AP SSID (== id), WPA2 key.
-  Serial.printf("[label] probe_id=%s ap_ssid=%s ap_pass=%s\n",
-                g_probeId.c_str(), g_probeId.c_str(), g_apPassword.c_str());
+  // Machine-readable line for factory_flash.py: id + setup-AP SSID (== id). The
+  // setup AP is open (no password), so there is no key to record.
+  Serial.printf("[label] probe_id=%s ap_ssid=%s ap_pass=none\n",
+                g_probeId.c_str(), g_probeId.c_str());
 
   // Mount LittleFS — format on first use (takes ~2 s, one-time only)
   if (!LittleFS.begin(true)) {
@@ -743,10 +718,10 @@ void setup() {
     wm.addParameter(&p_token);
     wm.addParameter(&p_interval);
 
-    // Per-unit unique, WPA2-protected setup AP (SSID == probe id). Previously the
-    // AP was named just "TempSensor" and had NO password — every unit shared one
-    // open SSID. Now each unit's setup network is unique and needs its label key.
-    if (!wm.autoConnect(g_probeId.c_str(), g_apPassword.c_str())) {
+    // Per-unit unique, OPEN setup AP (SSID == the probe id, e.g. TempSensor-9A3F2C).
+    // No password: the AP only exists during first-time setup and disappears once
+    // the probe joins the home Wi-Fi, so an open network keeps setup one-tap simple.
+    if (!wm.autoConnect(g_probeId.c_str())) {
       Serial.println("[WiFi] No known network; opening portal.");
       p_server.setValue(cfg_server_url.c_str(), cfg_server_url.length());
       p_token.setValue (cfg_token.c_str(),      cfg_token.length());

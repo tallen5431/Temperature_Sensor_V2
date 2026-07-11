@@ -11,9 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **Rebranded to `TempSensor`** — the hub, the probe, the firmware, the Prometheus metric prefix
   (`tempsensor_*`), the MQTT base topic, and all documentation now use **TempSensor** in place of
-  ThermaHub/ThermaProbe. The probe's setup-AP SSID and probe ID become **`TempSensor-<HEX6>`** and the
-  per-unit WPA2 key prefix becomes `TS-`. **Probes must be reflashed** to pick up the new identity
-  (they will report under a new ID after reflashing).
+  ThermaHub/ThermaProbe. The probe's setup-AP SSID and probe ID become **`TempSensor-<HEX6>`**.
+  **Probes must be reflashed** to pick up the new identity (they will report under a new ID after
+  reflashing).
+- **Setup Wi-Fi is now an open network** — the probe's first-time setup SoftAP (`TempSensor-<HEX6>`)
+  no longer uses a WPA2 password, so setup is one-tap. The AP only exists during provisioning and is
+  torn down once the probe joins the home Wi-Fi; the `[label]` serial line now prints `ap_pass=none`,
+  and the label/QC docs drop the Wi-Fi-password field. A per-unit WPA2 key can be reintroduced for
+  higher-security deployments (see `SECURITY.md`).
 
 ### Added
 - **Browser-based firmware flashing** (`flash/`) — an [ESP Web Tools](https://esphome.github.io/esp-web-tools/)
