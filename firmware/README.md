@@ -94,10 +94,9 @@ identity from the boot serial `[label]` line (see **Identity** below).
 
 ## 4. First-run setup (SoftAP)
 
-With no saved Wi-Fi, the probe starts a **WPA2 SoftAP** whose SSID **is the probe
-id** (e.g. `TempSensor-9A3F2C`), protected by a **per-unit random password**
-`TS-<16 hex>` printed on the unit label. Join it with a phone/laptop, let the
-WiFiManager captive portal open (or browse to `http://192.168.4.1`), and enter:
+With no saved Wi-Fi, the probe starts an **open SoftAP** (no password) whose SSID
+**is the probe id** (e.g. `TempSensor-9A3F2C`). Join it with a phone/laptop, let
+the WiFiManager captive portal open (or browse to `http://192.168.4.1`), and enter:
 
 - your home Wi-Fi SSID + password (required), and
 - optionally the server URL / ingest token / read interval.
@@ -121,15 +120,14 @@ HEX6        = UPPERCASE hex of the LAST 6 hex (3 bytes) of the DS18B20 sensor
 probe_id    = "TempSensor-" + HEX6                        e.g. TempSensor-9A3F2C
 mDNS host   = probe_id  ->  <probe_id>.local              -> TempSensor-9A3F2C.local
 SoftAP SSID = probe_id
-AP password = "TS-" + 16 random hex chars (64-bit), generated once at first boot
-              and stored in NVS (19-char WPA2 key). NOT derived from the MAC.
+SoftAP      = open (no password); only up during first-time setup
 ```
 
 At every boot the firmware prints a machine-readable line that `factory_flash.py`
 parses for the label:
 
 ```
-[label] probe_id=TempSensor-9A3F2C ap_ssid=TempSensor-9A3F2C ap_pass=TS-3F9A2C817B4E05D1
+[label] probe_id=TempSensor-9A3F2C ap_ssid=TempSensor-9A3F2C ap_pass=none
 ```
 
 The same `probe_id` is sent as the mDNS TXT `id`, the HTTP `X-Probe-ID` header,

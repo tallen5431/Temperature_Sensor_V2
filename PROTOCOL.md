@@ -328,8 +328,7 @@ value that did reach the hub is rejected by the range/finite checks in §6.
 
 A probe with no saved Wi-Fi credentials brings up onboarding:
 
-1. Probe starts a **WPA2 SoftAP** with SSID `TempSensor-<hex>` (password printed on
-   the unit label).
+1. Probe starts an **open SoftAP** (no password) with SSID `TempSensor-<hex>`.
 2. The operator joins that AP; a **captive portal** at `http://192.168.4.1` lists
    nearby networks.
 3. Operator selects the home SSID and enters its password; the probe **persists the

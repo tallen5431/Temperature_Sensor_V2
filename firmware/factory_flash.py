@@ -9,12 +9,11 @@ The shipping firmware is the Arduino sketch
      (The old PlatformIO `pio run -t upload` path is gone with main.cpp.)
   2. Captures the unit's identity from the boot serial log's machine-readable
      line, which the firmware prints on every boot:
-         [label] probe_id=TempSensor-XXXXXX ap_ssid=TempSensor-XXXXXX ap_pass=TS-<16hex>
+         [label] probe_id=TempSensor-XXXXXX ap_ssid=TempSensor-XXXXXX ap_pass=none
      probe_id/ap_ssid are derived from the DS18B20 sensor ROM (or the ESP32
-     efuse MAC when no sensor is present) and are PERSISTED in NVS; ap_pass is a
-     per-unit random WPA2 key generated once and stored in NVS. None of the three
-     can be reconstructed from the MAC alone, so this serial line -- not the MAC
-     -- is the source of truth for the label.
+     efuse MAC when no sensor is present) and are PERSISTED in NVS. The setup AP
+     is OPEN (no password), so ap_pass is always `none`; this serial line -- not
+     the MAC -- is the source of truth for the label.
   3. Optionally reads the ESP32 MAC (esptool) purely to record it in the batch log.
   4. Prints the unit label + a QC checklist for the operator to tick before boxing.
 
@@ -58,11 +57,11 @@ PARTITION_OPTION = "PartitionScheme=no_ota"   # verify key/value for your core v
 # Documentation only -- kept identical to firmware/src/protocol.h. The real
 # values come from the firmware's [label] serial line, NOT from the MAC.
 PROBE_ID_PREFIX    = "TempSensor-"
-AP_PASSWORD_PREFIX = "TS-"
 FW_VERSION         = "2.4.0"
 
-# Matches the firmware's machine-readable boot line:
-#   [label] probe_id=<id> ap_ssid=<id> ap_pass=TS-XXXXXXXXXXXXXXXX
+# Matches the firmware's machine-readable boot line. The setup AP is open, so
+# ap_pass is always `none`; it is still captured so the format stays stable.
+#   [label] probe_id=<id> ap_ssid=<id> ap_pass=none
 LABEL_RE = re.compile(r"\[label\]\s+probe_id=(\S+)\s+ap_ssid=(\S+)\s+ap_pass=(\S+)")
 
 
@@ -168,14 +167,12 @@ def capture_label(port: str | None, timeout: float = 30.0) -> dict | None:
 def print_label(label: dict | None, mac: str | None) -> None:
     pid  = label["probe_id"] if label else "(read from serial '[label]' line)"
     ssid = label["ap_ssid"]  if label else pid
-    pw   = label["ap_pass"]  if label else "(read from serial '[label]' line)"
     line = "=" * 56
     print("\n" + line)
     print("  TEMPSENSOR UNIT LABEL  (write on the enclosure / QR)")
     print(line)
     print(f"  Probe ID      : {pid}")
-    print(f"  Setup Wi-Fi   : {ssid}   (WPA2)")
-    print(f"  Setup pass    : {pw}")
+    print(f"  Setup Wi-Fi   : {ssid}   (open -- no password)")
     print(f"  mDNS / .local : {pid}.local")
     if mac:
         print(f"  MAC (log only): {mac}")
@@ -184,25 +181,24 @@ def print_label(label: dict | None, mac: str | None) -> None:
     if not label:
         print("  NOTE: pyserial/--port unavailable -- read the identity from the boot")
         print("        serial line (tap EN/reset to re-print it):")
-        print("        [label] probe_id=... ap_ssid=... ap_pass=TS-XXXXXXXXXXXXXXXX")
+        print("        [label] probe_id=... ap_ssid=... ap_pass=none")
     print()
 
 
 def print_qc_checklist(label: dict | None) -> None:
     pid  = label["probe_id"] if label else "<probe_id from [label] line>"
     ssid = label["ap_ssid"]  if label else pid
-    pw   = label["ap_pass"]  if label else "<ap_pass from [label] line>"
     print("QC CHECKLIST -- verify each before boxing the unit:")
     steps = [
-        f"[ ] Serial boots and prints:  [label] probe_id={pid} ap_ssid={ssid} ap_pass={pw}",
+        f"[ ] Serial boots and prints:  [label] probe_id={pid} ap_ssid={ssid} ap_pass=none",
         f"[ ] probe_id ({pid}) is not already used in the batch serial log (unique)",
-        f"[ ] SoftAP \"{ssid}\" is visible on a phone (WPA2, password {pw})",
+        f"[ ] SoftAP \"{ssid}\" is visible on a phone and is OPEN (joins with no password)",
         "[ ] Captive portal / http://192.168.4.1 shows the WiFiManager setup page",
         f"[ ] After joining bench Wi-Fi, GET /whoami returns id == {pid} and fw_version == {FW_VERSION}",
         "[ ] GET /status shows a plausible last_c (room temp; not 85.0 / -127 / NaN)",
         "[ ] One live bench ingest: a fresh row for this probe_id lands in the hub telemetry CSV",
         "[ ] Probe appears in TempSensor's dashboard probe list",
-        "[ ] probe_id, SoftAP SSID and WPA2 pass are recorded on the label + serial log",
+        "[ ] probe_id and SoftAP SSID are recorded on the label + serial log",
     ]
     for s in steps:
         print("   " + s)
@@ -232,7 +228,7 @@ def main() -> int:
         print("!! Could not auto-capture the [label] line (needs pyserial + --port).")
         print("   Open a serial monitor @115200 and read it from the boot line")
         print("   (tap the board's EN/reset button to re-print it):")
-        print("     [label] probe_id=... ap_ssid=... ap_pass=TS-XXXXXXXXXXXXXXXX")
+        print("     [label] probe_id=... ap_ssid=... ap_pass=none")
 
     mac = read_mac(args.port)   # optional -- for the batch-log 'mac' column only
 

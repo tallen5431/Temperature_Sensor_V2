@@ -50,8 +50,8 @@ tick each item below as the operator confirms it.
 
 ### 2. Identity — persistent `TempSensor-<HEX6>`
 - [ ] **2.1** Boot serial prints the machine-readable line
-      `[label] probe_id=... ap_ssid=... ap_pass=...`; `factory_flash.py` echoes
-      `Probe ID`, `Setup Wi-Fi`, `Setup pass`.
+      `[label] probe_id=... ap_ssid=... ap_pass=none`; `factory_flash.py` echoes
+      `Probe ID`, `Setup Wi-Fi`.
 - [ ] **2.2** `probe_id` is `TempSensor-<HEX6>` (6 UPPERCASE hex, derived from
       the DS18B20 sensor ROM and **persisted in NVS**). Confirm it is stable
       across a power-cycle — it must **not** change between boots.
@@ -62,12 +62,11 @@ tick each item below as the operator confirms it.
       serial log CSV. (A collision means a duplicate DS18B20 ROM or MAC-fallback
       chip — quarantine both if it ever happens.)
 
-### 3. SoftAP setup network (per-unit WPA2)
+### 3. SoftAP setup network (open)
 - [ ] **3.1** With no saved Wi-Fi, the unit brings up SoftAP SSID
       **`TempSensor-<HEX6>`** (== `probe_id`), visible on a phone.
-- [ ] **3.2** The AP is **WPA2** (asks for a password, not open) and joins with
-      the **per-unit random** key from the serial `[label]` line, `ap_pass` =
-      `TS-<16 hex>` (19 chars) — record it on the unit label.
+- [ ] **3.2** The AP is **open** (no password prompt) and joins directly — no key
+      to enter. The serial `[label]` line shows `ap_pass=none`.
 - [ ] **3.3** After joining the AP, `http://192.168.4.1` serves the WiFiManager
       captive setup page (home-Wi-Fi picker + optional server/token/interval fields).
 
@@ -99,13 +98,13 @@ tick each item below as the operator confirms it.
 - [ ] **7.1** Note on the serial log that this firmware ships **open
       plug-and-play**: `POST /provision` is accepted on the trusted LAN with **no**
       `X-Provision-Secret` gate (a per-unit provision secret is a future option,
-      not implemented in v2.4.0). The setup network is instead protected by the
-      per-unit **WPA2** SoftAP key (step 3.2).
+      not implemented in v2.4.0). The setup network itself is an **open** per-unit
+      SoftAP (step 3.2), present only during first-time setup.
 
 ### 8. Label + record
 - [ ] **8.1** Print and apply the unit label per
-      [LABEL_TEMPLATE.md](LABEL_TEMPLATE.md); verify the printed `probe_id`,
-      SoftAP name, and WPA2 password match the `[label]` serial line.
+      [LABEL_TEMPLATE.md](LABEL_TEMPLATE.md); verify the printed `probe_id` and
+      SoftAP name match the `[label]` serial line.
 - [ ] **8.2** Scan the label QR — it opens the setup page.
 - [ ] **8.3** Fill this unit's row in the batch **serial log CSV**
       (see LABEL_TEMPLATE.md for the column spec) and mark overall
