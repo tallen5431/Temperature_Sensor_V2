@@ -253,7 +253,7 @@ prototype to product:
 - **[docs/LAUNCH.md](docs/LAUNCH.md)** — step-by-step runbook to start selling small batches (validate → clear FCC → first batch → scale).
 - **[docs/GO_TO_MARKET.md](docs/GO_TO_MARKET.md)** — market research, niches, positioning, pricing, and channels.
 - **[docs/COMPLIANCE.md](docs/COMPLIANCE.md)** — certification path (FCC/CE), calibration tiers, and sellable B2B segments.
-- **[docs/LISTING.md](docs/LISTING.md)** — a ready-to-paste online store listing.
+- **[docs/LISTING.md](docs/LISTING.md)** — a ready-to-paste online store listing (and **[docs/TINDIE_LISTING.md](docs/TINDIE_LISTING.md)** — the same, mapped onto Tindie's listing fields).
 - **[docs/BOM.md](docs/BOM.md)** / **[docs/ASSEMBLY.md](docs/ASSEMBLY.md)** — bill of materials and build instructions for the probe hardware.
 - **[docs/QC_CHECKLIST.md](docs/QC_CHECKLIST.md)** / **[docs/LABEL_TEMPLATE.md](docs/LABEL_TEMPLATE.md)** — per-unit quality control and the unit label template.
 - **[docs/USER_MANUAL.md](docs/USER_MANUAL.md)** — customer-facing manual (unboxing, Wi-Fi, calibration, troubleshooting).

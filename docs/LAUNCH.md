@@ -27,7 +27,12 @@ demand before you spend a dollar** on parts, and the flash link is your best top
 4.7 kΩ pull-up + battery/TP4056 + enclosure + a label/QR to the flash page). Kits sold to
 hobbyists sit largely outside finished-product FCC equipment authorization, and the
 ESP32-WROOM module is already FCC/CE-certified as a radio. Low capital — buy parts in 10s,
-bag them by hand. Sell on **Tindie** (maker audience) or **Etsy**.
+bag them by hand. Sell on **Tindie** — the best-fit maker marketplace (≤48 h store approval,
+5% fee, no upfront cost). A ready-to-paste listing is in [`TINDIE_LISTING.md`](TINDIE_LISTING.md).
+
+> **Tindie is exclusive:** a product listed on Tindie **can't be sold elsewhere on the web** at the
+> same time. So pick Tindie as your **one paid channel for the probe**, and keep your own site for the
+> **free software + waitlist + build-in-public** (Rung 0) — not a competing listing of the same SKU.
 
 **Rung 2 — Pre-assembled, pre-flashed probes (medium barrier).** This is what
 `docs/BOM.md` + `docs/QC_CHECKLIST.md` are built for. Because you're on a pre-certified
@@ -106,8 +111,10 @@ saves the big cost, but the finished unit still needs:
 - [ ] **Hand-build 5–10 units** per `docs/BOM.md` + `docs/ASSEMBLY.md`.
 - [ ] **Flash + QC + label** each with `firmware/factory_flash.py` and `docs/QC_CHECKLIST.md`
       (unique `ThermaProbe-<HEX>` serial, SoftAP up, plausible reading, one successful bench POST).
-- [ ] **Sell direct** to the Phase-0 waitlist: **Tindie** (maker audience, low fee) or a simple
-      **Shopify/Gumroad** page. Price the **1-probe starter at ~$69**; offer a 4-probe kit at ~$189.
+- [ ] **Sell direct** to the Phase-0 waitlist on **Tindie** (maker audience, ≤48 h approval, 5% fee) —
+      use the ready-to-paste [`TINDIE_LISTING.md`](TINDIE_LISTING.md). Because Tindie is web-exclusive,
+      pick it *or* your own **Shopify/Gumroad** page for the paid probe, not both. Price the **1-probe
+      starter at ~$69** (or a **DIY kit at ~$39** to sell before the FCC step); a 4-probe pack at ~$189.
 - [ ] Require **real payment or a refundable deposit** — getting the first ~10 people to pay is the
       truest validation.
 - [ ] Ship with a one-page quick-start (point to `docs/USER_MANUAL.md`) and ask every buyer for
