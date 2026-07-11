@@ -1,6 +1,6 @@
-# ThermaProbe — Assembly Guide
+# TempSensor — Assembly Guide
 
-How to build one ThermaProbe unit — the rechargeable, battery-powered wireless
+How to build one TempSensor unit — the rechargeable, battery-powered wireless
 sensor. Parts are in [BOM.md](BOM.md). Every pin number here is copied from
 `firmware/src/protocol.h` — **if you change a pin in the firmware, change it here
 too**, or the hardware and the flashed firmware will drift apart. The shipping
@@ -111,9 +111,9 @@ graph LR
 ## 3. Step-by-step assembly
 
 1. **Bench-test the bare board first.** Plug the ESP32 into USB-C and flash the
-   ThermaProbe firmware (**v2.4.0**, via `arduino-cli`/Arduino IDE — see
+   TempSensor firmware (**v2.4.0**, via `arduino-cli`/Arduino IDE — see
    `firmware/README.md`). Confirm it boots and prints its `probe_id`
-   (`ThermaProbe-<HEX6>`) and the `[label]` line over serial before you solder
+   (`TempSensor-<HEX6>`) and the `[label]` line over serial before you solder
    anything.
 2. **Fit the 4.7 kΩ pull-up.** Solder the 4.7 kΩ resistor between **GPIO5** and
    **3V3**. This is mandatory for the DS18B20 OneWire bus. Easiest is to solder it
@@ -162,25 +162,25 @@ graph LR
 1. **Power up** (battery fitted, or on USB-C). The **GPIO2 status LED** should
    light/blink per the firmware boot pattern.
 2. **Setup Wi-Fi:** a fresh unit with no saved credentials brings up a **WPA2**
-   SoftAP whose SSID **is the probe id**, `ThermaProbe-<HEX6>`, protected by the
-   per-unit password `TP-<16 hex>` printed on the unit label / `[label]` serial
+   SoftAP whose SSID **is the probe id**, `TempSensor-<HEX6>`, protected by the
+   per-unit password `TS-<16 hex>` printed on the unit label / `[label]` serial
    line. Join it and open **http://192.168.4.1** (WiFiManager captive portal) to
    pick your home Wi-Fi. Credentials persist to NVS; on later deep-sleep wakes the
    probe fast-reconnects without re-opening the portal.
 3. **Verify identity/sensor:** on the same network, GET
-   `http://ThermaProbe-<HEX6>.local/whoami` →
+   `http://TempSensor-<HEX6>.local/whoami` →
    `{id,name,mac,ds18b20_rom,fw_version,...}` (`fw_version` == `2.4.0`) and
-   `http://ThermaProbe-<HEX6>.local/status` → `{...,last_c,...}`.
+   `http://TempSensor-<HEX6>.local/status` → `{...,last_c,...}`.
    - A plausible room temperature in `last_c` (roughly 15–30 °C) = DS18B20 wired
      correctly.
    - `85.0` (power-on default), `-127`, or `NaN` = the sensor isn't being read →
      **check the 4.7 kΩ pull-up on GPIO5** and the DQ/VDD/GND joints first.
-4. **Provision from the hub:** ThermaHub auto-discovers the probe over mDNS
+4. **Provision from the hub:** TempSensor auto-discovers the probe over mDNS
    (`_temps-probe._tcp.local.`) and pushes the ingest URL + token via
    `POST /provision`. Within one interval you should see rows land in the hub's
    telemetry CSV
    (`timestamp,temperature_c,temperature_f,probe_id,humidity_pct,vpd_kpa`) and the
-   probe appear at **http://localhost:8080** on the ThermaHub dashboard.
+   probe appear at **http://localhost:8080** on the TempSensor dashboard.
 5. **Confirm posting:** a fresh row for this `probe_id` in the hub CSV / on the
    dashboard means ingest works. If no rows arrive, it is a hub/token/URL issue,
    not a wiring fault (the probe buffers readings to LittleFS meanwhile and flushes

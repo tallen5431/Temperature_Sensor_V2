@@ -1,7 +1,7 @@
 # Release Runbook
 
-A lightweight, solo-maker checklist for cutting a ThermaHub release and shipping
-a batch of ThermaProbe units. Do the steps in order; each release is one version
+A lightweight, solo-maker checklist for cutting a TempSensor release and shipping
+a batch of TempSensor units. Do the steps in order; each release is one version
 number applied consistently to the hub, the firmware, and the store listing.
 
 ## 1. Bump the version
@@ -10,10 +10,10 @@ Pick the new version (SemVer) and set it in **all** of these — they must match
 
 - `core/version.py` — `__version__`
 - `pyproject.toml` — `[project] version`
-- `firmware/src/protocol.h` — `THERMAPROBE_FW_VERSION`
+- `firmware/src/protocol.h` — `TEMPSENSOR_FW_VERSION`
 
 If the wire protocol changed, also bump `PROTOCOL_VERSION` in `core/version.py`
-and `THERMAPROBE_PROTO` in `firmware/src/protocol.h` (keep them equal).
+and `TEMPSENSOR_PROTO` in `firmware/src/protocol.h` (keep them equal).
 
 ## 2. Update the changelog
 
@@ -34,7 +34,7 @@ green there before tagging.
 
 ```
 git commit -am "Release vX.Y.Z"
-git tag -a vX.Y.Z -m "ThermaHub vX.Y.Z"
+git tag -a vX.Y.Z -m "TempSensor vX.Y.Z"
 git push && git push --tags
 ```
 
@@ -45,7 +45,7 @@ one-file Windows executable:
 
 ```
 pip install pyinstaller
-pyinstaller --onefile --name ThermaHub app.py
+pyinstaller --onefile --name TempSensor app.py
 ```
 
 (Bundle `config.example.json` and `assets/` alongside the binary.) Smoke-test the

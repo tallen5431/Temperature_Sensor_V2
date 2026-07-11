@@ -9,7 +9,7 @@ from core.metrics import LATEST
 
 
 def test_sanitize_probe_id_keeps_valid_and_strips_junk():
-    assert sanitize_probe_id("ThermaProbe-9A3F2C") == "ThermaProbe-9A3F2C"
+    assert sanitize_probe_id("TempSensor-9A3F2C") == "TempSensor-9A3F2C"
     assert sanitize_probe_id("=cmd|' /C calc'!A0") == "cmdCcalcA0"  # =|'/! and space stripped
     assert sanitize_probe_id("a" * 100) == "a" * 32               # length capped
     assert sanitize_probe_id("") == ""
@@ -32,7 +32,7 @@ def test_csv_safe_neutralises_formulas():
     assert _csv_safe("+1") == "'+1"
     assert _csv_safe("-1") == "'-1"
     assert _csv_safe("@x") == "'@x"
-    assert _csv_safe("ThermaProbe-9A3F2C") == "ThermaProbe-9A3F2C"  # normal untouched
+    assert _csv_safe("TempSensor-9A3F2C") == "TempSensor-9A3F2C"  # normal untouched
     assert _csv_safe(None) == ""
 
 

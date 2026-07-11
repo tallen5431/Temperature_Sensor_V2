@@ -10,7 +10,7 @@ from wifi_scan import SSIDWatcher
 # It is created lazily and only started the first time a user actually opens the
 # Settings page, so hubs whose owners never use the wizard never run Wi-Fi
 # scans in the background.
-_watcher = SSIDWatcher("ThermaProbe", interval_sec=10.0)
+_watcher = SSIDWatcher("TempSensor", interval_sec=10.0)
 
 SetupHelper = dbc.Card(
     dbc.CardBody([
@@ -20,13 +20,13 @@ SetupHelper = dbc.Card(
         ]),
         html.P(
             "If a probe is unprovisioned, it starts a temporary Wi-Fi network named "
-            "ThermaProbe. This hub can't control your computer's Wi-Fi, but it will watch "
+            "TempSensor. This hub can't control your computer's Wi-Fi, but it will watch "
             "for that SSID and guide you to connect when it's nearby.",
             className="mt-2",
         ),
         html.Ul([
             html.Li("Put the probe in setup mode (power up without Wi-Fi)."),
-            html.Li("When you see the “ThermaProbe” SSID below, join it from your computer."),
+            html.Li("When you see the “TempSensor” SSID below, join it from your computer."),
             html.Li("Then open the config page (192.168.4.1) to select your home Wi-Fi."),
             html.Li("Come back here — the probe should appear in Devices and provision automatically."),
         ], className="small"),
@@ -55,12 +55,12 @@ def register_setup_helper_callbacks(app):
     def _update_ap(_n):
         _watcher.start()  # idempotent; first call begins scanning
         seen = _watcher.seen()
-        label = "ThermaProbe: visible" if seen else "ThermaProbe: not found"
+        label = "TempSensor: visible" if seen else "TempSensor: not found"
         if seen:
-            msg = ("✅ Found ThermaProbe SoftAP nearby. Connect your computer to the "
-                   "“ThermaProbe” Wi-Fi network, then click the button below to open "
+            msg = ("✅ Found TempSensor SoftAP nearby. Connect your computer to the "
+                   "“TempSensor” Wi-Fi network, then click the button below to open "
                    "the probe's config page.")
             return msg, "success", label, {}
-        msg = ("Waiting for ThermaProbe SoftAP… Power the probe with no saved Wi-Fi so it "
+        msg = ("Waiting for TempSensor SoftAP… Power the probe with no saved Wi-Fi so it "
                "starts the setup network. This page checks every few seconds.")
         return msg, "secondary", label, {"pointerEvents": "none", "opacity": 0.5}

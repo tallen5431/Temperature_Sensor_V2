@@ -21,10 +21,10 @@ _lock = threading.Lock()
 
 
 def setup_logging(log_dir: Path, level: int = logging.INFO) -> logging.Logger:
-    """Configure the root 'thermahub' logger once. Safe to call repeatedly."""
+    """Configure the root 'tempsensor' logger once. Safe to call repeatedly."""
     global _configured
     with _lock:
-        logger = logging.getLogger("thermahub")
+        logger = logging.getLogger("tempsensor")
         if _configured:
             return logger
         logger.setLevel(level)
@@ -40,7 +40,7 @@ def setup_logging(log_dir: Path, level: int = logging.INFO) -> logging.Logger:
         try:
             log_dir.mkdir(parents=True, exist_ok=True)
             fileh = RotatingFileHandler(
-                log_dir / "thermahub.log",
+                log_dir / "tempsensor.log",
                 maxBytes=2_000_000,
                 backupCount=5,
                 encoding="utf-8",
@@ -56,8 +56,8 @@ def setup_logging(log_dir: Path, level: int = logging.INFO) -> logging.Logger:
         return logger
 
 
-def get_logger(name: str = "thermahub") -> logging.Logger:
-    return logging.getLogger(name if name.startswith("thermahub") else f"thermahub.{name}")
+def get_logger(name: str = "tempsensor") -> logging.Logger:
+    return logging.getLogger(name if name.startswith("tempsensor") else f"tempsensor.{name}")
 
 
 class HealthState:

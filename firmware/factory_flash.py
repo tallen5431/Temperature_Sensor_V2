@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""factory_flash.py -- guided flash + QC helper for one ThermaProbe unit.
+"""factory_flash.py -- guided flash + QC helper for one TempSensor unit.
 
 The shipping firmware is the Arduino sketch
     esp32_temp_probe/esp32_temp_probe.ino
@@ -9,7 +9,7 @@ The shipping firmware is the Arduino sketch
      (The old PlatformIO `pio run -t upload` path is gone with main.cpp.)
   2. Captures the unit's identity from the boot serial log's machine-readable
      line, which the firmware prints on every boot:
-         [label] probe_id=ThermaProbe-XXXXXX ap_ssid=ThermaProbe-XXXXXX ap_pass=TP-<16hex>
+         [label] probe_id=TempSensor-XXXXXX ap_ssid=TempSensor-XXXXXX ap_pass=TS-<16hex>
      probe_id/ap_ssid are derived from the DS18B20 sensor ROM (or the ESP32
      efuse MAC when no sensor is present) and are PERSISTED in NVS; ap_pass is a
      per-unit random WPA2 key generated once and stored in NVS. None of the three
@@ -57,12 +57,12 @@ PARTITION_OPTION = "PartitionScheme=no_ota"   # verify key/value for your core v
 
 # Documentation only -- kept identical to firmware/src/protocol.h. The real
 # values come from the firmware's [label] serial line, NOT from the MAC.
-PROBE_ID_PREFIX    = "ThermaProbe-"
-AP_PASSWORD_PREFIX = "TP-"
+PROBE_ID_PREFIX    = "TempSensor-"
+AP_PASSWORD_PREFIX = "TS-"
 FW_VERSION         = "2.4.0"
 
 # Matches the firmware's machine-readable boot line:
-#   [label] probe_id=<id> ap_ssid=<id> ap_pass=TP-XXXXXXXXXXXXXXXX
+#   [label] probe_id=<id> ap_ssid=<id> ap_pass=TS-XXXXXXXXXXXXXXXX
 LABEL_RE = re.compile(r"\[label\]\s+probe_id=(\S+)\s+ap_ssid=(\S+)\s+ap_pass=(\S+)")
 
 
@@ -171,7 +171,7 @@ def print_label(label: dict | None, mac: str | None) -> None:
     pw   = label["ap_pass"]  if label else "(read from serial '[label]' line)"
     line = "=" * 56
     print("\n" + line)
-    print("  THERMAPROBE UNIT LABEL  (write on the enclosure / QR)")
+    print("  TEMPSENSOR UNIT LABEL  (write on the enclosure / QR)")
     print(line)
     print(f"  Probe ID      : {pid}")
     print(f"  Setup Wi-Fi   : {ssid}   (WPA2)")
@@ -184,7 +184,7 @@ def print_label(label: dict | None, mac: str | None) -> None:
     if not label:
         print("  NOTE: pyserial/--port unavailable -- read the identity from the boot")
         print("        serial line (tap EN/reset to re-print it):")
-        print("        [label] probe_id=... ap_ssid=... ap_pass=TP-XXXXXXXXXXXXXXXX")
+        print("        [label] probe_id=... ap_ssid=... ap_pass=TS-XXXXXXXXXXXXXXXX")
     print()
 
 
@@ -201,7 +201,7 @@ def print_qc_checklist(label: dict | None) -> None:
         f"[ ] After joining bench Wi-Fi, GET /whoami returns id == {pid} and fw_version == {FW_VERSION}",
         "[ ] GET /status shows a plausible last_c (room temp; not 85.0 / -127 / NaN)",
         "[ ] One live bench ingest: a fresh row for this probe_id lands in the hub telemetry CSV",
-        "[ ] Probe appears in ThermaHub's dashboard probe list",
+        "[ ] Probe appears in TempSensor's dashboard probe list",
         "[ ] probe_id, SoftAP SSID and WPA2 pass are recorded on the label + serial log",
     ]
     for s in steps:
@@ -211,7 +211,7 @@ def print_qc_checklist(label: dict | None) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(
-        description="Flash + QC one ThermaProbe unit (esp32_temp_probe.ino).")
+        description="Flash + QC one TempSensor unit (esp32_temp_probe.ino).")
     ap.add_argument("--no-flash", action="store_true",
                     help="skip flashing; only capture the [label] line + print label/QC")
     ap.add_argument("--port", default=None,
@@ -232,7 +232,7 @@ def main() -> int:
         print("!! Could not auto-capture the [label] line (needs pyserial + --port).")
         print("   Open a serial monitor @115200 and read it from the boot line")
         print("   (tap the board's EN/reset button to re-print it):")
-        print("     [label] probe_id=... ap_ssid=... ap_pass=TP-XXXXXXXXXXXXXXXX")
+        print("     [label] probe_id=... ap_ssid=... ap_pass=TS-XXXXXXXXXXXXXXXX")
 
     mac = read_mac(args.port)   # optional -- for the batch-log 'mac' column only
 

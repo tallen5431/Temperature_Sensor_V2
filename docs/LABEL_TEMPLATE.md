@@ -1,6 +1,6 @@
-# ThermaProbe — Unit Label Template
+# TempSensor — Unit Label Template
 
-What goes on the physical label applied to every ThermaProbe during QC
+What goes on the physical label applied to every TempSensor during QC
 (step 8 of [QC_CHECKLIST.md](QC_CHECKLIST.md)). The identity values are captured
 by [`firmware/factory_flash.py`](../firmware/factory_flash.py) from the firmware's
 boot **`[label]` serial line** — they are derived from the DS18B20 sensor ROM and
@@ -18,11 +18,11 @@ Wi-Fi password, and (c) scan a QR to the setup page.
 
 | # | Field | Value / format | Source |
 |---|-------|----------------|--------|
-| 1 | **Probe ID** (human-readable) | `ThermaProbe-<HEX6>` — 6 UPPERCASE hex from the DS18B20 sensor ROM (MAC fallback), persisted in NVS. e.g. `ThermaProbe-9A3F2C` | `[label]` line `probe_id=` |
-| 2 | **Setup Wi-Fi (SSID)** | `ThermaProbe-<HEX6>` (same string as Probe ID); WPA2 | `[label]` line `ap_ssid=` |
-| 3 | **Setup Wi-Fi password** | `TP-<HEX16>` — a **per-unit random** 64-bit WPA2 key (19 chars), generated once at first boot and stored in NVS. **Not** derivable from the MAC. | `[label]` line `ap_pass=` |
+| 1 | **Probe ID** (human-readable) | `TempSensor-<HEX6>` — 6 UPPERCASE hex from the DS18B20 sensor ROM (MAC fallback), persisted in NVS. e.g. `TempSensor-9A3F2C` | `[label]` line `probe_id=` |
+| 2 | **Setup Wi-Fi (SSID)** | `TempSensor-<HEX6>` (same string as Probe ID); WPA2 | `[label]` line `ap_ssid=` |
+| 3 | **Setup Wi-Fi password** | `TS-<HEX16>` — a **per-unit random** 64-bit WPA2 key (19 chars), generated once at first boot and stored in NVS. **Not** derivable from the MAC. | `[label]` line `ap_pass=` |
 | 4 | **Setup QR** | QR encoding the setup page URL (see below) | printed |
-| 5 | **mDNS host** (optional, small print) | `ThermaProbe-<HEX6>.local` (== Probe ID) | derived from Probe ID |
+| 5 | **mDNS host** (optional, small print) | `TempSensor-<HEX6>.local` (== Probe ID) | derived from Probe ID |
 
 Notes:
 - Fields 1–3 all come from the same `[label]` serial line the firmware prints on
@@ -43,13 +43,13 @@ Small 2-up thermal/laser label, roughly 50 × 25 mm. Adjust to your stock.
 
 ```
 +------------------------------------------------------+
-|  ThermaHub  •  ThermaProbe            [ ##### ]       |
+|  TempSensor  •  TempSensor            [ ##### ]       |
 |                                       [ #QR# ]  <- scan to set up
-|  ID:   ThermaProbe-9A3F2C             [ ##### ]       |
+|  ID:   TempSensor-9A3F2C             [ ##### ]       |
 |                                                      |
-|  Setup Wi-Fi : ThermaProbe-9A3F2C   (WPA2)           |
-|  Wi-Fi pass  : TP-3F9A2C817B4E05D1                   |
-|  host: ThermaProbe-9A3F2C.local                      |
+|  Setup Wi-Fi : TempSensor-9A3F2C   (WPA2)           |
+|  Wi-Fi pass  : TS-3F9A2C817B4E05D1                   |
+|  host: TempSensor-9A3F2C.local                      |
 +------------------------------------------------------+
    fw 2.4.0 / proto 1        S/N: __________  QC:____
 ```
@@ -57,7 +57,7 @@ Small 2-up thermal/laser label, roughly 50 × 25 mm. Adjust to your stock.
 - Top-right: the setup **QR** (field 4).
 - Big, unambiguous type for the Wi-Fi SSID + password (fields 2–3) — this is
   what a non-technical buyer squints at. The password is 19 characters
-  (`TP-` + 16 hex); print it monospaced so `0`/`O` and `8`/`B` don't get confused.
+  (`TS-` + 16 hex); print it monospaced so `0`/`O` and `8`/`B` don't get confused.
 - `S/N` and `QC` blanks are hand-filled at boxing (serial + operator initials)
   and mirror the serial-log CSV row.
 
@@ -82,9 +82,9 @@ serial,build_date,operator,mac,probe_id,ap_ssid,ap_password,fw_version,test_wifi
 | `build_date` | Date built (ISO) | `2026-07-06` |
 | `operator` | Who ran QC (initials) | `TJ` |
 | `mac` | Full chip MAC from esptool (log/traceability only) | `A4:CF:12:9A:3F:2C` |
-| `probe_id` | `ThermaProbe-<HEX6>` from the `[label]` line (must be unique in file) | `ThermaProbe-9A3F2C` |
-| `ap_ssid` | SoftAP SSID (== probe_id) | `ThermaProbe-9A3F2C` |
-| `ap_password` | `TP-<HEX16>` per-unit WPA2 key from the `[label]` line | `TP-3F9A2C817B4E05D1` |
+| `probe_id` | `TempSensor-<HEX6>` from the `[label]` line (must be unique in file) | `TempSensor-9A3F2C` |
+| `ap_ssid` | SoftAP SSID (== probe_id) | `TempSensor-9A3F2C` |
+| `ap_password` | `TS-<HEX16>` per-unit WPA2 key from the `[label]` line | `TS-3F9A2C817B4E05D1` |
 | `fw_version` | Flashed firmware version | `2.4.0` |
 | `test_wifi_ssid` | Bench Wi-Fi the unit joined in QC | `bench-2g` |
 | `temperature_c` | Plausible `last_c` observed at QC | `23.4` |
@@ -96,6 +96,6 @@ Example rows:
 
 ```
 serial,build_date,operator,mac,probe_id,ap_ssid,ap_password,fw_version,test_wifi_ssid,temperature_c,ingest_ok,qc_result,notes
-TP2607-001,2026-07-06,TJ,A4:CF:12:9A:3F:2C,ThermaProbe-9A3F2C,ThermaProbe-9A3F2C,TP-3F9A2C817B4E05D1,2.4.0,bench-2g,23.4,yes,PASS,plug-and-play
-TP2607-002,2026-07-06,TJ,A4:CF:12:7B:10:44,ThermaProbe-7B1044,ThermaProbe-7B1044,TP-9C41D07AE2B85F63,2.4.0,bench-2g,22.9,yes,PASS,plug-and-play
+TP2607-001,2026-07-06,TJ,A4:CF:12:9A:3F:2C,TempSensor-9A3F2C,TempSensor-9A3F2C,TS-3F9A2C817B4E05D1,2.4.0,bench-2g,23.4,yes,PASS,plug-and-play
+TP2607-002,2026-07-06,TJ,A4:CF:12:7B:10:44,TempSensor-7B1044,TempSensor-7B1044,TS-9C41D07AE2B85F63,2.4.0,bench-2g,22.9,yes,PASS,plug-and-play
 ```

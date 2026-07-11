@@ -2,8 +2,8 @@
 
 _Last updated: 2026_
 
-> **Note for the maker/reseller:** ThermaHub is a white-label product. Before you
-> ship, replace **ThermaHub**/**ThermaProbe** with your product names and swap the
+> **Note for the maker/reseller:** TempSensor is a white-label product. Before you
+> ship, replace **TempSensor**/**TempSensor** with your product names and swap the
 > placeholder support contacts below for your real ones. The support URL must
 > match the `support_url` you set in your `branding` config
 > (`https://example.com/support`).
@@ -17,7 +17,7 @@ Need a hand? We are happy to help you get your temperature monitoring running.
 - **Hours:** we typically reply within one to two business days.
 
 Please have your **order number / proof of purchase** and your **probe ID**
-(for example `ThermaProbe-9A3F2C`) ready — it speeds things up a lot.
+(for example `TempSensor-9A3F2C`) ready — it speeds things up a lot.
 
 ## Before you contact us: check the manual
 
@@ -27,7 +27,7 @@ project **README**. Common topics:
 - **Starting the hub** — `Start.bat` (Windows) or `./Start.sh` (Linux); the
   dashboard opens at `http://localhost:8080`.
 - **A probe won't appear** — confirm it is powered and joined to your Wi-Fi via
-  its setup portal (the `ThermaProbe-<hex>` Wi-Fi network at
+  its setup portal (the `TempSensor-<hex>` Wi-Fi network at
   `http://192.168.4.1`), and allow the hub through your firewall on **Private**
   networks so probes can reach it.
 - **Readings look wrong** — check the probe's calibration (offset/gain) against a
@@ -40,7 +40,7 @@ project **README**. Common topics:
 ## Quick self-check for a probe
 
 Each probe answers a few local URLs on your network (port 80) that help diagnose
-issues — for example `http://thermaprobe-<hex>.local/status` shows Wi-Fi signal,
+issues — for example `http://tempsensor-<hex>.local/status` shows Wi-Fi signal,
 uptime, the server it posts to, the last post result, and the current reading.
 Sharing that output with us is very helpful.
 
@@ -59,7 +59,7 @@ lets us reproduce the problem fast.
   the probe's `/whoami` or `/status`).
 - **Your setup:** OS (Windows/Linux) and version, number of probes, sensor type
   (DS18B20 or MAX31855).
-- **Probe ID(s)** involved, for example `ThermaProbe-9A3F2C`.
+- **Probe ID(s)** involved, for example `TempSensor-9A3F2C`.
 - **Health snapshot:** the JSON from `http://localhost:8080/api/health`
   (`rows_written`, `ingest_rejected`, `write_failures`, `last_write_age_sec`,
   `healthy`) — this tells us a lot at a glance.
@@ -79,6 +79,6 @@ contents of `config.local.json`.
 
 ## Your privacy
 
-ThermaHub is local-first: no cloud, no account, no telemetry. When you contact
+TempSensor is local-first: no cloud, no account, no telemetry. When you contact
 support, you choose what to share — see `PRIVACY.md` for how your data is
 handled.
