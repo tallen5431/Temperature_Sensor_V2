@@ -19,7 +19,8 @@ RANGE_LABELS = {"1h": "last hour", "6h": "last 6 hours", "24h": "last 24 hours",
 # A probe counts as "connected" if seen within this many seconds.
 ONLINE_TIMEOUT_SEC = 60
 
-PROBE_COLORS = ["#00bcd4", "#ff6b6b", "#4ecdc4", "#45b7d1", "#f7b731", "#5f27cd"]
+PROBE_COLORS = ["#00bcd4", "#ff6b6b", "#4ecdc4", "#45b7d1", "#f7b731", "#5f27cd",
+                "#26de81", "#fd9644", "#a55eea", "#2bcbba", "#eb3b5a", "#778ca3"]
 
 # --- Gauge Card ---
 GaugeCard = dbc.Card(
@@ -150,10 +151,26 @@ def _onboarding_card():
     )
 
 
+# Focus selector — "All probes" (overview) or drill into a single probe. When a
+# probe is chosen, the gauge, graph and statistics show only that probe, and the
+# per-probe overview grids collapse to just that one — so a many-probe hub can be
+# read either at a glance or one probe at a time.
+FocusBar = dbc.Row([
+    dbc.Col(
+        dbc.InputGroup([
+            dbc.InputGroupText("🔍 Viewing"),
+            dbc.Select(id="focus-probe-selector", value="all",
+                       options=[{"label": "All probes (overview)", "value": "all"}]),
+        ], size="sm"),
+        xl=4, lg=5, md=6, sm=12,
+    ),
+], className="mb-3 justify-content-end")
+
 # --- Dashboard Layout ---
 DashboardLayout = html.Div([
     dcc.Store(id="temp-unit-store", storage_type="local", data="celsius"),
     html.Div(id="dashboard-onboarding"),
+    FocusBar,
     MetricsRow,
     AlertsRow,
     ProbesRow,
@@ -364,11 +381,16 @@ def build_probe_stats(db, cfg, time_range, temp_unit):
     ])
 
 
-def build_dashboard(db, cfg, finder, time_range, temp_unit):
+def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all"):
     """Pure(ish) computation behind the dashboard refresh callback.
 
     Returns the 14-tuple the Dash callback emits.  Kept free of Dash specifics
     (only reads ``db``/``cfg``/``finder``) so it can be unit-tested directly.
+
+    ``focus_probe`` selects a single probe for the gauge, graph and statistics
+    (drill-in). ``"all"`` (or a probe with no data) keeps the multi-probe
+    overview: the gauge auto-picks the worst breach and the graph overlays every
+    probe.
     """
     temp_unit = temp_unit or "celsius"
     time_range = time_range or "24h"
@@ -376,40 +398,63 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit):
     suffix = " °F" if temp_unit == "fahrenheit" else " °C"
     logging_status = "ON" if cfg.get("pull_enabled", True) else "OFF"
     probes_online = _reporting_probe_count(db, cfg, finder)
+    focus = focus_probe if (focus_probe and focus_probe != "all") else None
 
     try:
         latest = db.latest()
         if not latest:
             raise ValueError("no data")
 
-        # --- Gauge: the probe that needs attention (worst active breach), else
-        # the latest reading overall — shown with its own threshold zones. ---
         thresholds = cfg.get("alert_thresholds", {}) or {}
-        focus_pid = latest.get("probe_id")
-        focus_c = float(latest["temperature_c"])
-        thr = thresholds.get(focus_pid, thresholds.get("default", {})) or {}
-        focus_lo, focus_hi = thr.get("min"), thr.get("max")
-        try:
-            best = None  # (severity, pid, t_c, lo, hi)
-            for _, r in db.latest_per_probe(window).iterrows():
-                pid = r["probe_id"]
-                tc = float(r["temperature_c"])
-                t = thresholds.get(pid, thresholds.get("default", {})) or {}
-                lo, hi = t.get("min"), t.get("max")
-                b = threshold_breach(tc, lo, hi)
-                sev = (tc - hi) if b == "high" else (lo - tc) if b == "low" else None
-                if sev is not None and (best is None or sev > best[0]):
-                    best = (sev, pid, tc, lo, hi)
-            if best:
-                _, focus_pid, focus_c, focus_lo, focus_hi = best
-        except Exception:
-            pass
+        if focus is not None:
+            # --- Focus mode: the gauge shows the SELECTED probe. ---
+            frow = None
+            try:
+                lp = db.latest_per_probe(window)
+                match = lp[lp["probe_id"] == focus]
+                if not match.empty:
+                    frow = match.iloc[0]
+            except Exception:
+                frow = None
+            if frow is None:
+                # Selected probe has no data in this window — fall back to overview.
+                focus = None
+            else:
+                focus_pid = focus
+                focus_c = float(frow["temperature_c"])
+                thr = thresholds.get(focus_pid, thresholds.get("default", {})) or {}
+                focus_lo, focus_hi = thr.get("min"), thr.get("max")
+
+        if focus is None:
+            # --- Overview: the probe that needs attention (worst active breach),
+            # else the latest reading overall — shown with its own threshold zones.
+            focus_pid = latest.get("probe_id")
+            focus_c = float(latest["temperature_c"])
+            thr = thresholds.get(focus_pid, thresholds.get("default", {})) or {}
+            focus_lo, focus_hi = thr.get("min"), thr.get("max")
+            try:
+                best = None  # (severity, pid, t_c, lo, hi)
+                for _, r in db.latest_per_probe(window).iterrows():
+                    pid = r["probe_id"]
+                    tc = float(r["temperature_c"])
+                    t = thresholds.get(pid, thresholds.get("default", {})) or {}
+                    lo, hi = t.get("min"), t.get("max")
+                    b = threshold_breach(tc, lo, hi)
+                    sev = (tc - hi) if b == "high" else (lo - tc) if b == "low" else None
+                    if sev is not None and (best is None or sev > best[0]):
+                        best = (sev, pid, tc, lo, hi)
+                if best:
+                    _, focus_pid, focus_c, focus_lo, focus_hi = best
+            except Exception:
+                pass
         gauge = _make_gauge(_friendly_name(cfg, focus_pid), focus_c,
                             focus_lo, focus_hi, temp_unit, suffix)
 
-        # --- Windowed series for the graph ---
+        # --- Windowed series for the graph (filtered to the focused probe) ---
         df = db.window_df(window_seconds=window)
-        stats = db.window_stats(window_seconds=window)
+        if focus is not None and not df.empty:
+            df = df[df["probe_id"] == focus]
+        stats = db.window_stats(window_seconds=window, probe_id=focus)
         total_points = db.count()
         filtered_points = stats["count"]
 
@@ -454,10 +499,11 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit):
             stat_min = stat_max = stat_avg = "N/A"
             stat_min_time = stat_max_time = stat_avg_info = ""
 
+        scope = f"{_friendly_name(cfg, focus)} · " if focus is not None else ""
         if time_range == "all":
-            range_info = f"Showing all {total_points:,} data points"
+            range_info = f"{scope}Showing all {filtered_points:,} data points"
         else:
-            range_info = (f"Showing {filtered_points:,} of {total_points:,} data points "
+            range_info = (f"{scope}Showing {filtered_points:,} of {total_points:,} data points "
                           f"({RANGE_LABELS.get(time_range, 'selected range')})")
 
         # --- Alerts (latest reading per probe vs thresholds) ---
@@ -551,10 +597,13 @@ def register_dashboard_callbacks(app, finder, cfg, db):
         Output("probes-row", "children"),
         Input("dash-refresh", "n_intervals"),
         Input("temp-unit-store", "data"),
+        Input("focus-probe-selector", "value"),
     )
-    def _update_probe_cards(_n, temp_unit):
-        """One status card per probe: current temperature + OK/HIGH/LOW/stale."""
+    def _update_probe_cards(_n, temp_unit, focus_probe):
+        """One status card per probe: current temperature + OK/HIGH/LOW/stale.
+        In focus mode only the selected probe's card is shown."""
         temp_unit = temp_unit or "celsius"
+        focus = focus_probe if (focus_probe and focus_probe != "all") else None
         try:
             latest = db.latest_per_probe(window_seconds=7 * 86400)
         except Exception:
@@ -567,6 +616,8 @@ def register_dashboard_callbacks(app, finder, cfg, db):
         for _, row in latest.iterrows():
             pid = row["probe_id"]
             if not str(pid).strip():
+                continue
+            if focus is not None and pid != focus:
                 continue
             t_c = row["temperature_c"]
             age = None
@@ -600,23 +651,32 @@ def register_dashboard_callbacks(app, finder, cfg, db):
         Input("dash-refresh", "n_intervals"),
         Input("time-range-selector", "value"),
         Input("temp-unit-store", "data"),
+        Input("focus-probe-selector", "value"),
     )
-    def _update_probe_stats(_n, time_range, temp_unit):
+    def _update_probe_stats(_n, time_range, temp_unit, focus_probe):
+        # In focus mode the global StatsRow already shows the selected probe's
+        # min/avg/max, so the per-probe breakdown would be redundant.
+        if focus_probe and focus_probe != "all":
+            return []
         return build_probe_stats(db, cfg, time_range, temp_unit)
 
     @app.callback(
         Output("env-row", "children"),
         Input("dash-refresh", "n_intervals"),
+        Input("focus-probe-selector", "value"),
     )
-    def _update_environment(_):
+    def _update_environment(_n, focus_probe):
         """Humidity + VPD cards for grow-variant probes (SHT4x). Empty for a
         temperature-only deployment so the layout is unchanged for most users."""
+        focus = focus_probe if (focus_probe and focus_probe != "all") else None
         try:
             latest_each = db.latest_per_probe(window_seconds=86400)
         except Exception:
             return []
         cards = []
         for _, row in latest_each.iterrows():
+            if focus is not None and row["probe_id"] != focus:
+                continue
             hum = row.get("humidity_pct")
             if hum is None or pd.isna(hum):
                 continue
@@ -649,6 +709,24 @@ def register_dashboard_callbacks(app, finder, cfg, db):
         Input("dash-refresh", "n_intervals"),
         Input("time-range-selector", "value"),
         Input("temp-unit-store", "data"),
+        Input("focus-probe-selector", "value"),
     )
-    def update_dashboard(_n, time_range, temp_unit):
-        return build_dashboard(db, cfg, finder, time_range, temp_unit)
+    def update_dashboard(_n, time_range, temp_unit, focus_probe):
+        return build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe)
+
+    @app.callback(
+        Output("focus-probe-selector", "options"),
+        Input("dash-refresh", "n_intervals"),
+    )
+    def _focus_options(_n):
+        """Populate the focus dropdown with every probe that has data, keeping
+        'All probes' first. Values are probe ids; labels are friendly names."""
+        opts = [{"label": "All probes (overview)", "value": "all"}]
+        try:
+            latest = db.latest_per_probe(window_seconds=7 * 86400)
+            pids = [p for p in latest["probe_id"].tolist() if str(p).strip()]
+            for pid in sorted(pids, key=lambda p: _friendly_name(cfg, p).lower()):
+                opts.append({"label": _friendly_name(cfg, pid), "value": pid})
+        except Exception:
+            pass
+        return opts

@@ -18,31 +18,36 @@ def _section_title(text):
 
 
 NotificationSettings = dbc.Card(dbc.CardBody([
-    html.H5("Notifications", className="card-title"),
-    html.P("Get alerted by email or webhook when a probe crosses its min/max "
-           "threshold. Thresholds are set per probe on the Devices page.",
-           className="text-muted small"),
+    html.H5("Alerts", className="card-title"),
+    html.P("Get notified when a probe goes out of range or drops offline. "
+           "The temperature limits that trigger alerts are set per probe on the "
+           "Devices page.", className="text-muted small"),
+    dcc.Link("Set each probe’s min/max limits on the Devices page →", href="/devices",
+             className="small d-block mb-2"),
 
-    dbc.Switch(id="notif-enabled", label="Enable notifications", value=False),
+    dbc.Switch(id="notif-enabled", label="Enable alerts", value=False),
+
+    # --- When to alert -------------------------------------------------------
+    _section_title("When to alert"),
     dbc.Row([
         dbc.Col([
-            html.Small("Reminder interval (minutes)", className="text-muted d-block"),
+            html.Small("Re-alert every (minutes)", className="text-muted d-block"),
             dbc.Input(id="notif-cooldown-min", type="number", min=1, step=1, value=30),
-            html.Small("How often to re-notify while a probe stays out of range.",
+            html.Small("How often to remind you while a probe stays out of range.",
                        className="text-muted"),
         ], md=6),
         dbc.Col([
-            dbc.Switch(id="notif-recovery", label="Notify on return to normal", value=True,
-                       className="mt-4"),
+            dbc.Switch(id="notif-recovery", label="Notify when a probe returns to normal",
+                       value=True, className="mt-4"),
         ], md=6),
     ], className="g-2 mt-1"),
 
     dbc.Row([
         dbc.Col([
-            html.Small("Alert deadband (°C)", className="text-muted d-block"),
+            html.Small("Deadband (°C)", className="text-muted d-block"),
             dbc.Input(id="notif-hysteresis", type="number", min=0, step=0.1, value=0.5),
-            html.Small("A probe must move back inside its limit by this much before the "
-                       "alert clears — stops a noisy sensor from flapping.",
+            html.Small("How far a probe must move back inside its limit before the alert "
+                       "clears — stops a probe sitting on the line from flapping.",
                        className="text-muted"),
         ], md=6),
     ], className="g-2 mt-1"),
@@ -60,37 +65,47 @@ NotificationSettings = dbc.Card(dbc.CardBody([
         ], md=6),
     ], className="g-2 mt-1"),
 
-    _section_title("Email (SMTP)"),
-    dbc.Switch(id="notif-email-enabled", label="Enable email", value=False),
-    dbc.Row([
-        dbc.Col([html.Small("SMTP host", className="text-muted"),
-                 dbc.Input(id="email-host", placeholder="smtp.gmail.com")], md=8),
-        dbc.Col([html.Small("Port", className="text-muted"),
-                 dbc.Input(id="email-port", type="number", value=587)], md=4),
-    ], className="g-2"),
-    dbc.Switch(id="email-tls", label="Use STARTTLS", value=True, className="mt-2"),
-    dbc.Row([
-        dbc.Col([html.Small("Username", className="text-muted"),
-                 dbc.Input(id="email-user", placeholder="you@example.com")], md=6),
-        dbc.Col([html.Small("Password", className="text-muted"),
-                 dbc.Input(id="email-pass", type="password", placeholder="(unchanged)")], md=6),
-    ], className="g-2 mt-1"),
-    dbc.Row([
-        dbc.Col([html.Small("From address", className="text-muted"),
-                 dbc.Input(id="email-from", placeholder="alerts@example.com")], md=6),
-        dbc.Col([html.Small("To (comma-separated)", className="text-muted"),
-                 dbc.Input(id="email-to", placeholder="me@example.com, ops@example.com")], md=6),
-    ], className="g-2 mt-1"),
+    # --- Where to send alerts ------------------------------------------------
+    _section_title("Where to send alerts"),
+    dbc.Switch(id="notif-email-enabled", label="Email", value=False),
+    dbc.Collapse(dbc.Card(dbc.CardBody([
+        dbc.Row([
+            dbc.Col([html.Small("SMTP host", className="text-muted"),
+                     dbc.Input(id="email-host", placeholder="smtp.gmail.com")], md=8),
+            dbc.Col([html.Small("Port", className="text-muted"),
+                     dbc.Input(id="email-port", type="number", value=587)], md=4),
+        ], className="g-2"),
+        dbc.Switch(id="email-tls", label="Use STARTTLS (encryption — leave on for most providers)",
+                   value=True, className="mt-2"),
+        dbc.Row([
+            dbc.Col([html.Small("Username", className="text-muted"),
+                     dbc.Input(id="email-user", placeholder="you@example.com")], md=6),
+            dbc.Col([html.Small("Password", className="text-muted"),
+                     dbc.Input(id="email-pass", type="password", placeholder="(unchanged)"),
+                     html.Small("Leave blank to keep the saved password.",
+                                className="text-muted")], md=6),
+        ], className="g-2 mt-1"),
+        dbc.Row([
+            dbc.Col([html.Small("From address", className="text-muted"),
+                     dbc.Input(id="email-from", placeholder="alerts@example.com")], md=6),
+            dbc.Col([html.Small("To (comma-separated)", className="text-muted"),
+                     dbc.Input(id="email-to", placeholder="me@example.com, ops@example.com")], md=6),
+        ], className="g-2 mt-1"),
+    ]), className="mt-2 mb-1"), id="email-collapse", is_open=False),
 
-    _section_title("Webhook"),
-    dbc.Switch(id="notif-webhook-enabled", label="Enable webhook", value=False),
-    html.Small("Posts JSON (with a Slack-compatible \"text\" field) to this URL.",
-               className="text-muted d-block"),
-    dbc.Input(id="webhook-url", placeholder="https://hooks.slack.com/services/...", className="mt-1"),
+    dbc.Switch(id="notif-webhook-enabled", label="Webhook", value=False, className="mt-2"),
+    dbc.Collapse(dbc.Card(dbc.CardBody([
+        html.Small("Posts JSON (with a Slack-compatible \"text\" field) to this URL.",
+                   className="text-muted d-block"),
+        dbc.Input(id="webhook-url", placeholder="https://hooks.slack.com/services/...",
+                  className="mt-1"),
+    ]), className="mt-2 mb-1"), id="webhook-collapse", is_open=False),
 
     html.Div([
         dbc.Button("Save", id="notif-save", color="primary", className="mt-3 me-2"),
         dbc.Button("Send test", id="notif-test", color="secondary", outline=True, className="mt-3"),
+        html.Small("Save first, then send a test to the channels above.",
+                   className="text-muted d-block mt-1"),
     ]),
     html.Div(id="notif-status", className="mt-2"),
 
@@ -100,18 +115,22 @@ NotificationSettings = dbc.Card(dbc.CardBody([
 
 
 DataManagement = dbc.Card(dbc.CardBody([
-    html.H5("Data Management", className="card-title"),
+    html.H5("Data & storage", className="card-title"),
     dbc.Row([
         dbc.Col([
-            html.Small("Retention (days, 0 = keep forever)", className="text-muted d-block"),
-            dbc.Input(id="retention-days", type="number", min=0, step=1, value=0),
-            html.Small("Readings older than this are automatically deleted.",
-                       className="text-muted"),
+            html.Small("Keep readings for (days)", className="text-muted d-block"),
+            dbc.InputGroup([
+                dbc.Input(id="retention-days", type="number", min=0, step=1, value=0),
+                dbc.InputGroupText("days"),
+            ]),
+            html.Small(id="retention-note", className="text-muted"),
         ], md=6),
         dbc.Col([
             html.Small("Backup", className="text-muted d-block"),
             dbc.Button("⬇ Download database backup", id="backup-btn", color="secondary",
                        outline=True, href="/download/backup.db", external_link=True),
+            html.Small("Downloads the full readings database as a file.",
+                       className="text-muted d-block mt-1"),
         ], md=6, className="d-flex flex-column justify-content-center"),
     ], className="g-3"),
     dbc.Button("Save", id="data-save", color="primary", className="mt-3"),
@@ -215,6 +234,37 @@ def register_settings_callbacks(app, cfg):
             return float(cfg.get("alert_hysteresis_c", 0.5))
         except (TypeError, ValueError):
             return 0.5
+
+    # Progressive disclosure: only show a channel's fields once it's enabled.
+    @app.callback(
+        Output("email-collapse", "is_open"),
+        Input("notif-email-enabled", "value"),
+    )
+    def _toggle_email(enabled):
+        return bool(enabled)
+
+    @app.callback(
+        Output("webhook-collapse", "is_open"),
+        Input("notif-webhook-enabled", "value"),
+    )
+    def _toggle_webhook(enabled):
+        return bool(enabled)
+
+    # Retention is destructive above 0 — say so plainly as the user types.
+    @app.callback(
+        Output("retention-note", "children"),
+        Output("retention-note", "className"),
+        Input("retention-days", "value"),
+    )
+    def _retention_note(days):
+        try:
+            d = int(days or 0)
+        except (TypeError, ValueError):
+            d = 0
+        if d <= 0:
+            return "0 = keep everything, forever (the default for a data logger).", "text-muted"
+        return (f"⚠ Readings older than {d} day{'s' if d != 1 else ''} are permanently deleted.",
+                "text-warning")
 
     @app.callback(
         Output("notif-status", "children"),

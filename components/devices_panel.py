@@ -71,11 +71,24 @@ DevicesLayout = html.Div([
             ])
         ]),
         dbc.ModalFooter([
+            dbc.Button("🗑 Remove device", id='edit-probe-remove', color='danger',
+                       outline=True, className='me-auto'),
             dbc.Button("Cancel", id='edit-probe-cancel', className='me-2', color='secondary'),
             dbc.Button("Save", id='edit-probe-save', color='primary')
         ])
     ], id='edit-probe-modal', is_open=False),
-    dcc.Store(id='edit-probe-id-store', data=None)
+    dcc.Store(id='edit-probe-id-store', data=None),
+    dcc.Store(id='remove-probe-id-store', data=None),
+    # Confirmation dialog for the destructive "remove device" action.
+    dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle("Remove device?")),
+        dbc.ModalBody(id='remove-confirm-text'),
+        dbc.ModalFooter([
+            dbc.Button("Cancel", id='remove-confirm-cancel', color='secondary', className='me-2'),
+            dbc.Button("Remove", id='remove-confirm-yes', color='danger'),
+        ]),
+    ], id='remove-confirm-modal', is_open=False),
+    html.Div(id='device-remove-status', className='mt-3'),
 ])
 
 
@@ -376,3 +389,69 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
             return False, None, '', '', no_update, no_update, no_update, no_update
 
         return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
+
+    # --- Remove device: confirm, then delete readings + config + discovery ----
+    @app.callback(
+        Output('remove-confirm-modal', 'is_open'),
+        Output('remove-confirm-text', 'children'),
+        Output('remove-probe-id-store', 'data'),
+        Output('edit-probe-modal', 'is_open', allow_duplicate=True),
+        Input('edit-probe-remove', 'n_clicks'),
+        State('edit-probe-id-store', 'data'),
+        prevent_initial_call=True,
+    )
+    def open_remove_confirm(n_clicks, probe_id):
+        if not n_clicks or not probe_id:
+            return no_update, no_update, no_update, no_update
+        friendly = (cfg.get('probe_names', {}) or {}).get(probe_id, probe_id)
+        heading = friendly if friendly == probe_id else f'{friendly} ({probe_id})'
+        text = html.Div([
+            html.P(html.Strong(heading), className='mb-2'),
+            html.P("This permanently deletes all of this probe's readings and its saved "
+                   "name, alert thresholds, calibration and interval. This cannot be undone.",
+                   className='mb-2'),
+            html.Small("If the probe is still powered on it will reappear on its next "
+                       "reading — power it off first to remove it for good.",
+                       className='text-muted'),
+        ])
+        # Close the edit modal and open the confirmation dialog for this probe.
+        return True, text, probe_id, False
+
+    @app.callback(
+        Output('remove-confirm-modal', 'is_open', allow_duplicate=True),
+        Output('device-remove-status', 'children'),
+        Input('remove-confirm-yes', 'n_clicks'),
+        Input('remove-confirm-cancel', 'n_clicks'),
+        State('remove-probe-id-store', 'data'),
+        prevent_initial_call=True,
+    )
+    def do_remove_device(yes_clicks, cancel_clicks, probe_id):
+        from dash import callback_context
+        trig = callback_context.triggered[0]['prop_id'] if callback_context.triggered else ''
+        if 'remove-confirm-cancel' in trig:
+            return False, no_update
+        if 'remove-confirm-yes' not in trig or not probe_id:
+            return no_update, no_update
+        try:
+            deleted = db.delete_probe(probe_id) if db is not None else 0
+            # Drop this probe's entry from every per-probe config dict.
+            for key in ('probe_names', 'probe_intervals', 'alert_thresholds', 'calibration_offsets'):
+                d = cfg.get(key, {}) or {}
+                if probe_id in d:
+                    d.pop(probe_id, None)
+                    cfg.update({key: d})
+            forgotten = 0
+            try:
+                forgotten = finder.forget_probe(probe_id)
+            except Exception:
+                log.debug('forget_probe unavailable/failed for %s', probe_id, exc_info=True)
+            log.info('Removed device %s (%d readings, %d discovery entries)',
+                     probe_id, deleted, forgotten)
+            msg = dbc.Alert(f"✅ Removed {probe_id} — deleted {deleted:,} reading(s). "
+                            "The card disappears within a few seconds.",
+                            color='success', dismissable=True, className='mb-0')
+            return False, msg
+        except Exception as e:
+            log.exception('device removal failed')
+            return False, dbc.Alert(f"Could not remove device: {e}", color='danger',
+                                    dismissable=True, className='mb-0')

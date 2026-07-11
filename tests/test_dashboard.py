@@ -142,3 +142,36 @@ def test_probe_stats_empty_db(tmp_path):
     db = Database(tmp_path / "d.db")
     cfg = Config(tmp_path / "c.json")
     assert build_probe_stats(db, cfg, "24h", "celsius") == []
+
+
+def test_focus_mode_filters_to_one_probe(tmp_path):
+    # "Focus one probe" restricts the gauge, graph and stats to the selected
+    # probe, instead of the all-probes overview.
+    db = Database(tmp_path / "d.db")
+    cfg = Config(tmp_path / "c.json")
+    cfg.update({"probe_names": {"A": "Freezer", "B": "Room"}})
+    now = datetime.datetime.now()
+    for t in (-20.0, -18.0, -16.0):
+        db.append(_iso(now), t, 0.0, "A")
+    for t in (20.0, 22.0, 24.0):
+        db.append(_iso(now), t, 0.0, "B")
+
+    allm = build_dashboard(db, cfg, FakeFinder(), "24h", "celsius", "all")
+    assert len(allm[1].data) == 2          # graph overlays both probes
+    assert allm[11] == "2.0 °C"            # global avg mixes the two (misleading)
+
+    foc = build_dashboard(db, cfg, FakeFinder(), "24h", "celsius", "A")
+    assert len(foc[0].data) == 1           # gauge shows one probe
+    assert len(foc[1].data) == 1           # graph shows only that probe's trace
+    assert foc[7] == "-20.0 °C"            # stat-min is the focused probe's own
+    assert foc[9] == "-16.0 °C"            # stat-max is the focused probe's own
+    assert "Freezer" in foc[6]             # range info names the focused probe
+
+
+def test_focus_mode_unknown_probe_falls_back(tmp_path):
+    # Selecting a probe with no data in the window falls back to the overview.
+    db = Database(tmp_path / "d.db")
+    cfg = Config(tmp_path / "c.json")
+    _seed(db)  # two probes A/B
+    out = build_dashboard(db, cfg, FakeFinder(), "24h", "celsius", "does-not-exist")
+    assert len(out[1].data) == 2  # overview graph with both probes

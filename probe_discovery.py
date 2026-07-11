@@ -220,6 +220,33 @@ class ProbeDiscovery:
                     removed += 1
         return removed
 
+    def forget_probe(self, probe_id: str) -> int:
+        """Drop every discovery entry matching ``probe_id`` (by name or its 'id'
+        TXT property). Returns the number of entries removed.
+
+        Used by "remove device". Note this only forgets the CURRENT discovery
+        state — a probe that is still powered on will re-register on its next
+        mDNS announcement or ingest, which is the honest behavior (you can't
+        make a live, broadcasting device disappear from the LAN).
+        """
+        pid = (probe_id or "").strip()
+        if not pid:
+            return 0
+        removed = 0
+        with self._lock:
+            for key in list(self._probes.keys()):
+                p = self._probes[key]
+                if isinstance(p, dict):
+                    name = p.get("name")
+                    prop_id = (p.get("properties") or {}).get("id")
+                else:
+                    name = getattr(p, "name", None)
+                    prop_id = (getattr(p, "properties", {}) or {}).get("id")
+                if pid in (key, name, prop_id):
+                    del self._probes[key]
+                    removed += 1
+        return removed
+
     def update_probe_ip(self, key: str, new_ip: str) -> None:
         """Atomically update a probe's IP address under the discovery lock."""
         with self._lock:
