@@ -51,7 +51,7 @@ inline void ledBlink(uint8_t n, uint16_t onMs = 60, uint16_t offMs = 120) {
 }
 
 // ---------------- Identity --------------------------------------------------
-static const char* SENSOR_NAME = "ThermaProbe";
+static const char* SENSOR_NAME = "TempSensor";
 static const char* FW_VERSION  = "2.4.0";
 
 // Per-unit setup-AP (WPA2) password, generated once and kept in NVS. Holds the
@@ -566,7 +566,7 @@ String ds18b20RomHex() {
 }
 
 String buildProbeId(const String& rom, const String& chip) {
-  // "ThermaProbe-<HEX6>": 6 uppercase hex, wide enough that a manufacturing
+  // "TempSensor-<HEX6>": 6 uppercase hex, wide enough that a manufacturing
   // batch won't collide. Derived from the DS18B20 ROM (globally unique) when the
   // sensor reads, else from the chip's efuse MAC. Persisted by stableProbeId().
   String hex;
@@ -574,11 +574,11 @@ String buildProbeId(const String& rom, const String& chip) {
   else if (chip.length() >= 6) hex = chip.substring(chip.length() - 6);
   else hex = (rom.length() ? rom : chip);
   hex.toUpperCase();
-  return "ThermaProbe-" + hex;
+  return "TempSensor-" + hex;
 }
 
 // Generate (once) and return the per-unit WPA2 password for the setup SoftAP.
-// It is a 64-bit random value ("TP-" + 16 hex, 19 chars), stored in NVS and
+// It is a 64-bit random value ("TS-" + 16 hex, 19 chars), stored in NVS and
 // printed on the boot [label] line so factory_flash.py can put it on the unit
 // label. Deliberately NOT derived from the MAC (the SSID already exposes MAC
 // bytes), so a captured handshake stays uncrackable.
@@ -591,7 +591,7 @@ String ensureApPassword() {
   if (pw.length() >= 8) return pw;
   char buf[20];
   uint32_t a = esp_random(), b = esp_random();
-  snprintf(buf, sizeof(buf), "TP-%08X%08X", a, b);
+  snprintf(buf, sizeof(buf), "TS-%08X%08X", a, b);
   pw = String(buf);
   if (prefs.begin("tscfg", false)) {
     prefs.putString("ap_pass", pw);

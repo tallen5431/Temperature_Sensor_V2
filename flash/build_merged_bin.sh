@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Build the ThermaProbe firmware and produce ONE merged .bin that both
+# Build the TempSensor firmware and produce ONE merged .bin that both
 # ESP Web Tools (browser flashing, see flash/index.html) and esptool can flash
 # at offset 0x0.
 #
@@ -19,7 +19,7 @@ SKETCH_DIR="esp32_temp_probe"
 SKETCH_NAME="esp32_temp_probe"
 # Adjust FQBN to your exact board if needed (e.g. esp32:esp32:esp32doit-devkit-v1).
 FQBN="${FQBN:-esp32:esp32:esp32}"
-OUT="flash/thermaprobe-esp32.merged.bin"
+OUT="flash/tempsensor-esp32.merged.bin"
 
 command -v arduino-cli >/dev/null || { echo "arduino-cli not found — see the header."; exit 1; }
 command -v esptool >/dev/null 2>&1 || command -v esptool.py >/dev/null 2>&1 || {

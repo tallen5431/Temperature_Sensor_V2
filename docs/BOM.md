@@ -1,7 +1,7 @@
-# ThermaProbe — Bill of Materials (BOM)
+# TempSensor — Bill of Materials (BOM)
 
-This is the parts list to build **one** ThermaProbe unit — the rechargeable,
-battery-powered wireless sensor that pairs with a ThermaHub install. Pin
+This is the parts list to build **one** TempSensor unit — the rechargeable,
+battery-powered wireless sensor that pairs with a TempSensor install. Pin
 assignments referenced here come from `firmware/src/protocol.h` (the single
 source of truth); see [ASSEMBLY.md](ASSEMBLY.md) for the wiring. The shipping
 firmware is the sketch `esp32_temp_probe/esp32_temp_probe.ino`.
@@ -76,7 +76,7 @@ Notes on pricing:
 - These are *single-unit maker* numbers. At batch scale (parts in 10s–100s,
   jigged flashing/test) landed cost drops materially and you can either widen
   margin or cut retail toward ~$49.
-- ThermaHub is the free local-first software; the ThermaProbe hardware is the
+- TempSensor is the free local-first software; the TempSensor hardware is the
   revenue item. One hub can serve many probes, so upsell is additional probes.
 - The thermocouple / humidity variants are not priced here because they are not
   yet supported by the firmware (see above).

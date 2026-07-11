@@ -22,7 +22,7 @@ def _build(enabled, user="admin", pw="s3cret"):
                 and hmac.compare_digest(auth.password or "", pw):
             return None
         return Response("Authentication required", 401,
-                        {"WWW-Authenticate": 'Basic realm="ThermaHub"'})
+                        {"WWW-Authenticate": 'Basic realm="TempSensor"'})
 
     @app.route("/")
     def home():

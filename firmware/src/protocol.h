@@ -1,5 +1,5 @@
 // ============================================================================
-// protocol.h  --  Shared ThermaProbe constants & hardware contract
+// protocol.h  --  Shared TempSensor constants & hardware contract
 // ============================================================================
 // CANONICAL FIRMWARE: the shipping implementation is the Arduino sketch
 //   esp32_temp_probe/esp32_temp_probe.ino
@@ -26,8 +26,8 @@
 // ---------------------------------------------------------------------------
 // Versioning (matches esp32_temp_probe.ino: FW_VERSION, protocol v1)
 // ---------------------------------------------------------------------------
-#define THERMAPROBE_FW_VERSION "2.4.0"   // == FW_VERSION in the .ino
-#define THERMAPROBE_PROTO      1         // wire protocol version
+#define TEMPSENSOR_FW_VERSION "2.4.0"   // == FW_VERSION in the .ino
+#define TEMPSENSOR_PROTO      1         // wire protocol version
 
 // ---------------------------------------------------------------------------
 // GPIO PIN MAP  (ESP32-WROOM-32E)  --  keep in sync with docs/BOM.md + ASSEMBLY
@@ -59,7 +59,7 @@
 // ---------------------------------------------------------------------------
 // SoftAP setup network (used when the probe has no saved Wi-Fi credentials)
 // ---------------------------------------------------------------------------
-// SSID == the probe id, e.g. "ThermaProbe-9A3F2C".  The AP is WPA2-protected
+// SSID == the probe id, e.g. "TempSensor-9A3F2C".  The AP is WPA2-protected
 // with a PER-UNIT RANDOM password (see identity rules below); WiFiManager serves
 // the captive setup portal at 192.168.4.1.  (Earlier firmware used an open,
 // shared setup AP; the current firmware makes it unique + WPA2 -- a security
@@ -101,13 +101,13 @@
 //               (globally unique per Dallas part); if no sensor is present at
 //               first boot it FALLS BACK to the last 6 hex of the ESP32 efuse
 //               MAC (chip id).  e.g. "9A3F2C".
-//   probe_id  = "ThermaProbe-" + HEX6            e.g. "ThermaProbe-9A3F2C"
+//   probe_id  = "TempSensor-" + HEX6            e.g. "TempSensor-9A3F2C"
 //               DERIVED ONCE and PERSISTED IN NVS on first boot, then reused for
 //               the life of the unit -- a later failed ROM read can no longer
 //               flip the identity (see stableProbeId() in the .ino).
-//   mDNS host = probe_id -> "<probe_id>.local"   e.g. "ThermaProbe-9A3F2C.local"
+//   mDNS host = probe_id -> "<probe_id>.local"   e.g. "TempSensor-9A3F2C.local"
 //   SoftAP SSID = probe_id                        (same string as probe_id)
-//   AP password = "TP-" + 16 random hex chars (64-bit), generated ONCE at first
+//   AP password = "TS-" + 16 random hex chars (64-bit), generated ONCE at first
 //                 boot and stored in NVS -> a 19-char WPA2 key. Deliberately NOT
 //                 derived from the MAC (the SSID already exposes MAC/ROM bytes),
 //                 so a captured handshake stays uncrackable.  The firmware prints
@@ -115,7 +115,7 @@
 //                 the unit label.  See ensureApPassword().
 //
 // Machine-readable boot line consumed by factory_flash.py (printed every boot):
-//   [label] probe_id=<id> ap_ssid=<id> ap_pass=TP-XXXXXXXXXXXXXXXX
+//   [label] probe_id=<id> ap_ssid=<id> ap_pass=TS-XXXXXXXXXXXXXXXX
 //
 // The probe_id is echoed three ways that MUST all agree at runtime:
 //   * mDNS TXT  id=<probe_id>   (and name=<probe_id>)
@@ -123,8 +123,8 @@
 //   * JSON body field "probe_id" on every ingest POST
 // The sketch logs the id and the "[label]" line at boot.
 // ---------------------------------------------------------------------------
-#define PROBE_ID_PREFIX     "ThermaProbe-"
-#define AP_PASSWORD_PREFIX  "TP-"
+#define PROBE_ID_PREFIX     "TempSensor-"
+#define AP_PASSWORD_PREFIX  "TS-"
 
 // mDNS service advertised by the probe (hub browses for this).
 //   Full type: _temps-probe._tcp.local. on TCP port 80, TXT id=<probe_id>,

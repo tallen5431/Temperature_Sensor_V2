@@ -3,15 +3,15 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Flash your ThermaProbe</title>
+  <title>Flash your TempSensor</title>
   <!--
-    Browser-based flashing for the ThermaProbe firmware, powered by ESP Web Tools.
+    Browser-based flashing for the TempSensor firmware, powered by ESP Web Tools.
     Host this folder on any HTTPS static host (e.g. GitHub Pages). Web Serial —
     which does the flashing — only works in Chrome/Edge/Opera over HTTPS (or
     http://localhost), so a plain file:// open will show the "not supported" note.
 
     Before this page can flash anything you must generate the firmware binary it
-    points at (flash/manifest.json → thermaprobe-esp32.merged.bin). See flash/README.md
+    points at (flash/manifest.json → tempsensor-esp32.merged.bin). See flash/README.md
     (run flash/build_merged_bin.sh). The binary is intentionally NOT committed.
   -->
   <script
@@ -52,7 +52,7 @@
 </head>
 <body>
   <main class="card">
-    <h1>Flash your <span class="brand">ThermaProbe</span></h1>
+    <h1>Flash your <span class="brand">TempSensor</span></h1>
     <p class="sub">Put the firmware on an ESP32 board straight from your browser — no
       Arduino IDE, no toolchain, no installs.</p>
 
@@ -61,12 +61,12 @@
 
     <ol>
       <li>Plug the ESP32 board into a USB port on this computer.</li>
-      <li>Click <strong>Flash ThermaProbe</strong> below and pick the board's serial
+      <li>Click <strong>Flash TempSensor</strong> below and pick the board's serial
         port when prompted. (If nothing appears, use a different USB cable — many are
         charge-only — or install the CP210x / CH340 USB-serial driver for your board.)</li>
       <li>Wait for it to finish, then unplug and follow
         <a href="../docs/USER_MANUAL.md">the setup guide</a>: join the probe's
-        <code>ThermaProbe-XXXXXX</code> Wi-Fi and point it at your ThermaHub.</li>
+        <code>TempSensor-XXXXXX</code> Wi-Fi and point it at your TempSensor.</li>
     </ol>
 
     <div class="unsupported" id="unsupported">
@@ -78,7 +78,7 @@
 
     <div class="flash-row">
       <esp-web-install-button manifest="./manifest.json">
-        <button slot="activate">⚡ Flash ThermaProbe</button>
+        <button slot="activate">⚡ Flash TempSensor</button>
         <span slot="unsupported"></span>
         <span slot="not-allowed">Serial access was blocked — reload and allow the port.</span>
       </esp-web-install-button>

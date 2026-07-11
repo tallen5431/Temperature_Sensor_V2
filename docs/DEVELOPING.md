@@ -1,8 +1,8 @@
-# Developing ThermaHub
+# Developing TempSensor
 
-Developer reference for the ThermaHub hub application. For the buyer-facing overview see the [root README](../README.md); for the wire protocol see [PROTOCOL.md](../PROTOCOL.md); for the probe firmware see [firmware/](../firmware/).
+Developer reference for the TempSensor hub application. For the buyer-facing overview see the [root README](../README.md); for the wire protocol see [PROTOCOL.md](../PROTOCOL.md); for the probe firmware see [firmware/](../firmware/).
 
-- **Product:** ThermaHub, version **2.4.0**, protocol **v1**.
+- **Product:** TempSensor, version **2.4.0**, protocol **v1**.
 - **Stack:** Python, Flask + [Dash](https://dash.plotly.com/) UI, served by [waitress](https://pypi.org/project/waitress/) on port **8088**.
 - **Positioning:** local-first, no-cloud temperature-monitoring appliance. Readings stay on the customer's PC.
 
@@ -34,13 +34,13 @@ On first run the app seeds `config.json` from `config.example.json`, creates the
 ## Architecture
 
 ```
-ThermaProbe (ESP32) ──mDNS advertise──▶ ProbeDiscovery (zeroconf browse)
+TempSensor (ESP32) ──mDNS advertise──▶ ProbeDiscovery (zeroconf browse)
                                                  │
                                                  ▼
                                         AutoProvisioner (every 10s)
                                                  │  POST /provision {server_url, token, interval_ms}
                                                  ▼
-ThermaProbe ──POST /api/ingest {temperature_c, probe_id, timestamp}──▶ Hub API
+TempSensor ──POST /api/ingest {temperature_c, probe_id, timestamp}──▶ Hub API
    headers: X-Probe-ID, X-Token                                          │
                                           ┌──────────────────────────────┤
                                           ▼                              ▼
@@ -90,7 +90,7 @@ ThermaProbe ──POST /api/ingest {temperature_c, probe_id, timestamp}──▶
 | `components/*.py` | Dashboard UI pieces (dashboard, devices, settings, diagnostics, help, probe-setup wizard). |
 | `config.example.json` | Shipped default config; copied to `config.json` on first run. |
 | `tests/` | Pytest suite (data layer, API/auth, alerts, notifications, monitor, dashboard, metrics, MQTT, audit, config, status, diagnostics, discovery). |
-| `firmware/` | Firmware contract (`src/protocol.h`) + factory-flash / QC tooling (`factory_flash.py`). The ESP32 ThermaProbe firmware itself is the Arduino sketch `esp32_temp_probe/esp32_temp_probe.ino` (deep-sleep/battery), built with the Arduino toolchain / arduino-cli. |
+| `firmware/` | Firmware contract (`src/protocol.h`) + factory-flash / QC tooling (`factory_flash.py`). The ESP32 TempSensor firmware itself is the Arduino sketch `esp32_temp_probe/esp32_temp_probe.ino` (deep-sleep/battery), built with the Arduino toolchain / arduino-cli. |
 | `temperature_log.db` | Live readings database — SQLite (WAL), git-ignored. |
 
 ---
@@ -193,13 +193,13 @@ The CSV **export** columns are fixed: `timestamp,temperature_c,temperature_f,pro
 ## Homelab / self-hosted integrations
 
 **Prometheus** — `GET /metrics` exposes the exposition format for scraping (per-probe
-`thermahub_probe_temperature_celsius`, plus health counters). Enabled by default; disable with
+`tempsensor_probe_temperature_celsius`, plus health counters). Enabled by default; disable with
 `metrics.enabled: false` in config. It is unauthenticated by design (scrape it on a trusted LAN).
 
 **MQTT + Home Assistant auto-discovery** — off by default. Enable the `mqtt` block in config
 (`enabled`, `host`, `port`, `username`, `password`, `base_topic`, `discovery_prefix`,
 `discovery_enabled`). Each reading is published to `<base_topic>/<probe_id>/state`, and (once per
-probe) a retained HA discovery config to `<discovery_prefix>/sensor/thermahub_<probe_id>/config`,
+probe) a retained HA discovery config to `<discovery_prefix>/sensor/tempsensor_<probe_id>/config`,
 so probes appear automatically as temperature sensors in Home Assistant. Requires `paho-mqtt`
 (in `requirements.txt`); a missing package degrades to a warning.
 

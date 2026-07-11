@@ -1,4 +1,4 @@
-# Tindie Listing — ThermaProbe (ready to paste)
+# Tindie Listing — TempSensor (ready to paste)
 
 > _**Maker note (delete before publishing):** this maps the copy in [`LISTING.md`](LISTING.md) onto
 > Tindie's actual listing fields so you can paste section-by-section. Set your real **brand**,
@@ -12,7 +12,7 @@ Tindie listing fields, in order:
 ## 1. Product name
 
 ```
-ThermaProbe — Local Wi-Fi Temperature Monitor for Homelabs & Server Rooms (No Cloud · Prometheus / Home Assistant)
+TempSensor — Local Wi-Fi Temperature Monitor for Homelabs & Server Rooms (No Cloud · Prometheus / Home Assistant)
 ```
 
 ## 2. Summary (one line, keep it under ~140 chars)
@@ -46,7 +46,7 @@ The **hub software is free**; the probe is the paid item. Set the price you can 
 
 ```markdown
 **Know the instant your rack, closet, or NAS gets too hot — without handing your data to somebody
-else's cloud.** ThermaProbe reports to a small, free app you run on **your own** PC, mini-PC, or NAS,
+else's cloud.** TempSensor reports to a small, free app you run on **your own** PC, mini-PC, or NAS,
 so your readings never leave the building and your alerts keep working even when the internet doesn't.
 
 ### Why it's different
@@ -63,7 +63,7 @@ so your readings never leave the building and your alerts keep working even when
   so they fire even with no dashboard open.
 
 ### Honest specs
-| Spec | ThermaProbe |
+| Spec | TempSensor |
 |---|---|
 | Sensor | Maxim **DS18B20**, waterproof stainless probe (1 m lead) |
 | Accuracy | **±0.5 °C typical, uncalibrated** (add a per-probe offset in the app). Resolution 0.0625 °C is *not* accuracy. |
@@ -79,7 +79,7 @@ so your readings never leave the building and your alerts keep working even when
 > free hub. If you don't already leave a machine on 24/7, this isn't the right pick.
 
 ### What's in the box
-- 1× ThermaProbe (ESP32 + waterproof DS18B20 in an enclosure) — *DIY Kit ships as parts to assemble*
+- 1× TempSensor (ESP32 + waterproof DS18B20 in an enclosure) — *DIY Kit ships as parts to assemble*
 - 1× USB cable
 - Quick-start card + link to the full user manual
 - Unit label: serial ID, setup Wi-Fi name & password, setup QR
@@ -121,7 +121,7 @@ so your readings never leave the building and your alerts keep working even when
 
 - [ ] **Real photos of a real unit** — Tindie listings live or die on photos. This requires a
       **hand-built + QC'd unit** (`docs/QC_CHECKLIST.md`), the same batch step that's your #1 to-do.
-- [ ] **Brand + support link** swapped in (replace `ThermaHub`/`ThermaProbe` and `example.com/support`).
+- [ ] **Brand + support link** swapped in (replace `TempSensor`/`TempSensor` and `example.com/support`).
 - [ ] **Prices** set from your real costs (`docs/BOM.md`).
 - [ ] **Inventory count** from your first batch.
 - [ ] **Payout set up** — Tindie revamped payouts in mid-2026; confirm the current method at signup.

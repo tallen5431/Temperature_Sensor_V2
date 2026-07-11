@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to ThermaHub (the PC-side hub application) and its ThermaProbe
+All notable changes to TempSensor (the PC-side hub application) and its TempSensor
 ESP32 firmware are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
@@ -8,9 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Rebranded to `TempSensor`** — the hub, the probe, the firmware, the Prometheus metric prefix
+  (`tempsensor_*`), the MQTT base topic, and all documentation now use **TempSensor** in place of
+  ThermaHub/ThermaProbe. The probe's setup-AP SSID and probe ID become **`TempSensor-<HEX6>`** and the
+  per-unit WPA2 key prefix becomes `TS-`. **Probes must be reflashed** to pick up the new identity
+  (they will report under a new ID after reflashing).
+
 ### Added
 - **Browser-based firmware flashing** (`flash/`) — an [ESP Web Tools](https://esphome.github.io/esp-web-tools/)
-  page that flashes the ThermaProbe firmware onto an ESP32 from Chrome/Edge with no toolchain,
+  page that flashes the TempSensor firmware onto an ESP32 from Chrome/Edge with no toolchain,
   plus `build_merged_bin.sh` to produce the merged image and a README for hosting it (GitHub
   Pages). The lowest-friction on-ramp for kit/BYO-hardware hobbyists. (Binary is generated, not
   committed; needs a hardware bench build.)
@@ -32,7 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 - **Ingest now bounds `probe_id`** — sanitized to `[A-Za-z0-9_-]`, capped at 32
   chars, before it reaches the database, CSV export, or an MQTT topic. A real
-  ThermaProbe (`ThermaProbe-<HEX6>`) is unaffected; a buggy/malicious LAN client
+  TempSensor (`TempSensor-<HEX6>`) is unaffected; a buggy/malicious LAN client
   can no longer store an arbitrary value. (Guard restored after the v2.4.0 merge.)
 - **CSV export is formula-injection-safe** — a cell beginning with `= + - @`
   (or tab/CR) is prefixed with a single quote so a spreadsheet treats it as text,
@@ -53,9 +60,9 @@ documentation suite.
   high → recovery → high and spam-notifies. Entering a breach still uses the raw
   threshold; set it to 0 for the previous behaviour. Pure, unit-tested logic in
   `core.alerts`.
-- **Battery / deep-sleep firmware mode.** The ThermaProbe can run in a low-power
+- **Battery / deep-sleep firmware mode.** The TempSensor can run in a low-power
   **deep-sleep** cycle for long life on a rechargeable lithium battery, in addition
-  to the always-on (USB) mode. Probes **NTP-sync** their clock and **buffer readings
+  to the always-on (USB) mode. Probes **NTS-sync** their clock and **buffer readings
   offline**, flushing the queue to the hub on reconnect so a brief hub outage or
   Wi-Fi drop loses no data.
 - **Prometheus `/metrics` endpoint** — per-probe temperature (plus humidity/VPD)
@@ -67,7 +74,7 @@ documentation suite.
   `humidity_pct` field to ingest (backward-compatible, still protocol v1). The hub
   computes **VPD** (vapour pressure deficit) via the Tetens formula with an optional
   `settings.vpd_leaf_offset_c` leaf offset, shows Humidity + VPD on the dashboard,
-  exposes `thermahub_probe_humidity_percent` / `thermahub_probe_vpd_kpa` Prometheus
+  exposes `tempsensor_probe_humidity_percent` / `tempsensor_probe_vpd_kpa` Prometheus
   gauges, publishes separate humidity/VPD MQTT/Home Assistant sensors, and evaluates
   `humidity_min/max` and `vpd_min/max` per-probe thresholds.
 - **Docker / headless deployment** — `Dockerfile`, `docker-compose.yml`, and a
@@ -111,7 +118,7 @@ documentation suite.
   random** WPA2 key, generated once at first boot and stored in NVS (printed on the serial
   `[label]` line for the factory tool). `firmware/factory_flash.py` captures the id + key
   from serial for the unit label. *(Needs a real Arduino build + flash + bench validation.)*
-- **Firmware: probe identity rebranded to `ThermaProbe-<HEX6>`** (6 hex, sensor-ROM-derived
+- **Firmware: probe identity rebranded to `TempSensor-<HEX6>`** (6 hex, sensor-ROM-derived
   with a MAC fallback, persisted in NVS) so a manufacturing batch won't collide.
 - Security review of the release: hub core auth verified sound (no injection, auth
   bypass, path traversal, or unsafe deserialization).
@@ -226,7 +233,7 @@ customer can plug in and run, built on a proper SQLite data layer.
   for the migration — with one-time automatic import of a legacy `temperature_log.csv`,
   index-backed time-window queries, and CSV export honouring the selected range
   (`/download/temperature_log.csv?window=24h`).
-- **Firmware (ThermaProbe)** — ESP32 firmware with stable identity, SoftAP +
+- **Firmware (TempSensor)** — ESP32 firmware with stable identity, SoftAP +
   captive-portal Wi-Fi setup, mDNS advertisement, and `/provision`, `/whoami`, and
   `/status` HTTP endpoints. DS18B20 fault codes (85.0 power-on, -127/NaN disconnect) are
   rejected instead of logged as real readings.
@@ -276,9 +283,9 @@ customer can plug in and run, built on a proper SQLite data layer.
 - Config is redacted (secrets stripped) when returned from `GET /api/config`.
 - No account, no cloud, no telemetry — readings never leave the customer's PC.
 
-[2.4.0]: https://example.com/thermahub/releases/2.4.0
-[2.3.0]: https://example.com/thermahub/releases/2.3.0
-[2.2.1]: https://example.com/thermahub/releases/2.2.1
-[2.2.0]: https://example.com/thermahub/releases/2.2.0
-[2.1.0]: https://example.com/thermahub/releases/2.1.0
-[2.0.0]: https://example.com/thermahub/releases/2.0.0
+[2.4.0]: https://example.com/tempsensor/releases/2.4.0
+[2.3.0]: https://example.com/tempsensor/releases/2.3.0
+[2.2.1]: https://example.com/tempsensor/releases/2.2.1
+[2.2.0]: https://example.com/tempsensor/releases/2.2.0
+[2.1.0]: https://example.com/tempsensor/releases/2.1.0
+[2.0.0]: https://example.com/tempsensor/releases/2.0.0

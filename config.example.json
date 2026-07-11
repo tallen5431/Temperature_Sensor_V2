@@ -48,7 +48,7 @@
     "port": 1883,
     "username": "",
     "password": "",
-    "base_topic": "thermahub",
+    "base_topic": "tempsensor",
     "discovery_prefix": "homeassistant",
     "discovery_enabled": true
   }

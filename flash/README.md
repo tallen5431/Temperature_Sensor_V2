@@ -1,6 +1,6 @@
 # Browser-based flashing (ESP Web Tools)
 
-This folder is a self-contained web page that flashes the **ThermaProbe** firmware
+This folder is a self-contained web page that flashes the **TempSensor** firmware
 onto an ESP32 straight from a desktop browser — no Arduino IDE, no toolchain. It's
 the **lowest-friction on-ramp for hobbyists / kit buyers**: they open a link, click
 one button, and the probe is ready to set up.
@@ -10,7 +10,7 @@ flash/
 ├── index.html               the flashing page (ESP Web Tools install button)
 ├── manifest.json            firmware descriptor ESP Web Tools reads
 ├── build_merged_bin.sh      builds the single merged .bin the page flashes
-└── thermaprobe-esp32.merged.bin   (generated — NOT committed, .gitignored)
+└── tempsensor-esp32.merged.bin   (generated — NOT committed, .gitignored)
 ```
 
 ## How it works
@@ -31,7 +31,7 @@ flash — the page shows a note and points those users to manual flashing.
    ```bash
    arduino-cli core install esp32:esp32
    pip install esptool
-   ./flash/build_merged_bin.sh          # writes flash/thermaprobe-esp32.merged.bin
+   ./flash/build_merged_bin.sh          # writes flash/tempsensor-esp32.merged.bin
    ```
    Keep `manifest.json`'s `version` in sync with `FW_VERSION`
    (`esp32_temp_probe/esp32_temp_probe.ino`).
