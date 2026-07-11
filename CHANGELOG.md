@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Form styling polish (Settings, edit dialogs).** Inputs and selects were bright white against the
+  dark UI; they are now dark-themed to match, section headers are brightened with a divider line, and
+  the hover "lift" is limited to the interactive probe cards instead of every card.
+
 ### Added
 - **Per-probe status cards on the dashboard** — one card per probe showing its current temperature and
   an at-a-glance **OK / HIGH / LOW / stale** state (colour-coded, with a freshness age), so a
