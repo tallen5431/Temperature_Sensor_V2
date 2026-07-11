@@ -9,7 +9,7 @@ from flask import Blueprint, jsonify, request
 
 from provisioning import provision_probe
 from core.diagnostics import build_diagnostics
-from core.storage import normalize_payload, extract_humidity, compute_vpd
+from core.storage import normalize_payload, extract_humidity, compute_vpd, sanitize_probe_id
 from core.version import HUB_VERSION, PRODUCT_NAME
 from core.applog import HEALTH, get_logger
 from core.metrics import LATEST
@@ -253,6 +253,8 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
             return probe_id
 
     def _store(data: dict, remote_addr: str, probe_id: str):
+        # Bound the probe id to a safe token before it reaches the DB / CSV / MQTT.
+        probe_id = sanitize_probe_id(probe_id)
         ts, t_c, t_f = normalize_payload(data)
         # Apply per-probe calibration so the stored value is the corrected
         # temperature (DS18B20 sensors vary by up to ~0.5 °C).

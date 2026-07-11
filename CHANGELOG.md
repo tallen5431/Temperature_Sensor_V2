@@ -6,6 +6,17 @@ ESP32 firmware are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+- **Ingest now bounds `probe_id`** — sanitized to `[A-Za-z0-9_-]`, capped at 32
+  chars, before it reaches the database, CSV export, or an MQTT topic. A real
+  ThermaProbe (`ThermaProbe-<HEX6>`) is unaffected; a buggy/malicious LAN client
+  can no longer store an arbitrary value. (Guard restored after the v2.4.0 merge.)
+- **CSV export is formula-injection-safe** — a cell beginning with `= + - @`
+  (or tab/CR) is prefixed with a single quote so a spreadsheet treats it as text,
+  not a formula. Defence-in-depth for the free-form export columns.
+
 ## [2.4.0] - 2026-07-11
 
 The reconciled "ready to sell" release. It unifies two lines of development: the
