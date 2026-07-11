@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   notifier so they can't diverge again; unit-tested incl. the 0-bound case.
 
 ### Security
+- **Firmware: per-unit random SoftAP password.** The setup Wi-Fi WPA2 key is now a 64-bit
+  random value generated once at first boot and stored in NVS (printed on the serial `[label]`
+  line for the factory tool), replacing the old MAC-derived key that a captured handshake could
+  crack. `firmware/factory_flash.py` captures it from serial (pyserial optional) instead of
+  computing it from the MAC. (Needs the standard firmware build + flash + bench validation.)
 - Security review of the release. Hub core auth verified sound (no injection, auth bypass,
   path traversal, or unsafe deserialization). Fixes:
   - Don't seed the notification **webhook URL** (a bearer secret) into the Settings page, and

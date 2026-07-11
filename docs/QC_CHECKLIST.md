@@ -56,7 +56,8 @@ tick each item below as the operator confirms it.
 - [ ] **3.1** With no saved Wi-Fi, the unit brings up SoftAP SSID
       **`ThermaProbe-<HEX6>`** (== `probe_id`), visible on a phone.
 - [ ] **3.2** The AP is **WPA2** (asks for a password, not open) and joins with
-      the printed key **`TP-<8 UPPERCASE hex of last 4 MAC bytes>`**.
+      the **per-unit random** key from the serial `[label]` line
+      (`TP-<16 hex>`) — record it on the unit label.
 - [ ] **3.3** After joining the AP, `http://192.168.4.1` serves the captive
       setup page (Wi-Fi picker with SSID + password fields).
 

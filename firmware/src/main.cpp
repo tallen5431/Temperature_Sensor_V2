@@ -26,6 +26,7 @@
 #include <Preferences.h>
 #include <ArduinoJson.h>
 #include <esp_system.h>
+#include <esp_random.h>
 
 #include "protocol.h"
 
@@ -115,11 +116,27 @@ static void deriveIdentity() {
 
   String hexLower = g_hex6; hexLower.toLowerCase();
   g_hostname = String(HOSTNAME_PREFIX) + hexLower;
+  // NOTE: the SoftAP password is NOT derived here — it must not be a function of
+  // the MAC (the SSID already leaks MAC bytes). See ensureApPassword().
+}
 
-  // AP password = "TP-" + UPPERCASE hex of last 4 MAC bytes (>= 8 chars => WPA2).
-  char pass8[9];
-  snprintf(pass8, sizeof(pass8), "%02X%02X%02X%02X", mac[2], mac[3], mac[4], mac[5]);
-  g_apPass = String(AP_PASSWORD_PREFIX) + String(pass8);
+// The SoftAP WPA2 password is a per-unit RANDOM value generated once and stored
+// in NVS, then printed to serial so the factory tool can put it on the label.
+// (Deriving it from the MAC would be weak: the SSID "ThermaProbe-<hex>" already
+// exposes 3 of the MAC bytes, leaving the old key trivially crackable.)
+static void ensureApPassword() {
+  prefs.begin("thermaprobe", /*readOnly=*/false);
+  g_apPass = prefs.getString("ap_pass", "");
+  if (g_apPass.length() < 8) {
+    // 64 bits of hardware RNG -> "TP-" + 16 hex chars (19-char WPA2 key).
+    char buf[17];
+    snprintf(buf, sizeof(buf), "%08X%08X",
+             (unsigned)esp_random(), (unsigned)esp_random());
+    g_apPass = String(AP_PASSWORD_PREFIX) + String(buf);
+    prefs.putString("ap_pass", g_apPass);
+    Serial.println("[setup] generated a new random SoftAP password");
+  }
+  prefs.end();
 }
 
 // ---------------------------------------------------------------------------
@@ -507,6 +524,11 @@ void setup() {
                 g_probeId.c_str(), g_hostname.c_str(), g_macStr.c_str());
 
   loadConfig();
+  ensureApPassword();
+  // Single line the factory tool (factory_flash.py) parses to print the label —
+  // includes the per-unit random SoftAP password, which is NOT derivable offline.
+  Serial.printf("[label] probe_id=%s ap_ssid=%s ap_password=%s\n",
+                g_probeId.c_str(), g_apSsid.c_str(), g_apPass.c_str());
 
   // Sensor init.
 #if defined(SENSOR_MAX31855)

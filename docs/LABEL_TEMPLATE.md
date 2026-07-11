@@ -18,7 +18,7 @@ Wi-Fi password, and (c) scan a QR to the setup page.
 |---|-------|----------------|--------|
 | 1 | **Probe ID** (human-readable) | `ThermaProbe-<HEX6>` — UPPERCASE hex of the last 3 MAC bytes, e.g. `ThermaProbe-9A3F2C` | `factory_flash.py` `Probe ID` |
 | 2 | **Setup Wi-Fi (SSID)** | `ThermaProbe-<HEX6>` (same string as Probe ID); WPA2 | `factory_flash.py` `Setup Wi-Fi` |
-| 3 | **Setup Wi-Fi password** | `TP-<HEX8>` — `TP-` + UPPERCASE hex of the last 4 MAC bytes, e.g. `TP-289A3F2C` (11-char WPA2 key) | `factory_flash.py` `Setup pass` |
+| 3 | **Setup Wi-Fi password** | `TP-<HEX16>` — a **per-unit random** 64-bit WPA2 key (19 chars), generated once at first boot and printed on the serial `[label]` line. **Not** derivable from the MAC. | `factory_flash.py` `Setup pass` (auto-captured with pyserial, else read from serial) |
 | 4 | **Provision secret** (`X-Provision-Secret`) | Per-unit secret gating `POST /provision`. Print only if the unit is locked (secret written to NVS `prov_secret`); otherwise print `—` | maker-generated per unit |
 | 5 | **Setup QR** | QR encoding the setup page URL (see below) | printed |
 | 6 | **Hostname** (optional, small print) | `thermaprobe-<hex6>.local` (lowercase) | `factory_flash.py` `Hostname` |

@@ -29,14 +29,15 @@ and medium severity, but a maker shipping to customers should plan to address th
    **turn on `ui_auth`** (config or `UI_USERNAME`/`UI_PASSWORD`). Recipient emails and SMTP host/user
    entered in Settings are visible to anyone who can open the dashboard — gate it with `ui_auth`.
 
-2. **Probe SoftAP password is derived from the MAC (firmware).** The setup Wi-Fi SSID
-   (`ThermaProbe-<hex>`) reveals the last 3 MAC bytes, and the WPA2 password is derived from the
-   last 4 — so the setup-network key has low effective entropy and a captured handshake is
-   crackable. During setup the probe transmits the user's home Wi-Fi credentials over plain HTTP on
-   that network. **Recommended fix:** provision a full-entropy random AP password at flash time
-   (printed on the unit label/QR) instead of deriving it from MAC bytes — see
-   `firmware/factory_flash.py` and `deriveIdentity()` in `firmware/src/main.cpp`. **Interim
-   mitigation:** the setup window is brief; perform first-time Wi-Fi setup away from untrusted RF.
+2. **Probe SoftAP password (firmware) — FIXED, pending a hardware build test.** Earlier the WPA2
+   setup-network key was derived from the MAC (which the SSID partly exposes), making a captured
+   handshake crackable. The firmware now generates a **per-unit 64-bit random** password once at
+   first boot, stores it in NVS, and prints it on the serial `[label]` line for the factory tool to
+   put on the unit label (`ensureApPassword()` in `firmware/src/main.cpp`; captured by
+   `firmware/factory_flash.py`). Note: the setup page still transmits the home Wi-Fi credentials over
+   plain HTTP within that WPA2-protected SoftAP — acceptable given a strong random key, but do first
+   setup away from untrusted RF. **Like all firmware changes here, this must be validated with a real
+   PlatformIO build + flash + bench test before manufacturing.**
 
 3. **Probe `/provision` is unauthenticated by default (firmware).** To keep zero-touch plug-and-play
    working, the probe accepts `/provision` (which sets its ingest `server_url`) without a secret

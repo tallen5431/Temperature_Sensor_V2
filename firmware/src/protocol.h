@@ -75,10 +75,11 @@
 //   hostname  = "thermaprobe-" + lowercase(HEX6) e.g. "thermaprobe-9a3f2c"
 //               (advertised as thermaprobe-9a3f2c.local.)
 //   SoftAP SSID = "ThermaProbe-" + HEX6          (same as probe_id)
-//   AP password = "TP-" + UPPERCASE hex of the LAST 4 MAC bytes (8 hex chars)
-//                 -> 11-char WPA2 key, e.g. "TP-289A3F2C".  factory_flash.py
-//                 computes the identical string from esptool's read_mac so the
-//                 printed unit label always matches what the firmware runs.
+//   AP password = "TP-" + 16 random hex chars (64-bit), generated ONCE at first
+//                 boot and stored in NVS -> 19-char WPA2 key. It is deliberately
+//                 NOT derived from the MAC (the SSID already exposes MAC bytes).
+//                 The firmware prints it on the boot "[label]" line so
+//                 factory_flash.py can put it on the unit label. See ensureApPassword().
 //
 // The probe_id is echoed three ways that MUST all agree at runtime:
 //   * mDNS TXT  id=<probe_id>
