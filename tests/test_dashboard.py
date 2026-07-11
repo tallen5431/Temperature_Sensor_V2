@@ -1,7 +1,7 @@
 """Tests for the dashboard computation (components.dashboard_view.build_dashboard)."""
 import datetime
 
-from components.dashboard_view import build_dashboard
+from components.dashboard_view import build_dashboard, build_probe_stats
 from core.config import Config
 from core.db import Database
 
@@ -108,3 +108,37 @@ def test_reporting_probe_count_deep_sleep_not_flickering(tmp_path):
     db.append(ninety_s_ago, 22.0, 71.6, "sleepy")   # 90 s > old 60 s bar
     out = build_dashboard(db, cfg, FakeFinder(), "24h", "celsius")
     assert out[2] == "1"  # counts under the interval-aware / 5-min freshness window
+
+
+def test_probe_stats_single_probe_is_empty(tmp_path):
+    # One probe: the global Min/Max/Avg row already covers it, so the per-probe
+    # breakdown renders nothing (no redundant clutter).
+    db = Database(tmp_path / "d.db")
+    cfg = Config(tmp_path / "c.json")
+    for i in range(3):
+        db.append(_iso(datetime.datetime.now()), 20.0 + i, 0.0, "solo")
+    assert build_probe_stats(db, cfg, "24h", "celsius") == []
+
+
+def test_probe_stats_multi_probe_renders(tmp_path):
+    # Two probes of different ranges: the per-probe breakdown appears and keeps
+    # each probe's stats separate (no meaningless cross-probe average).
+    db = Database(tmp_path / "d.db")
+    cfg = Config(tmp_path / "c.json")
+    cfg.update({"probe_names": {"A": "Freezer", "B": "Room"}})
+    now = datetime.datetime.now()
+    for t in (-20.0, -18.0, -16.0):
+        db.append(_iso(now), t, 0.0, "A")
+    for t in (20.0, 22.0, 24.0):
+        db.append(_iso(now), t, 0.0, "B")
+    out = build_probe_stats(db, cfg, "24h", "celsius")
+    assert out != []  # rendered for 2+ probes
+    # Both friendly names appear somewhere in the rendered component tree.
+    text = str(out)
+    assert "Freezer" in text and "Room" in text
+
+
+def test_probe_stats_empty_db(tmp_path):
+    db = Database(tmp_path / "d.db")
+    cfg = Config(tmp_path / "c.json")
+    assert build_probe_stats(db, cfg, "24h", "celsius") == []

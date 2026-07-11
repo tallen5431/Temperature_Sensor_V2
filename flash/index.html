@@ -11,7 +11,7 @@
     http://localhost), so a plain file:// open will show the "not supported" note.
 
     Before this page can flash anything you must generate the firmware binary it
-    points at (flash/manifest.json → tempsensor-esp32.merged.bin). See flash/README.md
+    points at (flash/manifest.json → tempsensor-esp32c3.merged.bin). See flash/README.md
     (run flash/build_merged_bin.sh). The binary is intentionally NOT committed.
   -->
   <script
@@ -53,14 +53,14 @@
 <body>
   <main class="card">
     <h1>Flash your <span class="brand">TempSensor</span></h1>
-    <p class="sub">Put the firmware on an ESP32 board straight from your browser — no
+    <p class="sub">Put the firmware on an ESP32-C3 board straight from your browser — no
       Arduino IDE, no toolchain, no installs.</p>
 
     <p><strong>You'll need:</strong> a desktop Chrome, Edge, or Opera browser, and an
-      ESP32 board connected to this computer with a USB-C data cable.</p>
+      ESP32-C3 board connected to this computer with a USB-C data cable.</p>
 
     <ol>
-      <li>Plug the ESP32 board into a USB port on this computer.</li>
+      <li>Plug the ESP32-C3 board into a USB port on this computer.</li>
       <li>Click <strong>Flash TempSensor</strong> below and pick the board's serial
         port when prompted. (If nothing appears, use a different USB cable — many are
         charge-only — or install the CP210x / CH340 USB-serial driver for your board.)</li>

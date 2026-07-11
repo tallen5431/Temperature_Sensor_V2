@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the hover "lift" is limited to the interactive probe cards instead of every card.
 
 ### Added
+- **Per-probe Min / Avg / Max statistics** — when 2+ probes have data, the dashboard adds a per-probe
+  statistics breakdown below the overall row, so a mixed deployment isn't collapsed into one
+  meaningless aggregate (an "average" across a −18 °C freezer and a 22 °C room is nonsense). A
+  single-probe deployment is unchanged — the global row already tells the whole story. Backed by a new
+  `Database.stats_per_probe()` query.
 - **Per-probe status cards on the dashboard** — one card per probe showing its current temperature and
   an at-a-glance **OK / HIGH / LOW / stale** state (colour-coded, with a freshness age), so a
   multi-probe deployment is legible at a glance instead of a single gauge showing whichever probe
@@ -42,6 +47,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the online timeout, the alert monitor's `offline_after_sec` (default 5 min — so the dashboard and the
   offline **alerts** now agree), and ~2.5× the probe's configured reporting interval. A typical
   deep-sleep probe now stays "connected" between wakes with no per-probe configuration.
+- **Browser flasher now targets the ESP32-C3 we actually ship on.** `flash/manifest.json` declared
+  `chipFamily: "ESP32"` (classic), so ESP Web Tools would **refuse to flash** a C3 board. It now
+  declares **`ESP32-C3`**, `build_merged_bin.sh` compiles for the C3 with the **No-OTA (2MB APP / 2MB
+  SPIFFS)** partition scheme and prefers the core's own chip-correct merged image, and the
+  manual-flash / `factory_flash.py` FQBN defaults follow suit. (Browser flashing writes the whole
+  image over USB serial, so the no-OTA scheme flashes fine — OTA only concerns wireless updates.)
 - **Rebranded to `TempSensor`** — the hub, the probe, the firmware, the Prometheus metric prefix
   (`tempsensor_*`), the MQTT base topic, and all documentation now use **TempSensor** in place of
   ThermaHub/ThermaProbe. The probe's setup-AP SSID and probe ID become **`TempSensor-<HEX6>`**.
@@ -55,7 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Browser-based firmware flashing** (`flash/`) — an [ESP Web Tools](https://esphome.github.io/esp-web-tools/)
-  page that flashes the TempSensor firmware onto an ESP32 from Chrome/Edge with no toolchain,
+  page that flashes the TempSensor firmware onto an ESP32-C3 from Chrome/Edge with no toolchain,
   plus `build_merged_bin.sh` to produce the merged image and a README for hosting it (GitHub
   Pages). The lowest-friction on-ramp for kit/BYO-hardware hobbyists. (Binary is generated, not
   committed; needs a hardware bench build.)

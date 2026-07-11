@@ -54,15 +54,17 @@ See **`docs/ASSEMBLY.md`** (wiring, battery, enclosure) and **`docs/BOM.md`**
 
 **DS18B20 (the only supported sensor)**
 
-| DS18B20 | ESP32 |
-|---------|-------|
+| DS18B20 | ESP32-C3 |
+|---------|----------|
 | VDD (red)    | 3V3 |
 | GND (black)  | GND |
 | DATA (yellow)| **GPIO5** (`ONE_WIRE_BUS`) |
 
 Add a **4.7 kΩ pull-up** from DATA to 3V3 (required for 1-Wire).
 
-Status LED: **GPIO2** (`LED_BUILTIN` / on-board LED on most dev boards).
+Status LED: the board's `LED_BUILTIN` (on-board LED — GPIO8 on most ESP32-C3
+dev boards). The firmware auto-disables the LED if it would collide with the
+DS18B20 pin, so no wiring change is needed.
 
 > MAX31855 thermocouple and SHT4x temp+humidity pin maps exist in `protocol.h`
 > but are **future/optional and not implemented in the current firmware** — the
@@ -73,13 +75,16 @@ Status LED: **GPIO2** (`LED_BUILTIN` / on-board LED on most dev boards).
 With `arduino-cli` (run from the sketch directory `esp32_temp_probe/`):
 
 ```bash
-arduino-cli compile --fqbn esp32:esp32:esp32 .
-arduino-cli upload -p <PORT> --fqbn esp32:esp32:esp32 .
+# ESP32-C3 with the No-OTA (2MB APP/2MB SPIFFS) partition scheme baked in, so the
+# sketch fits without touching any IDE menu. Swap the board if your unit differs.
+FQBN=esp32:esp32:esp32c3:PartitionScheme=no_ota
+arduino-cli compile --fqbn "$FQBN" .
+arduino-cli upload -p <PORT> --fqbn "$FQBN" .
 arduino-cli monitor -p <PORT> -c baudrate=115200      # serial console
 ```
 
 Or open `esp32_temp_probe/esp32_temp_probe.ino` in the **Arduino IDE**, select
-the ESP32 board + the "No OTA (2MB APP/2MB SPIFFS)" partition scheme, and upload.
+your ESP32-C3 board + the "No OTA (2MB APP/2MB SPIFFS)" partition scheme, and upload.
 
 Or use the guided factory helper (flash + capture the unit label + QC prompts):
 
