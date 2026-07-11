@@ -3,6 +3,9 @@
 The [`release`](../.github/workflows/release.yml) workflow builds one-click
 installers for Windows, macOS and Linux and attaches them to a GitHub Release.
 
+> **New to this?** [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md) is the
+> step-by-step readiness list — dry-run, on-device testing, then signing.
+
 **To cut a release:** push a tag, e.g.
 ```bash
 git tag v2.4.0 && git push origin v2.4.0
