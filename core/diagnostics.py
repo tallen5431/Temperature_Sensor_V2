@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import datetime
 import os
+import shutil
 from typing import Any, Dict, List, Optional
+
+from core.applog import HEALTH, PROCESS_START
 
 
 def _int(v: Any, default: int) -> int:
@@ -82,6 +85,20 @@ def build_diagnostics(cfg, db, finder, public_base: str, version: str,
     email = notif.get("email", {}) or {}
     webhook = notif.get("webhook", {}) or {}
 
+    # --- System health: is the appliance actually recording, and is there room? --
+    health = HEALTH.snapshot()
+    db_path = getattr(db, "path", None)
+    disk_free = None
+    try:
+        if db_path:
+            disk_free = shutil.disk_usage(os.path.dirname(str(db_path)) or ".").free
+    except OSError:
+        disk_free = None
+    try:
+        readings_24h = db.window_stats(86400).get("count")
+    except Exception:
+        readings_24h = None
+
     return {
         "product": product,
         "version": version,
@@ -94,6 +111,16 @@ def build_diagnostics(cfg, db, finder, public_base: str, version: str,
             "path": getattr(db, "path", None),
         },
         "probes": {"total": len(probe_list), "online": online, "list": probe_list},
+        "health": {
+            "healthy": health["healthy"],
+            "uptime_sec": max(0, int(now - PROCESS_START)),
+            "disk_free_bytes": disk_free,
+            "readings_24h": readings_24h,
+            "rows_written": health["rows_written"],
+            "ingest_rejected": health["ingest_rejected"],
+            "write_failures": health["write_failures"],
+            "last_write_age_sec": health["last_write_age_sec"],
+        },
         "retention_days": _int(cfg.get("retention_days", 0), 0),
         "notifications": {
             "enabled": bool(notif.get("enabled")),

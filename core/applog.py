@@ -102,3 +102,6 @@ class HealthState:
 
 # A single process-wide health object other modules can import.
 HEALTH = HealthState()
+
+# Wall-clock time the process started, for an uptime readout on the health panel.
+PROCESS_START = time.time()

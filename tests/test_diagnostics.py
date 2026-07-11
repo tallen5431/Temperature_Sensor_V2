@@ -91,3 +91,17 @@ def test_build_survives_broken_db():
     d = build_diagnostics({}, _BoomDB(), _FakeFinder({}), "", "2.2.1", "Temperature Hub", now=1.0)
     assert d["database"]["readings"] is None
     assert d["probes"]["total"] == 0
+
+
+def test_build_includes_health_block(tmp_path):
+    import datetime
+    from core.db import Database
+    db = Database(tmp_path / "h.db")
+    db.append(datetime.datetime.now().isoformat(timespec="seconds"), 22.0, 71.6, "A")
+    d = build_diagnostics({}, db, _FakeFinder({}), "http://hub", "2.4.0", "TempSensor")
+    h = d["health"]
+    assert {"healthy", "uptime_sec", "disk_free_bytes", "readings_24h", "rows_written",
+            "ingest_rejected", "write_failures", "last_write_age_sec"} <= set(h)
+    assert h["uptime_sec"] >= 0
+    assert h["readings_24h"] == 1
+    assert isinstance(h["disk_free_bytes"], int)  # real path -> real free space

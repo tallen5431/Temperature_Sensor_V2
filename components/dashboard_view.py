@@ -5,9 +5,10 @@ import time
 import dash_bootstrap_components as dbc
 import pandas as pd
 import plotly.graph_objs as go
-from dash import Input, Output, dcc, html, no_update
+from dash import Input, Output, State, dcc, html, no_update
 
 from core.storage import threshold_breach
+from core.demo import has_demo_data, load_demo_data, clear_demo_data
 
 log = logging.getLogger("hub.dashboard")
 
@@ -119,11 +120,12 @@ GraphCard = dbc.Card(
         ], className="mb-2 align-items-center"),
         html.Small(id="time-range-info", className="text-muted d-block mb-2"),
         dcc.Graph(id="graph-temp", style={"height": "360px"}),
-        html.Div(
+        html.Div([
+            dbc.Button("⤓ Export…", id="export-open", color="secondary", outline=True,
+                       size="sm", className="mt-2 me-2"),
             dbc.Button("📥 Download CSV", id="download-btn", color="secondary", size="sm",
                        className="mt-2", external_link=True, href="/download/temperature_log.csv"),
-            className="text-end",
-        ),
+        ], className="text-end"),
         html.Small(id="heartbeat", className="text-muted mt-2 d-block"),
         dcc.Interval(id="dash-refresh", interval=5000, n_intervals=0),
     ]),
@@ -143,12 +145,26 @@ def _onboarding_card():
                 html.Li("It appears on the Devices page within ~20 seconds and readings begin."),
             ], className="mb-2"),
             html.Hr(),
-            html.P(["Just exploring? Send a test reading from a terminal: ",
+            html.P(["Just exploring? Load a day of sample readings to try everything out — "
+                    "the dashboard, charts, export and per-probe views — no hardware needed."],
+                   className="mb-2 small"),
+            dbc.Button("▶ Load demo data", id="demo-load-btn", color="info", size="sm"),
+            html.P(["Or send a real test reading from a terminal: ",
                     html.Code("curl \"http://localhost:8088/api/ingest?temperature_c=22.3\"")],
-                   className="mb-0 small"),
+                   className="mb-0 mt-2 small"),
         ],
         color="info", className="mb-3",
     )
+
+
+def _demo_alert():
+    """Persistent reminder + one-click cleanup shown while demo data is loaded."""
+    return dbc.Alert([
+        html.Span("🧪 Demo data is loaded — these are sample readings, not a real probe."),
+        dbc.Button("Clear demo data", id="demo-clear-btn", color="warning", outline=True,
+                   size="sm", className="ms-3 flex-shrink-0"),
+    ], color="warning",
+        className="mb-3 d-flex align-items-center justify-content-between")
 
 
 # Focus selector — "All probes" (overview) or drill into a single probe. When a
@@ -166,10 +182,44 @@ FocusBar = dbc.Row([
     ),
 ], className="mb-3 justify-content-end")
 
+# Hub's local timezone label, shown so a user knows what the on-screen and
+# exported local timestamps mean (the CSV also carries an unambiguous UTC column).
+try:
+    _TZ_NAME = datetime.datetime.now().astimezone().tzname() or "local time"
+except Exception:
+    _TZ_NAME = "local time"
+
+# Export dialog: pick a probe and an optional absolute date range, then download.
+ExportModal = dbc.Modal([
+    dbc.ModalHeader(dbc.ModalTitle("Export data (CSV)")),
+    dbc.ModalBody([
+        html.Small("Probe", className="text-muted d-block"),
+        dbc.Select(id="export-probe", value="all",
+                   options=[{"label": "All probes", "value": "all"}], className="mb-3"),
+        dbc.Row([
+            dbc.Col([html.Small("From", className="text-muted d-block"),
+                     dbc.Input(id="export-from", type="date")], md=6),
+            dbc.Col([html.Small("To", className="text-muted d-block"),
+                     dbc.Input(id="export-to", type="date")], md=6),
+        ], className="g-2"),
+        html.Small(f"Leave dates blank to export everything. Dates are in the hub's "
+                   f"local time ({_TZ_NAME}); the CSV also includes a UTC column.",
+                   className="text-muted d-block mt-2"),
+    ]),
+    dbc.ModalFooter([
+        dbc.Button("Cancel", id="export-cancel", color="secondary", className="me-2"),
+        dbc.Button("⬇ Download CSV", id="export-download", color="primary",
+                   external_link=True, href="/download/temperature_log.csv"),
+    ]),
+], id="export-modal", is_open=False)
+
+
 # --- Dashboard Layout ---
 DashboardLayout = html.Div([
     dcc.Store(id="temp-unit-store", storage_type="local", data="celsius"),
     html.Div(id="dashboard-onboarding"),
+    html.Div(id="demo-banner"),
+    ExportModal,
     FocusBar,
     MetricsRow,
     AlertsRow,
@@ -566,6 +616,46 @@ def register_dashboard_callbacks(app, finder, cfg, db):
             return None
 
     @app.callback(
+        Output("demo-banner", "children"),
+        Input("dash-refresh", "n_intervals"),
+    )
+    def _demo_banner(_n):
+        try:
+            return _demo_alert() if has_demo_data(db) else []
+        except Exception:
+            return []
+
+    @app.callback(
+        Output("demo-banner", "children", allow_duplicate=True),
+        Input("demo-load-btn", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def _load_demo(n):
+        if not n:
+            return no_update
+        try:
+            load_demo_data(db, cfg)
+            return _demo_alert()
+        except Exception:
+            log.exception("demo data load failed")
+            return no_update
+
+    @app.callback(
+        Output("demo-banner", "children", allow_duplicate=True),
+        Input("demo-clear-btn", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def _clear_demo(n):
+        if not n:
+            return no_update
+        try:
+            clear_demo_data(db, cfg)
+            return []
+        except Exception:
+            log.exception("demo data clear failed")
+            return no_update
+
+    @app.callback(
         Output("temp-unit-store", "data"),
         Input("unit-celsius", "n_clicks"),
         Input("unit-fahrenheit", "n_clicks"),
@@ -593,10 +683,62 @@ def register_dashboard_callbacks(app, finder, cfg, db):
     @app.callback(
         Output("download-btn", "href"),
         Input("time-range-selector", "value"),
+        Input("focus-probe-selector", "value"),
     )
-    def _csv_link(time_range):
+    def _csv_link(time_range, focus_probe):
+        # "Download CSV" exports exactly what you're viewing: the selected time
+        # range and, in focus mode, just that probe.
+        from urllib.parse import quote
         tr = time_range or "24h"
-        return "/download/temperature_log.csv" + ("" if tr == "all" else f"?window={tr}")
+        params = []
+        if tr != "all":
+            params.append(f"window={tr}")
+        if focus_probe and focus_probe != "all":
+            params.append("probe=" + quote(str(focus_probe)))
+        return "/download/temperature_log.csv" + (("?" + "&".join(params)) if params else "")
+
+    @app.callback(
+        Output("export-modal", "is_open"),
+        Input("export-open", "n_clicks"),
+        Input("export-cancel", "n_clicks"),
+        State("export-modal", "is_open"),
+        prevent_initial_call=True,
+    )
+    def _toggle_export(_open, _cancel, is_open):
+        return not is_open
+
+    @app.callback(
+        Output("export-probe", "options"),
+        Input("export-open", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def _export_probe_options(_n):
+        opts = [{"label": "All probes", "value": "all"}]
+        try:
+            latest = db.latest_per_probe(window_seconds=30 * 86400)
+            pids = [p for p in latest["probe_id"].tolist() if str(p).strip()]
+            for pid in sorted(pids, key=lambda p: _friendly_name(cfg, p).lower()):
+                opts.append({"label": _friendly_name(cfg, pid), "value": pid})
+        except Exception:
+            pass
+        return opts
+
+    @app.callback(
+        Output("export-download", "href"),
+        Input("export-probe", "value"),
+        Input("export-from", "value"),
+        Input("export-to", "value"),
+    )
+    def _export_href(probe, date_from, date_to):
+        from urllib.parse import quote
+        params = []
+        if probe and probe != "all":
+            params.append("probe=" + quote(str(probe)))
+        if date_from:
+            params.append("from=" + quote(str(date_from)))
+        if date_to:
+            params.append("to=" + quote(str(date_to)))
+        return "/download/temperature_log.csv" + (("?" + "&".join(params)) if params else "")
 
     @app.callback(
         Output("probes-row", "children"),
