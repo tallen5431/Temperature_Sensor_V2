@@ -33,6 +33,19 @@ import pandas as pd
 _SELECT_COLS = "ts AS timestamp, temperature_c, temperature_f, probe_id"
 
 
+def _csv_safe(value) -> str:
+    """Neutralise spreadsheet formula injection in an exported CSV cell.
+
+    A cell that begins with ``= + - @`` (or a leading tab/CR) is treated as a
+    formula by Excel/Sheets; prefixing it with a single quote makes it plain
+    text. Applied to the free-form string columns of the export.
+    """
+    s = "" if value is None else str(value)
+    if s and s[0] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + s
+    return s
+
+
 def iso_to_epoch(ts: str) -> int:
     """Convert a local-naive ISO timestamp to a POSIX epoch (seconds).
 
@@ -291,8 +304,8 @@ class Database:
         ):
             hum = "" if r["humidity_pct"] is None else f"{r['humidity_pct']:.2f}"
             vpd = "" if r["vpd_kpa"] is None else f"{r['vpd_kpa']:.3f}"
-            writer.writerow([r["ts"], f"{r['temperature_c']:.3f}", f"{r['temperature_f']:.3f}",
-                             r["probe_id"], hum, vpd])
+            writer.writerow([_csv_safe(r["ts"]), f"{r['temperature_c']:.3f}",
+                             f"{r['temperature_f']:.3f}", _csv_safe(r["probe_id"]), hum, vpd])
             n += 1
         return n
 

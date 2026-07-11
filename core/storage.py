@@ -11,6 +11,23 @@ from __future__ import annotations
 
 import datetime
 import math
+import re
+
+# A probe id is a short token. A real ThermaProbe sends "ThermaProbe-<HEX6>";
+# this bounds anything a buggy/malicious LAN client might POST so an arbitrary
+# value can never reach the database, the CSV export, or an MQTT topic.
+_PROBE_ID_STRIP = re.compile(r"[^A-Za-z0-9_-]")
+
+
+def sanitize_probe_id(probe_id) -> str:
+    """Coerce a probe id to a safe token: keep ``[A-Za-z0-9_-]``, cap at 32 chars.
+
+    Valid ids (``ThermaProbe-9A3F2C``) pass through unchanged; junk is stripped.
+    Returns ``""`` if nothing valid remains (treated as an anonymous reading).
+    """
+    if not probe_id:
+        return ""
+    return _PROBE_ID_STRIP.sub("", str(probe_id))[:32]
 
 
 def _local_iso_now() -> str:
