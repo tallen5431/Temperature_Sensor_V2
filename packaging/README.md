@@ -3,6 +3,13 @@
 Build a **self-contained folder** customers can run without installing Python.
 Built with [PyInstaller](https://pyinstaller.org/).
 
+> **One-click installers.** For end users, the [`release`](../.github/workflows/release.yml)
+> workflow turns this bundle into a **Windows `.exe` installer**, a **macOS `.dmg`**,
+> and a **Linux `.tar.gz`**, attached to a GitHub Release — see
+> [`../docs/INSTALL.md`](../docs/INSTALL.md) (users) and
+> [`../docs/RELEASE_SIGNING.md`](../docs/RELEASE_SIGNING.md) (how to sign/notarize
+> them). The rest of this file covers the raw bundle + service install.
+
 This is a **onedir** build: the output is `dist/temperature-hub/` containing the
 `temperature-hub` executable plus an `_internal/` folder of dependencies. Onedir
 (rather than one-file) keeps the LGPL-licensed `zeroconf` module as replaceable
@@ -31,11 +38,21 @@ REM -> dist\temperature-hub\   (run dist\temperature-hub\temperature-hub.exe)
 Then run the executable and open <http://localhost:8088>.
 
 ### Where data lives
-When frozen, the hub writes `config.json`, `temperature_log.db`, and `logs/`
-**next to the executable** (inside the distribution folder), so data persists
-across restarts. Override with the `DATA_DIR` environment variable (recommended
-for service installs — point it at a dedicated writable directory). The bundled
-`config.example.json` seeds `config.json` on first run.
+When frozen, the hub keeps `config.json`, `temperature_log.db`, and `logs/` in a
+**per-user, writable directory** so a copy installed in a read-only location
+(Program Files, `/Applications`) works without admin rights:
+
+| OS | Default data directory |
+| --- | --- |
+| Windows | `%LOCALAPPDATA%\TempSensor` |
+| macOS | `~/Library/Application Support/TempSensor` |
+| Linux | `~/.local/share/TempSensor` (or `$XDG_DATA_HOME/TempSensor`) |
+
+Override with the `DATA_DIR` environment variable (recommended for service
+installs — point it at a dedicated writable directory). For backward
+compatibility, a "portable" bundle that already has a `config.json`/
+`temperature_log.db` **next to the executable** keeps using that folder. The
+bundled `config.example.json` seeds `config.json` on first run.
 
 ## Install as a service (auto-start on boot, restart on crash)
 

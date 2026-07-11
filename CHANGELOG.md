@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **One-click installers + a release pipeline.** A new `release` GitHub Actions workflow builds a
+  **Windows `.exe` installer** (Inno Setup), a **macOS `.dmg`** (`.app` bundle), and a **Linux
+  `.tar.gz`** on native runners and attaches them to a GitHub Release when you push a `v*` tag. The
+  installers are **code-signed and (on macOS) notarized** when signing secrets are configured, and
+  build unsigned otherwise. The frozen app now stores its data in a **per-user directory**
+  (`%LOCALAPPDATA%` / `~/Library/Application Support` / `~/.local/share`) so it runs from a read-only
+  install location without admin rights, and **opens the dashboard in the browser on launch**. See
+  `docs/INSTALL.md` (users) and `docs/RELEASE_SIGNING.md` (maintainers).
 - **Smarter CSV export.** "Download CSV" now exports exactly what you're viewing — the selected time
   range and, in focus mode, just that probe. A new **Export** dialog adds a custom **date range** and
   **per-probe** selection. Backed by `Database.export_csv(probe_id=…, start_epoch=…, end_epoch=…)` and
