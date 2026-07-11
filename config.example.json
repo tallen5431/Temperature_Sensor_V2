@@ -1,0 +1,55 @@
+{
+  "interval_sec": 5,
+  "pull_enabled": true,
+  "auto_provision": true,
+  "provision_token": "",
+  "probe_online_timeout_sec": 60,
+  "retention_days": 0,
+  "alert_freshness_sec": 600,
+  "offline_after_sec": 300,
+  "alert_hysteresis_c": 0.5,
+  "probe_names": {},
+  "alert_thresholds": {},
+  "calibration_offsets": {},
+  "settings": {
+    "vpd_leaf_offset_c": 0.0
+  },
+  "notifications": {
+    "enabled": false,
+    "cooldown_sec": 1800,
+    "notify_recovery": true,
+    "offline_alerts": true,
+    "email": {
+      "enabled": false,
+      "smtp_host": "",
+      "smtp_port": 587,
+      "use_tls": true,
+      "username": "",
+      "password": "",
+      "from": "",
+      "to": ""
+    },
+    "webhook": {
+      "enabled": false,
+      "url": ""
+    }
+  },
+  "ui_auth": {
+    "enabled": false,
+    "username": "",
+    "password": ""
+  },
+  "metrics": {
+    "enabled": true
+  },
+  "mqtt": {
+    "enabled": false,
+    "host": "localhost",
+    "port": 1883,
+    "username": "",
+    "password": "",
+    "base_topic": "thermahub",
+    "discovery_prefix": "homeassistant",
+    "discovery_enabled": true
+  }
+}

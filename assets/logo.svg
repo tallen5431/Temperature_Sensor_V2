@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" role="img" aria-label="ThermaHub logo">
+  <defs>
+    <linearGradient id="thg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#00e5ff"/>
+      <stop offset="1" stop-color="#00838f"/>
+    </linearGradient>
+  </defs>
+  <!-- thermometer body -->
+  <path d="M24 6a5 5 0 0 0-5 5v16.1a9 9 0 1 0 10 0V11a5 5 0 0 0-5-5z"
+        fill="none" stroke="url(#thg)" stroke-width="3"/>
+  <!-- mercury -->
+  <circle cx="24" cy="35" r="5.5" fill="url(#thg)"/>
+  <rect x="22.2" y="16" width="3.6" height="16" rx="1.8" fill="url(#thg)"/>
+  <!-- wireless waves -->
+  <path d="M33 12a6 6 0 0 1 0 8" fill="none" stroke="#00e5ff" stroke-width="2" stroke-linecap="round" opacity="0.9"/>
+  <path d="M36.5 9a10.5 10.5 0 0 1 0 14" fill="none" stroke="#00e5ff" stroke-width="2" stroke-linecap="round" opacity="0.55"/>
+</svg>

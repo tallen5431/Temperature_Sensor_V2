@@ -5,7 +5,7 @@
 DEVICE_IP=${1:-"192.168.1.229"}
 DEVICE_PORT=${2:-80}
 INTERVAL_MS=${3:-2000}
-HUB_PORT=${4:-8080}
+HUB_PORT=${4:-8088}
 
 echo "Provisioning device at $DEVICE_IP:$DEVICE_PORT with interval $INTERVAL_MS ms..."
 

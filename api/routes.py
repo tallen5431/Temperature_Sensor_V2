@@ -1,30 +1,80 @@
 from __future__ import annotations
-from flask import Blueprint, request, jsonify
-from typing import Any, Dict, List, Tuple, Callable
-from pathlib import Path
-import os, csv, datetime
 
-from auto_provision import provision_probe
-from core.storage import normalize_payload, append_row
+import datetime
+import hmac
+import time
+from typing import Any, Callable, Dict, List, Tuple
+
+from flask import Blueprint, jsonify, request
+
+from provisioning import provision_probe
+from core.diagnostics import build_diagnostics
+from core.storage import normalize_payload, extract_humidity, compute_vpd
+from core.version import HUB_VERSION, PRODUCT_NAME
+from core.applog import HEALTH, get_logger
+from core.metrics import LATEST
+from core.mqtt_publish import MQTT
+from core.audit import AUDIT
+
+log = get_logger("api")
+
+# A probe is considered "online" if it has been seen within this many seconds.
+DEFAULT_ONLINE_TIMEOUT_SEC = 60
+
+# Reject absurdly large ingest bodies (DoS / disk-fill protection).
+MAX_INGEST_BYTES = 64 * 1024
+
+# Config keys whose values must never be returned over the API.
+_SECRET_KEYS = ("provision_token", "server_token", "token", "secret", "password")
 
 
-def create_api(cfg: Any, csv_path: str, discovery: Any, public_base: Callable[[], str], server_token: str = "") -> Blueprint:
+def _redact(data, _parent: str = ""):
+    """Return a deep copy with secret values masked.
+
+    Recurses into nested dicts/lists so secrets that live in sub-trees
+    (``notifications.email.smtp_password``, ``notifications.webhook.url`` — a
+    bearer token in the path) are masked, not just top-level keys. The dashboard
+    is open on the LAN by default, so ``GET /api/config`` must never echo a secret.
+    """
+    if isinstance(data, dict):
+        out = {}
+        for k, v in data.items():
+            kl = str(k).lower()
+            is_secret = any(s in kl for s in _SECRET_KEYS)
+            # A webhook URL carries its auth in the path/query — treat as a secret.
+            if kl == "url" and "webhook" in str(_parent).lower():
+                is_secret = True
+            if is_secret and not isinstance(v, (dict, list)):
+                out[k] = "***set***" if v else ""
+            else:
+                out[k] = _redact(v, kl) if isinstance(v, (dict, list)) else v
+        return out
+    if isinstance(data, list):
+        return [_redact(x, _parent) for x in data]
+    return data
+
+
+def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str],
+               server_token: str = "") -> Blueprint:
     bp = Blueprint("api", __name__, url_prefix="/api")
 
     TOKEN = (server_token or "").strip()
-    CSV_PATH = Path(csv_path)
 
-    # --- authentication helper ---
-    if not TOKEN:
-        def _check_auth() -> bool:
+    # --- authentication helper (constant-time comparison) ---
+    def _check_auth() -> bool:
+        if not TOKEN:
             return True
-    else:
-        def _check_auth() -> bool:
-            tok = request.headers.get("X-Token") or request.args.get("token")
-            if not tok and request.is_json:
-                data = request.get_json(silent=True) or {}
-                tok = data.get("token")
-            return tok == TOKEN
+        tok = request.headers.get("X-Token") or request.args.get("token")
+        if not tok and request.is_json:
+            data = request.get_json(silent=True) or {}
+            tok = data.get("token")
+        return bool(tok) and hmac.compare_digest(str(tok), TOKEN)
+
+    def _online_timeout() -> int:
+        try:
+            return int(cfg.get("probe_online_timeout_sec", DEFAULT_ONLINE_TIMEOUT_SEC))
+        except Exception:
+            return DEFAULT_ONLINE_TIMEOUT_SEC
 
     # --- discovery listing ---
     def _iter_probes() -> List[Dict[str, Any]]:
@@ -34,6 +84,8 @@ def create_api(cfg: Any, csv_path: str, discovery: Any, public_base: Callable[[]
             vals = discovery.list_probes().values()
         except Exception:
             vals = []
+        timeout = _online_timeout()
+        now = time.time()
         out: List[Dict[str, Any]] = []
         for obj in vals:
             is_dict = isinstance(obj, dict)
@@ -44,110 +96,89 @@ def create_api(cfg: Any, csv_path: str, discovery: Any, public_base: Callable[[]
             port = get("port", 80) or 80
             name = get("name") or get("id") or props.get("name")
             pid = props.get("id") or get("probe_id") or get("id") or name
+            last_seen = get("last_seen")
+            age = None
+            try:
+                if isinstance(last_seen, (int, float)):
+                    age = max(0.0, now - float(last_seen))
+            except Exception:
+                age = None
             out.append({
                 "host": host,
                 "ip": ip,
                 "port": port,
                 "name": name,
                 "probe_id": pid,
-                "last_seen": get("last_seen")
+                "last_seen": last_seen,
+                "age_sec": round(age, 1) if age is not None else None,
+                "online": (age is not None and age <= timeout),
             })
-        # stable sort by name/ip for UI consistency
         return sorted(out, key=lambda p: (p.get("name") or "", p.get("ip") or ""))
 
     # --- endpoints ---
     @bp.get("/health")
     def health():
+        probes = _iter_probes()
         return jsonify(
             ok=True,
-            probes=len(_iter_probes()),
+            version=HUB_VERSION,
+            product=PRODUCT_NAME,
+            probes=len(probes),
+            probes_online=sum(1 for p in probes if p["online"]),
+            readings=db.count(),
             base=public_base(),
-            time=datetime.datetime.now().isoformat(timespec="seconds")
+            time=datetime.datetime.now().isoformat(timespec="seconds"),
+            **HEALTH.snapshot(),
         )
+
+    @bp.get("/diagnostics")
+    def diagnostics():
+        """A single, secret-free snapshot of hub health for self-service support."""
+        return jsonify(build_diagnostics(cfg, db, discovery, public_base(),
+                                         HUB_VERSION, PRODUCT_NAME))
 
     @bp.get("/config")
     def get_config():
-        """Return config as JSON.
-
-        Supports:
-          - dict config
-          - Config-like object with .data (and optional .lock)
-          - objects implementing .to_dict()
-        """
-        # Plain dict
+        """Return config as JSON with secret values redacted."""
         if isinstance(cfg, dict):
-            return jsonify(cfg)
-
-        # Prefer to_dict() if present
+            return jsonify(_redact(cfg))
         if hasattr(cfg, "to_dict"):
             try:
-                return jsonify(cfg.to_dict())
+                return jsonify(_redact(cfg.to_dict()))
             except Exception:
                 pass
-
-        # Prefer cfg.data if present (your Config class)
         if hasattr(cfg, "data"):
             try:
                 lock = getattr(cfg, "lock", None)
                 data_obj = getattr(cfg, "data") or {}
                 if lock:
                     with lock:
-                        return jsonify(dict(data_obj))
-                return jsonify(dict(data_obj))
+                        return jsonify(_redact(dict(data_obj)))
+                return jsonify(_redact(dict(data_obj)))
             except Exception:
                 pass
-
         return jsonify({})
 
     @bp.post("/config")
     def set_config():
-        """Update config values and persist when possible."""
+        """Update config values and persist (auth required)."""
         if not _check_auth():
             return jsonify(ok=False, error="unauthorized"), 401
-
         data = request.get_json(silent=True) or {}
         if not isinstance(data, dict):
             return jsonify(ok=False, error="invalid_json"), 400
 
-        # Dict config: update in place
         if isinstance(cfg, dict):
             cfg.update(data)
-            return jsonify(ok=True, config=cfg)
+            return jsonify(ok=True, config=_redact(cfg))
 
-        # Config class: update cfg.data under lock, then save()
-        if hasattr(cfg, "data"):
-            try:
-                lock = getattr(cfg, "lock", None)
-                if lock:
-                    with lock:
-                        cfg.data.update(data)  # type: ignore[attr-defined]
-                else:
-                    cfg.data.update(data)  # type: ignore[attr-defined]
-
-                if hasattr(cfg, "save"):
-                    try:
-                        cfg.save()  # type: ignore[attr-defined]
-                    except Exception:
-                        # Don't fail request if persistence fails
-                        pass
-
-                return jsonify(ok=True, config=dict(getattr(cfg, "data") or {}))
-            except Exception as e:
-                return jsonify(ok=False, error=str(e)), 400
-
-        # Last resort: try update(), then setattr
         if hasattr(cfg, "update"):
             try:
                 cfg.update(data)
-                return jsonify(ok=True)
-            except Exception:
-                pass
-
-        for k, v in data.items():
-            try:
-                setattr(cfg, k, v)
-            except Exception:
-                pass
+                snapshot = cfg.to_dict() if hasattr(cfg, "to_dict") else dict(getattr(cfg, "data", {}))
+                return jsonify(ok=True, config=_redact(snapshot))
+            except Exception as e:
+                return jsonify(ok=False, error=str(e)), 400
 
         return jsonify(ok=True)
 
@@ -155,13 +186,25 @@ def create_api(cfg: Any, csv_path: str, discovery: Any, public_base: Callable[[]
     def list_probes():
         return jsonify(_iter_probes())
 
+    @bp.get("/audit/verify")
+    def audit_verify():
+        """Report tamper-evident audit-chain integrity (auth required)."""
+        if not _check_auth():
+            return jsonify(ok=False, error="unauthorized"), 401
+        return jsonify(AUDIT.verify())
+
     @bp.post("/provision")
     def provision():
         if not _check_auth():
             return jsonify(ok=False, error="unauthorized"), 401
         data = request.get_json(silent=True) or {}
         host = (data.get("host") or "").strip()
-        port = int(data.get("port") or 80)
+        try:
+            port = int(data.get("port") or 80)
+            if not (1 <= port <= 65535):
+                raise ValueError
+        except (ValueError, TypeError):
+            return jsonify(ok=False, error="invalid port"), 400
         interval_ms = int(data.get("interval_ms") or data.get("interval") or 5000)
         tok = (data.get("token") or TOKEN or "").strip()
         base = public_base().rstrip("/")
@@ -175,104 +218,91 @@ def create_api(cfg: Any, csv_path: str, discovery: Any, public_base: Callable[[]
                 if target:
                     targets.append((target, int(p.get("port") or 80)))
 
-        ok_any = False
         succeeded: List[str] = []
         failed: List[str] = []
         for h, prt in targets:
             try:
                 if provision_probe(h, prt, base, token=tok, interval_ms=interval_ms):
-                    ok_any = True
                     succeeded.append(f"{h}:{prt}")
                 else:
                     failed.append(f"{h}:{prt}")
             except Exception:
                 failed.append(f"{h}:{prt}")
         return jsonify(
-            ok=ok_any,
+            ok=bool(succeeded),
             provided_to=succeeded,
             failed=failed,
             total=len(targets),
             success_count=len(succeeded),
-            server_base=base
+            server_base=base,
         )
 
+    def _calibration_offset(probe_id: str) -> float:
+        if not probe_id:
+            return 0.0
+        try:
+            return float((cfg.get("calibration_offsets", {}) or {}).get(probe_id, 0.0))
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _friendly(probe_id: str) -> str:
+        try:
+            names = cfg.get("probe_names", {}) or {}
+            return names.get(probe_id, probe_id) if isinstance(names, dict) else probe_id
+        except Exception:
+            return probe_id
+
+    def _store(data: dict, remote_addr: str, probe_id: str):
+        ts, t_c, t_f = normalize_payload(data)
+        # Apply per-probe calibration so the stored value is the corrected
+        # temperature (DS18B20 sensors vary by up to ~0.5 °C).
+        offset = _calibration_offset(probe_id)
+        if offset:
+            t_c += offset
+            t_f = (t_c * 9.0 / 5.0) + 32.0
+
+        # Optional humidity -> Vapour Pressure Deficit (grow variant). A
+        # temperature-only probe simply omits humidity and stores NULL.
+        humidity = extract_humidity(data)
+        vpd = None
+        if humidity is not None:
+            try:
+                leaf_offset = (cfg.get("settings", {}) or {}).get("vpd_leaf_offset_c", 0.0)
+            except Exception:
+                leaf_offset = 0.0
+            vpd = compute_vpd(t_c, humidity, leaf_offset)
+
+        db.append(ts, t_c, t_f, probe_id=probe_id, humidity=humidity, vpd=vpd)
+        HEALTH.record_write()
+
+        if probe_id:
+            # In-memory latest-reading registry powers the Prometheus /metrics endpoint.
+            LATEST.record(probe_id, t_c, humidity=humidity, vpd=vpd)
+            # Optional MQTT publish (Home Assistant auto-discovery); never fatal.
+            try:
+                MQTT.publish_reading(probe_id, t_c, _friendly(probe_id), humidity=humidity, vpd=vpd)
+            except Exception:
+                pass
+        if discovery and probe_id:
+            try:
+                host = data.get("host") or remote_addr or ""
+                discovery.update_last_seen(probe_id, host=host, ip=remote_addr or "")
+            except Exception:
+                pass
+
     @bp.post("/ingest")
-    def ingest():  # updates discovery last_seen for active probes
+    def ingest():
         if not _check_auth():
             return jsonify(ok=False, error="unauthorized"), 401
+        if request.content_length and request.content_length > MAX_INGEST_BYTES:
+            return jsonify(ok=False, error="payload too large"), 413
         data = request.get_json(silent=True) or {}
-        try:
-            ts, t_c, t_f = normalize_payload(data)
-        except Exception:
-            return jsonify(ok=False, error="temperature value required"), 400
         probe_id = request.headers.get("X-Probe-ID") or (data.get("probe_id") or "")
         try:
-            append_row(CSV_PATH, ts, t_c, t_f, probe_id=probe_id)
-            # mark probe as seen (optimized - removed duplicate logic)
-            if discovery and probe_id:
-                try:
-                    import time
-                    probes = discovery.list_probes()
-                    matched = False
-
-                    # Try to find and update existing probe
-                    for key, v in probes.items():
-                        if not v:
-                            continue
-
-                        # Match by exact key, name, or properties.id (not substring)
-                        v_id = None
-                        v_name = None
-                        v_props_id = None
-
-                        if isinstance(v, dict):
-                            v_id = v.get('id')
-                            v_name = v.get('name')
-                            v_props_id = v.get('properties', {}).get('id')
-                        else:
-                            v_id = getattr(v, 'id', None)
-                            v_name = getattr(v, 'name', None)
-                            v_props_id = getattr(v, 'properties', {}).get('id')
-
-                        # Exact match only (fixes substring matching bug)
-                        if key == probe_id or v_id == probe_id or v_name == probe_id or v_props_id == probe_id:
-                            try:
-                                if isinstance(v, dict):
-                                    v['last_seen'] = time.time()
-                                else:
-                                    v.last_seen = time.time()
-                                matched = True
-                                break
-                            except Exception:
-                                pass
-
-                    # If no match found, create new probe entry
-                    if not matched:
-                        try:
-                            from probe_discovery import ProbeInfo
-                            probes[probe_id] = ProbeInfo(
-                                name=probe_id,
-                                host=data.get('host') or request.remote_addr or '',
-                                ip=request.remote_addr or '',
-                                port=80,
-                                properties={'id': probe_id},
-                                last_seen=time.time()
-                            )
-                        except Exception:
-                            # Fallback to dict if ProbeInfo fails
-                            probes[probe_id] = {
-                                'id': probe_id,
-                                'name': probe_id,
-                                'host': data.get('host') or request.remote_addr or '',
-                                'ip': request.remote_addr or '',
-                                'port': 80,
-                                'properties': {'id': probe_id},
-                                'last_seen': time.time()
-                            }
-                except Exception:
-                    pass
-        except Exception:
-            _append_csv(str(CSV_PATH), t_c, probe_id)
+            _store(data, request.remote_addr or "", probe_id)
+        except (ValueError, KeyError, TypeError):
+            HEALTH.record_reject()
+            return jsonify(ok=False, error="temperature value required"), 400
         return jsonify(ok=True)
 
     @bp.get("/ingest")
@@ -280,45 +310,12 @@ def create_api(cfg: Any, csv_path: str, discovery: Any, public_base: Callable[[]
         if not _check_auth():
             return jsonify(ok=False, error="unauthorized"), 401
         data = {k: v for k, v in request.args.items()}
-        try:
-            ts, t_c, t_f = normalize_payload(data)
-        except Exception:
-            return jsonify(ok=False, error="temperature value required"), 400
         probe_id = request.args.get("probe_id") or ""
         try:
-            append_row(CSV_PATH, ts, t_c, t_f, probe_id=probe_id)
-        except Exception:
-            _append_csv(str(CSV_PATH), t_c, probe_id)
+            _store(data, request.remote_addr or "", probe_id)
+        except (ValueError, KeyError, TypeError):
+            HEALTH.record_reject()
+            return jsonify(ok=False, error="temperature value required"), 400
         return jsonify(ok=True)
 
-    @bp.post("/ingest_csv")
-    def ingest_csv():
-        if not _check_auth():
-            return jsonify(ok=False, error="unauthorized"), 401
-        text = request.data.decode("utf-8", "ignore")
-        n = 0
-        for line in text.splitlines():
-            parts = [p.strip() for p in line.split(",")]
-            if not parts:
-                continue
-            try:
-                t_c = float(parts[0])
-            except Exception:
-                continue
-            pid = parts[1] if len(parts) > 1 else ""
-            _append_csv(str(CSV_PATH), t_c, pid)
-            n += 1
-        return jsonify(ok=True, rows=n)
-
     return bp
-
-
-def _append_csv(csv_path: str, t_c: float, probe_id: str) -> None:
-    exists = os.path.exists(csv_path)
-    with open(csv_path, "a", newline="", encoding="utf-8") as f:
-        w = csv.writer(f)
-        if not exists:
-            w.writerow(["timestamp", "temperature_c", "temperature_f", "probe_id"])
-        t_f = (t_c * 9.0 / 5.0) + 32.0
-        ts = datetime.datetime.now().isoformat(timespec="seconds")
-        w.writerow([ts, f"{t_c:.3f}", f"{t_f:.3f}", probe_id])

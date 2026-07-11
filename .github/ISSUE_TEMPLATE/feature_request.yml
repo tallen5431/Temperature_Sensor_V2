@@ -1,0 +1,20 @@
+name: Feature request
+description: Suggest an improvement to the hub or probe
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the customer need or the friction you hit.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would you like the hub or probe to do?
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

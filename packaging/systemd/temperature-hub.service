@@ -1,0 +1,29 @@
+# systemd unit for the Temperature Hub (Linux).
+#
+# Install (onedir build — copy the whole folder):
+#   sudo mkdir -p /opt/temperature-hub
+#   sudo cp -r dist/temperature-hub/* /opt/temperature-hub/
+#   sudo cp packaging/systemd/temperature-hub.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now temperature-hub
+#
+# Logs:  journalctl -u temperature-hub -f
+# Data (config.json, temperature_log.db, logs/) is written to WorkingDirectory.
+
+[Unit]
+Description=Temperature Hub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/temperature-hub
+ExecStart=/opt/temperature-hub/temperature-hub
+Restart=on-failure
+RestartSec=5
+# Optional hardening — create the user first: sudo useradd -r -s /usr/sbin/nologin temphub
+# User=temphub
+# Environment=PORT=8088
+
+[Install]
+WantedBy=multi-user.target
