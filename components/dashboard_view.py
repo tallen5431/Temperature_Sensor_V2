@@ -203,17 +203,57 @@ def _age_text(age_sec):
     return f"{int(age_sec // 3600)} h ago"
 
 
-def _reporting_probe_count(db, finder, timeout_sec=ONLINE_TIMEOUT_SEC):
-    """Count probes that actually sent a reading within ``timeout_sec``.
+# A probe is "fresh" until it has been silent for this many times its own
+# reporting interval — so a deep-sleep probe that wakes every few minutes is not
+# flagged stale between wakes.
+STALE_INTERVAL_MULTIPLIER = 2.5
 
-    Keyed off ingest, not mDNS: a deep-sleep battery probe keeps its radio off
-    between readings so it is never mDNS-discovered, yet it is clearly "connected"
-    if it is still posting. Falls back to mDNS discovery if the DB query fails.
+# Fallback offline threshold, matching alert_monitor's ``offline_after_sec``
+# default (5 min). The dashboard uses the same number so a probe never reads
+# "stale" here while the alert engine still considers it online, and vice versa.
+OFFLINE_AFTER_SEC = 300
+
+
+def _probe_fresh_window(cfg, probe_id):
+    """Seconds a probe may be silent before it counts as stale/offline.
+
+    The larger of: the configured online timeout, the alert monitor's offline
+    threshold (so the dashboard and the alerting engine agree on "offline"), and
+    ~2.5x this probe's reporting interval (so a slow deep-sleep cadence doesn't
+    read as offline between wakes). The 5-min floor means a typical battery probe
+    counts as connected out of the box, with no per-probe configuration.
+    """
+    base = ONLINE_TIMEOUT_SEC
+    for key, default in (("probe_online_timeout_sec", ONLINE_TIMEOUT_SEC),
+                         ("offline_after_sec", OFFLINE_AFTER_SEC)):
+        try:
+            base = max(base, int(cfg.get(key, default) or default))
+        except (TypeError, ValueError):
+            pass
+    try:
+        intervals = cfg.get("probe_intervals", {}) or {}
+        interval = float(intervals.get(probe_id, cfg.get("interval_sec", 5) or 5))
+    except (TypeError, ValueError):
+        interval = 5.0
+    return max(base, interval * STALE_INTERVAL_MULTIPLIER)
+
+
+def _reporting_probe_count(db, cfg, finder):
+    """Count probes that reported recently — each judged against its OWN freshness
+    window (interval-aware), keyed off ingest not mDNS.
+
+    A deep-sleep battery probe keeps its radio off between readings so it is never
+    mDNS-discovered, and a fixed 60 s timeout would flag it stale between wakes;
+    both are handled here. Falls back to mDNS discovery if the DB query fails.
     """
     try:
-        return len(db.last_reading_epoch_per_probe(window_seconds=int(timeout_sec)))
+        epochs = db.last_reading_epoch_per_probe(window_seconds=None)
+        now = time.time()
+        return sum(1 for pid, ep in epochs.items()
+                   if pid and (now - ep) <= _probe_fresh_window(cfg, pid))
     except Exception:
-        return _online_probe_count(finder, timeout_sec)
+        return _online_probe_count(
+            finder, cfg.get("probe_online_timeout_sec", ONLINE_TIMEOUT_SEC))
 
 
 def _empty_fig():
@@ -287,8 +327,7 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit):
     window = RANGE_SECONDS.get(time_range, 86400)
     suffix = " °F" if temp_unit == "fahrenheit" else " °C"
     logging_status = "ON" if cfg.get("pull_enabled", True) else "OFF"
-    probes_online = _reporting_probe_count(db, finder,
-                                           cfg.get("probe_online_timeout_sec", ONLINE_TIMEOUT_SEC))
+    probes_online = _reporting_probe_count(db, cfg, finder)
 
     try:
         latest = db.latest()
@@ -475,7 +514,6 @@ def register_dashboard_callbacks(app, finder, cfg, db):
         if latest is None or latest.empty:
             return []
         thresholds = cfg.get("alert_thresholds", {}) or {}
-        online_to = cfg.get("probe_online_timeout_sec", ONLINE_TIMEOUT_SEC)
         now = datetime.datetime.now()
         cards = []
         for _, row in latest.iterrows():
@@ -491,7 +529,7 @@ def register_dashboard_callbacks(app, finder, cfg, db):
                 pass
             thr = thresholds.get(pid, thresholds.get("default", {})) or {}
             breach = threshold_breach(t_c, thr.get("min"), thr.get("max"))
-            if age is not None and age > max(int(online_to), 120):
+            if age is not None and age > _probe_fresh_window(cfg, pid):
                 color, badge = "secondary", "● stale"
             elif breach == "high":
                 color, badge = "danger", "▲ HIGH"
