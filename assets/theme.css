@@ -3,7 +3,11 @@ body { font-family: 'Inter', sans-serif; }
 .navbar-brand { color: var(--brand-color) !important; letter-spacing: 0.5px; }
 .navbar-dark .nav-link.active { border-bottom: 2px solid var(--brand-color); }
 .card { border-radius: 0.75rem; box-shadow: 0 2px 6px rgba(0,0,0,0.25); transition: transform 0.1s ease-in-out; }
-.card:hover { transform: translateY(-3px); }
+/* Only lift cards that are meant to be interactive (probe cards on Devices), not
+   every static stat/settings card — a whole settings section jumping on hover is
+   distracting. */
+.probe-card { cursor: default; }
+.probe-card:hover { transform: translateY(-3px); }
 .gauge-card, .graph-card { min-height: 400px; overflow: visible !important; }
 .status-dot { font-size: 0.9rem; }
 .text-success { color: #2ecc71 !important; }
@@ -12,6 +16,33 @@ body { font-family: 'Inter', sans-serif; }
 .btn-primary { background-color: var(--brand-color); border-color: var(--brand-color); }
 .btn-outline-primary { color: var(--brand-color); border-color: var(--brand-color); }
 .btn-outline-primary:hover { background-color: var(--brand-color); border-color: var(--brand-color); }
+
+/* --- Dark form controls -------------------------------------------------------
+   The base theme renders inputs/selects bright white, which is harsh against the
+   dark UI. Match them to the theme so a form reads as one surface. */
+.form-control, .form-select {
+  background-color: #1b2532;
+  border-color: #33465c;
+  color: #e7edf5;
+}
+.form-control:focus, .form-select:focus {
+  background-color: #1b2532;
+  color: #ffffff;
+  border-color: var(--brand-color);
+  box-shadow: 0 0 0 0.2rem rgba(0, 188, 212, 0.25);
+}
+.form-control::placeholder { color: #6c7a8a; opacity: 1; }
+.form-control:disabled, .form-control[readonly] { background-color: #131b25; color: #8b9bad; }
+
+/* Section headings: the base theme dims .card-title to a low-contrast grey.
+   Brighten them and add a subtle divider so sections read clearly. */
+.card-title {
+  color: #e7edf5;
+  font-weight: 600;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
 @media (max-width: 768px) {
   .gauge-card, .graph-card { min-height: 320px; }
   .navbar-brand { font-size: 1rem; }
