@@ -13,8 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an at-a-glance **OK / HIGH / LOW / stale** state (colour-coded, with a freshness age), so a
   multi-probe deployment is legible at a glance instead of a single gauge showing whichever probe
   reported last.
+- **The main gauge is now useful** — it focuses on the probe that needs attention (the worst active
+  threshold breach, else the latest reading), draws **coloured threshold zones** (blue below min, green
+  in the safe band, red above max), colours the bar by state, and auto-ranges the axis around the band
+  — so a −18 °C freezer and a 32 °C office each read sensibly instead of on a fixed 0–100 scale.
 
 ### Changed
+- **The Devices page now lists probes known only from ingest** (not just mDNS-discovered ones), so a
+  **deep-sleep battery probe** — whose radio is off between readings and is never mDNS-visible — still
+  appears and can be renamed / thresholded / calibrated.
 - **Dashboard styling is now fully offline** — the Bootstrap/CYBORG theme is vendored locally
   (`assets/bootstrap-cyborg.min.css`) instead of loaded from a CDN, so the hub renders correctly with
   no internet (offline homelabs, air-gapped networks) — matching the local-first promise. Dash already
