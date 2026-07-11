@@ -134,7 +134,11 @@ def _ui_auth_gate():
                     {"WWW-Authenticate": f'Basic realm="{PRODUCT_NAME}"'})
 
 
-app = Dash(__name__, external_stylesheets=[dbc.themes.CYBORG], server=server,
+# The Bootstrap/CYBORG theme is VENDORED locally at assets/bootstrap-cyborg.min.css
+# (Dash auto-loads assets alphabetically, so it lands before theme.css) instead of
+# pulling dbc.themes.CYBORG from a CDN — the hub is local-first and must render
+# correctly with no internet (offline homelabs, air-gapped networks).
+app = Dash(__name__, external_stylesheets=[], server=server,
            suppress_callback_exceptions=True, assets_folder=str(RESOURCE_DIR / "assets"))
 app.title = PRODUCT_NAME
 app.layout = LAYOUT

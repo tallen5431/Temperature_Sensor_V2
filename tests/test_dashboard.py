@@ -80,13 +80,16 @@ def test_build_dashboard_friendly_name_used(tmp_path):
     assert names == {"Kitchen", "Garage"}
 
 
-def test_online_probe_count(tmp_path):
-    import time
+def test_reporting_probe_count(tmp_path):
+    # "Connected Probes" now counts probes that actually reported within the
+    # online window (from the readings DB), not just mDNS-discovered ones — so a
+    # deep-sleep probe (radio off, never mDNS-visible) still counts while posting.
+    import datetime
     db = Database(tmp_path / "d.db")
     cfg = Config(tmp_path / "c.json")
-    finder = FakeFinder({
-        "a": {"last_seen": time.time()},          # online
-        "b": {"last_seen": time.time() - 9999},   # stale
-    })
-    out = build_dashboard(db, cfg, finder, "24h", "celsius")
-    assert out[2] == "1"  # only one probe within the online window
+    now = datetime.datetime.now()
+    db.append(now.isoformat(timespec="seconds"), 22.0, 71.6, "a")   # recent → counts
+    old = (now - datetime.timedelta(hours=2)).isoformat(timespec="seconds")
+    db.append(old, 4.0, 39.2, "b")                                  # stale → not counted
+    out = build_dashboard(db, cfg, FakeFinder(), "24h", "celsius")
+    assert out[2] == "1"  # only the probe that reported within the online window
