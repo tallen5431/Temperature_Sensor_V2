@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Flash your ThermaProbe</title>
+  <!--
+    Browser-based flashing for the ThermaProbe firmware, powered by ESP Web Tools.
+    Host this folder on any HTTPS static host (e.g. GitHub Pages). Web Serial —
+    which does the flashing — only works in Chrome/Edge/Opera over HTTPS (or
+    http://localhost), so a plain file:// open will show the "not supported" note.
+
+    Before this page can flash anything you must generate the firmware binary it
+    points at (flash/manifest.json → thermaprobe-esp32.merged.bin). See flash/README.md
+    (run flash/build_merged_bin.sh). The binary is intentionally NOT committed.
+  -->
+  <script
+    type="module"
+    src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js"></script>
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 2rem 1rem;
+      font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: #0f1520; color: #e7edf5;
+      display: flex; justify-content: center;
+    }
+    .card {
+      width: 100%; max-width: 640px;
+      background: #172131; border: 1px solid #24344a; border-radius: 14px;
+      padding: 2rem; box-shadow: 0 10px 40px rgba(0,0,0,.35);
+    }
+    h1 { margin: 0 0 .25rem; font-size: 1.6rem; }
+    h1 .brand { color: #35c2e6; }
+    p.sub { margin: 0 0 1.5rem; color: #9fb0c4; }
+    ol { padding-left: 1.2rem; }
+    ol li { margin: .4rem 0; }
+    .flash-row { text-align: center; margin: 1.75rem 0 1rem; }
+    esp-web-install-button { --esp-tools-button-color: #35c2e6; }
+    .note {
+      font-size: .9rem; color: #9fb0c4;
+      border-top: 1px solid #24344a; margin-top: 1.5rem; padding-top: 1rem;
+    }
+    .unsupported {
+      display: none; background: #3a1e1e; border: 1px solid #6b2b2b;
+      color: #ffd7d7; padding: .8rem 1rem; border-radius: 8px; margin: 1rem 0;
+    }
+    code { background: #0d1420; padding: .1rem .35rem; border-radius: 4px; }
+    a { color: #35c2e6; }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>Flash your <span class="brand">ThermaProbe</span></h1>
+    <p class="sub">Put the firmware on an ESP32 board straight from your browser — no
+      Arduino IDE, no toolchain, no installs.</p>
+
+    <p><strong>You'll need:</strong> a desktop Chrome, Edge, or Opera browser, and an
+      ESP32 board connected to this computer with a USB-C data cable.</p>
+
+    <ol>
+      <li>Plug the ESP32 board into a USB port on this computer.</li>
+      <li>Click <strong>Flash ThermaProbe</strong> below and pick the board's serial
+        port when prompted. (If nothing appears, use a different USB cable — many are
+        charge-only — or install the CP210x / CH340 USB-serial driver for your board.)</li>
+      <li>Wait for it to finish, then unplug and follow
+        <a href="../docs/USER_MANUAL.md">the setup guide</a>: join the probe's
+        <code>ThermaProbe-XXXXXX</code> Wi-Fi and point it at your ThermaHub.</li>
+    </ol>
+
+    <div class="unsupported" id="unsupported">
+      This browser can't flash over USB. Open this page in <strong>Chrome, Edge, or
+      Opera on a desktop</strong> (Web Serial isn't available in Safari, Firefox, or on
+      mobile). You can always flash manually with <code>arduino-cli</code> instead —
+      see <a href="../firmware/README.md">firmware/README.md</a>.
+    </div>
+
+    <div class="flash-row">
+      <esp-web-install-button manifest="./manifest.json">
+        <button slot="activate">⚡ Flash ThermaProbe</button>
+        <span slot="unsupported"></span>
+        <span slot="not-allowed">Serial access was blocked — reload and allow the port.</span>
+      </esp-web-install-button>
+    </div>
+
+    <p class="note">This installs open firmware onto hardware you own; nothing is
+      uploaded anywhere and no account is required. Prefer to do it by hand?
+      <a href="../firmware/README.md">Build and flash with arduino-cli.</a></p>
+  </main>
+
+  <script>
+    // ESP Web Tools hides its own button and exposes a `slot="unsupported"` when
+    // Web Serial is missing; surface a clearer, actionable message too.
+    if (!('serial' in navigator)) {
+      document.getElementById('unsupported').style.display = 'block';
+    }
+  </script>
+</body>
+</html>

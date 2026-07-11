@@ -62,6 +62,8 @@ If it does not open, navigate there manually.
 
 Power a ThermaProbe (USB adapter or rechargeable battery). On first use the probe broadcasts a **`ThermaProbe-XXXXXX`** Wi-Fi setup network — join it, then follow the captive-portal page (or the sticker on the unit) to hand it your home Wi-Fi credentials. Within a few seconds the probe appears on the dashboard and readings begin. Full step-by-step instructions are in the **[User Manual](docs/USER_MANUAL.md)** — no technical background needed.
 
+> **Bare ESP32 board?** Flash the firmware straight from Chrome/Edge — no toolchain — with the browser-based installer in **[`flash/`](flash/)** (ESP Web Tools). It's the lowest-friction way for a maker/hobbyist to bring their own hardware online.
+
 > Battery probes run in a **deep-sleep** low-power mode for long battery life; USB-powered probes run always-on. Either way the probe NTP-syncs its clock and buffers readings locally if the hub is briefly unreachable, flushing them on reconnect.
 
 ---
@@ -137,12 +139,15 @@ number of days (`retention_days`, 0 = keep forever), and download a one-click SQ
 
 ## Humidity & VPD (grow variant)
 
-Build a probe with the optional `-D SENSOR_SHT4x` firmware flag and it reads an **SHT4x**
-temperature + humidity sensor over I2C, adding an optional `humidity_pct` field to ingest
-(backward-compatible, still protocol v1). The hub computes **VPD** (Vapour Pressure Deficit)
-from temperature and humidity, shows Humidity + VPD on the dashboard, exposes them in
-`/metrics` and over MQTT / Home Assistant, and evaluates `humidity_min/max` and `vpd_min/max`
-per-probe alert thresholds. Plain temperature-only probes are unaffected.
+The hub computes **VPD** (Vapour Pressure Deficit) from any probe that reports a
+`humidity_pct` field alongside temperature (backward-compatible, still protocol v1): it
+stores humidity + VPD, shows them on the dashboard, and exposes them in `/metrics` and over
+MQTT / Home Assistant. Plain temperature-only probes are unaffected — those columns stay empty.
+
+> **Firmware status:** an **SHT4x** temperature+humidity probe build is a planned variant and
+> is **not yet in the shipping firmware** (`esp32_temp_probe.ino` is DS18B20-only). Humidity/VPD
+> *alert thresholds* are likewise not wired yet — alerting is temperature-only for now. The
+> hub-side plumbing above is live and ready for a humidity-reporting probe.
 
 ---
 

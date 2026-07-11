@@ -30,3 +30,6 @@ logs/
 /build/
 /dist/
 *.spec.bak
+
+# Generated firmware image for browser flashing (build with flash/build_merged_bin.sh)
+flash/*.bin
