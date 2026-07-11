@@ -1,40 +1,66 @@
 from __future__ import annotations
-from flask import Blueprint, request, jsonify
-from typing import Any, Dict, List, Tuple, Callable
-from pathlib import Path
-import datetime
 
-from auto_provision import provision_probe
-from core.storage import (
-    normalize_payload, append_row, apply_calibration, sanitize_probe_id,
-    extract_humidity, compute_vpd,
-)
-from core.notifications import NOTIFIER
+import datetime
+import hmac
+import time
+from typing import Any, Callable, Dict, List, Tuple
+
+from flask import Blueprint, jsonify, request
+
+from provisioning import provision_probe
+from core.diagnostics import build_diagnostics
+from core.storage import normalize_payload, extract_humidity, compute_vpd
+from core.version import HUB_VERSION, PRODUCT_NAME
 from core.applog import HEALTH, get_logger
-from core.audit import AUDIT
-from core.config import redact_secrets
 from core.metrics import LATEST
 from core.mqtt_publish import MQTT
-from core.version import __version__, PROTOCOL_VERSION
+from core.audit import AUDIT
 
 log = get_logger("api")
 
+# A probe is considered "online" if it has been seen within this many seconds.
+DEFAULT_ONLINE_TIMEOUT_SEC = 60
+
 # Reject absurdly large ingest bodies (DoS / disk-fill protection).
 MAX_INGEST_BYTES = 64 * 1024
-MAX_CSV_ROWS = 1000
+
+# Config keys whose values must never be returned over the API.
+_SECRET_KEYS = ("provision_token", "server_token", "token", "secret", "password")
 
 
-def create_api(cfg: Any, csv_path: str, discovery: Any, public_base: Callable[[], str], server_token: str = "") -> Blueprint:
+def _redact(data, _parent: str = ""):
+    """Return a deep copy with secret values masked.
+
+    Recurses into nested dicts/lists so secrets that live in sub-trees
+    (``notifications.email.smtp_password``, ``notifications.webhook.url`` — a
+    bearer token in the path) are masked, not just top-level keys. The dashboard
+    is open on the LAN by default, so ``GET /api/config`` must never echo a secret.
+    """
+    if isinstance(data, dict):
+        out = {}
+        for k, v in data.items():
+            kl = str(k).lower()
+            is_secret = any(s in kl for s in _SECRET_KEYS)
+            # A webhook URL carries its auth in the path/query — treat as a secret.
+            if kl == "url" and "webhook" in str(_parent).lower():
+                is_secret = True
+            if is_secret and not isinstance(v, (dict, list)):
+                out[k] = "***set***" if v else ""
+            else:
+                out[k] = _redact(v, kl) if isinstance(v, (dict, list)) else v
+        return out
+    if isinstance(data, list):
+        return [_redact(x, _parent) for x in data]
+    return data
+
+
+def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str],
+               server_token: str = "") -> Blueprint:
     bp = Blueprint("api", __name__, url_prefix="/api")
 
     TOKEN = (server_token or "").strip()
-    CSV_PATH = Path(csv_path)
 
-    # --- authentication helper ---
-    # An empty TOKEN means "open" (useful for tests / air-gapped dev). The
-    # shipped product ALWAYS resolves a non-empty token at startup (generated if
-    # needed) and pushes it to probes via the provisioner, so the customer's LAN
-    # is secure-by-default without any manual setup.
+    # --- authentication helper (constant-time comparison) ---
     def _check_auth() -> bool:
         if not TOKEN:
             return True
@@ -42,17 +68,13 @@ def create_api(cfg: Any, csv_path: str, discovery: Any, public_base: Callable[[]
         if not tok and request.is_json:
             data = request.get_json(silent=True) or {}
             tok = data.get("token")
-        return tok == TOKEN
+        return bool(tok) and hmac.compare_digest(str(tok), TOKEN)
 
-    def _cfg_get(key, default=None):
+    def _online_timeout() -> int:
         try:
-            return cfg.get(key, default)
+            return int(cfg.get("probe_online_timeout_sec", DEFAULT_ONLINE_TIMEOUT_SEC))
         except Exception:
-            return default
-
-    def _friendly(probe_id: str) -> str:
-        names = _cfg_get("probe_names", {}) or {}
-        return names.get(probe_id, probe_id)
+            return DEFAULT_ONLINE_TIMEOUT_SEC
 
     # --- discovery listing ---
     def _iter_probes() -> List[Dict[str, Any]]:
@@ -62,6 +84,8 @@ def create_api(cfg: Any, csv_path: str, discovery: Any, public_base: Callable[[]
             vals = discovery.list_probes().values()
         except Exception:
             vals = []
+        timeout = _online_timeout()
+        now = time.time()
         out: List[Dict[str, Any]] = []
         for obj in vals:
             is_dict = isinstance(obj, dict)
@@ -72,68 +96,90 @@ def create_api(cfg: Any, csv_path: str, discovery: Any, public_base: Callable[[]
             port = get("port", 80) or 80
             name = get("name") or get("id") or props.get("name")
             pid = props.get("id") or get("probe_id") or get("id") or name
+            last_seen = get("last_seen")
+            age = None
+            try:
+                if isinstance(last_seen, (int, float)):
+                    age = max(0.0, now - float(last_seen))
+            except Exception:
+                age = None
             out.append({
                 "host": host,
                 "ip": ip,
                 "port": port,
                 "name": name,
                 "probe_id": pid,
-                "last_seen": get("last_seen"),
+                "last_seen": last_seen,
+                "age_sec": round(age, 1) if age is not None else None,
+                "online": (age is not None and age <= timeout),
             })
         return sorted(out, key=lambda p: (p.get("name") or "", p.get("ip") or ""))
 
     # --- endpoints ---
     @bp.get("/health")
     def health():
+        probes = _iter_probes()
         return jsonify(
             ok=True,
-            version=__version__,
-            protocol=PROTOCOL_VERSION,
-            probes=len(_iter_probes()),
+            version=HUB_VERSION,
+            product=PRODUCT_NAME,
+            probes=len(probes),
+            probes_online=sum(1 for p in probes if p["online"]),
+            readings=db.count(),
             base=public_base(),
             time=datetime.datetime.now().isoformat(timespec="seconds"),
             **HEALTH.snapshot(),
         )
 
+    @bp.get("/diagnostics")
+    def diagnostics():
+        """A single, secret-free snapshot of hub health for self-service support."""
+        return jsonify(build_diagnostics(cfg, db, discovery, public_base(),
+                                         HUB_VERSION, PRODUCT_NAME))
+
     @bp.get("/config")
     def get_config():
-        """Return config as JSON with all secrets redacted (auth required)."""
-        if not _check_auth():
-            return jsonify(ok=False, error="unauthorized"), 401
-        if hasattr(cfg, "public_dict"):
-            try:
-                return jsonify(cfg.public_dict())
-            except Exception:
-                pass
+        """Return config as JSON with secret values redacted."""
+        if isinstance(cfg, dict):
+            return jsonify(_redact(cfg))
         if hasattr(cfg, "to_dict"):
             try:
-                return jsonify(redact_secrets(cfg.to_dict()))
+                return jsonify(_redact(cfg.to_dict()))
             except Exception:
                 pass
-        if isinstance(cfg, dict):
-            return jsonify(redact_secrets(dict(cfg)))
+        if hasattr(cfg, "data"):
+            try:
+                lock = getattr(cfg, "lock", None)
+                data_obj = getattr(cfg, "data") or {}
+                if lock:
+                    with lock:
+                        return jsonify(_redact(dict(data_obj)))
+                return jsonify(_redact(dict(data_obj)))
+            except Exception:
+                pass
         return jsonify({})
 
     @bp.post("/config")
     def set_config():
-        """Update config values and persist. Secrets are redacted from the response."""
+        """Update config values and persist (auth required)."""
         if not _check_auth():
             return jsonify(ok=False, error="unauthorized"), 401
-
         data = request.get_json(silent=True) or {}
         if not isinstance(data, dict):
             return jsonify(ok=False, error="invalid_json"), 400
 
-        try:
-            if hasattr(cfg, "update"):
+        if isinstance(cfg, dict):
+            cfg.update(data)
+            return jsonify(ok=True, config=_redact(cfg))
+
+        if hasattr(cfg, "update"):
+            try:
                 cfg.update(data)
-                snap = cfg.public_dict() if hasattr(cfg, "public_dict") else redact_secrets(cfg.to_dict())
-                return jsonify(ok=True, config=snap)
-            if isinstance(cfg, dict):
-                cfg.update(data)
-                return jsonify(ok=True, config=redact_secrets(dict(cfg)))
-        except Exception as e:
-            return jsonify(ok=False, error=str(e)), 400
+                snapshot = cfg.to_dict() if hasattr(cfg, "to_dict") else dict(getattr(cfg, "data", {}))
+                return jsonify(ok=True, config=_redact(snapshot))
+            except Exception as e:
+                return jsonify(ok=False, error=str(e)), 400
+
         return jsonify(ok=True)
 
     @bp.get("/probes")
@@ -153,7 +199,12 @@ def create_api(cfg: Any, csv_path: str, discovery: Any, public_base: Callable[[]
             return jsonify(ok=False, error="unauthorized"), 401
         data = request.get_json(silent=True) or {}
         host = (data.get("host") or "").strip()
-        port = int(data.get("port") or 80)
+        try:
+            port = int(data.get("port") or 80)
+            if not (1 <= port <= 65535):
+                raise ValueError
+        except (ValueError, TypeError):
+            return jsonify(ok=False, error="invalid port"), 400
         interval_ms = int(data.get("interval_ms") or data.get("interval") or 5000)
         tok = (data.get("token") or TOKEN or "").strip()
         base = public_base().rstrip("/")
@@ -167,20 +218,18 @@ def create_api(cfg: Any, csv_path: str, discovery: Any, public_base: Callable[[]
                 if target:
                     targets.append((target, int(p.get("port") or 80)))
 
-        ok_any = False
         succeeded: List[str] = []
         failed: List[str] = []
         for h, prt in targets:
             try:
                 if provision_probe(h, prt, base, token=tok, interval_ms=interval_ms):
-                    ok_any = True
                     succeeded.append(f"{h}:{prt}")
                 else:
                     failed.append(f"{h}:{prt}")
             except Exception:
                 failed.append(f"{h}:{prt}")
         return jsonify(
-            ok=ok_any,
+            ok=bool(succeeded),
             provided_to=succeeded,
             failed=failed,
             total=len(targets),
@@ -188,48 +237,58 @@ def create_api(cfg: Any, csv_path: str, discovery: Any, public_base: Callable[[]
             server_base=base,
         )
 
-    def _log_reading(data: dict, probe_id_hint: str) -> Tuple[bool, int, str]:
-        """Validate + calibrate + persist a single reading. Returns (ok, status, err)."""
+    def _calibration_offset(probe_id: str) -> float:
+        if not probe_id:
+            return 0.0
         try:
-            ts, t_c, t_f = normalize_payload(data)
-        except Exception as e:
-            HEALTH.record_reject()
-            return False, 400, str(e) or "temperature value required"
+            return float((cfg.get("calibration_offsets", {}) or {}).get(probe_id, 0.0))
+        except (TypeError, ValueError):
+            return 0.0
 
-        probe_id = sanitize_probe_id(probe_id_hint or data.get("probe_id") or "")
+    def _friendly(probe_id: str) -> str:
+        try:
+            names = cfg.get("probe_names", {}) or {}
+            return names.get(probe_id, probe_id) if isinstance(names, dict) else probe_id
+        except Exception:
+            return probe_id
 
-        # Apply per-probe calibration before logging (recompute F from calibrated C).
-        cal = _cfg_get("calibration", {}) or {}
-        t_c = apply_calibration(t_c, probe_id, cal)
-        t_f = (t_c * 9.0 / 5.0) + 32.0
+    def _store(data: dict, remote_addr: str, probe_id: str):
+        ts, t_c, t_f = normalize_payload(data)
+        # Apply per-probe calibration so the stored value is the corrected
+        # temperature (DS18B20 sensors vary by up to ~0.5 °C).
+        offset = _calibration_offset(probe_id)
+        if offset:
+            t_c += offset
+            t_f = (t_c * 9.0 / 5.0) + 32.0
 
-        # Optional humidity → Vapour Pressure Deficit (grow niche).
+        # Optional humidity -> Vapour Pressure Deficit (grow variant). A
+        # temperature-only probe simply omits humidity and stores NULL.
         humidity = extract_humidity(data)
         vpd = None
         if humidity is not None:
-            leaf_offset = (_cfg_get("settings", {}) or {}).get("vpd_leaf_offset_c", 0.0)
+            try:
+                leaf_offset = (cfg.get("settings", {}) or {}).get("vpd_leaf_offset_c", 0.0)
+            except Exception:
+                leaf_offset = 0.0
             vpd = compute_vpd(t_c, humidity, leaf_offset)
 
-        try:
-            append_row(CSV_PATH, ts, t_c, t_f, probe_id=probe_id,
-                       humidity_pct=humidity, vpd_kpa=vpd)
-        except Exception as e:
-            return False, 500, str(e)
+        db.append(ts, t_c, t_f, probe_id=probe_id, humidity=humidity, vpd=vpd)
+        HEALTH.record_write()
 
         if probe_id:
-            # Latest-reading registry powers the Prometheus /metrics endpoint.
+            # In-memory latest-reading registry powers the Prometheus /metrics endpoint.
             LATEST.record(probe_id, t_c, humidity=humidity, vpd=vpd)
-            if discovery is not None:
-                try:
-                    discovery.register_seen(probe_id, ip=request.remote_addr or "", port=80)
-                except Exception:
-                    pass
-            friendly = _friendly(probe_id)
-            # Server-side threshold evaluation → email/webhook if configured.
-            NOTIFIER.evaluate(cfg, probe_id, t_c, friendly, humidity=humidity, vpd=vpd)
-            # Optional MQTT publish (Home Assistant auto-discovery).
-            MQTT.publish_reading(probe_id, t_c, friendly, humidity=humidity, vpd=vpd)
-        return True, 200, ""
+            # Optional MQTT publish (Home Assistant auto-discovery); never fatal.
+            try:
+                MQTT.publish_reading(probe_id, t_c, _friendly(probe_id), humidity=humidity, vpd=vpd)
+            except Exception:
+                pass
+        if discovery and probe_id:
+            try:
+                host = data.get("host") or remote_addr or ""
+                discovery.update_last_seen(probe_id, host=host, ip=remote_addr or "")
+            except Exception:
+                pass
 
     @bp.post("/ingest")
     def ingest():
@@ -238,41 +297,25 @@ def create_api(cfg: Any, csv_path: str, discovery: Any, public_base: Callable[[]
         if request.content_length and request.content_length > MAX_INGEST_BYTES:
             return jsonify(ok=False, error="payload too large"), 413
         data = request.get_json(silent=True) or {}
-        header_id = request.headers.get("X-Probe-ID") or ""
-        body_id = data.get("probe_id") or ""
-        # Protocol invariant: the mDNS TXT id must equal X-Probe-ID. Warn (don't
-        # crash) so a misbehaving probe is diagnosable rather than silent.
-        if header_id and body_id and header_id != body_id:
-            log.warning("probe_id mismatch: header=%s body=%s", header_id, body_id)
-        ok, status, err = _log_reading(data, header_id or body_id)
-        if not ok:
-            return jsonify(ok=False, error=err), status
+        probe_id = request.headers.get("X-Probe-ID") or (data.get("probe_id") or "")
+        try:
+            _store(data, request.remote_addr or "", probe_id)
+        except (ValueError, KeyError, TypeError):
+            HEALTH.record_reject()
+            return jsonify(ok=False, error="temperature value required"), 400
         return jsonify(ok=True)
 
     @bp.get("/ingest")
-    def ingest_get_removed():
-        # GET used to mutate the CSV → a drive-by <img> could poison the log.
-        # Ingest is POST-only now.
-        return jsonify(ok=False, error="method not allowed; use POST"), 405
-
-    @bp.post("/ingest_csv")
-    def ingest_csv():
+    def ingest_query():
         if not _check_auth():
             return jsonify(ok=False, error="unauthorized"), 401
-        if request.content_length and request.content_length > MAX_INGEST_BYTES:
-            return jsonify(ok=False, error="payload too large"), 413
-        text = request.data.decode("utf-8", "ignore")
-        n = 0
-        for line in text.splitlines():
-            if n >= MAX_CSV_ROWS:
-                break
-            parts = [p.strip() for p in line.split(",")]
-            if not parts or not parts[0]:
-                continue
-            pid = parts[1] if len(parts) > 1 else ""
-            ok, _status, _err = _log_reading({"temperature_c": parts[0]}, pid)
-            if ok:
-                n += 1
-        return jsonify(ok=True, rows=n)
+        data = {k: v for k, v in request.args.items()}
+        probe_id = request.args.get("probe_id") or ""
+        try:
+            _store(data, request.remote_addr or "", probe_id)
+        except (ValueError, KeyError, TypeError):
+            HEALTH.record_reject()
+            return jsonify(ok=False, error="temperature value required"), 400
+        return jsonify(ok=True)
 
     return bp

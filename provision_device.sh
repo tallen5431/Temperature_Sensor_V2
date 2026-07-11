@@ -5,15 +5,12 @@
 DEVICE_IP=${1:-"192.168.1.229"}
 DEVICE_PORT=${2:-80}
 INTERVAL_MS=${3:-2000}
-HUB_PORT=${4:-8080}
-# Note: /api/provision requires the device token when one is set (X-Token).
-# Pass it via:  TOKEN=<token> ./provision_device.sh <ip>
+HUB_PORT=${4:-8088}
 
 echo "Provisioning device at $DEVICE_IP:$DEVICE_PORT with interval $INTERVAL_MS ms..."
 
 curl -X POST "http://localhost:$HUB_PORT/api/provision" \
   -H "Content-Type: application/json" \
-  ${TOKEN:+-H "X-Token: $TOKEN"} \
   -d "{\"host\": \"$DEVICE_IP\", \"port\": $DEVICE_PORT, \"interval_ms\": $INTERVAL_MS}" \
   -w "\n" \
   -s

@@ -37,14 +37,14 @@ def test_render_prometheus_includes_humidity_and_vpd():
     assert "thermahub_probe_humidity_percent" not in out2
 
 
-def test_ingest_records_latest_reading(tmp_csv):
-    client, _ = make_client(tmp_csv, token="")
+def test_ingest_records_latest_reading(tmp_db):
+    client, _ = make_client(tmp_db, token="")
     client.post("/api/ingest", json={"temperature_c": 7.7, "probe_id": "ThermaProbe-METRIC"})
     assert LATEST.snapshot().get("ThermaProbe-METRIC", {}).get("temp_c") == 7.7
 
 
-def test_ingest_records_humidity_and_vpd(tmp_csv):
-    client, _ = make_client(tmp_csv, token="")
+def test_ingest_records_humidity_and_vpd(tmp_db):
+    client, _ = make_client(tmp_db, token="")
     client.post("/api/ingest", json={"temperature_c": 25, "humidity_pct": 50, "probe_id": "ThermaProbe-HUM"})
     entry = LATEST.snapshot().get("ThermaProbe-HUM", {})
     assert entry.get("humidity") == 50.0

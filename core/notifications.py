@@ -1,145 +1,110 @@
-# core/notifications.py
-"""Out-of-range notifications for unattended monitoring.
+"""Notification channels (email + webhook) and the dispatcher.
 
-Alerts are evaluated *server-side on ingest* (not only in a browser callback),
-so a fridge/freezer excursion overnight is surfaced even when no dashboard tab
-is open — the core reason someone buys an unattended temperature monitor.
-
-Supports SMTP email and generic webhooks (Slack/Discord/IFTTT/etc). All sends
-are best-effort and can never break the ingest path.
+Channel config is read from the hub config object at send time, so changes made
+in Settings take effect without a restart.  Each channel fails independently —
+a broken webhook never blocks the email, and vice-versa.
 """
 from __future__ import annotations
 
-import json
+import logging
 import smtplib
-import threading
-import time
-import urllib.request
+import ssl
 from email.message import EmailMessage
+from typing import List, Tuple
 
-from core.applog import get_logger
+import requests
 
-log = get_logger("notify")
+log = logging.getLogger("hub.notifications")
 
 
-class NotificationManager:
-    def __init__(self):
-        self._lock = threading.Lock()
-        # probe_id -> {"state": "ok"|"high"|"low", "last_notified": epoch}
-        self._state: dict[str, dict] = {}
+def parse_recipients(to_field) -> List[str]:
+    if isinstance(to_field, (list, tuple)):
+        return [str(x).strip() for x in to_field if str(x).strip()]
+    return [p.strip() for p in str(to_field or "").replace(";", ",").split(",") if p.strip()]
 
-    # -- evaluation -----------------------------------------------------------
-    def evaluate(self, cfg, probe_id: str, temp_c: float, friendly_name: str | None = None,
-                 humidity: float | None = None, vpd: float | None = None) -> None:
-        """Check a fresh reading against thresholds and fire on transitions.
 
-        Evaluates temperature and, when present, humidity and VPD — each against
-        its own threshold pair and tracked independently, so a grower gets VPD
-        alerts without a subscription.
-        """
-        try:
-            notif = cfg.get("notifications", {}) or {}
-            if not notif.get("enabled"):
-                return
-            thresholds = cfg.get("alert_thresholds", {}) or {}
-            tcfg = thresholds.get(probe_id) or thresholds.get("default") or {}
-            name = friendly_name or probe_id or "probe"
-            debounce = int(notif.get("debounce_sec", 900) or 0)
+def send_email(email_cfg: dict, subject: str, body: str) -> Tuple[bool, str]:
+    host = (email_cfg.get("smtp_host") or "").strip()
+    recipients = parse_recipients(email_cfg.get("to"))
+    if not host or not recipients:
+        return False, "email not configured (need smtp_host and to)"
 
-            checks = [("temperature", temp_c, tcfg.get("min"), tcfg.get("max"), "°C")]
-            if humidity is not None:
-                checks.append(("humidity", humidity, tcfg.get("humidity_min"), tcfg.get("humidity_max"), "%"))
-            if vpd is not None:
-                checks.append(("vpd", vpd, tcfg.get("vpd_min"), tcfg.get("vpd_max"), "kPa"))
+    port = int(email_cfg.get("smtp_port") or 587)
+    user = (email_cfg.get("username") or "").strip()
+    password = email_cfg.get("password") or ""
+    sender = (email_cfg.get("from") or user or "temperature-hub@localhost").strip()
+    use_tls = email_cfg.get("use_tls", True)
 
-            for metric, value, lo, hi, unit in checks:
-                if lo is None and hi is None:
-                    continue
-                self._eval_metric(notif, probe_id, name, metric, value, lo, hi, unit, debounce)
-        except Exception as e:
-            log.warning("notification evaluation failed for %s: %s", probe_id, e)
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = sender
+    msg["To"] = ", ".join(recipients)
+    msg.set_content(body)
 
-    def _eval_metric(self, notif, probe_id, name, metric, value, lo, hi, unit, debounce):
-        from core.storage import threshold_breach
-        new_state = threshold_breach(value, lo, hi) or "ok"
-
-        skey = f"{probe_id}:{metric}"
-        with self._lock:
-            prev = self._state.get(skey, {"state": "ok", "last_notified": 0.0})
-            now = time.time()
-            should_send = False
-            subject = body = ""
-
-            if new_state != "ok" and prev["state"] != new_state:
-                if now - prev.get("last_notified", 0.0) >= debounce:
-                    should_send = True
-                    limit = hi if new_state == "high" else lo
-                    arrow = "above" if new_state == "high" else "below"
-                    subject = f"[{name}] {metric} {arrow} threshold"
-                    body = (f"{name} {metric} is {value:.1f} {unit}, {arrow} the "
-                            f"{new_state} threshold of {float(limit):.1f} {unit}.")
-            elif new_state == "ok" and prev["state"] != "ok":
-                should_send = True
-                subject = f"[{name}] {metric} back to normal"
-                body = f"{name} {metric} has returned to normal range ({value:.1f} {unit})."
-
-            self._state[skey] = {
-                "state": new_state,
-                "last_notified": now if should_send else prev.get("last_notified", 0.0),
-            }
-
-        if should_send:
-            self._dispatch(notif, subject, body)
-
-    # -- delivery -------------------------------------------------------------
-    def _dispatch(self, notif: dict, subject: str, body: str) -> None:
-        log.info("ALERT: %s — %s", subject, body)
-        if notif.get("recipients") and notif.get("smtp_host"):
-            self._send_email(notif, subject, body)
-        if notif.get("webhook_url"):
-            self._send_webhook(notif["webhook_url"], subject, body)
-
-    def _send_email(self, notif: dict, subject: str, body: str) -> None:
-        try:
-            msg = EmailMessage()
-            msg["Subject"] = subject
-            msg["From"] = notif.get("smtp_from") or notif.get("smtp_user") or "thermahub@localhost"
-            msg["To"] = ", ".join(notif.get("recipients", []))
-            msg.set_content(body)
-
-            host = notif["smtp_host"]
-            port = int(notif.get("smtp_port", 587) or 587)
-            with smtplib.SMTP(host, port, timeout=15) as s:
-                if notif.get("smtp_tls", True):
-                    s.starttls()
-                if notif.get("smtp_user"):
-                    s.login(notif["smtp_user"], notif.get("smtp_password", ""))
+    try:
+        if port == 465:
+            ctx = ssl.create_default_context()
+            with smtplib.SMTP_SSL(host, port, timeout=15, context=ctx) as s:
+                if user:
+                    s.login(user, password)
                 s.send_message(msg)
-            log.info("Alert email sent to %s", msg["To"])
-        except Exception as e:
-            log.warning("Failed to send alert email: %s", e)
-
-    def _send_webhook(self, url: str, subject: str, body: str) -> None:
-        try:
-            payload = json.dumps({"text": f"{subject}\n{body}"}).encode("utf-8")
-            req = urllib.request.Request(
-                url, data=payload, headers={"Content-Type": "application/json"}
-            )
-            urllib.request.urlopen(req, timeout=15).read()
-            log.info("Alert webhook posted to %s", url)
-        except Exception as e:
-            log.warning("Failed to post alert webhook: %s", e)
-
-    # -- test button ----------------------------------------------------------
-    def send_test(self, cfg) -> tuple[bool, str]:
-        notif = cfg.get("notifications", {}) or {}
-        if not (notif.get("smtp_host") and notif.get("recipients")) and not notif.get("webhook_url"):
-            return False, "No email (SMTP host + recipients) or webhook configured."
-        try:
-            self._dispatch(notif, "ThermaHub test alert", "This is a test notification from ThermaHub.")
-            return True, "Test notification sent."
-        except Exception as e:
-            return False, f"Failed: {e}"
+        else:
+            with smtplib.SMTP(host, port, timeout=15) as s:
+                if use_tls:
+                    s.starttls(context=ssl.create_default_context())
+                if user:
+                    s.login(user, password)
+                s.send_message(msg)
+        return True, "sent"
+    except Exception as e:  # noqa: BLE001 - report any SMTP failure to the caller
+        log.warning("email send failed: %s", e)
+        return False, str(e)
 
 
-NOTIFIER = NotificationManager()
+def send_webhook(webhook_cfg: dict, event: dict) -> Tuple[bool, str]:
+    url = (webhook_cfg.get("url") or "").strip()
+    if not url:
+        return False, "webhook not configured (need url)"
+    # A "text" field makes the payload work out-of-the-box with Slack-style
+    # endpoints, while the structured fields suit Zapier/IFTTT/custom relays.
+    payload = {"text": event.get("message", ""), **event}
+    try:
+        r = requests.post(url, json=payload, timeout=10)
+        if r.ok:
+            return True, "sent"
+        return False, f"HTTP {r.status_code}"
+    except Exception as e:  # noqa: BLE001
+        log.warning("webhook send failed: %s", e)
+        return False, str(e)
+
+
+class Notifier:
+    """Dispatches an event to all enabled channels. Returns per-channel results."""
+
+    def __init__(self, cfg):
+        self.cfg = cfg
+
+    def _conf(self) -> dict:
+        return self.cfg.get("notifications", {}) or {}
+
+    def enabled(self) -> bool:
+        return bool(self._conf().get("enabled"))
+
+    def dispatch(self, event: dict) -> List[Tuple[str, bool, str]]:
+        conf = self._conf()
+        results: List[Tuple[str, bool, str]] = []
+
+        email = conf.get("email", {}) or {}
+        if email.get("enabled"):
+            ok, info = send_email(email, event.get("subject", "Temperature alert"),
+                                  event.get("message", ""))
+            results.append(("email", ok, info))
+
+        webhook = conf.get("webhook", {}) or {}
+        if webhook.get("enabled"):
+            ok, info = send_webhook(webhook, event)
+            results.append(("webhook", ok, info))
+
+        for channel, ok, info in results:
+            log.info("notification via %s: %s (%s)", channel, "ok" if ok else "FAILED", info)
+        return results

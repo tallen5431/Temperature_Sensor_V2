@@ -1,21 +1,64 @@
-MIT License
+PROPRIETARY SOFTWARE LICENSE
 
-Copyright (c) 2026 ThermaHub
+Copyright (c) 2026 [COPYRIGHT HOLDER]. All rights reserved.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+  ▸ ACTION REQUIRED: replace "[COPYRIGHT HOLDER]" above with your legal name
+    or company, and "[CONTACT EMAIL]" below, before you distribute this software.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+1. Definitions.
+   "Software" means the source code, firmware, build scripts, documentation,
+   and other materials in this repository authored by the copyright holder,
+   EXCLUDING the third-party components identified in THIRD-PARTY-LICENSES.md.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+2. Ownership.
+   The Software is the proprietary property of the copyright holder and is
+   protected by copyright and other intellectual-property laws. All rights not
+   expressly granted in writing are reserved.
+
+3. No license granted by this file.
+   No right or license to use, copy, modify, merge, publish, distribute,
+   sublicense, or sell the Software is granted by this file. Viewing or
+   possessing this repository does not grant any such right. To obtain a license
+   (for evaluation, distribution, OEM, or any other use), contact the copyright
+   holder.
+
+4. Third-party components.
+   The Software incorporates third-party open-source components listed in
+   THIRD-PARTY-LICENSES.md. Those components are licensed to you under their own
+   terms, not under this license. Nothing in this license limits any right
+   granted to you by those terms — including, where applicable, your rights
+   under the GNU Lesser General Public License (LGPL) to obtain, modify, and
+   relink the LGPL-licensed components.
+
+5. Restrictions.
+   Except as permitted by applicable law, by the terms of a third-party
+   component, or by a separate written agreement with the copyright holder, you
+   may not: (a) reproduce or distribute the Software; (b) create derivative
+   works of it; (c) remove or alter any proprietary notices; or (d) use the
+   Software to build or operate a product or service that competes with it.
+
+6. Distributed product.
+   Compiled or packaged copies of the Software distributed to end users
+   (including the standalone executable produced by the build in packaging/) are
+   licensed to those end users under a separate End User License Agreement
+   (EULA), not under this file. An EULA is not included here; have one prepared
+   before selling the product.
+
+7. No warranty.
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT.
+
+8. Limitation of liability.
+   IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES, OR
+   OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE,
+   ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+   DEALINGS IN THE SOFTWARE.
+
+For licensing inquiries: [CONTACT EMAIL]
+
+----------------------------------------------------------------------------
+This is a starting template, not legal advice. Before selling the product,
+have an attorney review this license and prepare an end-user EULA. See
+THIRD-PARTY-LICENSES.md for the open-source components bundled with the product
+and the obligations they carry (notably the LGPL components).

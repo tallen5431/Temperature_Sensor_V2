@@ -101,6 +101,6 @@ saves the big cost, but the finished unit still needs:
 ## Cut the release (do first)
 
 1. The current `[Unreleased]` work is a coherent milestone — finalize `CHANGELOG.md` under a version
-   (e.g. **2.1.0**), bump `core/version.py`, `pyproject.toml`, and `firmware/src/protocol.h`.
-2. `pytest` (all green), then tag: `git tag v2.1.0 && git push --tags`.
+   (e.g. **2.4.0**), bump `core/version.py`, `pyproject.toml`, and `firmware/src/protocol.h`.
+2. `pytest` (all green), then tag: `git tag v2.4.0 && git push --tags`.
 3. Open a PR to `main`; that tagged commit is your "first sellable build" — note it on QC labels.

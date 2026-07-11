@@ -12,7 +12,7 @@ if str(ROOT) not in sys.path:
 
 
 class FakeDiscovery:
-    """Minimal stand-in for ProbeDiscovery with the register_seen contract."""
+    """Minimal stand-in for ProbeDiscovery with the update_last_seen contract."""
 
     def __init__(self):
         self._probes = {}
@@ -20,26 +20,18 @@ class FakeDiscovery:
     def list_probes(self):
         return dict(self._probes)
 
-    def register_seen(self, probe_id, ip="", port=80, host=""):
+    def update_last_seen(self, probe_id, host="", ip="", port=80):
         now = time.time()
-        for p in self._probes.values():
-            if p.get("properties", {}).get("id") == probe_id or p.get("name") == probe_id:
-                p["last_seen"] = now
-                if ip:
-                    p["ip"] = ip
-                return
+        p = self._probes.get(probe_id)
+        if p:
+            p["last_seen"] = now
+            if ip:
+                p["ip"] = ip
+            return
         self._probes[probe_id] = {
             "name": probe_id, "ip": ip, "host": host, "port": port,
             "properties": {"id": probe_id}, "last_seen": now, "source": "ingest",
         }
-
-
-@pytest.fixture
-def tmp_csv(tmp_path):
-    from core.storage import ensure_csv
-    p = tmp_path / "temperature_log.csv"
-    ensure_csv(p)
-    return p
 
 
 @pytest.fixture
@@ -48,22 +40,30 @@ def config(tmp_path):
     return Config(tmp_path / "config.json")
 
 
-def make_client(csv_path, token="", discovery=None, cfg=None):
+def make_client(db_path, token="", discovery=None, cfg=None):
+    """Build a Flask test client wired to a real SQLite-backed API blueprint."""
     from api.routes import create_api
+    from core.db import Database
     if cfg is None:
         class _Cfg:
             def get(self, k, d=None):
-                return {"probe_names": {}, "calibration": {}, "alert_thresholds": {},
-                        "notifications": {}}.get(k, d)
+                return {"probe_names": {}, "calibration_offsets": {}, "alert_thresholds": {},
+                        "notifications": {}, "settings": {}}.get(k, d)
         cfg = _Cfg()
     if discovery is None:
         discovery = FakeDiscovery()
+    db = Database(str(db_path))
     app = Flask(__name__)
-    app.register_blueprint(create_api(cfg, str(csv_path), discovery, lambda: "http://hub:8080", token))
+    app.register_blueprint(create_api(cfg, db, discovery, lambda: "http://hub:8088", token))
     return app.test_client(), discovery
 
 
 @pytest.fixture
-def client(tmp_csv):
-    c, _ = make_client(tmp_csv, token="")
+def tmp_db(tmp_path):
+    return tmp_path / "temperature_log.db"
+
+
+@pytest.fixture
+def client(tmp_db):
+    c, _ = make_client(tmp_db, token="")
     return c

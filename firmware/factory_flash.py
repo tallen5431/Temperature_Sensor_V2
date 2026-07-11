@@ -1,67 +1,120 @@
 #!/usr/bin/env python3
 """factory_flash.py -- guided flash + QC helper for one ThermaProbe unit.
 
-For a small maker producing units on a bench. It:
+The shipping firmware is the Arduino sketch
+    esp32_temp_probe/esp32_temp_probe.ino
+(the deep-sleep battery firmware). This helper:
 
-  1. Flashes the firmware with `pio run -t upload`.
-  2. Reads the ESP32 factory MAC (via esptool) and computes the SAME label
-     identity the firmware derives at boot:
-         probe_id    = "ThermaProbe-" + UPPERCASE hex of last 3 MAC bytes
-         hostname    = "thermaprobe-" + lowercase(hex)
-         SoftAP SSID = probe_id
-     (Derivation mirrors firmware/src/protocol.h -- keep the two in sync.)
-  3. Captures the per-unit RANDOM SoftAP password from the boot serial log's
-     "[label] ... ap_password=..." line (the firmware generates it once and
-     stores it in NVS; it is deliberately NOT derivable from the MAC).
+  1. Flashes the sketch with `arduino-cli compile` + `arduino-cli upload`.
+     (The old PlatformIO `pio run -t upload` path is gone with main.cpp.)
+  2. Captures the unit's identity from the boot serial log's machine-readable
+     line, which the firmware prints on every boot:
+         [label] probe_id=ThermaProbe-XXXXXX ap_ssid=ThermaProbe-XXXXXX ap_pass=TP-<16hex>
+     probe_id/ap_ssid are derived from the DS18B20 sensor ROM (or the ESP32
+     efuse MAC when no sensor is present) and are PERSISTED in NVS; ap_pass is a
+     per-unit random WPA2 key generated once and stored in NVS. None of the three
+     can be reconstructed from the MAC alone, so this serial line -- not the MAC
+     -- is the source of truth for the label.
+  3. Optionally reads the ESP32 MAC (esptool) purely to record it in the batch log.
   4. Prints the unit label + a QC checklist for the operator to tick before boxing.
 
-Pure standard library + subprocess (pyserial optional, only for auto-capturing
-the SoftAP password). Degrades gracefully: if a tool is missing it prints how to
-proceed instead of crashing.
+Pure standard library + subprocess (pyserial optional, used to auto-capture the
+[label] line). Degrades gracefully: if a tool is missing it prints how to proceed
+instead of crashing.
+
+BENCH VALIDATION NOTE: the arduino-cli FQBN and partition-scheme option below
+still need to be confirmed against your exact board + installed esp32 core
+version (see run_flash()). They are the documented defaults, not yet verified on
+hardware in this environment.
 
 Usage:
-    python factory_flash.py                # flash, read MAC, capture pass, QC
-    python factory_flash.py --no-flash     # just read MAC + capture pass + label/QC
-    python factory_flash.py --port COM5    # serial port for pio/esptool/pyserial
+    python factory_flash.py                       # flash, capture label, QC
+    python factory_flash.py --no-flash            # just capture label + QC (already flashed)
+    python factory_flash.py --port /dev/ttyUSB0   # serial port for arduino-cli/esptool/pyserial
+    python factory_flash.py --fqbn esp32:esp32:esp32
 """
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import shutil
 import subprocess
 import sys
 import time
 
-# Kept identical to firmware/src/protocol.h
-PROBE_ID_PREFIX = "ThermaProbe-"
-HOSTNAME_PREFIX = "thermaprobe-"
+# Canonical sketch, resolved relative to this file (firmware/ -> ../esp32_temp_probe).
+THIS_DIR   = os.path.dirname(os.path.abspath(__file__))
+SKETCH_DIR = os.path.normpath(os.path.join(THIS_DIR, "..", "esp32_temp_probe"))
+
+# Default board target -- NEEDS BENCH VALIDATION for your board + esp32 core:
+#   * ESP32-WROOM-32E DevKitC -> FQBN "esp32:esp32:esp32"
+#   * Partition scheme "No OTA (2MB APP/2MB SPIFFS)" gives the ~2 MB LittleFS the
+#     offline buffer expects; expressed as a board option below. Confirm the exact
+#     option key/value with `arduino-cli board details --fqbn esp32:esp32:esp32`.
+DEFAULT_FQBN     = "esp32:esp32:esp32"
+PARTITION_OPTION = "PartitionScheme=no_ota"   # verify key/value for your core version
+
+# Documentation only -- kept identical to firmware/src/protocol.h. The real
+# values come from the firmware's [label] serial line, NOT from the MAC.
+PROBE_ID_PREFIX    = "ThermaProbe-"
+AP_PASSWORD_PREFIX = "TP-"
+FW_VERSION         = "2.4.0"
+
+# Matches the firmware's machine-readable boot line:
+#   [label] probe_id=<id> ap_ssid=<id> ap_pass=TP-XXXXXXXXXXXXXXXX
+LABEL_RE = re.compile(r"\[label\]\s+probe_id=(\S+)\s+ap_ssid=(\S+)\s+ap_pass=(\S+)")
 
 
 def _have(tool: str) -> bool:
     return shutil.which(tool) is not None
 
 
-def run_flash(port: str | None) -> bool:
-    """Flash the firmware via PlatformIO. Returns True on success."""
-    if not _have("pio"):
-        print("!! PlatformIO CLI ('pio') not found.")
-        print("   Install it:  pip install platformio")
-        print("   Then re-run, or flash manually:  pio run -t upload")
+def run_flash(port: str | None, fqbn: str) -> bool:
+    """Compile + upload the sketch with arduino-cli. Returns True on success.
+
+    NOTE: FQBN + partition option need bench validation for your board/core.
+    """
+    if not _have("arduino-cli"):
+        print("!! arduino-cli not found.")
+        print("   Install it: https://arduino.github.io/arduino-cli/  then set up esp32:")
+        print("     arduino-cli core update-index")
+        print("     arduino-cli core install esp32:esp32")
+        print("     arduino-cli lib install WiFiManager ArduinoJson OneWire DallasTemperature")
+        print(f"   Then flash manually from {SKETCH_DIR}:")
+        print(f"     arduino-cli compile --fqbn {fqbn} .")
+        print(f"     arduino-cli upload -p <PORT> --fqbn {fqbn} .")
         return False
-    cmd = ["pio", "run", "-t", "upload"]
-    if port:
-        cmd += ["--upload-port", port]
-    print("==> Flashing firmware:", " ".join(cmd))
+
+    fqbn_full = f"{fqbn}:{PARTITION_OPTION}" if PARTITION_OPTION else fqbn
+
+    compile_cmd = ["arduino-cli", "compile", "--fqbn", fqbn_full, SKETCH_DIR]
+    print("==> Compiling:", " ".join(compile_cmd))
     try:
-        return subprocess.call(cmd) == 0
+        if subprocess.call(compile_cmd) != 0:
+            print("!! Compile failed.")
+            return False
     except Exception as e:  # noqa: BLE001
-        print(f"!! Flash failed to launch: {e}")
+        print(f"!! Compile failed to launch: {e}")
+        return False
+
+    upload_cmd = ["arduino-cli", "upload", "--fqbn", fqbn_full, SKETCH_DIR]
+    if port:
+        upload_cmd += ["-p", port]
+    print("==> Uploading:", " ".join(upload_cmd))
+    try:
+        return subprocess.call(upload_cmd) == 0
+    except Exception as e:  # noqa: BLE001
+        print(f"!! Upload failed to launch: {e}")
         return False
 
 
 def read_mac(port: str | None) -> str | None:
-    """Return the chip MAC as 'AA:BB:CC:DD:EE:FF' using esptool, or None."""
+    """Return the chip MAC as 'AA:BB:CC:DD:EE:FF' via esptool, or None.
+
+    Recorded in the batch log only -- the probe_id is NO LONGER derived from the
+    MAC (it comes from the DS18B20 ROM and is read off the [label] serial line).
+    """
     candidates = []
     if _have("esptool.py"):
         candidates.append(["esptool.py"])
@@ -83,12 +136,13 @@ def read_mac(port: str | None) -> str | None:
     return None
 
 
-def read_ap_password(port: str | None, timeout: float = 25.0) -> str | None:
-    """Capture the per-unit random SoftAP password from the boot serial log.
+def capture_label(port: str | None, timeout: float = 30.0) -> dict | None:
+    """Capture probe_id / ap_ssid / ap_pass from the boot serial '[label]' line.
 
-    Best-effort: needs pyserial and a known --port. Returns the password (e.g.
-    'TP-…') or None. On None, the operator reads it from the serial monitor's
-    '[label]' line manually (see the printed guidance).
+    The firmware prints this line on every boot/wake. Needs pyserial + a known
+    --port. Returns {'probe_id','ap_ssid','ap_pass'} or None (then the operator
+    reads the line by hand from the serial monitor; tap the board's EN/reset
+    button to make it re-print).
     """
     if not port:
         return None
@@ -101,64 +155,54 @@ def read_ap_password(port: str | None, timeout: float = 25.0) -> str | None:
             deadline = time.time() + timeout
             while time.time() < deadline:
                 line = ser.readline().decode("utf-8", "ignore")
-                m = re.search(r"\[label\].*ap_password=(\S+)", line)
+                m = LABEL_RE.search(line)
                 if m:
-                    return m.group(1)
-    except Exception:
+                    return {"probe_id": m.group(1),
+                            "ap_ssid":  m.group(2),
+                            "ap_pass":  m.group(3)}
+    except Exception:  # noqa: BLE001
         return None
     return None
 
 
-def identity_from_mac(mac: str) -> dict:
-    """Compute the MAC-derived label identity from a 'AA:BB:CC:DD:EE:FF' string.
-
-    (The SoftAP password is NOT derived here — it is random per unit; see
-    read_ap_password.)
-    """
-    parts = [p for p in mac.split(":") if p]
-    if len(parts) != 6:
-        raise ValueError(f"unexpected MAC format: {mac!r}")
-    b = [p.upper() for p in parts]
-    hex6 = "".join(b[3:6])                       # last 3 bytes
-    return {
-        "mac": ":".join(b),
-        "probe_id": PROBE_ID_PREFIX + hex6,
-        "hostname": HOSTNAME_PREFIX + hex6.lower(),
-        "ap_ssid": PROBE_ID_PREFIX + hex6,
-    }
-
-
-def print_label(idy: dict, ap_password: str | None) -> None:
-    pw = ap_password or "(read from serial '[label]' line)"
-    line = "=" * 52
+def print_label(label: dict | None, mac: str | None) -> None:
+    pid  = label["probe_id"] if label else "(read from serial '[label]' line)"
+    ssid = label["ap_ssid"]  if label else pid
+    pw   = label["ap_pass"]  if label else "(read from serial '[label]' line)"
+    line = "=" * 56
     print("\n" + line)
     print("  THERMAPROBE UNIT LABEL  (write on the enclosure / QR)")
     print(line)
-    print(f"  MAC          : {idy['mac']}")
-    print(f"  Probe ID     : {idy['probe_id']}")
-    print(f"  Hostname     : {idy['hostname']}.local")
-    print(f"  Setup Wi-Fi  : {idy['ap_ssid']}")
-    print(f"  Setup pass   : {pw}")
+    print(f"  Probe ID      : {pid}")
+    print(f"  Setup Wi-Fi   : {ssid}   (WPA2)")
+    print(f"  Setup pass    : {pw}")
+    print(f"  mDNS / .local : {pid}.local")
+    if mac:
+        print(f"  MAC (log only): {mac}")
+    print(f"  Firmware      : {FW_VERSION} / proto 1")
     print(line)
-    if not ap_password:
-        print("  NOTE: pyserial/--port unavailable — capture the SoftAP password from")
-        print("        the boot serial monitor line:  [label] ... ap_password=TP-XXXX")
+    if not label:
+        print("  NOTE: pyserial/--port unavailable -- read the identity from the boot")
+        print("        serial line (tap EN/reset to re-print it):")
+        print("        [label] probe_id=... ap_ssid=... ap_pass=TP-XXXXXXXXXXXXXXXX")
     print()
 
 
-def print_qc_checklist(idy: dict, ap_password: str | None) -> None:
-    pw = ap_password or "<the ap_password from serial>"
+def print_qc_checklist(label: dict | None) -> None:
+    pid  = label["probe_id"] if label else "<probe_id from [label] line>"
+    ssid = label["ap_ssid"]  if label else pid
+    pw   = label["ap_pass"]  if label else "<ap_pass from [label] line>"
     print("QC CHECKLIST -- verify each before boxing the unit:")
     steps = [
-        f"[ ] Serial boots and prints probe_id = {idy['probe_id']}",
-        f"[ ] SoftAP \"{idy['ap_ssid']}\" is visible on a phone (WPA2, pass {pw})",
-        "[ ] Captive portal / http://192.168.4.1 shows the setup page",
-        "[ ] After joining bench Wi-Fi, GET /whoami returns the same probe_id",
-        "[ ] GET /status shows sensor_ok=true and a plausible temperature_c",
-        "[ ] One successful bench ingest POST: /status last_post_ok=true, "
-        "last_post_code=200",
+        f"[ ] Serial boots and prints:  [label] probe_id={pid} ap_ssid={ssid} ap_pass={pw}",
+        f"[ ] probe_id ({pid}) is not already used in the batch serial log (unique)",
+        f"[ ] SoftAP \"{ssid}\" is visible on a phone (WPA2, password {pw})",
+        "[ ] Captive portal / http://192.168.4.1 shows the WiFiManager setup page",
+        f"[ ] After joining bench Wi-Fi, GET /whoami returns id == {pid} and fw_version == {FW_VERSION}",
+        "[ ] GET /status shows a plausible last_c (room temp; not 85.0 / -127 / NaN)",
+        "[ ] One live bench ingest: a fresh row for this probe_id lands in the hub telemetry CSV",
         "[ ] Probe appears in ThermaHub's dashboard probe list",
-        "[ ] The SoftAP password is recorded on the label and the serial log",
+        "[ ] probe_id, SoftAP SSID and WPA2 pass are recorded on the label + serial log",
     ]
     for s in steps:
         print("   " + s)
@@ -166,33 +210,35 @@ def print_qc_checklist(idy: dict, ap_password: str | None) -> None:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Flash + QC one ThermaProbe unit.")
+    ap = argparse.ArgumentParser(
+        description="Flash + QC one ThermaProbe unit (esp32_temp_probe.ino).")
     ap.add_argument("--no-flash", action="store_true",
-                    help="skip flashing; only read MAC + capture pass + print label/QC")
+                    help="skip flashing; only capture the [label] line + print label/QC")
     ap.add_argument("--port", default=None,
-                    help="serial port for pio/esptool/pyserial (e.g. COM5, /dev/ttyUSB0)")
+                    help="serial port for arduino-cli/esptool/pyserial (e.g. /dev/ttyUSB0, COM5)")
+    ap.add_argument("--fqbn", default=DEFAULT_FQBN,
+                    help=f"arduino-cli board FQBN (default {DEFAULT_FQBN}; needs bench validation)")
     args = ap.parse_args()
 
     if not args.no_flash:
-        if not run_flash(args.port):
+        if not run_flash(args.port, args.fqbn):
             print("!! Flashing did not complete. Fix the above, then re-run.")
-            # Still try to read MAC + print the label so QC can proceed manually.
+            # Still try to capture the label + print QC so the operator can proceed.
 
-    mac = read_mac(args.port)
-    if not mac:
-        print("!! Could not read the chip MAC via esptool.")
-        print("   Install esptool:  pip install esptool")
-        print("   Or read it from the boot serial log ('mac=' line) and compute")
-        print("   the label by hand:")
-        print("     probe_id = ThermaProbe-<UPPER hex of last 3 MAC bytes>")
-        print("   The SoftAP password is on the serial '[label]' line (random per unit).")
-        return 1
+    # The [label] line is the authoritative identity source; capture it first
+    # (this releases the serial port before esptool resets the chip below).
+    label = capture_label(args.port)
+    if not label:
+        print("!! Could not auto-capture the [label] line (needs pyserial + --port).")
+        print("   Open a serial monitor @115200 and read it from the boot line")
+        print("   (tap the board's EN/reset button to re-print it):")
+        print("     [label] probe_id=... ap_ssid=... ap_pass=TP-XXXXXXXXXXXXXXXX")
 
-    idy = identity_from_mac(mac)
-    ap_password = read_ap_password(args.port)
-    print_label(idy, ap_password)
-    print_qc_checklist(idy, ap_password)
-    return 0
+    mac = read_mac(args.port)   # optional -- for the batch-log 'mac' column only
+
+    print_label(label, mac)
+    print_qc_checklist(label)
+    return 0 if label else 1
 
 
 if __name__ == "__main__":

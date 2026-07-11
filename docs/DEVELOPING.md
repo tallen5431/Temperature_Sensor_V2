@@ -2,8 +2,8 @@
 
 Developer reference for the ThermaHub hub application. For the buyer-facing overview see the [root README](../README.md); for the wire protocol see [PROTOCOL.md](../PROTOCOL.md); for the probe firmware see [firmware/](../firmware/).
 
-- **Product:** ThermaHub, version **2.0.0**, protocol **v1**.
-- **Stack:** Python, Flask + [Dash](https://dash.plotly.com/) UI, served by [waitress](https://pypi.org/project/waitress/) on port **8080**.
+- **Product:** ThermaHub, version **2.4.0**, protocol **v1**.
+- **Stack:** Python, Flask + [Dash](https://dash.plotly.com/) UI, served by [waitress](https://pypi.org/project/waitress/) on port **8088**.
 - **Positioning:** local-first, no-cloud temperature-monitoring appliance. Readings stay on the customer's PC.
 
 ---
@@ -27,7 +27,7 @@ pip install -r requirements-dev.txt
 python app.py
 ```
 
-On first run the app seeds `config.json` from `config.example.json`, creates `temperature_log.csv`, and generates a device token (saved to `config.local.json`) unless one is supplied via `SERVER_TOKEN` or already present in config. The startup banner prints the local and LAN dashboard URLs.
+On first run the app seeds `config.json` from `config.example.json`, creates the `temperature_log.db` SQLite database (WAL mode) — auto-importing a legacy `temperature_log.csv` once if one is present — and generates a device token (saved to `config.local.json`) unless one is supplied via `SERVER_TOKEN` or already present in config. The startup banner prints the local and LAN dashboard URLs.
 
 ---
 
@@ -47,13 +47,13 @@ ThermaProbe ──POST /api/ingest {temperature_c, probe_id, timestamp}──▶
                              validate + calibrate + append        NOTIFIER (thresholds)
                                           │                              │
                                           ▼                              ▼
-                                temperature_log.csv              email / webhook
+                                temperature_log.db               email / webhook
                                           │
                                           ▼
                                    Dash dashboard (charts, stats)
 ```
 
-- **`app.py`** boots logging, config, CSV, discovery, the Flask server + API blueprint, the Dash app, mDNS advertising, and the auto-provisioner, then serves via waitress.
+- **`app.py`** boots logging, config, storage, discovery, the Flask server + API blueprint, the Dash app, mDNS advertising, and the auto-provisioner, then serves via waitress.
 - **Device token** is resolved once at startup (`SERVER_TOKEN` env → config `provision_token` → freshly generated). The *same* token guards mutating API endpoints **and** is pushed to probes by the provisioner, so probes echo it back as `X-Token` and plug-and-play stays secure by default. An empty token means "open" (used only in tests / air-gapped dev).
 - **Discovery** (`probe_discovery.py`) browses `_temps-probe._tcp.local.` and tracks last-seen probes.
 - **Auto-provisioner** (`auto_provisioner.py`) periodically pushes the hub's ingest base URL + token + interval to every discovered probe by IP.
@@ -69,22 +69,29 @@ ThermaProbe ──POST /api/ingest {temperature_c, probe_id, timestamp}──▶
 | `api/routes.py` | `create_api()` → Flask blueprint with all `/api/*` endpoints and auth. |
 | `auto_provision.py` | `provision_probe()` — provision a single probe (POST its `/provision`). |
 | `auto_provisioner.py` | `AutoProvisioner` background thread — provisions all discovered probes on a period. |
-| `probe_discovery.py` | `ProbeDiscovery` — zeroconf browser; `list_probes()`, `register_seen()`. |
+| `probe_discovery.py` | `ProbeDiscovery` — zeroconf browser; `list_probes()`, `update_last_seen()`. |
 | `wifi_scan.py` | Wi-Fi scan helper used by setup UI. |
 | `provision_device.sh` | Shell helper to provision a probe manually. |
-| `core/config.py` | Layered config load (`config.json` + `config.local.json`), redaction, persistence. |
-| `core/storage.py` | CSV schema, `normalize_payload`, `apply_calibration`, `append_row`, `sanitize_probe_id`. |
-| `core/paths.py` | Single source of truth for `BASE_DIR`, CSV path, log dir. |
-| `core/applog.py` | Logging setup, `get_logger`, and the `HEALTH` counters. |
-| `core/notifications.py` | `NOTIFIER` — threshold evaluation → email/webhook with debounce. |
+| `core/config.py` | `Config` — loads `config.json`, coerces values via `config_schema`, persists, and audits changes. |
+| `core/config_schema.py` | `normalize_config` — validates/repairs a hand-edited config without crashing the hub. |
+| `core/storage.py` | Ingest payload normalization + timezone handling; humidity/VPD helpers (`compute_vpd`, `extract_humidity`) and the shared `threshold_breach`. |
+| `core/db.py` | `Database` — the SQLite (WAL) readings store (system of record): schema, windowed reads/downsampling, retention purge, CSV import/export, backup. |
+| `core/alerts.py` / `alert_monitor.py` | Threshold + offline alert evaluation (hysteresis) and the background `AlertMonitor` thread (also runs the retention purge). |
+| `core/notifications.py` | `Notifier` — sends alert events over email/webhook with a cooldown. |
+| `core/metrics.py` | Prometheus `/metrics` exposition + the in-memory `LATEST` per-probe registry. |
+| `core/mqtt_publish.py` | Optional MQTT publishing + Home Assistant auto-discovery (`MQTT`). |
+| `core/audit.py` | Tamper-evident hash-chained audit log (`AUDIT`), verified at `/api/audit/verify`. |
+| `core/diagnostics.py` / `core/status.py` | Secret-free health snapshot for `/api/diagnostics` + the Diagnostics view. |
+| `core/applog.py` | `get_logger` + the `HEALTH` counters surfaced on `/api/health` and `/metrics`. |
+| `core/logging_setup.py` | Rotating-file + console logging configuration. |
 | `core/mdns_advert.py` | `MdnsAdvert` — advertises the hub over mDNS. |
-| `core/version.py` | `__version__` (2.0.0) and `PROTOCOL_VERSION` (1). |
+| `core/version.py` | `HUB_VERSION`/`__version__` (2.4.0), `PRODUCT_NAME`, `PROTOCOL_VERSION` (1). |
 | `components/layout_main.py` | Builds the Dash layout, page routing, callback registration. |
-| `components/dashboard_view.py`, `devices_panel.py`, `setup_helper.py`, `help_modal.py` | Dashboard UI pieces (dashboard, devices, settings, help). |
+| `components/*.py` | Dashboard UI pieces (dashboard, devices, settings, diagnostics, help, probe-setup wizard). |
 | `config.example.json` | Shipped default config; copied to `config.json` on first run. |
-| `tests/` | Pytest suite (`test_api_routes.py`, `test_config.py`, `test_storage.py`, `test_probe_discovery.py`, `conftest.py`). |
-| `firmware/` | ESP32 probe firmware (PlatformIO) + `factory_flash.py`. |
-| `temperature_log.csv` | Live data log (git-ignored). |
+| `tests/` | Pytest suite (data layer, API/auth, alerts, notifications, monitor, dashboard, metrics, MQTT, audit, config, status, diagnostics, discovery). |
+| `firmware/` | Firmware contract (`src/protocol.h`) + factory-flash / QC tooling (`factory_flash.py`). The ESP32 ThermaProbe firmware itself is the Arduino sketch `esp32_temp_probe/esp32_temp_probe.ino` (deep-sleep/battery), built with the Arduino toolchain / arduino-cli. |
+| `temperature_log.db` | Live readings database — SQLite (WAL), git-ignored. |
 
 ---
 
@@ -103,7 +110,7 @@ All endpoints are under the `/api` prefix. Mutating endpoints require the device
 | GET | `/api/ingest` | — | Always `405` (POST only; prevents drive-by log poisoning). |
 | POST | `/api/ingest_csv` | yes | Bulk ingest of CSV lines (max 1000 rows/request). |
 
-Additionally, `GET /download/temperature_log.csv` (served by Flask, not under `/api`) is the **only** downloadable file; any other path returns 404.
+Additionally, two files are downloadable outside `/api` (served by Flask): `GET /download/temperature_log.csv` **exports** readings as CSV (optionally `?window=24h`), and `GET /download/backup.db` returns a full SQLite snapshot. Any other path returns 404.
 
 ### `GET /api/health`
 
@@ -112,10 +119,10 @@ Returns:
 ```json
 {
   "ok": true,
-  "version": "2.0.0",
+  "version": "2.4.0",
   "protocol": 1,
   "probes": 2,
-  "base": "http://192.168.1.50:8080",
+  "base": "http://192.168.1.50:8088",
   "time": "2026-07-06T10:00:00",
   "rows_written": 1234,
   "ingest_rejected": 3,
@@ -128,7 +135,7 @@ Returns:
 - `probes` — count of currently discovered probes.
 - `base` — the public base URL the hub advertises to probes.
 - `rows_written`, `ingest_rejected`, `write_failures` — cumulative counters.
-- `last_write_age_sec` — seconds since the last successful CSV write (`null` if none yet).
+- `last_write_age_sec` — seconds since the last successful database write (`null` if none yet).
 - `healthy` — `true` only if there has been a recent write (< 120 s) and no write failures.
 
 ### `POST /api/ingest`
@@ -162,7 +169,7 @@ Config is layered: `config.json` (seeded from `config.example.json`) with `confi
 | `alert_thresholds` | `{ default: { min, max } }` (per-probe entries override the default). |
 | `probe_names` | `{ <probe_id>: <friendly name> }`. |
 
-CSV columns are fixed: `timestamp,temperature_c,temperature_f,probe_id`.
+The CSV **export** columns are fixed: `timestamp,temperature_c,temperature_f,probe_id,humidity_pct,vpd_kpa`.
 
 ---
 
@@ -171,11 +178,12 @@ CSV columns are fixed: `timestamp,temperature_c,temperature_f,probe_id`.
 | Variable | Default | Purpose |
 |---|---|---|
 | `HOST` | `0.0.0.0` | Bind address for the server. |
-| `PORT` | `8080` | HTTP port for UI + API. |
+| `PORT` | `8088` | HTTP port for UI + API. |
 | `PUBLIC_BASE` | `http://<detected-LAN-IP>:<PORT>` | Base URL advertised to probes; set to override auto-detection. |
 | `SERVER_TOKEN` | *(empty → generated)* | Forces the device token; takes precedence over config. |
 | `UI_USERNAME` / `UI_PASSWORD` | *(unset)* | Enable HTTP Basic auth on the dashboard + CSV download (also configurable via the `ui_auth` config block). |
-| `CSV_FILE` | `<repo>/temperature_log.csv` | Path to the readings log. |
+| `DB_FILE` | `<data>/temperature_log.db` | Path to the SQLite readings database. |
+| `CSV_FILE` | `<repo>/temperature_log.csv` | Legacy CSV auto-imported once on first run (if present). |
 | `CONFIG_FILE` | `<repo>/config.json` | Path to the runtime config (override for Docker volumes). |
 | `LOG_DIR` | `<repo>/logs` | Directory for application logs. |
 | `MDNS_ENABLE` | `1` | Set to `0`/`false` to disable the hub's mDNS advertising. |
@@ -209,7 +217,7 @@ auth) and `/metrics` (Prometheus scrape) are intentionally exempt.
 names are logged, never secret values). `GET /api/audit/verify` (auth) reports chain integrity and
 entry count. See `docs/COMPLIANCE.md` for how this fits a B2B / regulated path.
 
-**Log retention** — a background task (`core/retention.py`) keeps the CSV bounded for 24/7 use:
+**Log retention** — a background task (`core/retention.py`) keeps the readings database bounded for 24/7 use:
 readings newer than `retention.raw_days` are kept full-resolution, older ones are thinned to one per
 probe per `downsample_interval_min`, and anything past `downsample_days` is dropped. Runs hourly +
 shortly after startup, atomically under the write lock. Set `retention.enabled: false` to keep
@@ -225,4 +233,4 @@ pytest            # from the repo root
 pytest -q tests/test_api_routes.py   # a single file
 ```
 
-The suite covers the API routes, config layering, CSV storage/validation, and probe discovery. Tests run with an empty (open) token where applicable.
+The suite covers the API routes, config layering, storage/validation, and probe discovery. Tests run with an empty (open) token where applicable.

@@ -25,7 +25,7 @@ Welcome! ThermaHub lets you watch the temperature of your fridge, freezer, ferme
    - **Windows:** double-click **`Start.bat`**.
    - **Linux/macOS:** double-click or run **`Start.sh`**.
 2. The very first time, it spends a minute setting itself up. That's normal. Later starts are instant.
-3. Your web browser opens automatically to the dashboard at **http://localhost:8080**. If it doesn't open on its own, open your browser and type **http://localhost:8080** into the address bar.
+3. Your web browser opens automatically to the dashboard at **http://localhost:8088**. If it doesn't open on its own, open your browser and type **http://localhost:8088** into the address bar.
 4. If Windows asks about the firewall, click **Allow** — and make sure **Private networks** is checked. This lets your probes reach the hub.
 
 Leave this program running whenever you want to collect temperatures.
@@ -65,7 +65,7 @@ The probe now joins your Wi-Fi on its own every time it powers on. You won't nee
 
 ## 6. See the probe on the dashboard
 
-1. Back on the ThermaHub PC, go to **http://localhost:8080**.
+1. Back on the ThermaHub PC, go to **http://localhost:8088**.
 2. Within a few seconds, your probe appears by name (for example **ThermaProbe-9A3F2C**), and its current temperature and a live chart begin updating.
 
 That's it — the hub found the probe and set it up for you automatically. Readings continue as long as both the probe and the hub are powered on.
@@ -79,7 +79,7 @@ That's it — the hub found the probe and set it up for you automatically. Readi
 - **Live view:** each probe shows its current temperature, a chart over time, and summary statistics.
 - **Export to a spreadsheet:** click the **download** link on the dashboard to save **`temperature_log.csv`**. Open it in Excel or Google Sheets. Each row is a reading with a timestamp, the temperature in °C and °F, and which probe it came from. Grow-variant probes (see Section 11) also fill in **humidity** and **VPD** columns; those columns stay blank for temperature-only probes.
 
-Your data lives only on this PC. Backing up the CSV file is as simple as copying it.
+Your data lives only on this PC, in a local database. Backing it up is as simple as exporting the CSV from the dashboard (or downloading a full database backup).
 
 ---
 
@@ -137,7 +137,7 @@ Some ThermaProbes ship with a **humidity sensor (SHT4x)** for grow tents and gre
 
 ## 12. Troubleshooting FAQ
 
-**The dashboard won't open at http://localhost:8080.**
+**The dashboard won't open at http://localhost:8088.**
 Make sure the hub program (`Start.bat` / `Start.sh`) is still running. Look for its window. If it closed, start it again.
 
 **My probe never appears on the dashboard.**
@@ -159,7 +159,7 @@ Those are sensor fault readings, usually from a loose or disconnected probe tip.
 Re-run the hub and click **Allow** on **Private networks** when prompted. Without this, probes on your network can't reach the hub.
 
 **Where is my data stored?**
-In a file called **`temperature_log.csv`** in the ThermaHub folder on your PC. Nothing is uploaded anywhere.
+In a local SQLite database called **`temperature_log.db`** in the ThermaHub folder on your PC. You can export it anytime to a **`temperature_log.csv`** spreadsheet from the dashboard. Nothing is uploaded anywhere.
 
 ---
 

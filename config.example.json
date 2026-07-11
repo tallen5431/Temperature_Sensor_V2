@@ -1,46 +1,38 @@
 {
   "interval_sec": 5,
-  "auto_provision": true,
   "pull_enabled": true,
+  "auto_provision": true,
   "provision_token": "",
-  "branding": {
-    "product_name": "ThermaHub",
-    "brand_name": "ThermaHub",
-    "support_url": "https://example.com/support",
-    "primary_color": "#00bcd4",
-    "copyright": "ThermaHub",
-    "logo_path": "/assets/logo.svg"
-  },
+  "probe_online_timeout_sec": 60,
+  "retention_days": 0,
+  "alert_freshness_sec": 600,
+  "offline_after_sec": 300,
+  "alert_hysteresis_c": 0.5,
+  "probe_names": {},
+  "alert_thresholds": {},
+  "calibration_offsets": {},
   "settings": {
-    "default_unit": "celsius",
-    "timezone": "",
     "vpd_leaf_offset_c": 0.0
   },
   "notifications": {
     "enabled": false,
-    "recipients": [],
-    "webhook_url": "",
-    "debounce_sec": 900,
-    "smtp_host": "",
-    "smtp_port": 587,
-    "smtp_user": "",
-    "smtp_password": "",
-    "smtp_from": "",
-    "smtp_tls": true
-  },
-  "calibration": {},
-  "alert_thresholds": {
-    "default": {
-      "min": 2,
-      "max": 8
+    "cooldown_sec": 1800,
+    "notify_recovery": true,
+    "offline_alerts": true,
+    "email": {
+      "enabled": false,
+      "smtp_host": "",
+      "smtp_port": 587,
+      "use_tls": true,
+      "username": "",
+      "password": "",
+      "from": "",
+      "to": ""
+    },
+    "webhook": {
+      "enabled": false,
+      "url": ""
     }
-  },
-  "probe_names": {},
-  "retention": {
-    "enabled": true,
-    "raw_days": 14,
-    "downsample_days": 365,
-    "downsample_interval_min": 15
   },
   "ui_auth": {
     "enabled": false,

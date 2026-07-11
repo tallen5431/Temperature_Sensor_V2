@@ -33,8 +33,9 @@ leave the building and your alerts keep working even when the internet doesn't.
 - 🔒 **It can't be shut down.** The probe reports to a hub app you run yourself, and the firmware is
   open. No vendor account to close, no server to sunset — if the company that sold it to you vanishes,
   your setup keeps running. (Cloud thermometers have bricked overnight when their servers went dark.)
-- 🏠 **Your data stays on-prem.** Readings are written to a plain **CSV on your machine** — no account,
-  no telemetry, nothing phoning home. Built for security-sensitive IT, OT, and home networks.
+- 🏠 **Your data stays on-prem.** Readings are stored in a local **SQLite database on your machine**,
+  exportable to CSV anytime — no account, no telemetry, nothing phoning home. Built for
+  security-sensitive IT, OT, and home networks.
 - 🧩 **Drops into the stack you already run** (see below) instead of being one more walled-garden app.
 - 🌡️ **One hub, many probes.** Add probes and they self-discover on your LAN — pay for sensors, not for
   a per-sensor "gateway."
@@ -45,7 +46,7 @@ leave the building and your alerts keep working even when the internet doesn't.
 
 ## Drops into your homelab stack
 
-- **Prometheus / Grafana** — scrape `http://<hub>:8080/metrics` for per-probe temperature + health gauges.
+- **Prometheus / Grafana** — scrape `http://<hub>:8088/metrics` for per-probe temperature + health gauges.
 - **Home Assistant / MQTT** — flip on MQTT and each probe appears automatically as a temperature sensor
   (HA auto-discovery).
 - **Docker / headless** — `docker compose up -d` runs the hub on your NAS or server; data persists in a
@@ -67,7 +68,7 @@ leave the building and your alerts keep working even when the internet doesn't.
 | Power | USB, 5 V (**always-on** — this model does not run on battery) |
 | Reporting interval | Configurable, 1 s to 1 hour (default 5 s) |
 | Probes per hub | Many (dozens) — one hub serves your whole rack/closet/site |
-| Data storage | Local **CSV** on your PC — no cloud, no account |
+| Data storage | Local **SQLite database** on your PC (one-click CSV export) — no cloud, no account |
 | Hub software | Free. **Windows 10/11 or Linux**; installs its own runtime. Runs headless / in Docker on a NAS. |
 | Integrations | Prometheus `/metrics`, MQTT + Home Assistant auto-discovery, CSV export, email/webhook alerts |
 | Firmware | Open source; on-device Wi-Fi setup (no app store, no account) |

@@ -118,7 +118,8 @@ a *feature* to them, not a limitation — lead with it.
 ## 5. Product features that help B2B procurement
 
 **Already shipped (use them in the pitch):**
-- ✅ **Per-unit serial numbers** — the MAC-derived `ThermaProbe-<HEX>` ID is a stable serial,
+- ✅ **Per-unit serial numbers** — the `ThermaProbe-<HEX6>` ID, derived from the probe's unique
+  DS18B20 sensor ROM (with an ESP32-MAC fallback) and persisted in NVS, is a stable per-unit serial,
   surfaced in the UI, exports, `/status`, and on the label (so per-unit cal certs can be tied to it).
 - ✅ **Tamper-evident audit trail** — hash-chained, append-only log of config changes and data
   exports (`logs/audit.log`); integrity check at `GET /api/audit/verify`. The foundation any future

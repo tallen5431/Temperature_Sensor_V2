@@ -98,7 +98,7 @@ failure). Pair the message with a *"put your router on a UPS"* note; never overc
 
 ### Messaging angles
 1. **"It can't be shut down."** Open firmware on *your* PC survives any vendor's death. *(lead)*
-2. **"Your data never leaves the building."** Local CSV, no account, no cloud retention.
+2. **"Your data never leaves the building."** Local database (one-click CSV export), no account, no cloud retention.
 3. **"Keeps alerting on your own network even when the internet is down."** *(+ the UPS caveat)*
 4. **"One hub, many probes — pay for sensors, not per-sensor gateways."** Attacks SensorPush's
    $55 sensor + $100 gateway math directly.

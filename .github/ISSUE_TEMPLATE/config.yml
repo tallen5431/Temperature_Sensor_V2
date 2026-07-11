@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation & troubleshooting
+    url: https://github.com/tallen5431/temperature_sensor_v2#readme
+    about: Setup, configuration, notifications, and the troubleshooting table.
+  - name: Testing guide
+    url: https://github.com/tallen5431/temperature_sensor_v2/blob/main/TESTING.md
+    about: Automated, hardware-in-the-loop, and resilience test plans.

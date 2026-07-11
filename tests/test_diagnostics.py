@@ -1,0 +1,93 @@
+"""Tests for the diagnostics snapshot (core.diagnostics)."""
+from core.diagnostics import build_diagnostics, db_size_bytes, human_size
+
+
+class _FakeDB:
+    def __init__(self, n, newest=None, path=None):
+        self._n, self._newest, self.path = n, newest, path
+
+    def count(self):
+        return self._n
+
+    def latest(self):
+        return {"timestamp": self._newest} if self._newest else None
+
+
+class _FakeFinder:
+    def __init__(self, probes):
+        self._p = probes
+
+    def list_probes(self):
+        return self._p
+
+
+def test_human_size():
+    assert human_size(0) == "0 B"
+    assert human_size(None) == "—"
+    assert human_size(512) == "512 B"
+    assert human_size(2048) == "2.0 KB"
+    assert human_size(5 * 1024 * 1024) == "5.0 MB"
+
+
+def test_db_size_missing(tmp_path):
+    assert db_size_bytes(str(tmp_path / "nope.db")) is None
+
+
+def test_db_size_sums_wal_sidecar(tmp_path):
+    base = tmp_path / "x.db"
+    base.write_bytes(b"a" * 100)
+    (tmp_path / "x.db-wal").write_bytes(b"b" * 50)
+    assert db_size_bytes(str(base)) == 150
+
+
+def test_build_counts_online_and_offline():
+    probes = {
+        "p1": {"name": "Fridge", "ip": "10.0.0.2", "properties": {"id": "p1"}, "last_seen": 995},
+        "p2": {"name": "Freezer", "ip": "10.0.0.3", "properties": {"id": "p2"}, "last_seen": 100},
+    }
+    cfg = {
+        "probe_online_timeout_sec": 60, "retention_days": 7,
+        "notifications": {"enabled": True, "email": {"enabled": True},
+                          "webhook": {"enabled": False}, "offline_alerts": True},
+    }
+    d = build_diagnostics(cfg, _FakeDB(42, newest="2026-06-09T00:00:00"),
+                          _FakeFinder(probes), "http://hub:8088", "2.2.1", "Temperature Hub",
+                          now=1000.0)
+    assert d["probes"]["total"] == 2 and d["probes"]["online"] == 1
+    assert d["database"]["readings"] == 42
+    assert d["database"]["newest_reading"] == "2026-06-09T00:00:00"
+    assert d["retention_days"] == 7
+    assert d["notifications"] == {"enabled": True, "email": True,
+                                  "webhook": False, "offline_alerts": True}
+    assert d["server"]["base"] == "http://hub:8088"
+    assert d["version"] == "2.2.1"
+
+
+def test_build_contains_no_secrets():
+    # Notification host/url/password/token must never appear in the snapshot.
+    cfg = {
+        "provision_token": "supersecret",
+        "notifications": {"enabled": True,
+                          "email": {"enabled": True, "password": "hunter2", "smtp_host": "smtp.example.com"},
+                          "webhook": {"enabled": True, "url": "https://hooks.example.com/abc"}},
+    }
+    d = build_diagnostics(cfg, _FakeDB(1), _FakeFinder({}), "http://hub:8088",
+                          "2.2.1", "Temperature Hub", now=1000.0)
+    blob = repr(d)
+    for secret in ("supersecret", "hunter2", "smtp.example.com", "hooks.example.com"):
+        assert secret not in blob
+
+
+def test_build_survives_broken_db():
+    class _BoomDB:
+        path = None
+
+        def count(self):
+            raise RuntimeError("db down")
+
+        def latest(self):
+            raise RuntimeError("db down")
+
+    d = build_diagnostics({}, _BoomDB(), _FakeFinder({}), "", "2.2.1", "Temperature Hub", now=1.0)
+    assert d["database"]["readings"] is None
+    assert d["probes"]["total"] == 0

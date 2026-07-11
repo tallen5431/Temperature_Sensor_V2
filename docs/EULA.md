@@ -23,8 +23,8 @@ modify, and self-host it.
 ## 2. Local-first, no cloud
 
 ThermaHub runs entirely on your own computer. Temperature readings, probe names,
-and configuration stay on that machine (for example in `config.json`,
-`config.local.json`, and `temperature_log.csv`). There is no account to create,
+and configuration stay on that machine (for example in `temperature_log.db`,
+`config.json`, and `config.local.json`). There is no account to create,
 no cloud service, and no usage telemetry is sent to us. What you do with your
 data is up to you.
 

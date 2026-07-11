@@ -1,116 +1,139 @@
 # ThermaProbe Firmware
 
-Reference ESP32 firmware for the **ThermaProbe** — the wireless temperature
-probe that feeds the local-first **ThermaHub** appliance. This is the actual
-image that gets flashed onto manufactured units. It implements the *probe side*
-of ThermaHub protocol **v1**.
+Reference ESP32 firmware for the **ThermaProbe** — the wireless, battery-powered
+temperature probe that feeds the local-first **ThermaHub** appliance. This is the
+actual image flashed onto manufactured units. It implements the *probe side* of
+ThermaHub protocol **v1**.
 
-- **MCU:** ESP32-WROOM-32E (`esp32dev`)
-- **Framework:** Arduino via [PlatformIO](https://platformio.org/)
-- **Firmware version:** 2.0.0 · **Protocol:** 1
-- **Sensor:** DS18B20 (default), MAX31855 K-type thermocouple, or SHT4x
-  temperature **+ humidity** (build options)
+The canonical, shipping firmware is the Arduino sketch
+[`../esp32_temp_probe/esp32_temp_probe.ino`](../esp32_temp_probe/esp32_temp_probe.ino)
+— the **deep-sleep battery firmware** (WiFiManager captive-portal setup, LittleFS
+offline buffer, NTP time). The former PlatformIO project (`platformio.ini` +
+`src/main.cpp`) has been removed; only the sketch is built now.
 
-All GPIO/pin assignments live in [`src/protocol.h`](src/protocol.h), which is
-the single source of truth shared with the hardware docs
-(`docs/BOM.md`, `docs/ASSEMBLY.md`) so firmware and hardware cannot drift.
+- **MCU:** ESP32-WROOM-32E
+- **Toolchain:** Arduino (Arduino IDE or `arduino-cli`) — **not** PlatformIO
+- **Firmware version:** 2.4.0 · **Protocol:** 1
+- **Sensor:** DS18B20 (1-Wire) — the **only** sensor in the current firmware
+- **Power:** rechargeable-lithium battery; deep-sleeps between readings for long
+  battery life
+
+Pin assignments and the identity contract live in
+[`src/protocol.h`](src/protocol.h), the single source of truth shared with the
+hardware docs (`docs/BOM.md`, `docs/ASSEMBLY.md`) so firmware and hardware cannot
+drift.
 
 ---
 
-## 1. Install PlatformIO
+## 1. Toolchain & libraries
 
-Either the VS Code extension, or the CLI:
+Install the Arduino ESP32 core and the sketch's libraries. With `arduino-cli`:
 
 ```bash
-pip install platformio
+arduino-cli core update-index
+arduino-cli core install esp32:esp32
+arduino-cli lib install WiFiManager ArduinoJson OneWire DallasTemperature
 ```
+
+Libraries used by the sketch:
+
+- **WiFiManager** (by tzapu) — captive-portal Wi-Fi setup
+- **ArduinoJson** (v6 or v7) — ingest + API JSON
+- **OneWire** + **DallasTemperature** — DS18B20
+- **ESPmDNS**, **LittleFS**, **Preferences** (NVS) — bundled with the ESP32 core
+- Core headers: `WiFi`, `HTTPClient`, `WebServer`, `time.h`, `esp_sleep`, `esp_random`
+
+Recommended partition scheme (Arduino IDE → Tools → Partition Scheme, or an
+`arduino-cli` board option): **"No OTA (2MB APP/2MB SPIFFS)"** — the ~2 MB
+LittleFS backs the offline buffer (~38 000 readings).
 
 ## 2. Wire the sensor
 
-See **`docs/ASSEMBLY.md`** (wiring, enclosure) and **`docs/BOM.md`** (parts).
-Summary, matching `src/protocol.h`:
+See **`docs/ASSEMBLY.md`** (wiring, battery, enclosure) and **`docs/BOM.md`**
+(parts). Summary, matching `src/protocol.h`:
 
-**DS18B20 (default)**
+**DS18B20 (the only supported sensor)**
 
 | DS18B20 | ESP32 |
 |---------|-------|
 | VDD (red)    | 3V3 |
 | GND (black)  | GND |
-| DATA (yellow)| GPIO4 (`ONE_WIRE_BUS`) |
+| DATA (yellow)| **GPIO5** (`ONE_WIRE_BUS`) |
 
 Add a **4.7 kΩ pull-up** from DATA to 3V3 (required for 1-Wire).
 
-**MAX31855 thermocouple (optional)** — CS=GPIO5, SCK=GPIO18, SO(MISO)=GPIO19.
+Status LED: **GPIO2** (`LED_BUILTIN` / on-board LED on most dev boards).
 
-**SHT4x temp + humidity (optional, "grow" variant)** — I2C:
+> MAX31855 thermocouple and SHT4x temp+humidity pin maps exist in `protocol.h`
+> but are **future/optional and not implemented in the current firmware** — the
+> shipping build is DS18B20-only. Do not populate them on production units.
 
-| SHT4x | ESP32 |
-|-------|-------|
-| VDD  | 3V3 |
-| GND  | GND |
-| SDA  | GPIO21 (`I2C_SDA`) |
-| SCL  | GPIO22 (`I2C_SCL`) |
+## 3. Build & flash
 
-This variant *replaces* the DS18B20 and adds a `humidity_pct` field to each reading;
-the hub uses it to compute VPD (vapour pressure deficit).
-
-Status LED: GPIO2 (on-board LED on most dev boards).
-
-## 3. Select the sensor back-end
-
-In [`platformio.ini`](platformio.ini) `build_flags`, comment the DS18B20 line and
-uncomment exactly one alternative:
-
-- `-D SENSOR_DS18B20` — default, 1-Wire DS18B20 (temperature only).
-- `-D SENSOR_MAX31855` — thermocouple. Also uncomment the `adafruit/Adafruit
-  MAX31855 library` line in `lib_deps`.
-- `-D SENSOR_SHT4x` — temperature **+ humidity** over I2C (the grow variant, enables
-  VPD). Also uncomment both the `adafruit/Adafruit SHT4x Library` and its
-  `adafruit/Adafruit BusIO` dependency lines in `lib_deps`.
-
-## 4. Build & flash
+With `arduino-cli` (run from the sketch directory `esp32_temp_probe/`):
 
 ```bash
-pio run                 # compile
-pio run -t upload       # flash over USB
-pio device monitor      # serial console @ 115200 baud
+arduino-cli compile --fqbn esp32:esp32:esp32 .
+arduino-cli upload -p <PORT> --fqbn esp32:esp32:esp32 .
+arduino-cli monitor -p <PORT> -c baudrate=115200      # serial console
 ```
 
-Or use the guided factory helper (flash + compute the unit label + QC prompts):
+Or open `esp32_temp_probe/esp32_temp_probe.ino` in the **Arduino IDE**, select
+the ESP32 board + the "No OTA (2MB APP/2MB SPIFFS)" partition scheme, and upload.
+
+Or use the guided factory helper (flash + capture the unit label + QC prompts):
 
 ```bash
-python factory_flash.py                # flash, then print label + QC checklist
-python factory_flash.py --no-flash     # just read MAC and print the label
-python factory_flash.py --port COM5    # pin a serial port
+python factory_flash.py                      # flash, then print label + QC checklist
+python factory_flash.py --no-flash           # already-flashed unit: capture label + QC
+python factory_flash.py --port /dev/ttyUSB0  # pin a serial port
 ```
 
-## 5. First-run setup (SoftAP)
+`factory_flash.py` invokes `arduino-cli compile`/`upload` and reads the unit's
+identity from the boot serial `[label]` line (see **Identity** below).
 
-With no saved Wi-Fi, the probe starts a **WPA2 SoftAP** named
-`ThermaProbe-<HEX6>` (password on the unit label). Join it with a phone/laptop,
-let the captive portal open (or browse to `http://192.168.4.1`), enter your home
-Wi-Fi SSID + password, and Save. The probe stores the creds to NVS, reboots, and
-joins your network. It then appears **automatically** in ThermaHub — the hub
-discovers it over mDNS and pushes the ingest URL + token to it.
+## 4. First-run setup (SoftAP)
+
+With no saved Wi-Fi, the probe starts a **WPA2 SoftAP** whose SSID **is the probe
+id** (e.g. `ThermaProbe-9A3F2C`), protected by a **per-unit random password**
+`TP-<16 hex>` printed on the unit label. Join it with a phone/laptop, let the
+WiFiManager captive portal open (or browse to `http://192.168.4.1`), and enter:
+
+- your home Wi-Fi SSID + password (required), and
+- optionally the server URL / ingest token / read interval.
+
+The probe stores the credentials to NVS and joins your network. It then appears
+**automatically** in ThermaHub — the hub discovers it over mDNS and pushes the
+ingest URL + token via `POST /provision`. On a later deep-sleep wake the probe
+fast-reconnects to the saved network **without** re-opening the portal.
 
 ---
 
 ## Identity (must match hub + label)
 
-Derived once at boot from the ESP32 efuse MAC:
+Derived **once** at first boot and **persisted in NVS** for the life of the unit
+(a later failed sensor read can no longer flip it):
 
 ```
-HEX6        = UPPERCASE hex of the last 3 MAC bytes      e.g. 9A3F2C
-probe_id    = "ThermaProbe-" + HEX6                      e.g. ThermaProbe-9A3F2C
-hostname    = "thermaprobe-" + lowercase(HEX6)           -> thermaprobe-9a3f2c.local
+HEX6        = UPPERCASE hex of the LAST 6 hex (3 bytes) of the DS18B20 sensor
+              ROM code; if no sensor is present, the last 6 hex of the ESP32
+              efuse MAC (chip id).                         e.g. 9A3F2C
+probe_id    = "ThermaProbe-" + HEX6                        e.g. ThermaProbe-9A3F2C
+mDNS host   = probe_id  ->  <probe_id>.local              -> ThermaProbe-9A3F2C.local
 SoftAP SSID = probe_id
-AP password = "TP-" + UPPERCASE hex of last 4 MAC bytes  e.g. TP-289A3F2C
+AP password = "TP-" + 16 random hex chars (64-bit), generated once at first boot
+              and stored in NVS (19-char WPA2 key). NOT derived from the MAC.
 ```
 
-`factory_flash.py` computes the identical strings from esptool's `read_mac`, so
-the printed label always matches the running firmware. The same `probe_id` is
-sent as the mDNS TXT `id`, the HTTP `X-Probe-ID` header, and the JSON `probe_id`
-body field — the firmware asserts/logs this invariant at boot.
+At every boot the firmware prints a machine-readable line that `factory_flash.py`
+parses for the label:
+
+```
+[label] probe_id=ThermaProbe-9A3F2C ap_ssid=ThermaProbe-9A3F2C ap_pass=TP-3F9A2C817B4E05D1
+```
+
+The same `probe_id` is sent as the mDNS TXT `id`, the HTTP `X-Probe-ID` header,
+and the JSON `probe_id` body field on every ingest POST.
 
 ## mDNS advertisement
 
@@ -118,61 +141,70 @@ Service `_temps-probe._tcp.local.` on TCP port 80, TXT records:
 
 | key | value |
 |-----|-------|
-| `id`    | `<probe_id>` (equals `X-Probe-ID`) |
-| `name`  | friendly name, or `<probe_id>` |
-| `fw`    | `2.0.0` |
-| `proto` | `1` |
+| `id`   | `<probe_id>` (equals `X-Probe-ID`) |
+| `name` | `<probe_id>` |
 
 ## HTTP endpoints (port 80)
 
 | Method / path | Purpose |
 |---------------|---------|
-| `POST /provision` | Body `{server_url, token, interval_ms}`. Requires header `X-Provision-Secret` **only when the unit has a secret stored** (see note below). Persists settings to NVS. Returns `{id,name,fw,accepted:true}`. |
-| `GET /whoami`  | `{id,name,fw,mac}` |
-| `GET /status`  | `{id,wifi_rssi,uptime_s,last_post_ok,last_post_code,server_url,temperature_c,sensor_ok}` (SHT4x builds also include `humidity_pct`) |
-| `GET /` (SoftAP) | Wi-Fi setup page; `POST /save` stores creds and reboots. |
+| `GET /` | HTML status page (auto-refreshing): current temp, id, interval, sleep mode, buffered rows. |
+| `GET /whoami` | `{id, name, mac, ds18b20_rom, fw_version, interval_ms, server_url, time_valid}` |
+| `GET /status` | `{id, interval_ms, server_url, time_valid, last_c, last_ms, last_ts, buffered_bytes, buffered_est_rows, fs_total_kb, fs_free_kb, sleep_mode, wake_count}` |
+| `POST /provision` | Body `{server_url, token, interval_ms}`; persists to NVS. Returns `{ok:true, server_url, interval_ms}`. (`OPTIONS` returns 204 for CORS.) |
 
-**Provision secret note:** the spec defines a per-unit `X-Provision-Secret`
-(from the label/QR) that gates `/provision`. To preserve ThermaHub's zero-touch
-auto-provisioning (the shipped hub pushes the ingest URL/token with no secret
-header), this firmware enforces the secret **only when one is stored in NVS**
-(`prov_secret`). Out of the box that field is empty, so the hub can provision on
-a trusted LAN; a field tech can write a `prov_secret` to lock a unit down.
+Wi-Fi credential entry is handled by the WiFiManager captive portal during
+setup, not by a custom endpoint.
+
+> **No provision secret in the current firmware:** `POST /provision` is accepted
+> on the trusted LAN with no `X-Provision-Secret` gate, which is what keeps
+> ThermaHub's zero-touch auto-provisioning working. A per-unit provision secret
+> is a possible future hardening, not a shipped feature.
+
+## Reachability & deep sleep
+
+- When the configured interval is **≥ ~10 s** the probe **deep-sleeps** between
+  readings (idle current <1 mA). After each wake it keeps the HTTP server alive
+  for a short window (~3 s) so the hub's auto-provision request / a browser visit
+  can reach it, then sleeps again.
+- When the interval is **< ~10 s** the probe stays **always-on** with WiFi modem
+  sleep; the web server and mDNS are then continuously reachable.
 
 ## Ingest (probe → hub)
 
-Every `interval_ms` the probe reads the sensor and, if the reading is valid,
-POSTs to the provisioned `server_url` (`http://<hub>:8080/api/ingest`):
+Every `interval_ms` the probe reads the DS18B20 and POSTs to the provisioned
+`server_url` (the hub's ingest endpoint, e.g. `http://<hub>:8080/api/ingest`):
 
 ```
 POST /api/ingest
 X-Probe-ID: ThermaProbe-9A3F2C
-X-Token: <token pushed by the hub>
+X-Token: <token pushed by the hub, if set>
 Content-Type: application/json
 
-{"temperature_c": 4.31, "probe_id": "ThermaProbe-9A3F2C", "timestamp": "uptime+123s"}
+{"timestamp":"2026-07-11T14:03:00Z","temperature_c":4.31,"temperature_f":39.76,"probe_id":"ThermaProbe-9A3F2C"}
 ```
 
-On the SHT4x variant the body carries an extra optional `humidity_pct` (0–100), e.g.
-`{"temperature_c": 24.1, "humidity_pct": 58.3, ...}`; the hub computes VPD from it.
-Temperature-only builds omit the field, and it is a backward-compatible addition, so
-this stays protocol v1.
+If the POST fails or the network is down, the reading is appended to the LittleFS
+offline buffer (`/buf.csv`) with its timestamp and flushed (in order, resumable
+via a persisted byte offset) once the hub is reachable again.
 
-The hub validates the value is finite and within −60…150 °C and stamps the
-authoritative timestamp. Post result is tracked in `/status`
-(`last_post_ok`, `last_post_code`).
+The hub stores telemetry in its CSV with columns
+`timestamp,temperature_c,temperature_f,probe_id,humidity_pct,vpd_kpa`. A DS18B20
+probe fills the first four; `humidity_pct` and `vpd_kpa` stay empty (they are
+populated only by a humidity-capable probe, which the current firmware is not).
 
 ## Sensor fault handling
 
-Fault codes are rejected and **no** post is sent for that cycle
-(`sensor_ok=false`): DS18B20 `85.0` (power-on reset), `-127` (disconnected),
-`NaN`, and anything outside −60…150 °C. MAX31855 open/short → `NaN` → rejected.
+A DS18B20 disconnect (`DEVICE_DISCONNECTED_C` / `-127`) is detected: the bus is
+re-initialised and **no** reading is posted or buffered for that cycle. In
+deep-sleep mode the unit still sleeps and retries the sensor on the next wake.
+The `GET /` page and `/whoami` surface the DS18B20 ROM and last reading for
+diagnosis.
 
 ## Files
 
 | File | Purpose |
 |------|---------|
-| `platformio.ini` | Board/framework, pinned libs, sensor build flag. |
-| `src/protocol.h` | Version, pins, SoftAP/mDNS constants, identity rules. |
-| `src/main.cpp`   | Full firmware implementation. |
-| `factory_flash.py` | Flash + label + QC helper. |
+| `../esp32_temp_probe/esp32_temp_probe.ino` | **Canonical firmware** (deep-sleep battery firmware). |
+| `src/protocol.h` | Version, pins, SoftAP/mDNS constants, identity rules (contract the sketch follows). |
+| `factory_flash.py` | Flash (arduino-cli) + capture label + QC helper. |
