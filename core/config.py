@@ -1,6 +1,6 @@
 # core/config.py
 from __future__ import annotations
-import json, logging, os, threading
+import copy, json, logging, os, threading
 from pathlib import Path
 
 from core.config_schema import normalize_config
@@ -60,7 +60,15 @@ class Config:
     # convenience
     def get(self, k, default=None):
         with self.lock:
-            return self.data.get(k, default)
+            v = self.data.get(k, default)
+            # Hand out a copy of mutable values. Callers (device/settings panels)
+            # read a nested dict, mutate it, then call update(); returning the
+            # LIVE object let those in-place edits race a concurrent save()'s
+            # json.dumps (RuntimeError: dict changed size) and silently drop
+            # updates. Copying makes get()->mutate->update() safe by construction.
+            if isinstance(v, (dict, list)):
+                return copy.deepcopy(v)
+            return v
 
     def set(self, k, v):
         with self.lock:

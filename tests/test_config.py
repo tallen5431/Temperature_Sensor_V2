@@ -40,6 +40,41 @@ def test_programmatic_write_is_renormalised(tmp_path):
     assert c.get("ui_auth")["username"] == "7"
 
 
+def test_get_returns_copy_not_live_reference(tmp_path):
+    # Mutating a get() result must not leak into stored config without update().
+    c = Config(tmp_path / "config.json")
+    c.update({"probe_names": {"p1": "Fridge"}})
+    d = c.get("probe_names")
+    d["p1"] = "TAMPERED"
+    d["p2"] = "Injected"
+    assert c.get("probe_names") == {"p1": "Fridge"}  # unchanged
+
+
+def test_concurrent_mutate_and_save_does_not_race(tmp_path):
+    # Reproduces the get()->mutate->update() vs save()->json.dumps race: with the
+    # live-reference bug this raised "dict changed size during iteration".
+    import threading
+    c = Config(tmp_path / "config.json")
+    c.update({"probe_names": {f"p{i}": str(i) for i in range(50)}})
+    errors = []
+
+    def writer(n):
+        try:
+            for i in range(40):
+                names = c.get("probe_names")
+                names[f"w{n}_{i}"] = "x"
+                c.update({"probe_names": names})
+        except Exception as e:  # pragma: no cover - failure path
+            errors.append(e)
+
+    threads = [threading.Thread(target=writer, args=(n,)) for n in range(6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert not errors, errors
+
+
 def test_secret_file_permissions(tmp_path):
     import os
     import stat

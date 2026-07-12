@@ -7,6 +7,7 @@ applies the data-retention policy on a slow cadence.
 from __future__ import annotations
 
 import logging
+import queue
 import threading
 import time
 
@@ -21,20 +22,53 @@ OFFLINE_MONITOR_WINDOW_SEC = 86400
 
 
 class AlertMonitor(threading.Thread):
-    def __init__(self, db, cfg, notifier=None, period_sec: int = 30):
+    def __init__(self, db, cfg, notifier=None, period_sec: int = 30, discovery=None):
         super().__init__(daemon=True)
         self.db = db
         self.cfg = cfg
         self.notifier = notifier or Notifier(cfg)
         self.period_sec = int(period_sec)
-        self._stop = threading.Event()
+        # Optional discovery handle so registry pruning runs on this always-on
+        # thread — otherwise prune only happens when the auto-provisioner is on.
+        self.discovery = discovery
+        self._stop_event = threading.Event()
         self._states: dict = {}
         self._offline_states: dict = {}
         self._offline_seeded = False
         self._last_purge = 0.0
+        self._last_prune = 0.0
+        # Notifications are sent on a dedicated worker so a slow/black-holed SMTP
+        # or webhook (whose timeouts don't even bound DNS resolution) can't stall
+        # alert evaluation, offline detection, and retention on the monitor loop.
+        self._notify_q: "queue.Queue" = queue.Queue(maxsize=500)
+        self._notify_thread: threading.Thread | None = None
 
     def stop(self):
-        self._stop.set()
+        self._stop_event.set()
+        self._notify_q.put(None)  # unblock and stop the dispatch worker
+
+    def _dispatch(self, ev: dict) -> None:
+        """Hand an event to the async worker when the monitor is running; fall
+        back to an inline send when called directly (e.g. unit tests) so the
+        behaviour stays synchronous and observable there."""
+        if self._notify_thread and self._notify_thread.is_alive():
+            try:
+                self._notify_q.put_nowait(ev)
+            except queue.Full:
+                log.warning("notification queue full; dropping %s alert for %s",
+                            ev.get("kind"), ev.get("probe_id"))
+        else:
+            self.notifier.dispatch(ev)
+
+    def _dispatch_loop(self) -> None:
+        while True:
+            ev = self._notify_q.get()
+            if ev is None:  # sentinel from stop()
+                return
+            try:
+                self.notifier.dispatch(ev)
+            except Exception as e:  # noqa: BLE001 - a channel error must not kill the worker
+                log.warning("notification dispatch error: %s", e)
 
     def _readings(self) -> dict:
         """Latest reading per probe, limited to recent data so we don't alert on
@@ -81,7 +115,7 @@ class AlertMonitor(threading.Thread):
 
         for ev in all_events:
             subject, message = format_event(ev, names)
-            self.notifier.dispatch({**ev, "subject": subject, "message": message})
+            self._dispatch({**ev, "subject": subject, "message": message})
         return all_events
 
     def _hysteresis(self) -> float:
@@ -125,12 +159,32 @@ class AlertMonitor(threading.Thread):
         except Exception as e:  # noqa: BLE001
             log.warning("retention purge failed: %s", e)
 
+    def maybe_prune_probes(self):
+        """Evict long-gone probes from the discovery registry on a slow cadence,
+        independent of whether the auto-provisioner is running."""
+        if self.discovery is None or not hasattr(self.discovery, "prune_stale"):
+            return
+        now = time.time()
+        if now - self._last_prune < 3600:  # at most hourly
+            return
+        self._last_prune = now
+        try:
+            after = int(self.cfg.get("probe_prune_after_sec", 3600) or 3600)
+            self.discovery.prune_stale(after)
+        except Exception as e:  # noqa: BLE001
+            log.warning("probe prune failed: %s", e)
+
     def run(self):
         log.info("alert monitor started (checking every %s s)", self.period_sec)
-        while not self._stop.is_set():
+        self._notify_thread = threading.Thread(
+            target=self._dispatch_loop, name="alert-dispatch", daemon=True)
+        self._notify_thread.start()
+        while not self._stop_event.is_set():
             try:
                 self.check_once()
                 self.maybe_purge()
+                self.maybe_prune_probes()
             except Exception as e:  # noqa: BLE001
                 log.warning("alert monitor cycle error: %s", e)
-            self._stop.wait(self.period_sec)
+            self._stop_event.wait(self.period_sec)
+        self._notify_q.put(None)  # ensure the worker exits even without stop()

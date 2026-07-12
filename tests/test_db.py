@@ -74,6 +74,32 @@ def test_downsampling_caps_points_but_not_stats(db):
     assert stats["max"] == 49.0
 
 
+def test_downsampling_keeps_every_probe_with_noncontiguous_ids(db):
+    # Regression: the old `id % stride` sampler could return a blank chart or drop
+    # whole probes when primary keys weren't contiguous (interleaved writers, or a
+    # deleted probe leaving gaps). Interleave two probes so ids alternate, delete
+    # one so only odd ids survive, then downsample hard.
+    now = datetime.datetime.now()
+    base = now - datetime.timedelta(hours=1)
+    for i in range(600):
+        db.append(_iso(base + datetime.timedelta(seconds=i)), float(i % 40), 0.0, "A")
+        db.append(_iso(base + datetime.timedelta(seconds=i)), float(i % 40), 0.0, "B")
+    db.delete_probe("B")  # survivors ("A") now all have even OR odd ids only
+    df = db.window_df(window_seconds=7200, max_points=50)
+    assert not df.empty                         # never a blank chart
+    assert set(df["probe_id"]) == {"A"}         # the surviving probe is present
+    assert len(df) <= 50
+
+    # Three probes reporting round-robin (ids in fixed residue classes mod 3):
+    # all three must still appear after downsampling.
+    d3 = Database(str(db.path) + ".three")
+    for i in range(300):
+        for pid in ("X", "Y", "Z"):
+            d3.append(_iso(base + datetime.timedelta(seconds=i)), float(i % 30), 0.0, pid)
+    df3 = d3.window_df(window_seconds=7200, max_points=30)
+    assert set(df3["probe_id"]) == {"X", "Y", "Z"}
+
+
 def test_latest_per_probe(db):
     now = datetime.datetime.now()
     db.append(_iso(now - datetime.timedelta(seconds=20)), 19.0, 0.0, "A")

@@ -5,6 +5,7 @@ record advertised at boot (before the DS18B20 ROM is read) and the id it later
 POSTs to /api/ingest.  Both share one LAN IP, so the listing must collapse them
 to a single, freshest entry; otherwise the Devices page shows one probe twice.
 """
+import probe_discovery
 from probe_discovery import ProbeInfo, dedupe_probes_by_ip
 
 
@@ -85,3 +86,26 @@ def test_handles_dict_style_probes():
 
 def test_empty_input():
     assert dedupe_probes_by_ip({}) == {}
+
+
+def test_registry_is_bounded_against_id_flood(monkeypatch):
+    # A flood of distinct probe ids (spoofed X-Probe-ID on the open ingest API)
+    # must not grow the in-memory registry without bound.
+    monkeypatch.setattr(probe_discovery, "_MAX_PROBES", 20)
+    d = ProbeDiscoveryNoZeroconf()
+    for i in range(200):
+        d.update_last_seen(f"flood-{i}", ip=f"10.0.0.{i % 254}")
+    assert len(d._probes) <= 20
+    # The most-recently-seen id survives the eviction of older ones.
+    assert any(getattr(p, "name", None) == "flood-199" for p in d._probes.values())
+
+
+class ProbeDiscoveryNoZeroconf(probe_discovery.ProbeDiscovery):
+    """ProbeDiscovery without opening real multicast sockets (CI-safe)."""
+    def __init__(self):
+        import threading
+        self._zc = None
+        self._browser = None
+        self._lock = threading.RLock()
+        self._probes = {}
+        self.on_change = None
