@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tempsensor"
-version = "2.1.0"
+version = "2.4.0"
 description = "TempSensor — local-first wireless temperature monitoring hub"
 readme = "README.md"
 requires-python = ">=3.9"

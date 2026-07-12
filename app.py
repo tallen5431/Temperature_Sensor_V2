@@ -130,8 +130,10 @@ def _resolve_ui_auth():
     block. Off unless enabled AND both a username and password are set.
     """
     ua = cfg.get("ui_auth", {}) or {}
-    user = (os.getenv("UI_USERNAME") or ua.get("username") or "").strip()
-    pw = os.getenv("UI_PASSWORD") or ua.get("password") or ""
+    # str() guards against a numeric username/password in config.json (e.g. a PIN
+    # entered as a bare number) — without it .strip()/hmac would crash at import.
+    user = str(os.getenv("UI_USERNAME") or ua.get("username") or "").strip()
+    pw = str(os.getenv("UI_PASSWORD") or ua.get("password") or "")
     enabled = bool((ua.get("enabled") or os.getenv("UI_USERNAME")) and user and pw)
     return enabled, user, pw
 
@@ -338,6 +340,16 @@ def _start_background_services(port: int):
 def main():
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", "8088"))
+
+    # Turn a SIGTERM (systemctl stop / docker stop / Windows service stop) into a
+    # clean SystemExit so waitress returns and the `finally: cleanup()` below runs
+    # — otherwise the default SIGTERM disposition kills the process instantly and
+    # mDNS/MQTT/discovery threads never shut down cleanly. SIGINT already works.
+    import signal
+    try:
+        signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+    except (ValueError, OSError):
+        pass  # not the main thread (shouldn't happen) — best effort
 
     cleanup = _start_background_services(port)
 

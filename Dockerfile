@@ -9,14 +9,21 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Persist data + runtime config outside the image via a mounted volume.
-ENV CSV_FILE=/data/temperature_log.csv \
-    LOG_DIR=/data/logs \
-    CONFIG_FILE=/data/config.json \
+# Persist all writable state outside the image via a mounted volume. app.py
+# derives the DB, config.json, logs and the audit trail from DATA_DIR, so this
+# single var is what actually redirects them onto /data. (The previous
+# CSV_FILE/LOG_DIR/CONFIG_FILE vars were never read by app.py, so data was
+# silently written to the ephemeral container layer and lost on every recreate.)
+ENV DATA_DIR=/data \
     HOST=0.0.0.0 \
-    PORT=8080
+    PORT=8080 \
+    OPEN_BROWSER=0
 VOLUME ["/data"]
 EXPOSE 8080
+
+# Liveness via the unauthenticated health endpoint (urlopen raises on non-2xx).
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD python -c "import os,urllib.request as u; u.urlopen('http://127.0.0.1:%s/api/health' % os.getenv('PORT','8080'), timeout=3)" || exit 1
 
 # NOTE: mDNS probe auto-discovery needs the host network (see docker-compose.yml
 # `network_mode: host`). With bridge networking, probes can still POST readings

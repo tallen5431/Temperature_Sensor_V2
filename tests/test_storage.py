@@ -3,7 +3,7 @@ import datetime
 
 import pytest
 
-from core.storage import _to_local_naive, normalize_payload
+from core.storage import _to_local_naive, compute_vpd, normalize_payload
 
 
 def test_celsius_only_computes_fahrenheit():
@@ -66,3 +66,35 @@ def test_explicit_offset_converted_to_local():
         .astimezone().replace(tzinfo=None).isoformat(timespec="seconds")
     )
     assert got == expected
+
+
+@pytest.mark.parametrize("bad", ["NaN", "inf", "-inf", "1e999"])
+def test_non_finite_temperature_rejected(bad):
+    # PROTOCOL.md §6 rule 2: non-finite values must be rejected, not stored.
+    with pytest.raises(ValueError):
+        normalize_payload({"temperature_c": bad})
+
+
+@pytest.mark.parametrize("bad", [-127, -60.1, 150.1, 999, -300])
+def test_out_of_range_temperature_rejected(bad):
+    # §6 rule 3: the -60..150 C band rejects the -127 disconnected fault code and
+    # any other out-of-band value. (The 85.0 power-on code is in-band and is
+    # suppressed at the firmware per §8, not by this hub-side range check.)
+    with pytest.raises(ValueError):
+        normalize_payload({"temperature_c": bad})
+
+
+@pytest.mark.parametrize("ok", [-60.0, -18.0, 0.0, 22.5, 85.0, 150.0])
+def test_in_band_temperature_accepted(ok):
+    _, c, _ = normalize_payload({"temperature_c": ok})
+    assert c == ok
+
+
+def test_compute_vpd_typical_and_extreme():
+    # A normal grow-room point: 25 C / 60 %RH with a 2 C leaf offset ~ 0.91 kPa.
+    assert compute_vpd(25.0, 60.0, 2.0) == pytest.approx(0.91, abs=0.05)
+    # A cooler leaf (larger offset) lowers VPD vs plain air VPD (no offset).
+    assert 0.0 < compute_vpd(25.0, 60.0, 2.0) < compute_vpd(25.0, 60.0, 0.0)
+    # VPD is clamped non-negative and never divides by zero at extreme cold.
+    assert compute_vpd(-250.0, 50.0) >= 0.0
+    assert compute_vpd(100.0, 100.0) >= 0.0

@@ -28,6 +28,39 @@ def test_valid_config_passes_unchanged():
     assert clean["notifications"]["email"]["smtp_port"] == 587
 
 
+def test_string_threshold_bounds_are_coerced_to_numbers():
+    # A hand-edited string bound must not survive to crash the alert loop; it is
+    # coerced to a real number (a parseable string coerces silently).
+    clean, _ = normalize_config(
+        {"alert_thresholds": {"default": {"max": "30", "min": -18}}})
+    mx = clean["alert_thresholds"]["default"]["max"]
+    assert isinstance(mx, (int, float)) and mx == 30.0
+    assert clean["alert_thresholds"]["default"]["min"] == -18  # negatives preserved
+
+
+def test_non_numeric_threshold_bound_is_dropped():
+    clean, warns = normalize_config(
+        {"alert_thresholds": {"p1": {"max": "hot"}, "p2": "nonsense"}})
+    assert "max" not in clean["alert_thresholds"]["p1"]     # unparseable bound dropped
+    assert "p2" not in clean["alert_thresholds"]            # non-dict entry dropped
+    assert warns
+
+
+def test_numeric_ui_auth_credentials_are_stringified():
+    # A numeric username/PIN would crash startup (.strip()/hmac) if left as int.
+    clean, warns = normalize_config({"ui_auth": {"enabled": True, "username": 42, "password": 1234}})
+    assert clean["ui_auth"]["username"] == "42"
+    assert clean["ui_auth"]["password"] == "1234"
+    assert warns
+
+
+def test_bad_subtree_types_reset_not_crash():
+    clean, _ = normalize_config({"ui_auth": "nope", "mqtt": 5, "metrics": [], "settings": None})
+    assert clean["ui_auth"] == {}
+    assert clean["mqtt"] == {}
+    assert clean["metrics"] == {}
+
+
 def test_string_numbers_are_coerced():
     clean, warns = normalize_config({"interval_sec": "5", "retention_days": "10"})
     assert clean["interval_sec"] == 5

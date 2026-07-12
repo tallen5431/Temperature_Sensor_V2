@@ -305,19 +305,19 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
         except (ValueError, KeyError, TypeError):
             HEALTH.record_reject()
             return jsonify(ok=False, error="temperature value required"), 400
+        except Exception:
+            # A genuine storage failure (disk full, DB locked) must surface in the
+            # health snapshot, not masquerade as a rejected reading or a bare 500.
+            HEALTH.record_failure()
+            log.exception("ingest write failed")
+            return jsonify(ok=False, error="storage error"), 503
         return jsonify(ok=True)
 
     @bp.get("/ingest")
     def ingest_query():
-        if not _check_auth():
-            return jsonify(ok=False, error="unauthorized"), 401
-        data = {k: v for k, v in request.args.items()}
-        probe_id = request.args.get("probe_id") or ""
-        try:
-            _store(data, request.remote_addr or "", probe_id)
-        except (ValueError, KeyError, TypeError):
-            HEALTH.record_reject()
-            return jsonify(ok=False, error="temperature value required"), 400
-        return jsonify(ok=True)
+        # Ingest is POST-only (PROTOCOL.md §6). A GET that mutates the log is a
+        # drive-by CSRF/poisoning vector (<img src=".../api/ingest?...">) and would
+        # leak any ?token= into browser history / server logs / Referer headers.
+        return jsonify(ok=False, error="method not allowed; use POST"), 405
 
     return bp

@@ -42,10 +42,26 @@ def test_ingest_post_stores_reading(tmp_path):
     assert "p1" in disc.seen  # discovery last_seen updated
 
 
-def test_ingest_get_query_stores_reading(tmp_path):
+def test_ingest_get_is_rejected_405(tmp_path):
+    # Ingest is POST-only (PROTOCOL.md §6): a mutating GET is a CSRF/poisoning
+    # vector and must not write, so a drive-by <img> can't inject readings.
     client, db, _ = _make_client(tmp_path)
     r = client.get("/api/ingest?temperature_c=19.0&probe_id=p2")
-    assert r.status_code == 200
+    assert r.status_code == 405
+    assert db.count() == 0
+
+
+def test_ingest_rejects_non_finite_and_out_of_range(tmp_path):
+    # NaN/inf and sensor fault codes must be rejected with 400, not stored
+    # (a stored inf would poison stats/exports; -127 would fire a false alert).
+    client, db, _ = _make_client(tmp_path)
+    for bad in ("NaN", "inf", "1e999", "-127", "200", "-100"):
+        r = client.post("/api/ingest", json={"temperature_c": bad, "probe_id": "p1"})
+        assert r.status_code == 400, bad
+    assert db.count() == 0
+    # A value inside the -60..150 band still stores.
+    assert client.post("/api/ingest",
+                       json={"temperature_c": 84.9, "probe_id": "p1"}).status_code == 200
     assert db.count() == 1
 
 

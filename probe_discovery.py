@@ -56,7 +56,14 @@ def dedupe_probes_by_ip(probes: Dict[str, "ProbeInfo"]) -> Dict[str, "ProbeInfo"
 
 class ProbeDiscovery:
     def __init__(self):
-        self._zc = Zeroconf()
+        # Zeroconf() opens multicast sockets and raises OSError when no usable
+        # interface exists (containers without host networking, air-gapped or
+        # momentarily-offline hosts). Discovery is optional, so degrade to an
+        # inert object rather than taking down ingest/dashboard at import time.
+        try:
+            self._zc = Zeroconf()
+        except Exception:  # noqa: BLE001
+            self._zc = None
         self._browser = None
         self._lock = threading.RLock()
         self._probes: Dict[str, ProbeInfo] = {}  # key by host
@@ -167,7 +174,7 @@ class ProbeDiscovery:
         return self._handle(zc, stype, name, state_change)
 
     def start(self):
-        if self._browser:
+        if self._browser or self._zc is None:
             return
         self._browser = ServiceBrowser(self._zc, SERVICE_TYPE, handlers=[self._handle_compat])
 
