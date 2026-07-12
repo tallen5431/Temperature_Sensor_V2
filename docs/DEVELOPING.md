@@ -182,10 +182,9 @@ The CSV **export** columns are fixed: `timestamp,temperature_c,temperature_f,pro
 | `PUBLIC_BASE` | `http://<detected-LAN-IP>:<PORT>` | Base URL advertised to probes; set to override auto-detection. |
 | `SERVER_TOKEN` | *(empty → generated)* | Forces the device token; takes precedence over config. |
 | `UI_USERNAME` / `UI_PASSWORD` | *(unset)* | Enable HTTP Basic auth on the dashboard + CSV download (also configurable via the `ui_auth` config block). |
-| `DB_FILE` | `<data>/temperature_log.db` | Path to the SQLite readings database. |
-| `CSV_FILE` | `<repo>/temperature_log.csv` | Legacy CSV auto-imported once on first run (if present). |
-| `CONFIG_FILE` | `<repo>/config.json` | Path to the runtime config (override for Docker volumes). |
-| `LOG_DIR` | `<repo>/logs` | Directory for application logs. |
+| `DATA_DIR` | `<repo>` (dev) / per-user dir (frozen) | Root for all writable state — the config, DB, logs and audit trail are derived from it. Set this (e.g. `/data`) to relocate everything, as the Docker image does. |
+| `DB_FILE` | `<DATA_DIR>/temperature_log.db` | Override just the SQLite readings database path. |
+| `CSV_FILE` | `<DATA_DIR>/temperature_log.csv` | Legacy CSV auto-imported once on first run (if present). |
 | `MDNS_ENABLE` | `1` | Set to `0`/`false` to disable the hub's mDNS advertising. |
 
 ---

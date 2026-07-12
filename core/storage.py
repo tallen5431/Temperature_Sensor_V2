@@ -94,6 +94,16 @@ def normalize_payload(payload: dict):
     if t_f is None:  # compute from C
         t_f = (t_c * 9.0 / 5.0) + 32.0
 
+    # Enforce the ingest contract (PROTOCOL.md §6): the resolved value must be a
+    # finite number in a physically sane band. This rejects NaN/inf (which would
+    # otherwise 500 on the NOT NULL insert or poison stats/exports) and sensor
+    # fault codes (85.0 power-on, -127 disconnected) before they reach the DB and
+    # fire spurious alerts. Callers turn the ValueError into a clean 400.
+    if not (math.isfinite(t_c) and math.isfinite(t_f)):
+        raise ValueError("temperature must be a finite number")
+    if not (-60.0 <= t_c <= 150.0):
+        raise ValueError("temperature out of range (-60..150 C)")
+
     return ts, float(t_c), float(t_f)
 
 
@@ -142,7 +152,10 @@ def compute_vpd(temp_c: float, rh_pct: float, leaf_offset_c: float = 0.0) -> flo
     plain air VPD. Returned value is clamped to be non-negative.
     """
     def svp(t):  # saturation vapour pressure (kPa)
-        return 0.6108 * math.exp((17.27 * t) / (t + 237.3))
+        denom = t + 237.3
+        if denom <= 0:  # sub -237.3 C: guard the division/overflow, return 0 kPa
+            return 0.0
+        return 0.6108 * math.exp((17.27 * t) / denom)
 
     leaf_t = temp_c - float(leaf_offset_c or 0.0)
     vpd = svp(leaf_t) - svp(temp_c) * (float(rh_pct) / 100.0)

@@ -74,8 +74,12 @@ def send_webhook(webhook_cfg: dict, event: dict) -> Tuple[bool, str]:
             return True, "sent"
         return False, f"HTTP {r.status_code}"
     except Exception as e:  # noqa: BLE001
-        log.warning("webhook send failed: %s", e)
-        return False, str(e)
+        # The webhook URL can carry a bearer token in its path/query and is
+        # treated as a secret elsewhere; scrub it from the error before logging
+        # or returning it (requests embeds the full URL in its exception text).
+        msg = str(e).replace(url, "<webhook-url>")
+        log.warning("webhook send failed: %s", msg)
+        return False, msg
 
 
 class Notifier:

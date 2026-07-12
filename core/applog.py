@@ -56,8 +56,17 @@ def setup_logging(log_dir: Path, level: int = logging.INFO) -> logging.Logger:
         return logger
 
 
-def get_logger(name: str = "tempsensor") -> logging.Logger:
-    return logging.getLogger(name if name.startswith("tempsensor") else f"tempsensor.{name}")
+def get_logger(name: str = "hub") -> logging.Logger:
+    """Return a logger under the ``hub`` tree that ``configure_logging`` wires to
+    the console + rotating file handler.
+
+    Historically this returned ``tempsensor.*`` loggers, but that tree was never
+    configured, so records from the api/audit/mqtt modules (which use this
+    helper) were silently dropped and never reached the on-disk hub.log. Routing
+    them under ``hub`` puts them in the single configured tree with every other
+    module, so field incidents are actually diagnosable from the log file.
+    """
+    return logging.getLogger(name if name.startswith("hub") else f"hub.{name}")
 
 
 class HealthState:

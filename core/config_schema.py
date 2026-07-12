@@ -113,6 +113,74 @@ def normalize_config(raw: Any) -> Tuple[Dict[str, Any], Warnings]:
             warns.append(f"{key} must be an object; resetting to empty")
             cfg[key] = {}
 
+    # Coerce the inner min/max of each per-probe threshold. A hand-edited string
+    # bound (e.g. {"default": {"max": "30"}}) would otherwise raise TypeError in
+    # the alert loop's comparisons and silently kill ALL alerting + retention.
+    thresholds = cfg.get("alert_thresholds")
+    if isinstance(thresholds, dict):
+        for pid, entry in list(thresholds.items()):
+            if not isinstance(entry, dict):
+                warns.append(f"alert_thresholds[{pid!r}] must be an object; dropping")
+                del thresholds[pid]
+                continue
+            for bound in ("min", "max"):
+                if bound in entry and entry[bound] is not None:
+                    n, ok = _to_number(entry[bound], None, False)  # temps may be negative
+                    if not ok:
+                        warns.append(
+                            f"alert_thresholds[{pid!r}].{bound}={entry[bound]!r} is not a number; dropping")
+                        entry.pop(bound, None)
+                    else:
+                        entry[bound] = n
+
+    # --- ui_auth / metrics / settings / mqtt subtrees --------------------------
+    # These reach app.py / consumers unguarded; a wrong-typed value (e.g. a
+    # numeric ui_auth.username) would crash startup. Coerce them like the rest.
+    ua = cfg.get("ui_auth")
+    if "ui_auth" in cfg and not isinstance(ua, dict):
+        warns.append("ui_auth must be an object; resetting")
+        cfg["ui_auth"] = {}
+        ua = cfg["ui_auth"]
+    if isinstance(ua, dict):
+        _fix_bool(ua, "enabled", False, warns, label="ui_auth.enabled")
+        for f in ("username", "password"):
+            if f in ua and not isinstance(ua[f], str):
+                warns.append(f"ui_auth.{f} must be a string; coercing")
+                ua[f] = "" if ua[f] is None else str(ua[f])
+
+    metrics = cfg.get("metrics")
+    if "metrics" in cfg and not isinstance(metrics, dict):
+        warns.append("metrics must be an object; resetting")
+        cfg["metrics"] = {}
+        metrics = cfg["metrics"]
+    if isinstance(metrics, dict):
+        _fix_bool(metrics, "enabled", True, warns, label="metrics.enabled")
+
+    settings = cfg.get("settings")
+    if "settings" in cfg and not isinstance(settings, dict):
+        warns.append("settings must be an object; resetting")
+        cfg["settings"] = {}
+        settings = cfg["settings"]
+    if isinstance(settings, dict):
+        _fix_number(settings, "vpd_leaf_offset_c", 0.0, None, False, warns)
+
+    mqtt = cfg.get("mqtt")
+    if "mqtt" in cfg and not isinstance(mqtt, dict):
+        warns.append("mqtt must be an object; resetting")
+        cfg["mqtt"] = {}
+        mqtt = cfg["mqtt"]
+    if isinstance(mqtt, dict):
+        _fix_bool(mqtt, "enabled", False, warns, label="mqtt.enabled")
+        if "port" in mqtt:
+            _fix_number(mqtt, "port", 1883, 1, True, warns)
+            if mqtt.get("port", 1) > 65535:
+                warns.append("mqtt.port out of range; using 1883")
+                mqtt["port"] = 1883
+        for f in ("host", "username", "password", "base_topic", "discovery_prefix"):
+            if f in mqtt and mqtt[f] is not None and not isinstance(mqtt[f], str):
+                warns.append(f"mqtt.{f} must be a string; coercing")
+                mqtt[f] = str(mqtt[f])
+
     # --- notifications subtree -------------------------------------------------
     notif = cfg.get("notifications")
     if "notifications" in cfg and not isinstance(notif, dict):
