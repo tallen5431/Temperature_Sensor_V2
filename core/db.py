@@ -198,14 +198,28 @@ class Database:
 
         stride = max(1, (total + max_points - 1) // max_points)
         if stride > 1:
-            sample = "AND (id % ?) = 0" if cutoff is not None else "WHERE (id % ?) = 0"
-            sql = f"SELECT {_SELECT_COLS} FROM readings {where} {sample} ORDER BY epoch ASC"
+            # Downsample by per-probe ROW POSITION, not by `id % stride`. Primary
+            # keys are not contiguous (multiple writers interleave, delete_probe/
+            # purge leave gaps), so `id % stride` biases the sample per probe and
+            # can select ZERO rows (blank chart) or drop entire probes. Numbering
+            # each probe's rows newest-first and keeping every stride-th one means
+            # rn=1 (the live tip) is always kept, every probe is represented, the
+            # result is never empty, and the point count stays within max_points.
+            sql = (
+                "SELECT timestamp, temperature_c, temperature_f, probe_id FROM ("
+                "  SELECT ts AS timestamp, epoch, id, temperature_c, temperature_f, probe_id,"
+                "         ROW_NUMBER() OVER (PARTITION BY probe_id ORDER BY epoch DESC, id DESC) AS rn"
+                f"  FROM readings {where}"
+                ") WHERE (rn - 1) % ? = 0 ORDER BY epoch ASC, id ASC"
+            )
             rows = conn.execute(sql, params + (stride,)).fetchall()
         else:
             sql = f"SELECT {_SELECT_COLS} FROM readings {where} ORDER BY epoch ASC"
             rows = conn.execute(sql, params).fetchall()
 
-        return pd.DataFrame([dict(r) for r in rows],
+        return pd.DataFrame([{"timestamp": r["timestamp"], "temperature_c": r["temperature_c"],
+                              "temperature_f": r["temperature_f"], "probe_id": r["probe_id"]}
+                             for r in rows],
                             columns=["timestamp", "temperature_c", "temperature_f", "probe_id"])
 
     def window_stats(self, window_seconds: Optional[int] = None,

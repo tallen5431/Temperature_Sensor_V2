@@ -9,6 +9,11 @@ import time
 
 SERVICE_TYPE = "_temps-probe._tcp.local."
 
+# Hard ceiling on tracked probes so a flood of distinct ids (spoofed X-Probe-ID
+# headers on the open-by-default ingest API, or a churning fleet) can't grow the
+# in-memory registry without bound. Far above any real deployment's probe count.
+_MAX_PROBES = 512
+
 @dataclass
 class ProbeInfo:
     name: str                 # e.g. TempSensor-9A3F
@@ -68,6 +73,14 @@ class ProbeDiscovery:
         self._lock = threading.RLock()
         self._probes: Dict[str, ProbeInfo] = {}  # key by host
         self.on_change: Optional[Callable[[Dict[str, ProbeInfo]], None]] = None
+
+    def _evict_if_full(self) -> None:
+        """Drop the oldest-by-last_seen entry when at the ceiling. Caller holds
+        self._lock. Bounds memory so untrusted ingest can't grow the map forever."""
+        if len(self._probes) < _MAX_PROBES:
+            return
+        oldest = min(self._probes, key=lambda k: _probe_last_seen(self._probes[k]))
+        self._probes.pop(oldest, None)
 
     def _resolve_ip(self, host: str) -> Optional[str]:
         """Resolve mDNS hostname to IP using a background thread to avoid
@@ -136,6 +149,8 @@ class ProbeDiscovery:
                              )]
                     for k in stale:
                         del self._probes[k]
+                if probe.host not in self._probes:
+                    self._evict_if_full()
                 self._probes[probe.host] = probe
                 snapshot = dict(self._probes)
             if self.on_change:
@@ -281,6 +296,7 @@ class ProbeDiscovery:
                         p.last_seen = time.time()
                     return
             # Probe not yet known — add a minimal entry keyed by probe_id
+            self._evict_if_full()
             self._probes[probe_id] = ProbeInfo(
                 name=probe_id,
                 host=host or probe_id,

@@ -307,7 +307,8 @@ def _start_background_services(port: int):
         log.info("Auto-provisioner started (every 10 s)")
 
     from alert_monitor import AlertMonitor
-    monitor = AlertMonitor(db, cfg, period_sec=int(os.getenv("ALERT_CHECK_SEC", "30")))
+    monitor = AlertMonitor(db, cfg, period_sec=int(os.getenv("ALERT_CHECK_SEC", "30")),
+                           discovery=finder)
     monitor.start()
 
     # Optional MQTT publishing (Home Assistant auto-discovery) — off unless the
