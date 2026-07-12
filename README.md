@@ -93,7 +93,7 @@ All settings have sensible defaults. You can override them with environment vari
 | `PORT` | `8088` | HTTP port for the UI and API |
 | `HOST` | `0.0.0.0` | Bind address (keep as-is for LAN access) |
 | `PUBLIC_BASE` | auto-detected `http://<LAN-IP>:<PORT>` | URL the hub shares with probes |
-| `SERVER_TOKEN` | auto-generated | Device token guarding every API write (ingest, provision, config). Auto-generated on first run and saved to `config.local.json`; set this to pin your own. The auto-provisioner pushes it to probes automatically as the `X-Token` header. |
+| `SERVER_TOKEN` | auto-generated | Device token guarding every API write (ingest, provision, config). Auto-generated on first run and saved to `config.json`; set this to pin your own. The auto-provisioner pushes it to probes automatically as the `X-Token` header. |
 | `DB_FILE` | `temperature_log.db` | Path to the SQLite data store |
 | `CSV_FILE` | `temperature_log.csv` | Legacy CSV imported once on first start, then unused |
 | `MDNS_ENABLE` | `1` | Set to `0` to disable hub mDNS advertisement |

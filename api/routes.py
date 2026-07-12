@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import datetime
 import hmac
+import ipaddress
+import socket
 import time
 from typing import Any, Callable, Dict, List, Tuple
 
@@ -52,6 +54,22 @@ def _redact(data, _parent: str = ""):
     if isinstance(data, list):
         return [_redact(x, _parent) for x in data]
     return data
+
+
+def _is_safe_provision_target(host: str) -> bool:
+    """Reject SSRF-style provision targets. Probes live on the private LAN, so
+    only private addresses are valid — this blocks loopback, link-local (incl.
+    the 169.254.169.254 cloud-metadata endpoint), and public/off-LAN hosts the
+    hub could otherwise be tricked into POSTing to."""
+    h = (host or "").rstrip(".")
+    if not h:
+        return False
+    try:
+        ip = ipaddress.ip_address(socket.gethostbyname(h))
+    except Exception:
+        return False
+    return bool(ip.is_private and not ip.is_loopback and not ip.is_link_local
+                and not ip.is_multicast)
 
 
 def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str],
@@ -139,7 +157,13 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
 
     @bp.get("/config")
     def get_config():
-        """Return config as JSON with secret values redacted."""
+        """Return config as JSON with secret values redacted (auth required).
+
+        Even redacted, the config exposes SMTP host/recipients, MQTT host and
+        thresholds, so it is gated by the device token like the write path.
+        """
+        if not _check_auth():
+            return jsonify(ok=False, error="unauthorized"), 401
         if isinstance(cfg, dict):
             return jsonify(_redact(cfg))
         if hasattr(cfg, "to_dict"):
@@ -211,6 +235,12 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
 
         targets: List[Tuple[str, int]] = []
         if host:
+            # An explicit host comes straight from the request body; validate it
+            # so /provision can't be used to SSRF the hub's own local services or
+            # the cloud-metadata endpoint. (The host-less branch below only uses
+            # mDNS-discovered probes, which are already trusted LAN targets.)
+            if not _is_safe_provision_target(host):
+                return jsonify(ok=False, error="host must be a private LAN address"), 400
             targets.append((host, port))
         else:
             for p in _iter_probes():

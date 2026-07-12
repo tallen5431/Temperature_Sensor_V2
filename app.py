@@ -118,6 +118,18 @@ def _public_base() -> str:
     return f"http://{_detect_lan_ip()}:{port}"
 
 
+# Secure-by-default: if no token is configured, generate one on first run so the
+# mutating API (ingest / provision / config) isn't open to every device on the
+# LAN. It's stored in config.json (owner-only, gitignored, redacted in the API)
+# and the auto-provisioner pushes it to probes, so this is invisible to the
+# operator. Set SERVER_TOKEN to pin your own, or clear provision_token in an
+# air-gapped/dev setup to run open.
+if not os.getenv("SERVER_TOKEN") and not cfg.get("provision_token"):
+    import secrets
+    cfg.set("provision_token", secrets.token_urlsafe(24))
+    log.info("Generated a device token for the mutating API (saved to config.json); "
+             "probes are auto-provisioned with it. Set SERVER_TOKEN to override.")
+
 SERVER_TOKEN = os.getenv("SERVER_TOKEN", "") or cfg.get("provision_token", "")
 api_bp = create_api(cfg, db, finder, _public_base, SERVER_TOKEN)
 server.register_blueprint(api_bp)

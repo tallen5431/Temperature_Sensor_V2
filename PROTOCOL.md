@@ -274,7 +274,7 @@ and is the value probes echo on ingest.
 ```
         ┌── SERVER_TOKEN env  ─┐
         │   config token       │   (precedence, first non-empty wins)
-        │   freshly generated  │   (secrets.token_urlsafe; saved to config.local.json)
+        │   freshly generated  │   (secrets.token_urlsafe; saved to config.json)
         └──────────┬───────────┘
                    │  held in hub config as  provision_token
                    ▼
@@ -285,7 +285,7 @@ and is the value probes echo on ingest.
 ```
 
 - **Resolution order at startup:** `SERVER_TOKEN` env → existing config
-  `provision_token` → freshly generated (persisted to `config.local.json`, printed
+  `provision_token` → freshly generated (persisted to `config.json`, printed
   once at startup). The shipped product therefore always has a non-empty token and is
   **secure-by-default** while remaining plug-and-play, because the same token is pushed
   to every discovered probe by the auto-provisioner.
