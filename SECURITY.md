@@ -9,7 +9,7 @@ default. The threat model below assumes an attacker who is **another device/user
 
 - **Device token** gates every mutating API endpoint (`POST /api/ingest`, `/api/provision`,
   `POST /api/config`, `/api/ingest_csv`). It is auto-generated on first run (saved to
-  `config.local.json`, or pin your own via `SERVER_TOKEN`) and pushed to probes by the
+  `config.json`, or pin your own via `SERVER_TOKEN`) and pushed to probes by the
   provisioner as the `X-Token` header, so plug-and-play works without leaving the API open.
   Token comparison is constant-time.
 - **`/download` is restricted** to the log file and the database backup only (exact-path check),
@@ -72,7 +72,7 @@ and medium severity, but a maker shipping to customers should plan to address th
 - **Pin `SERVER_TOKEN`** if you want a known token rather than the auto-generated one; the
   auto-provisioner distributes it to probes for you.
 - **Secrets stay local.** Notification passwords, tokens, and webhook URLs live only in
-  `config.json` (and `config.local.json`) next to the app, and are redacted from every API response.
+  `config.json` next to the app, and are redacted from every API response.
 
 ## Reporting a vulnerability
 

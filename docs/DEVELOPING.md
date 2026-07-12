@@ -27,7 +27,7 @@ pip install -r requirements-dev.txt
 python app.py
 ```
 
-On first run the app seeds `config.json` from `config.example.json`, creates the `temperature_log.db` SQLite database (WAL mode) — auto-importing a legacy `temperature_log.csv` once if one is present — and generates a device token (saved to `config.local.json`) unless one is supplied via `SERVER_TOKEN` or already present in config. The startup banner prints the local and LAN dashboard URLs.
+On first run the app seeds `config.json` from `config.example.json`, creates the `temperature_log.db` SQLite database (WAL mode) — auto-importing a legacy `temperature_log.csv` once if one is present — and generates a device token (saved to `config.json`) unless one is supplied via `SERVER_TOKEN` or already present in config. The startup banner prints the local and LAN dashboard URLs.
 
 ---
 
@@ -154,14 +154,14 @@ Body `{ host?, port?, interval_ms?, token? }`. With no `host`, the hub provision
 
 ## Config schema
 
-Config is layered: `config.json` (seeded from `config.example.json`) with `config.local.json` overrides. Secrets are redacted from API responses.
+Config is layered: `config.json` (seeded from `config.example.json`) with `config.json` overrides. Secrets are redacted from API responses.
 
 | Key | Type / notes |
 |---|---|
 | `interval_sec` | Probe post interval in seconds (default 5). |
 | `auto_provision` | Enable the background provisioner (default true). |
 | `pull_enabled` | Enable pull-mode behavior. |
-| `provision_token` | The device token (usually generated; do not commit `config.local.json`). |
+| `provision_token` | The device token (usually generated; do not commit `config.json`). |
 | `branding` | `{ product_name, brand_name, support_url, primary_color, copyright, logo_path }` — white-labeling. |
 | `settings` | `{ default_unit, timezone }`. |
 | `notifications` | `{ enabled, recipients[], webhook_url, debounce_sec, smtp_host, smtp_port, smtp_user, smtp_password, smtp_from, smtp_tls }`. |

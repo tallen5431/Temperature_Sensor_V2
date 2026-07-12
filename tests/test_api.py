@@ -4,7 +4,7 @@ import time
 import pytest
 from flask import Flask
 
-from api.routes import create_api
+from api.routes import _is_safe_provision_target, create_api
 from core.config import Config
 from core.db import Database
 
@@ -120,6 +120,30 @@ def test_calibration_offset_applied_at_ingest(tmp_path):
     # A probe without an offset is stored unchanged.
     client.post("/api/ingest", json={"temperature_c": 20.0, "probe_id": "p2"})
     assert db.latest()["temperature_c"] == 20.0
+
+
+def test_config_get_requires_auth_when_token_set(tmp_path):
+    # GET /api/config exposes SMTP/MQTT/threshold detail, so with a token set it
+    # must be gated like the write path (not readable by any LAN device).
+    client, _, _ = _make_client(tmp_path, token="abc123")
+    assert client.get("/api/config").status_code == 401
+    assert client.get("/api/config", headers={"X-Token": "abc123"}).status_code == 200
+
+
+def test_provision_rejects_ssrf_targets(tmp_path):
+    client, _, _ = _make_client(tmp_path)  # open (no token) — isolates the SSRF check
+    for bad in ("127.0.0.1", "169.254.169.254"):  # loopback, cloud metadata
+        r = client.post("/api/provision", json={"host": bad, "port": 80})
+        assert r.status_code == 400, bad
+
+
+def test_is_safe_provision_target():
+    assert _is_safe_provision_target("192.168.1.50") is True
+    assert _is_safe_provision_target("10.0.0.5") is True
+    assert _is_safe_provision_target("127.0.0.1") is False      # loopback
+    assert _is_safe_provision_target("169.254.169.254") is False  # metadata
+    assert _is_safe_provision_target("8.8.8.8") is False        # public
+    assert _is_safe_provision_target("") is False
 
 
 def test_auth_required_when_token_set(tmp_path):

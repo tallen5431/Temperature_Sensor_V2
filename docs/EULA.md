@@ -24,7 +24,7 @@ modify, and self-host it.
 
 TempSensor runs entirely on your own computer. Temperature readings, probe names,
 and configuration stay on that machine (for example in `temperature_log.db`,
-`config.json`, and `config.local.json`). There is no account to create,
+`config.json`). There is no account to create,
 no cloud service, and no usage telemetry is sent to us. What you do with your
 data is up to you.
 
