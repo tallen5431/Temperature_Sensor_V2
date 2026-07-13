@@ -183,9 +183,23 @@ FocusBar = dbc.Row([
             dbc.Select(id="focus-probe-selector", value="all",
                        options=[{"label": "All probes (overview)", "value": "all"}]),
         ], size="sm"),
-        xl=4, lg=5, md=6, sm=12,
+        xl=4, lg=5, md=6, sm=12, className="mb-2 mb-lg-0",
     ),
-], className="mb-3 justify-content-end")
+    # Clock format toggle — every absolute time on the dashboard (Last Update,
+    # the Min/Max "at ..." times, and the graph's ticks/hover) follows this, so
+    # a customer can flip between 24h and 12h for fast comparison against other
+    # clocks/logs without digging into Settings.
+    dbc.Col(
+        dbc.InputGroup([
+            dbc.InputGroupText("🕐 Clock"),
+            dbc.ButtonGroup([
+                dbc.Button("24h", id="clock-24h", size="sm", color="secondary", outline=False),
+                dbc.Button("12h", id="clock-12h", size="sm", color="secondary", outline=True),
+            ]),
+        ], size="sm"),
+        width="auto",
+    ),
+], className="mb-3 justify-content-end g-2 align-items-center")
 
 # Hub's local timezone label, shown so a user knows what the on-screen and
 # exported local timestamps mean (the CSV also carries an unambiguous UTC column).
@@ -222,6 +236,7 @@ ExportModal = dbc.Modal([
 # --- Dashboard Layout ---
 DashboardLayout = html.Div([
     dcc.Store(id="temp-unit-store", storage_type="local", data="celsius"),
+    dcc.Store(id="clock-format-store", storage_type="local", data="24h"),
     html.Div(id="dashboard-onboarding"),
     html.Div(id="demo-banner"),
     ExportModal,
@@ -249,9 +264,10 @@ def _fmt(temp_c, unit):
     return f"{_convert(temp_c, unit):.1f} {symbol}"
 
 
-def _fmt_clock(ts_str):
+def _fmt_clock(ts_str, clock_format="24h"):
+    fmt = "%I:%M %p" if clock_format == "12h" else "%H:%M"
     try:
-        return pd.to_datetime(str(ts_str).rstrip("Z"), errors="coerce").strftime("%I:%M %p")
+        return pd.to_datetime(str(ts_str).rstrip("Z"), errors="coerce").strftime(fmt)
     except Exception:
         return "N/A"
 
@@ -436,7 +452,7 @@ def build_probe_stats(db, cfg, time_range, temp_unit):
     ])
 
 
-def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all"):
+def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", clock_format="24h"):
     """Pure(ish) computation behind the dashboard refresh callback.
 
     Returns the 14-tuple the Dash callback emits.  Kept free of Dash specifics
@@ -446,8 +462,13 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all"):
     (drill-in). ``"all"`` (or a probe with no data) keeps the multi-probe
     overview: the gauge auto-picks the worst breach and the graph overlays every
     probe.
+
+    ``clock_format`` is ``"24h"`` (default) or ``"12h"`` and controls every
+    absolute clock time shown: the graph's ticks/hover, the Min/Max "at ..."
+    times, and the "Last Update" KPI once it falls back to a calendar date.
     """
     temp_unit = temp_unit or "celsius"
+    clock_format = clock_format if clock_format == "12h" else "24h"
     time_range = time_range or "24h"
     window = RANGE_SECONDS.get(time_range, 86400)
     suffix = " °F" if temp_unit == "fahrenheit" else " °C"
@@ -540,9 +561,28 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all"):
             multi = False
             y_range = None
 
+        # Plotly's own default tick/hover formatting for a datetime axis is
+        # already 24-hour, so the 24h case needs no override (identical to
+        # today's rendering); only the 12h case needs explicit AM/PM formats,
+        # per Plotly's dtick-range tiers (ms of tick spacing -> format).
+        xaxis_kwargs = {}
+        if clock_format == "12h":
+            xaxis_kwargs["hoverformat"] = "%b %d, %I:%M:%S %p"
+            xaxis_kwargs["tickformatstops"] = [
+                dict(dtickrange=[None, 1000], value="%H:%M:%S.%L"),
+                dict(dtickrange=[1000, 60000], value="%I:%M:%S %p"),
+                dict(dtickrange=[60000, 3600000], value="%I:%M %p"),
+                dict(dtickrange=[3600000, 86400000], value="%I:%M %p"),
+                dict(dtickrange=[86400000, 604800000], value="%b %d"),
+                dict(dtickrange=[604800000, "M1"], value="%b %d"),
+                dict(dtickrange=["M1", "M12"], value="%b '%y"),
+                dict(dtickrange=["M12", None], value="%Y"),
+            ]
+
         fig.update_layout(
             margin=dict(t=20, b=20, l=0, r=10), template="plotly_dark",
             xaxis_title="Time", yaxis_title="Temp °F" if temp_unit == "fahrenheit" else "Temp °C",
+            xaxis=xaxis_kwargs,
             yaxis=dict(range=y_range) if y_range else {},
             hovermode="x unified", showlegend=multi,
         )
@@ -552,8 +592,8 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all"):
             stat_min = _fmt(stats["min"], temp_unit)
             stat_max = _fmt(stats["max"], temp_unit)
             stat_avg = _fmt(stats["avg"], temp_unit)
-            stat_min_time = f"at {_fmt_clock(stats['min_ts'])}"
-            stat_max_time = f"at {_fmt_clock(stats['max_ts'])}"
+            stat_min_time = f"at {_fmt_clock(stats['min_ts'], clock_format)}"
+            stat_max_time = f"at {_fmt_clock(stats['max_ts'], clock_format)}"
             stat_avg_info = f"{filtered_points:,} readings"
         else:
             stat_min = stat_max = stat_avg = "N/A"
@@ -606,7 +646,8 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all"):
             elif delta < 86400:
                 last_update = f"{int(delta // 3600)} h ago"
             else:
-                last_update = last_dt.strftime("%b %d, %H:%M")
+                last_update = last_dt.strftime("%b %d, %I:%M %p" if clock_format == "12h"
+                                               else "%b %d, %H:%M")
         except Exception:
             hb = f"Last reading: {ts}"
 
@@ -697,6 +738,31 @@ def register_dashboard_callbacks(app, finder, cfg, db):
     )
     def _sync_unit_buttons(temp_unit):
         return (True, False) if (temp_unit or "celsius") == "fahrenheit" else (False, True)
+
+    @app.callback(
+        Output("clock-format-store", "data"),
+        Input("clock-24h", "n_clicks"),
+        Input("clock-12h", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def toggle_clock_format(_h24, _h12):
+        from dash import callback_context
+        if not callback_context.triggered:
+            return no_update
+        button_id = callback_context.triggered[0]["prop_id"].split(".")[0]
+        if button_id == "clock-24h":
+            return "24h"
+        if button_id == "clock-12h":
+            return "12h"
+        return no_update
+
+    @app.callback(
+        Output("clock-24h", "outline"),
+        Output("clock-12h", "outline"),
+        Input("clock-format-store", "data"),
+    )
+    def _sync_clock_buttons(clock_format):
+        return (True, False) if (clock_format or "24h") == "12h" else (False, True)
 
     @app.callback(
         Output("download-btn", "href"),
@@ -875,9 +941,10 @@ def register_dashboard_callbacks(app, finder, cfg, db):
         Input("time-range-selector", "value"),
         Input("temp-unit-store", "data"),
         Input("focus-probe-selector", "value"),
+        Input("clock-format-store", "data"),
     )
-    def update_dashboard(_n, time_range, temp_unit, focus_probe):
-        return build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe)
+    def update_dashboard(_n, time_range, temp_unit, focus_probe, clock_format):
+        return build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe, clock_format)
 
     @app.callback(
         Output("focus-probe-selector", "options"),

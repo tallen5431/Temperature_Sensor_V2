@@ -48,6 +48,40 @@ def test_build_dashboard_with_data(tmp_path):
     assert logging_status == "ON"
 
 
+def test_clock_format_defaults_to_24h(tmp_path):
+    db = Database(tmp_path / "d.db")
+    cfg = Config(tmp_path / "c.json")
+    _seed(db)
+    out = build_dashboard(db, cfg, FakeFinder(), "24h", "celsius")
+    stat_min_time, stat_max_time = out[8], out[10]
+    # No clock_format passed -> 24h, so no AM/PM marker.
+    assert "AM" not in stat_min_time and "PM" not in stat_min_time
+    assert "AM" not in stat_max_time and "PM" not in stat_max_time
+
+
+def test_clock_format_12h_adds_am_pm(tmp_path):
+    db = Database(tmp_path / "d.db")
+    cfg = Config(tmp_path / "c.json")
+    _seed(db)
+    out = build_dashboard(db, cfg, FakeFinder(), "24h", "celsius", "all", clock_format="12h")
+    stat_min_time, stat_max_time = out[8], out[10]
+    assert "AM" in stat_min_time or "PM" in stat_min_time
+    assert "AM" in stat_max_time or "PM" in stat_max_time
+
+
+def test_clock_format_12h_sets_graph_tickformatstops(tmp_path):
+    db = Database(tmp_path / "d.db")
+    cfg = Config(tmp_path / "c.json")
+    _seed(db)
+    fig_24h = build_dashboard(db, cfg, FakeFinder(), "24h", "celsius", "all", clock_format="24h")[1]
+    fig_12h = build_dashboard(db, cfg, FakeFinder(), "24h", "celsius", "all", clock_format="12h")[1]
+    # 24h leaves Plotly's own (already-24h) defaults untouched -> no override set.
+    assert fig_24h.layout.xaxis.tickformatstops in (None, ())
+    # 12h explicitly overrides with AM/PM-bearing format strings.
+    stops = fig_12h.layout.xaxis.tickformatstops
+    assert stops and any("%p" in s.value for s in stops)
+
+
 def test_build_dashboard_fahrenheit_unit(tmp_path):
     db = Database(tmp_path / "d.db")
     cfg = Config(tmp_path / "c.json")
