@@ -113,17 +113,22 @@ class MqttPublisher:
             if vpd is not None:
                 metrics.append("vpd")
             # Announce each metric once per (probe, metric) so a probe that later
-            # gains humidity still gets its humidity/VPD entities in HA.
+            # gains humidity still gets its humidity/VPD entities in HA. Guard the
+            # check-then-add with the lock so concurrent worker threads don't both
+            # publish the same discovery entity (the set is otherwise read/mutated
+            # off-lock). The lock only does fast set lookups after the one-time
+            # first announce, and the hot state publish below stays lock-free.
             if self._discovery_enabled:
-                for metric in metrics:
-                    key = f"{probe_id}:{metric}"
-                    if key not in self._announced:
-                        client.publish(
-                            discovery_topic(self._discovery_prefix, probe_id, metric),
-                            json.dumps(discovery_payload(probe_id, friendly_name, self._base_topic, metric)),
-                            retain=True,
-                        )
-                        self._announced.add(key)
+                with self._lock:
+                    for metric in metrics:
+                        key = f"{probe_id}:{metric}"
+                        if key not in self._announced:
+                            client.publish(
+                                discovery_topic(self._discovery_prefix, probe_id, metric),
+                                json.dumps(discovery_payload(probe_id, friendly_name, self._base_topic, metric)),
+                                retain=True,
+                            )
+                            self._announced.add(key)
             state = {"temperature_c": round(float(temp_c), 3), "probe_id": probe_id}
             if humidity is not None:
                 state["humidity_pct"] = round(float(humidity), 2)

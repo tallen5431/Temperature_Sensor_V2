@@ -8,10 +8,10 @@ def _section(title, children):
     return html.Div([html.H6(title, className="fw-bold text-info mt-3 mb-2"), *children])
 
 
-def HelpModal():
-    return dbc.Modal([
-        dbc.ModalHeader(dbc.ModalTitle("Help & Quick Start")),
-        dbc.ModalBody([
+def _help_body():
+    """The help content, with NO component ids so it can be rendered both inside
+    the modal and inline on the /help page without creating duplicate DOM ids."""
+    return [
             html.P([f"Welcome to {PRODUCT_NAME} — your dashboard for wireless temperature probes. ",
                     "Everything below works from this window; no command line needed."]),
 
@@ -60,9 +60,23 @@ def HelpModal():
 
             html.Hr(),
             html.A("📘 Full documentation", href=DOCS_URL, target="_blank"),
-        ]),
+    ]
+
+
+def HelpModal():
+    return dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle("Help & Quick Start")),
+        dbc.ModalBody(_help_body()),
         dbc.ModalFooter(dbc.Button("Close", id="help-close", className="ms-auto", n_clicks=0)),
     ], id="help-modal", is_open=False, size="lg", scrollable=True)
+
+
+def HelpPage():
+    """The /help route content. Renders the help body inline (no modal, no ids) so
+    it never collides with the always-present global HelpModal in the layout."""
+    return dbc.Card(dbc.CardBody(
+        [html.H4("Help & Quick Start", className="mb-3")] + _help_body()
+    ), className="mb-3")
 
 
 def register_help_callbacks(app):

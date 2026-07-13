@@ -32,7 +32,17 @@ class MdnsAdvert:
             server=hostname,
         )
         self.zeroconf = Zeroconf()
-        self.zeroconf.register_service(self.info)
+        try:
+            self.zeroconf.register_service(self.info)
+        except Exception:
+            # register_service can fail (name conflict / bind error) after
+            # Zeroconf() already opened sockets + a listener thread. Close it so a
+            # failed start doesn't orphan those (the caller sets mdns = None).
+            with suppress(Exception):
+                self.zeroconf.close()
+            self.zeroconf = None
+            self.info = None
+            raise
         return ip
 
     def stop(self):

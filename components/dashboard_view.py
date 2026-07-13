@@ -668,9 +668,9 @@ def register_dashboard_callbacks(app, finder, cfg, db):
     )
     def _show_onboarding(_):
         # Guide the customer until the very first reading lands, then get out of
-        # the way.  Cheap COUNT query; runs on the existing 5 s refresh tick.
+        # the way. has_any() is an O(1) EXISTS check, cheap to run every 5 s tick.
         try:
-            return _onboarding_card() if db.count() == 0 else None
+            return None if db.has_any() else _onboarding_card()
         except Exception:
             return None
 

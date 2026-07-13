@@ -229,6 +229,12 @@ def test_bulk_insert(db):
     assert db.bulk_insert([]) == 0  # empty is a no-op
 
 
+def test_has_any(db):
+    assert db.has_any() is False
+    db.append(_iso(datetime.datetime.now()), 20.0, 68.0, "p")
+    assert db.has_any() is True
+
+
 def test_delete_future_readings(db):
     now = datetime.datetime.now()
     db.append(_iso(now - datetime.timedelta(minutes=5)), 22.0, 0.0, "p")   # past

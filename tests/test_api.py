@@ -80,6 +80,22 @@ def test_config_get_redacts_secret(tmp_path):
     assert body["provision_token"] == "***set***"
 
 
+def test_redact_masks_nested_and_apikey_secrets():
+    from api.routes import _redact
+    out = _redact({
+        "api_key": "sk-live-123",                 # credential-shaped key
+        "creds": {"password": "p"},               # nested secret leaf
+        "secret_bundle": {"a": "x", "b": "y"},    # secret-NAMED container
+        "mqtt": {"host": "localhost", "password": "z"},  # keep host, mask password
+    })
+    assert out["api_key"] == "***set***"
+    assert out["creds"]["password"] == "***set***"
+    # A secret-named container is masked whole, not recursed into (no leaf leaks).
+    assert out["secret_bundle"] == "***set***"
+    assert out["mqtt"]["host"] == "localhost"
+    assert out["mqtt"]["password"] == "***set***"
+
+
 def test_health_reports_counts(tmp_path):
     client, db, _ = _make_client(tmp_path)
     client.post("/api/ingest", json={"temperature_c": 20, "probe_id": "p1"})
