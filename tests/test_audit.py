@@ -56,6 +56,40 @@ def test_configure_resumes_chain(tmp_path):
     assert a2.verify()["intact"] is True
 
 
+def test_tail_truncation_is_detected(tmp_path):
+    # Deleting trailing entries leaves an internally-consistent (shorter) chain
+    # that linkage-only verification can't catch — the anchor must flag it.
+    p = tmp_path / "audit.log"
+    a = AuditLog()
+    a.configure(p)
+    a.record("hub.start")
+    a.record("config.update", "settings")
+    a.record("data.export", "log.csv")
+    assert a.verify()["intact"] is True
+
+    # Chop the last line (simulate `head -n -1 audit.log`).
+    lines = p.read_text().splitlines()
+    p.write_text("\n".join(lines[:-1]) + "\n")
+
+    res = a.verify()
+    assert res["intact"] is False
+    assert "anchor" in res.get("reason", "").lower()
+
+
+def test_truncation_detected_across_restart(tmp_path):
+    p = tmp_path / "audit.log"
+    a = AuditLog()
+    a.configure(p)
+    a.record("hub.start")
+    a.record("config.update", "settings")
+    # Truncate while "down", then a fresh instance configures against the anchor.
+    lines = p.read_text().splitlines()
+    p.write_text(lines[0] + "\n")
+    a2 = AuditLog()
+    a2.configure(p)
+    assert a2.verify()["intact"] is False
+
+
 def test_record_is_noop_before_configure():
     a = AuditLog()
     a.record("x")  # no path set → must not raise
