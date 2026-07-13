@@ -86,6 +86,12 @@ _migrated = migrate_csv_if_present(db, LEGACY_CSV)
 if _migrated:
     log.info("Imported %d reading(s) from legacy CSV into %s", _migrated, DB_FILE.name)
 
+# Self-heal a database that already holds future-dated readings from a probe
+# clock glitch (new readings are clamped at ingest; this clears stranded ones).
+_stranded = db.delete_future_readings()
+if _stranded:
+    log.warning("Removed %d future-dated reading(s) (probe clock glitch)", _stranded)
+
 cfg = Config(CONFIG_FILE)
 finder = ProbeDiscovery()
 try:

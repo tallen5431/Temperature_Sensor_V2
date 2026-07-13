@@ -229,6 +229,22 @@ def test_bulk_insert(db):
     assert db.bulk_insert([]) == 0  # empty is a no-op
 
 
+def test_delete_future_readings(db):
+    now = datetime.datetime.now()
+    db.append(_iso(now - datetime.timedelta(minutes=5)), 22.0, 0.0, "p")   # past
+    db.append(_iso(now), 23.0, 0.0, "p")                                   # now
+    db.append(_iso(now + datetime.timedelta(minutes=47)), 23.0, 0.0, "p")  # future glitch
+    assert db.count() == 3
+    removed = db.delete_future_readings()
+    assert removed == 1
+    assert db.count() == 2
+    # The bogus future row is gone, so "latest" is the real current reading.
+    assert db.latest()["temperature_c"] == 23.0
+    # A tiny skew (well under tolerance) is preserved.
+    db.append(_iso(now + datetime.timedelta(seconds=30)), 24.0, 0.0, "p")
+    assert db.delete_future_readings() == 0
+
+
 def test_purge_older_than(db):
     now = datetime.datetime.now()
     db.append(_iso(now - datetime.timedelta(days=40)), 10.0, 50.0, "p")  # old

@@ -327,6 +327,22 @@ class Database:
             conn.commit()
             return cur.rowcount
 
+    def delete_future_readings(self, tolerance_sec: int = 120) -> int:
+        """Delete readings stamped implausibly far in the future. Returns rows removed.
+
+        A probe with a bad clock can stamp a reading ahead of real time (see the
+        ingest-time clamp in core.storage). Any such row already in the store
+        would draw the chart past 'now' and become the bogus 'latest' reading —
+        masking a live threshold breach. Run once at startup so an existing
+        database self-heals; new readings are clamped at ingest so none recur.
+        """
+        cutoff = int(time.time()) + int(tolerance_sec)
+        conn = self._conn()
+        with self._write_lock:
+            cur = conn.execute("DELETE FROM readings WHERE epoch > ?", (cutoff,))
+            conn.commit()
+            return cur.rowcount
+
     def delete_probe(self, probe_id: str) -> int:
         """Delete every reading for a single probe. Returns rows removed.
 
