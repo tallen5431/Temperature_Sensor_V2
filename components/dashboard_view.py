@@ -37,45 +37,49 @@ GaugeCard = dbc.Card(
 )
 
 # --- Metrics Row ---
+# Responsive widths (xs=6, lg=3) so the KPI cards form a clean 2×2 grid on a
+# phone instead of a single 4-wide row whose long labels wrap mid-word.
 MetricsRow = dbc.Row([
     dbc.Col(dbc.Card(dbc.CardBody([
-        html.H6("Connected Probes"),
-        html.H2(id="metric-probes", className="fw-bold"),
-    ]), className="h-100"), width=3),
+        html.H6("Connected Probes", className="text-muted mb-1"),
+        html.H2(id="metric-probes", className="fw-bold mb-0"),
+    ]), className="h-100"), xs=6, lg=3),
     dbc.Col(dbc.Card(dbc.CardBody([
-        html.H6("Last Update"),
-        html.H2(id="metric-lastupdate", className="fw-bold", style={"fontSize": "1.5rem"}),
-    ]), className="h-100"), width=3),
+        html.H6("Last Update", className="text-muted mb-1"),
+        html.H2(id="metric-lastupdate", className="fw-bold mb-0", style={"fontSize": "1.5rem"}),
+    ]), className="h-100"), xs=6, lg=3),
     dbc.Col(dbc.Card(dbc.CardBody([
-        html.H6("Logging Status"),
-        html.H2(id="metric-logging", className="fw-bold text-success"),
-    ]), className="h-100"), width=3),
+        html.H6("Logging Status", className="text-muted mb-1"),
+        html.H2(id="metric-logging", className="fw-bold text-success mb-0"),
+    ]), className="h-100"), xs=6, lg=3),
     dbc.Col(dbc.Card(dbc.CardBody([
-        html.H6("Unit"),
+        html.H6("Unit", className="text-muted mb-1"),
         dbc.ButtonGroup([
             dbc.Button("°C", id="unit-celsius", size="sm", color="primary", outline=False),
             dbc.Button("°F", id="unit-fahrenheit", size="sm", color="primary", outline=True),
         ], size="sm"),
-    ]), className="h-100 text-center"), width=3),
+    ]), className="h-100"), xs=6, lg=3),
 ], className="g-3 mb-3")
 
 # --- Statistics Row ---
+# xs=12 stacks the three stat cards on a phone; md=4 restores the 3-across row on
+# tablets and up.
 StatsRow = dbc.Row([
     dbc.Col(dbc.Card(dbc.CardBody([
         html.H6("Min Temperature", className="text-muted mb-1"),
         html.H4(id="stat-min", className="fw-bold text-info mb-0"),
         html.Small(id="stat-min-time", className="text-muted"),
-    ]), className="h-100 text-center"), width=4),
+    ]), className="h-100 text-center"), xs=12, md=4),
     dbc.Col(dbc.Card(dbc.CardBody([
         html.H6("Max Temperature", className="text-muted mb-1"),
         html.H4(id="stat-max", className="fw-bold text-danger mb-0"),
         html.Small(id="stat-max-time", className="text-muted"),
-    ]), className="h-100 text-center"), width=4),
+    ]), className="h-100 text-center"), xs=12, md=4),
     dbc.Col(dbc.Card(dbc.CardBody([
         html.H6("Average Temperature", className="text-muted mb-1"),
         html.H4(id="stat-avg", className="fw-bold text-success mb-0"),
         html.Small(id="stat-avg-info", className="text-muted"),
-    ]), className="h-100 text-center"), width=4),
+    ]), className="h-100 text-center"), xs=12, md=4),
 ], className="g-3 mb-3")
 
 # Per-probe Min/Max/Average — only rendered when 2+ probes have data, so a
@@ -160,11 +164,12 @@ def _onboarding_card():
 def _demo_alert():
     """Persistent reminder + one-click cleanup shown while demo data is loaded."""
     return dbc.Alert([
-        html.Span("🧪 Demo data is loaded — these are sample readings, not a real probe."),
+        html.Span("🧪 Demo data is loaded — these are sample readings, not a real probe.",
+                  className="small"),
         dbc.Button("Clear demo data", id="demo-clear-btn", color="warning", outline=True,
                    size="sm", className="ms-3 flex-shrink-0"),
     ], color="warning",
-        className="mb-3 d-flex align-items-center justify-content-between")
+        className="mb-3 py-2 demo-banner d-flex align-items-center justify-content-between")
 
 
 # Focus selector — "All probes" (overview) or drill into a single probe. When a
@@ -228,8 +233,8 @@ DashboardLayout = html.Div([
     ProbeStatsRow,
     EnvironmentRow,
     dbc.Row([
-        dbc.Col(GaugeCard, width=4),
-        dbc.Col(GraphCard, width=8),
+        dbc.Col(GaugeCard, xs=12, lg=4),
+        dbc.Col(GraphCard, xs=12, lg=8),
     ], className="g-3 align-items-stretch"),
 ])
 
@@ -580,19 +585,32 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all"):
                                   f"{_fmt(t_c, temp_unit)} (below threshold: {_fmt(lo, temp_unit)})"],
                                   color="warning", className="mb-2"))
 
-        # --- Heartbeat ---
+        # --- Heartbeat + human-friendly "Last Update" ---
         ts = latest["timestamp"]
+        last_update = str(ts)
         try:
             last_dt = datetime.datetime.fromisoformat(str(ts).rstrip("Z"))
-            delta = (datetime.datetime.now() - last_dt).total_seconds()
+            delta = max(0.0, (datetime.datetime.now() - last_dt).total_seconds())
             hb = (f"Last sync {int(delta)} s ago" if delta < 60
                   else f"Last sync {int(delta // 60)} min ago")
             if delta < 10:
                 hb += " ✓"
+            # A relative, locale-neutral label reads far more professionally than
+            # a raw ISO string (and never wraps mid-word on a phone).
+            if delta < 5:
+                last_update = "Just now"
+            elif delta < 60:
+                last_update = f"{int(delta)}s ago"
+            elif delta < 3600:
+                last_update = f"{int(delta // 60)} min ago"
+            elif delta < 86400:
+                last_update = f"{int(delta // 3600)} h ago"
+            else:
+                last_update = last_dt.strftime("%b %d, %H:%M")
         except Exception:
             hb = f"Last reading: {ts}"
 
-        return (gauge, fig, str(probes_online), ts, logging_status, hb, range_info,
+        return (gauge, fig, str(probes_online), last_update, logging_status, hb, range_info,
                 stat_min, stat_min_time, stat_max, stat_max_time, stat_avg, stat_avg_info, alerts)
 
     except Exception:

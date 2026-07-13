@@ -43,6 +43,15 @@ body { font-family: 'Inter', sans-serif; }
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
+/* Demo-mode notice: a subtle amber info bar with a left accent, rather than a
+   loud solid-orange block that dominates the otherwise dark, refined dashboard. */
+.demo-banner {
+  background-color: rgba(241, 196, 15, 0.12) !important;
+  border: 1px solid rgba(241, 196, 15, 0.30) !important;
+  border-left: 4px solid #f1c40f !important;
+  color: #e7edf5 !important;
+}
+
 @media (max-width: 768px) {
   .gauge-card, .graph-card { min-height: 320px; }
   .navbar-brand { font-size: 1rem; }
