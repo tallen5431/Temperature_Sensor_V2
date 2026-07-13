@@ -327,10 +327,19 @@ def register_settings_callbacks(app, cfg):
                                           "probe_id": "test", "kind": "test"})
         if not results:
             return _err("No channels were attempted.")
-        lines = [f"{ch}: {'✅ sent' if ok else '❌ ' + info}" for ch, ok, info in results]
+        lines = [html.Div(f"{ch}: {'✅ sent' if ok else '❌ ' + info}") for ch, ok, info in results]
         all_ok = all(ok for _, ok, _ in results)
-        return (_ok if all_ok else _err)(html.Span([html.Strong("Test result: "),
-                                                     html.Br(), *[html.Div(l) for l in lines]]))
+        # The test dispatches to the channels regardless of the master switch, so
+        # a channel can report "sent" while live alerts are still OFF. Say so
+        # plainly — this is the usual reason a real breach doesn't notify.
+        if not conf.get("enabled"):
+            lines.append(html.Div(
+                "⚠ Live alerts are OFF — turn on “Enable alerts” at the top and click "
+                "Save, or real breaches won’t notify you.", className="fw-bold mt-1"))
+            return dbc.Alert([html.Strong("Test result: "), html.Br(), *lines],
+                             color="warning", dismissable=True, className="mb-0")
+        return (_ok if all_ok else _err)(
+            html.Span([html.Strong("Test result: "), html.Br(), *lines]))
 
     @app.callback(
         Output("data-status", "children"),
