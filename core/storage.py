@@ -12,6 +12,14 @@ from __future__ import annotations
 import datetime
 import math
 import re
+import time
+
+# A probe with a bad clock (failed NTP / drifted RTC) can stamp a reading in the
+# future. The hub's clock is authoritative, so a timestamp more than this many
+# seconds ahead of "now" is treated as a glitch and clamped to the hub's current
+# time — otherwise the dashboard draws a line into the future and that bogus
+# "latest" reading can mask a live threshold breach.
+_FUTURE_TOLERANCE_SEC = 120
 
 # A probe id is a short token. A real TempSensor sends "TempSensor-<HEX6>";
 # this bounds anything a buggy/malicious LAN client might POST so an arbitrary
@@ -69,6 +77,21 @@ def _to_local_naive(ts_str: str) -> str:
         return ts_str[:19]
 
 
+def _clamp_future(ts: str) -> str:
+    """Replace an implausibly-future timestamp with the hub's current time.
+
+    A reading can only measure the present, so a stamp far ahead of now means the
+    probe's clock is wrong; trust the hub's clock instead. Past timestamps (e.g.
+    buffered offline readings flushed on reconnect) are left untouched.
+    """
+    try:
+        if datetime.datetime.fromisoformat(str(ts)).timestamp() > time.time() + _FUTURE_TOLERANCE_SEC:
+            return _local_iso_now()
+    except Exception:
+        pass
+    return ts
+
+
 def normalize_payload(payload: dict):
     """Normalise an ingest payload.
 
@@ -78,7 +101,7 @@ def normalize_payload(payload: dict):
     temperature value is present.
     """
     raw_ts = payload.get("timestamp") or payload.get("ts") or ""
-    ts = _to_local_naive(raw_ts) if raw_ts else _local_iso_now()
+    ts = _clamp_future(_to_local_naive(raw_ts)) if raw_ts else _local_iso_now()
 
     c_keys = ["temperature_c", "temp_c", "t_c", "c"]
     f_keys = ["temperature_f", "temp_f", "t_f", "f"]

@@ -68,6 +68,24 @@ def test_explicit_offset_converted_to_local():
     assert got == expected
 
 
+def test_future_timestamp_is_clamped_to_now():
+    # A probe with a bad clock stamps a reading ~47 min in the future; the hub
+    # must clamp it to ~now so the chart never draws into the future and the
+    # bogus point can't become the "latest" reading.
+    future = (datetime.datetime.now() + datetime.timedelta(minutes=47)).isoformat(timespec="seconds")
+    ts, _, _ = normalize_payload({"temperature_c": 23.0, "timestamp": future})
+    parsed = datetime.datetime.fromisoformat(ts)
+    assert parsed <= datetime.datetime.now() + datetime.timedelta(seconds=125)
+
+
+def test_recent_and_past_timestamps_are_preserved():
+    # Small skew and legitimately-old (buffered) readings pass through unchanged.
+    for offset_min in (-120, -5, 0):
+        stamp = (datetime.datetime.now() + datetime.timedelta(minutes=offset_min)).isoformat(timespec="seconds")
+        ts, _, _ = normalize_payload({"temperature_c": 20.0, "timestamp": stamp})
+        assert ts == stamp
+
+
 @pytest.mark.parametrize("bad", ["NaN", "inf", "-inf", "1e999"])
 def test_non_finite_temperature_rejected(bad):
     # PROTOCOL.md §6 rule 2: non-finite values must be rejected, not stored.
