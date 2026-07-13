@@ -50,6 +50,14 @@ class AutoProvisioner(threading.Thread):
         self.period_sec = int(period_sec)
         self.cfg = cfg
         self._stop = False
+        # Probes we've pushed our config to at least once this session. The
+        # status-check shortcut below can't see a probe's token (/status never
+        # exposes it), so a probe with the right server_url+interval but a
+        # stale/absent token — e.g. right after the hub first generates its
+        # device token — would match the shortcut and never receive the token,
+        # 401ing on every ingest forever. Forcing one provision per probe per
+        # session guarantees the current token is delivered at least once.
+        self._provisioned: set = set()
 
     def stop(self):
         self._stop = True
@@ -121,27 +129,32 @@ class AutoProvisioner(threading.Thread):
                         host = (host or "").rstrip(".")
                         if host:
                             target_url = f"{base}/api/ingest"
-                            # Only re-provision when the probe's config differs
-                            # from what we would send.  This avoids the ESP32
-                            # doing an NVS write (slow, causes brief stall) on
-                            # every 10-second cycle when nothing has changed.
-                            try:
-                                status = get_probe_status(host, port)
-                                if (status and
-                                        status.get("server_url") == target_url and
-                                        status.get("interval_ms") == interval_ms):
-                                    continue  # already configured correctly
-                            except Exception:
-                                pass  # can't check — fall through and provision
+                            # Once we've provisioned this probe this session, only
+                            # re-provision when its visible config (server_url /
+                            # interval) differs — this avoids the ESP32 doing an
+                            # NVS write (slow, brief stall) every cycle when nothing
+                            # has changed. Until then, always push so the current
+                            # token reaches it (the status shortcut can't see the
+                            # token; see _provisioned in __init__).
+                            if key in self._provisioned:
+                                try:
+                                    status = get_probe_status(host, port)
+                                    if (status and
+                                            status.get("server_url") == target_url and
+                                            status.get("interval_ms") == interval_ms):
+                                        continue  # already configured correctly
+                                except Exception:
+                                    pass  # can't check — fall through and provision
 
                             try:
-                                provision_probe(
+                                if provision_probe(
                                     host,
                                     port,
                                     base,
                                     token=self.token,
                                     interval_ms=interval_ms,
-                                )
+                                ):
+                                    self._provisioned.add(key)
                             except Exception as e:
                                 # best-effort; we'll retry next cycle
                                 log.warning("Failed to provision %s:%s: %s", host, port, e)
