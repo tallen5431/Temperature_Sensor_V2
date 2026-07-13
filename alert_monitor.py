@@ -45,7 +45,12 @@ class AlertMonitor(threading.Thread):
 
     def stop(self):
         self._stop_event.set()
-        self._notify_q.put(None)  # unblock and stop the dispatch worker
+        # Non-blocking: if the queue is full (worker wedged on a slow SMTP send),
+        # don't block shutdown — the worker also exits on _stop_event.
+        try:
+            self._notify_q.put_nowait(None)  # unblock the dispatch worker
+        except queue.Full:
+            pass
 
     def _dispatch(self, ev: dict) -> None:
         """Hand an event to the async worker when the monitor is running; fall

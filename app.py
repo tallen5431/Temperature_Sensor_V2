@@ -1,6 +1,5 @@
 import datetime
 import hmac
-import io
 import logging
 import os
 import re
@@ -100,6 +99,12 @@ except Exception as _e:
     log.warning("Probe discovery failed to start: %s. Devices tab will be empty.", _e)
 
 server = Flask(__name__)
+# Global body-size backstop so a chunked / Content-Length-less POST can't stream
+# an unbounded body into memory before the per-route ingest check runs (that
+# check reads request.content_length, which is absent for chunked bodies). 16 MB
+# is far above any real ingest (64 KB) or Dash callback payload, so it only trips
+# on abuse. Werkzeug enforces it while reading, aborting with 413.
+server.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 
 
 def _detect_lan_ip() -> str:
@@ -230,19 +235,24 @@ def download_csv():
     probe = (args.get("probe") or "").strip() or None
     start_epoch = _parse_date_epoch(args.get("from"), end_of_day=False)
     end_epoch = _parse_date_epoch(args.get("to"), end_of_day=True)
-    buf = io.StringIO()
-    try:
-        db.export_csv(buf, window_seconds=window, probe_id=probe,
-                      start_epoch=start_epoch, end_epoch=end_epoch)
-    except Exception:
-        log.exception("CSV export failed")
-        return "Export failed", 500
     fname = "temperature_log.csv"
     if probe:
         fname = "temperature_" + re.sub(r"[^A-Za-z0-9_.-]", "_", probe) + ".csv"
+    # Write to a temp file and stream it (like /download/backup.db) rather than
+    # buffering the whole export in memory — a hub that has logged for months can
+    # have a multi-hundred-MB CSV that would otherwise OOM the process.
+    fd, tmp_path = tempfile.mkstemp(suffix=".csv")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
+            db.export_csv(f, window_seconds=window, probe_id=probe,
+                          start_epoch=start_epoch, end_epoch=end_epoch)
+    except Exception:
+        log.exception("CSV export failed")
+        _safe_unlink(tmp_path)
+        return "Export failed", 500
     AUDIT.record("data.export", detail=fname, actor=request.remote_addr or "?")
     return Response(
-        buf.getvalue(),
+        _stream_file_then_delete(tmp_path),
         mimetype="text/csv",
         headers={"Content-Disposition": f"attachment; filename={fname}"},
     )
@@ -316,7 +326,11 @@ def _start_background_services(port: int):
         provisioner = AutoProvisioner(
             discovery=finder,
             public_base_func=_public_base,
-            token=cfg.get("provision_token", ""),
+            # Push the SAME token the API enforces. Sourcing this straight from
+            # config would push an empty token when the operator set SERVER_TOKEN
+            # via env (config's provision_token stays blank) — every probe would
+            # then 401 on ingest forever.
+            token=SERVER_TOKEN,
             interval_ms=cfg.get("interval_sec", 5) * 1000,
             period_sec=10,
             cfg=cfg,

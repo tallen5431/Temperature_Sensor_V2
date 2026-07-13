@@ -8,7 +8,7 @@ from components.devices_panel import DevicesLayout, register_devices_callbacks
 from components.diagnostics_view import DiagnosticsLayout, register_diagnostics_callbacks
 from components.setup_helper import SetupHelper, register_setup_helper_callbacks
 from components.settings_panel import SettingsPanel, register_settings_callbacks
-from components.help_modal import HelpModal
+from components.help_modal import HelpModal, HelpPage
 from core.status import hub_status
 from core.version import HUB_VERSION, PRODUCT_NAME
 
@@ -39,7 +39,7 @@ def serve_page(pathname):
     elif pathname == "/diagnostics":
         return DiagnosticsLayout
     elif pathname == "/help":
-        return html.Div([HelpModal()])
+        return HelpPage()
     else:
         return DashboardLayout
 

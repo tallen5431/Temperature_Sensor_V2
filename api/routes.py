@@ -3,13 +3,12 @@ from __future__ import annotations
 import datetime
 import hmac
 import ipaddress
-import socket
 import time
 from typing import Any, Callable, Dict, List, Tuple
 
 from flask import Blueprint, jsonify, request
 
-from provisioning import provision_probe
+from provisioning import provision_probe, resolve_host
 from core.diagnostics import build_diagnostics
 from core.storage import normalize_payload, extract_humidity, compute_vpd, sanitize_probe_id
 from core.version import HUB_VERSION, PRODUCT_NAME
@@ -27,7 +26,8 @@ DEFAULT_ONLINE_TIMEOUT_SEC = 60
 MAX_INGEST_BYTES = 64 * 1024
 
 # Config keys whose values must never be returned over the API.
-_SECRET_KEYS = ("provision_token", "server_token", "token", "secret", "password")
+_SECRET_KEYS = ("provision_token", "server_token", "token", "secret", "password",
+                "api_key", "apikey")
 
 
 def _redact(data, _parent: str = ""):
@@ -46,10 +46,14 @@ def _redact(data, _parent: str = ""):
             # A webhook URL carries its auth in the path/query — treat as a secret.
             if kl == "url" and "webhook" in str(_parent).lower():
                 is_secret = True
-            if is_secret and not isinstance(v, (dict, list)):
+            if is_secret:
+                # Mask the whole value — including a dict/list — so a secret
+                # stored under a secret-named key can't leak via its leaves.
                 out[k] = "***set***" if v else ""
+            elif isinstance(v, (dict, list)):
+                out[k] = _redact(v, kl)
             else:
-                out[k] = _redact(v, kl) if isinstance(v, (dict, list)) else v
+                out[k] = v
         return out
     if isinstance(data, list):
         return [_redact(x, _parent) for x in data]
@@ -61,11 +65,11 @@ def _is_safe_provision_target(host: str) -> bool:
     only private addresses are valid — this blocks loopback, link-local (incl.
     the 169.254.169.254 cloud-metadata endpoint), and public/off-LAN hosts the
     hub could otherwise be tricked into POSTing to."""
-    h = (host or "").rstrip(".")
-    if not h:
+    resolved = resolve_host(host)  # bounded — never blocks the request thread
+    if not resolved:
         return False
     try:
-        ip = ipaddress.ip_address(socket.gethostbyname(h))
+        ip = ipaddress.ip_address(resolved)
     except Exception:
         return False
     return bool(ip.is_private and not ip.is_loopback and not ip.is_link_local

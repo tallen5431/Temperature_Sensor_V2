@@ -149,6 +149,13 @@ class Database:
         row = self._conn().execute("SELECT COUNT(*) AS n FROM readings").fetchone()
         return int(row["n"]) if row else 0
 
+    def has_any(self) -> bool:
+        """True if the store holds at least one reading. ``EXISTS`` stops at the
+        first row, so this is O(1) — unlike ``count()`` (a full scan) it is cheap
+        to call on every dashboard tick just to test emptiness."""
+        row = self._conn().execute("SELECT EXISTS(SELECT 1 FROM readings) AS e").fetchone()
+        return bool(row and row["e"])
+
     def latest(self) -> Optional[dict]:
         """Most recent reading overall, or None if the table is empty."""
         row = self._conn().execute(
@@ -203,8 +210,10 @@ class Database:
             # purge leave gaps), so `id % stride` biases the sample per probe and
             # can select ZERO rows (blank chart) or drop entire probes. Numbering
             # each probe's rows newest-first and keeping every stride-th one means
-            # rn=1 (the live tip) is always kept, every probe is represented, the
-            # result is never empty, and the point count stays within max_points.
+            # rn=1 (the live tip) is always kept, every probe is represented, and
+            # the result is never empty. Point count stays near max_points (a
+            # multi-probe window can exceed it by up to one point per probe —
+            # bounded by the probe-registry cap and harmless for the chart).
             sql = (
                 "SELECT timestamp, temperature_c, temperature_f, probe_id FROM ("
                 "  SELECT ts AS timestamp, epoch, id, temperature_c, temperature_f, probe_id,"
