@@ -1,4 +1,4 @@
-# TempSensor — DIY Kit Playbook (sell rev-1 boards now, zero assembly for you)
+# Setpoint — DIY Kit Playbook (sell rev-1 boards now, zero assembly for you)
 
 > The kit is your **fastest, lowest-risk product**: you bag parts, the buyer assembles, so there's no
 > assembly labor and (because the buyer builds the radio) it sidesteps finished-product FCC. This doc
@@ -53,7 +53,9 @@ don't solder" buyer — for a few minutes of header soldering you do in a batch.
   "any protected 18650" note.
 - ✅ Slide switch.
 - ✅ A **printed quick-start card**: 5 numbered steps with pictures, the **setup QR**, the
-  **browser-flash QR**, and links to `docs/ASSEMBLY.md` + `docs/USER_MANUAL.md`.
+  **browser-flash QR**, and links to `docs/ASSEMBLY.md` + `docs/USER_MANUAL.md`. A ready-to-print
+  A5 template (branded **Setpoint, by Datum Labs**) lives at
+  [`kit-quickstart-card.html`](kit-quickstart-card.html) — open it in a browser and Print to PDF.
 - ✅ A **1-line "known-good" test**: "Power on → the LED blinks → it appears on your dashboard within
   a minute." A buyer who can self-verify success won't open a support ticket.
 - ✅ A short **lithium-safety line** (if the kit involves an 18650): *"Use a protected cell, observe

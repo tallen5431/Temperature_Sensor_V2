@@ -1,4 +1,4 @@
-# TempSensor — Product Roadmap (what to do with what exists)
+# Setpoint — Product Roadmap (what to do with what exists)
 
 > The single "what next" doc. Ties together the strategy ([`GO_TO_MARKET.md`](GO_TO_MARKET.md)),
 > the launch runbook ([`LAUNCH.md`](LAUNCH.md)), the legal/cost sequence

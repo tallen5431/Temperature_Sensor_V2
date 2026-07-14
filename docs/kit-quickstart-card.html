@@ -1,0 +1,201 @@
+<title>Setpoint Kit — Quick Start Card</title>
+<meta name="description" content="Printable in-box quick-start card for the Setpoint DIY kit — box to live readings in ~10 minutes." />
+
+<style>
+  :root {
+    --ground: #e7edf2;
+    --paper: #ffffff;
+    --ink: #14202b;
+    --ink-soft: #53626f;
+    --ink-faint: #8496a3;
+    --accent: #0a8ba1;
+    --accent-bright: #12aec8;
+    --accent-wash: #e3f5f8;
+    --line: #d7e0e7;
+    --ok: #17855b;
+    --ok-wash: #e2f4ec;
+    --warn: #b0740c;
+    --warn-wash: #f8eddb;
+    --font-display: "Helvetica Neue", "Arial Nova", "Segoe UI", system-ui, sans-serif;
+    --font-body: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Menlo, Consolas, monospace;
+  }
+  :root[data-theme="dark"] {
+    --ground: #0c141c; --paper: #16212c; --ink: #e9f1f7; --ink-soft: #a1b3c1; --ink-faint: #6f8598;
+    --accent: #35c8e0; --accent-bright: #5bd8ec; --accent-wash: rgba(53,200,224,.12);
+    --line: #294055; --ok: #33c88c; --ok-wash: rgba(51,200,140,.12); --warn: #f0b45a; --warn-wash: rgba(240,180,90,.12);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0c141c; --paper: #16212c; --ink: #e9f1f7; --ink-soft: #a1b3c1; --ink-faint: #6f8598;
+      --accent: #35c8e0; --accent-bright: #5bd8ec; --accent-wash: rgba(53,200,224,.12);
+      --line: #294055; --ok: #33c88c; --ok-wash: rgba(51,200,140,.12); --warn: #f0b45a; --warn-wash: rgba(240,180,90,.12);
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font-family: var(--font-body); line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    display: flex; justify-content: center; padding: 24px 16px;
+  }
+  .card {
+    background: var(--paper); width: 100%; max-width: 540px;
+    border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+    box-shadow: 0 16px 44px -22px rgba(20,32,43,.45);
+  }
+  .pad { padding: 22px 24px; }
+
+  /* Header */
+  .head { border-bottom: 2px solid var(--accent); }
+  .brandrow { display: flex; align-items: center; gap: 10px; }
+  .brandrow svg { width: 22px; height: 22px; color: var(--accent); flex: none; }
+  .wordmark { font-family: var(--font-display); font-weight: 800; font-size: 1.3rem; letter-spacing: -.02em; }
+  .wordmark .b2 { color: var(--accent); }
+  .byline { font-family: var(--font-body); font-size: .72rem; font-weight: 600; color: var(--ink-faint); align-self: flex-end; padding-bottom: .14rem; white-space: nowrap; }
+  .tag { margin-left: auto; font-family: var(--font-mono); font-size: .6rem; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); border: 1px solid var(--accent); border-radius: 999px; padding: .22rem .5rem; }
+  .kicker { font-family: var(--font-mono); font-size: .68rem; font-weight: 600; letter-spacing: .2em; text-transform: uppercase; color: var(--ink-faint); margin-top: 12px; }
+  h1 { font-family: var(--font-display); font-weight: 800; font-size: 1.5rem; letter-spacing: -.02em; margin: 3px 0 0; text-wrap: balance; }
+  .lede { color: var(--ink-soft); font-size: .9rem; margin-top: 6px; }
+
+  /* Steps */
+  .steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; counter-reset: s; }
+  .step { display: grid; grid-template-columns: 30px 1fr; gap: 12px; align-items: start; }
+  .step .n {
+    counter-increment: s; font-family: var(--font-mono); font-weight: 700; font-size: .95rem;
+    color: var(--accent); width: 30px; height: 30px; border: 1.5px solid var(--accent);
+    border-radius: 8px; display: grid; place-items: center;
+  }
+  .step .n::before { content: counter(s); }
+  .step h3 { font-family: var(--font-display); font-size: 1rem; font-weight: 700; margin: 3px 0 0; }
+  .step p { margin: 3px 0 0; font-size: .86rem; color: var(--ink-soft); }
+  .step p code, .lbl code { font-family: var(--font-mono); font-size: .82em; background: var(--accent-wash); color: var(--accent); padding: .05rem .3rem; border-radius: 4px; }
+
+  /* Device label chip */
+  .lbl { border: 1px dashed var(--line); border-radius: 10px; padding: 12px 14px; margin-top: 18px; background: color-mix(in srgb, var(--accent-wash) 55%, transparent); }
+  .lbl .row { display: flex; justify-content: space-between; gap: 12px; font-size: .82rem; padding: 3px 0; }
+  .lbl .row + .row { border-top: 1px solid var(--line); }
+  .lbl .k { color: var(--ink-faint); font-family: var(--font-mono); font-size: .68rem; letter-spacing: .06em; text-transform: uppercase; }
+  .lbl .v { font-family: var(--font-mono); font-weight: 600; color: var(--ink); }
+
+  /* Success box */
+  .ok { display: flex; gap: 10px; align-items: flex-start; margin-top: 18px; padding: 12px 14px; border-radius: 10px; background: var(--ok-wash); border: 1px solid color-mix(in srgb, var(--ok) 35%, transparent); }
+  .ok svg { width: 20px; height: 20px; color: var(--ok); flex: none; margin-top: 1px; }
+  .ok b { color: var(--ok); }
+  .ok p { margin: 0; font-size: .85rem; color: var(--ink); }
+
+  /* QR row */
+  .qrs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 18px; }
+  .qr { border: 1px solid var(--line); border-radius: 10px; padding: 12px; text-align: center; }
+  .qrbox { width: 78px; height: 78px; margin: 0 auto 8px; border: 2px dashed var(--accent); border-radius: 8px; display: grid; place-items: center; color: var(--accent); background: var(--accent-wash); }
+  .qrbox svg { width: 34px; height: 34px; }
+  .qr .t { font-size: .78rem; font-weight: 650; }
+  .qr .u { font-family: var(--font-mono); font-size: .64rem; color: var(--ink-faint); margin-top: 2px; word-break: break-all; }
+
+  /* Troubleshoot */
+  .trouble { margin-top: 18px; }
+  .trouble h4, .box h4 { font-family: var(--font-mono); font-size: .66rem; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); margin: 0 0 8px; }
+  .trouble ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 7px; }
+  .trouble li { font-size: .82rem; color: var(--ink-soft); padding-left: 16px; position: relative; }
+  .trouble li::before { content: "→"; position: absolute; left: 0; color: var(--warn); font-family: var(--font-mono); }
+  .trouble b { color: var(--ink); font-weight: 650; }
+
+  /* Footer */
+  .foot { border-top: 1px solid var(--line); background: color-mix(in srgb, var(--accent-wash) 40%, transparent); }
+  .foot .req { font-size: .78rem; color: var(--ink-soft); }
+  .foot .safety { font-size: .72rem; color: var(--warn); margin-top: 8px; }
+  .foot .support { display: flex; justify-content: space-between; gap: 10px; margin-top: 10px; font-size: .72rem; color: var(--ink-faint); font-family: var(--font-mono); }
+  .editnote { font-family: var(--font-mono); font-size: .64rem; color: var(--ink-faint); text-align: center; margin-top: 14px; }
+  :root[data-theme="dark"] .editnote { color: var(--ink-faint); }
+
+  @media print {
+    @page { size: A5 portrait; margin: 10mm; }
+    body { background: #fff; color: #000; padding: 0; display: block; }
+    .card { box-shadow: none; border: none; max-width: none; border-radius: 0; }
+    .editnote { display: none; }
+    .qrbox, .lbl, .ok, .qr, .trouble li::before { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>
+
+<main class="card">
+  <div class="pad head">
+    <div class="brandrow">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M14 14.76V5a2 2 0 1 0-4 0v9.76a4 4 0 1 0 4 0Z"/><path d="M12 8v6.5"/>
+      </svg>
+      <span class="wordmark">Set<span class="b2">point</span></span>
+      <span class="byline">by Datum&nbsp;Labs</span>
+      <span class="tag">DIY Kit</span>
+    </div>
+    <div class="kicker">Quick Start</div>
+    <h1>Box to live readings in ~10 minutes.</h1>
+    <p class="lede">Runs on your own computer — no cloud, no account, no subscription. Your probe is pre-flashed, so there's no software to install on it.</p>
+  </div>
+
+  <div class="pad">
+    <ol class="steps">
+      <li class="step">
+        <span class="n"></span>
+        <div><h3>Assemble it</h3><p>Solder the parts to the board (or plug them into the headers on the Plug-Together kit). Full illustrated steps at the guide QR below.</p></div>
+      </li>
+      <li class="step">
+        <span class="n"></span>
+        <div><h3>Power it on</h3><p>Flip the switch (or plug in USB). The status LED blinks — the probe is awake and looking for Wi-Fi.</p></div>
+      </li>
+      <li class="step">
+        <span class="n"></span>
+        <div><h3>Install the free hub</h3><p>On a computer you keep on (PC, mini-PC, or NAS), run the hub app and open <code>http://localhost:8080</code>. It's a free download — nothing to buy.</p></div>
+      </li>
+      <li class="step">
+        <span class="n"></span>
+        <div><h3>Point the probe at your Wi-Fi</h3><p>On your phone, join the probe's network <code>TempSensor-XXXXXX</code> (<b>2.4&nbsp;GHz</b>). A setup page opens — pick your home Wi-Fi and save.</p></div>
+      </li>
+      <li class="step">
+        <span class="n"></span>
+        <div><h3>Watch it appear</h3><p>Within a minute the probe shows up on your dashboard with a live temperature. Set a high/low alert and you're done.</p></div>
+      </li>
+    </ol>
+
+    <div class="lbl" aria-label="device details">
+      <div class="row"><span class="k">Setup Wi-Fi</span><span class="v">TempSensor-XXXXXX</span></div>
+      <div class="row"><span class="k">Dashboard</span><span class="v">http://localhost:8080</span></div>
+      <div class="row"><span class="k">Band</span><span class="v">2.4 GHz only</span></div>
+    </div>
+
+    <div class="ok">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+      <p><b>You'll know it worked when</b> the LED blinks and the probe appears on your dashboard within a minute, showing your room temperature.</p>
+    </div>
+
+    <div class="qrs">
+      <div class="qr">
+        <div class="qrbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M21 14v.01M14 21h.01M21 21v-3M17.5 21H18"/></svg></div>
+        <div class="t">Re-flash from your browser</div>
+        <div class="u">[ your flash-page QR ]</div>
+      </div>
+      <div class="qr">
+        <div class="qrbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h11l5 5v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z"/><path d="M14 4v5h5M8 13h8M8 17h5"/></svg></div>
+        <div class="t">Full guide &amp; manual</div>
+        <div class="u">[ your docs QR ]</div>
+      </div>
+    </div>
+
+    <div class="trouble">
+      <h4>If something's off</h4>
+      <ul>
+        <li><b>Reads −127 or blank?</b> The sensor's pull-up isn't seated — re-check that connection.</li>
+        <li><b>Won't join Wi-Fi?</b> It's <b>2.4 GHz only</b> — pick a 2.4 GHz network, not 5 GHz.</li>
+        <li><b>Nothing on the dashboard?</b> Make sure the hub computer and the probe are on the same network.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="pad foot">
+    <p class="req"><b>You'll need:</b> a computer left on 24/7 on your network to run the free hub, and a 2.4 GHz Wi-Fi network. One hub handles many probes.</p>
+    <p class="safety">⚠ Battery: use a protected 18650, mind polarity, never short the terminals, charge only through the TP4056.</p>
+    <div class="support"><span>Support: [ your-support-link ]</span><span>Setpoint · by Datum Labs · local-first</span></div>
+  </div>
+</main>
+
+<p class="editnote">Template — before printing: drop in your two real QR codes and set your support link. The setup network shows as <code>TempSensor-XXXXXX</code> (current firmware); if you rename the firmware to broadcast <code>Setpoint-XXXXXX</code>, update the “Setup Wi-Fi” label above to match.</p>

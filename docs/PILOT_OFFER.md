@@ -8,10 +8,10 @@
 
 ---
 
-## [YOUR BRAND] — free 30-day walk-in & freezer monitoring pilot
+## Setpoint, by Datum Labs — free 30-day walk-in & freezer monitoring pilot
 
 **For:** [Restaurant / contact name]
-**From:** [Your name], [Your brand] — [email] · [phone]
+**From:** [Your name], Datum Labs — [email] · [phone]
 **Date:** [date]
 
 ### The problem we're solving
@@ -63,4 +63,4 @@ which means nobody is watching the hours when failures actually happen.
 
 Reply to **[email]** or call **[phone]** and we'll schedule a 30-minute install this week.
 
-_— [Your name], [Your brand]_
+_— [Your name], Datum Labs_

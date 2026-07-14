@@ -1,4 +1,4 @@
-# TempSensor — Startup Checklist (LLC · Insurance · FCC · Costs · Order of Operations)
+# Datum Labs / Setpoint — Startup Checklist (LLC · Insurance · FCC · Costs · Order of Operations)
 
 > **Not legal, tax, or financial advice.** A practitioner's checklist with rough 2026 US costs to
 > turn hand-built boards into a business you can sell from. Confirm specifics with an accountant,
@@ -56,7 +56,8 @@ DIY kits.
 ## Order of operations (walk it top to bottom)
 
 ### Phase 0 — Set up the shell (this week, ~$100–700, no FCC needed)
-- [ ] **Form the LLC** in your state (or use a service). This becomes your FCC "US responsible party."
+- [ ] **Form the LLC** in your state (or use a service) — this is **Datum Labs**, your house company
+      that umbrellas Setpoint (and future products). It also becomes your FCC "US responsible party."
 - [ ] **Get an EIN** free from IRS.gov.
 - [ ] **Open a business bank account**; run all business money through it (don't pierce the LLC shield).
 - [ ] **Get product-liability insurance quotes** (CGL $1M/$2M + products). You may not bind it until
