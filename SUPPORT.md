@@ -2,11 +2,11 @@
 
 _Last updated: 2026_
 
-> **Note for the maker/reseller:** Setpoint is a white-label product. Before you
-> ship, replace **Setpoint**/**Setpoint** with your product names and swap the
-> placeholder support contacts below for your real ones. The support URL must
-> match the `support_url` you set in your `branding` config
-> (`https://example.com/support`).
+> **Note for the maker (delete before shipping):** the brand is set — **Setpoint, by Datum Labs**.
+> Before you ship, swap the **placeholder support contacts** below (`https://example.com/support`,
+> `support@example.com`) for your real ones and set the same `support_url` in your `branding` config.
+> Until you register a domain/support email, a working interim channel is this project's **GitHub
+> Issues** page.
 
 Need a hand? We are happy to help you get your temperature monitoring running.
 
@@ -27,7 +27,7 @@ project **README**. Common topics:
 - **Starting the hub** — `Start.bat` (Windows) or `./Start.sh` (Linux); the
   dashboard opens at `http://localhost:8080`.
 - **A probe won't appear** — confirm it is powered and joined to your Wi-Fi via
-  its setup portal (the `Setpoint-<hex>` Wi-Fi network at
+  its setup portal (the open `Setpoint-<HEX6>` Wi-Fi network at
   `http://192.168.4.1`), and allow the hub through your firewall on **Private**
   networks so probes can reach it.
 - **Readings look wrong** — check the probe's calibration (offset/gain) against a
@@ -40,9 +40,11 @@ project **README**. Common topics:
 ## Quick self-check for a probe
 
 Each probe answers a few local URLs on your network (port 80) that help diagnose
-issues — for example `http://setpoint-<hex>.local/status` shows Wi-Fi signal,
+issues — for example `http://Setpoint-<HEX6>.local/status` shows Wi-Fi signal,
 uptime, the server it posts to, the last post result, and the current reading.
-Sharing that output with us is very helpful.
+Sharing that output with us is very helpful. **Note:** a **Portable** (battery, deep-sleep) probe
+only answers these URLs for a few seconds each time it wakes to post — **tap its reset button** to
+wake it on demand. A **Fixed** (USB) probe answers continuously. (See `docs/VERSIONS.md`.)
 
 ## Reporting a bug
 

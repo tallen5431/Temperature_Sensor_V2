@@ -198,8 +198,13 @@ The strategy docs are strong on FCC sequencing, margin, and the loaner motion. T
 
 **Tier 2 — bites during the first pilots / first month**
 
-7. **PILOT_OFFER discloses the power-outage caveat but not the internet-outage one** — text/email/Slack alerts die on a WAN drop, and the Tindie listing is honest about this while the pilot doc isn't. → **First action:** add one line to PILOT_OFFER's what-it-is/isn't ("alerts need the building's internet; the on-screen alarm still shows; keep the alert phone on cellular").
-8. **"±0.5 °C, verified" has no per-unit verification SOP** — QC only checks "plausible room temp." Claiming "verified" without evidence manufactures the liability the docs warn against. → **First action:** add an ice-bath (slush) dip to QC, record `ice_c` in the CSV, PASS within ±0.5 °C — only then may you print "verified at 0 °C to within 0.5 °C."
+7. **~~PILOT_OFFER omitted the internet-outage caveat~~ — DONE.** Added to [PILOT_OFFER.md](PILOT_OFFER.md):
+   remote text/email/Slack alerts ride the building's internet and pause on a WAN drop (the on-screen
+   alarm still shows); keep the alert phone on cellular.
+8. **~~No per-unit verification SOP for "±0.5 °C, verified"~~ — DONE.** [QC_CHECKLIST.md](QC_CHECKLIST.md)
+   now has **step 5.3**: an ice-water slush dip that must read 0 °C ± 0.5 °C, recorded as `ice_c`. Only a
+   unit that passes may be advertised "verified at 0 °C to within ±0.5 °C." → **Remaining:** add the
+   `ice_c` column to the serial-log header in [LABEL_TEMPLATE.md](LABEL_TEMPLATE.md).
 9. **Counterfeit/clone DS18B20s threaten both the accuracy claim and the identity scheme** (fakes are out-of-spec and sometimes share/fake ROM codes, which your `probe_id` derives from). → **First action:** source the first/"verified" batch from Adafruit/DigiKey/Mouser, not the cheapest marketplace listing; the ice-bath step becomes your incoming clone screen.
 10. **Loaner-hub reliability on a restaurant's PC has no runbook** — staff reboot, Windows auto-updates, someone closes the console; "unlimited local history" evaporates on the first reboot. → **First action:** make hub auto-start-on-boot part of the install SOP (service / Docker `restart: unless-stopped`) + a weekly CSV/SQLite export you grab on the screenshot touch.
 11. **The "inconsistent power stories" are now formalized as two versions** — **Portable** (battery,
@@ -211,7 +216,7 @@ The strategy docs are strong on FCC sequencing, margin, and the loaner motion. T
 **Tier 3 — erodes focus, margin, and credibility over weeks**
 
 12. **No time budget for a solo founder**, and the separate solar side-project is an unmodeled focus risk — the "this week" list is really a quarter. → **First action:** commit this week to only the revenue-critical chain (parts ordered → toolchain compiled → first pilot booked); park rev-2 KiCad and the solar project on a "not until first dollar" list.
-13. **Photography is the #1 Tindie blocker with no plan** — bad phone-on-a-desk photos are why good listings underperform. → **First action:** buy a $15–25 pop-up lightbox (cat 6) and shoot on a phone in daylight. (Also delete "password" from the listing's "what's in the box" — the setup AP is open/passwordless per LABEL_TEMPLATE.)
+13. **Photography is the #1 Tindie blocker with no plan** — bad phone-on-a-desk photos are why good listings underperform. → **First action:** buy a $15–25 pop-up lightbox (cat 6) and shoot on a phone in daylight. *(The "setup Wi-Fi name & password" listing bug is now fixed — both listings say **open** setup Wi-Fi, no password.)*
 14. **No reorder point or true per-kit COGS discipline** — the overseas lead time stalls fulfillment on a stockout, and packaging nice-touches quietly turn $23 gross into ~$12. → **First action:** set a reorder trigger (reorder probes/TP4056 at ~5 kits of stock) and add a per-kit costs line capturing packaging + label + card + a returns allowance.
 15. **Security posture undercuts the on-prem/air-gapped buyer COMPLIANCE.md courts** — open setup SoftAP + unauthenticated LAN `POST /provision`, fine for a homelabber, a real objection for security-conscious B2B. → **First action:** note it honestly in the B2B pitch as a known LAN-trust assumption and put "per-unit provision secret / setup-AP password" on the near-term firmware roadmap.
 16. **Competitor response and review-seeding are under-planned** — the first 3–5 Tindie reviews set the listing's trajectory, and incumbents can add a "no-cloud mode" faster than you respin. → **First action:** line up your first 3–5 warm buyers as an explicit review ask (a card in the box), and lead on the can't-be-bricked/on-prem moat, not on a price you can't win against Govee.

@@ -71,7 +71,7 @@ the hub's telemetry CSV (`timestamp,temperature_c,temperature_f,probe_id,`
 Header row:
 
 ```
-serial,build_date,operator,mac,probe_id,ap_ssid,fw_version,test_wifi_ssid,temperature_c,ingest_ok,qc_result,notes
+serial,build_date,operator,mac,probe_id,ap_ssid,fw_version,version,test_wifi_ssid,temperature_c,ice_c,ingest_ok,qc_result,notes
 ```
 
 | Column | Meaning | Example |
@@ -83,8 +83,10 @@ serial,build_date,operator,mac,probe_id,ap_ssid,fw_version,test_wifi_ssid,temper
 | `probe_id` | `Setpoint-<HEX6>` from the `[label]` line (must be unique in file) | `Setpoint-9A3F2C` |
 | `ap_ssid` | SoftAP SSID (== probe_id); the AP is **open** | `Setpoint-9A3F2C` |
 | `fw_version` | Flashed firmware version | `2.4.0` |
+| `version` | Product version built ([VERSIONS.md](VERSIONS.md)) — `Portable` or `Fixed` | `Portable` |
 | `test_wifi_ssid` | Bench Wi-Fi the unit joined in QC | `bench-2g` |
 | `temperature_c` | Plausible `last_c` observed at QC | `23.4` |
+| `ice_c` | Ice-bath 0 °C check (QC step 5.3); must be `0 ± 0.5` | `0.1` |
 | `ingest_ok` | Bench hub ingest confirmed (fresh CSV row for this probe_id) | `yes` |
 | `qc_result` | Overall gate result | `PASS` |
 | `notes` | Failed-step number / rework / anything | `—` |
@@ -92,7 +94,7 @@ serial,build_date,operator,mac,probe_id,ap_ssid,fw_version,test_wifi_ssid,temper
 Example rows:
 
 ```
-serial,build_date,operator,mac,probe_id,ap_ssid,fw_version,test_wifi_ssid,temperature_c,ingest_ok,qc_result,notes
-TP2607-001,2026-07-06,TJ,A4:CF:12:9A:3F:2C,Setpoint-9A3F2C,Setpoint-9A3F2C,2.4.0,bench-2g,23.4,yes,PASS,plug-and-play
-TP2607-002,2026-07-06,TJ,A4:CF:12:7B:10:44,Setpoint-7B1044,Setpoint-7B1044,2.4.0,bench-2g,22.9,yes,PASS,plug-and-play
+serial,build_date,operator,mac,probe_id,ap_ssid,fw_version,version,test_wifi_ssid,temperature_c,ice_c,ingest_ok,qc_result,notes
+TP2607-001,2026-07-06,TJ,A4:CF:12:9A:3F:2C,Setpoint-9A3F2C,Setpoint-9A3F2C,2.4.0,Portable,bench-2g,23.4,0.1,yes,PASS,plug-and-play
+TP2607-002,2026-07-06,TJ,A4:CF:12:7B:10:44,Setpoint-7B1044,Setpoint-7B1044,2.4.0,Fixed,bench-2g,22.9,-0.1,yes,PASS,plug-and-play
 ```

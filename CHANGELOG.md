@@ -385,9 +385,9 @@ customer can plug in and run, built on a proper SQLite data layer.
 - Config is redacted (secrets stripped) when returned from `GET /api/config`.
 - No account, no cloud, no telemetry — readings never leave the customer's PC.
 
-[2.4.0]: https://example.com/tempsensor/releases/2.4.0
-[2.3.0]: https://example.com/tempsensor/releases/2.3.0
-[2.2.1]: https://example.com/tempsensor/releases/2.2.1
-[2.2.0]: https://example.com/tempsensor/releases/2.2.0
-[2.1.0]: https://example.com/tempsensor/releases/2.1.0
-[2.0.0]: https://example.com/tempsensor/releases/2.0.0
+[2.4.0]: https://github.com/tallen5431/Temperature_Sensor_V2/releases/tag/v2.4.0
+[2.3.0]: https://github.com/tallen5431/Temperature_Sensor_V2/releases/tag/v2.3.0
+[2.2.1]: https://github.com/tallen5431/Temperature_Sensor_V2/releases/tag/v2.2.1
+[2.2.0]: https://github.com/tallen5431/Temperature_Sensor_V2/releases/tag/v2.2.0
+[2.1.0]: https://github.com/tallen5431/Temperature_Sensor_V2/releases/tag/v2.1.0
+[2.0.0]: https://github.com/tallen5431/Temperature_Sensor_V2/releases/tag/v2.0.0

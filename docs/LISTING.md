@@ -87,7 +87,7 @@ leave the building and your alerts keep working even when the internet doesn't.
 - 1× Setpoint unit (ESP32 + waterproof DS18B20 probe in an enclosure)
 - 1× USB power cable
 - 1× quick-start card (join Wi-Fi → open dashboard → done) + link to the full user manual
-- Unit label with its serial ID, setup Wi-Fi name & password, and a setup QR code
+- Unit label with its serial ID, **open** setup Wi-Fi name (no password), and a setup QR code
 
 _(The hub app is a free download — no disc, no account.)_
 

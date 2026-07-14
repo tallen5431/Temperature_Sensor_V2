@@ -83,7 +83,7 @@ so your readings never leave the building and your alerts keep working even when
 - 1× Setpoint (ESP32 + waterproof DS18B20 in an enclosure) — *DIY Kit ships as parts to assemble*
 - 1× USB cable
 - Quick-start card + link to the full user manual
-- Unit label: serial ID, setup Wi-Fi name & password, setup QR
+- Unit label: serial ID, **open** setup Wi-Fi name (no password), setup QR
 
 *(The hub app is a free download — no disc, no account.)*
 

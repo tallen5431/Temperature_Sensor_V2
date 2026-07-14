@@ -50,6 +50,9 @@ which means nobody is watching the hours when failures actually happen.
   required manual checks or official records — you and your food-safety plan stay responsible for those.
 - Everything runs on power: a **full power outage** stops monitoring (the coolers are off too). We
   can put the hub and router on a small battery backup if that matters to you.
+- Alerts that leave the building (**text / email / Slack**) ride your **internet**; if the WAN drops,
+  the on-screen dashboard alarm still shows but those remote alerts pause until it's back. Keep the
+  alert phone on cellular so a simultaneous internet + cooler failure still reaches someone.
 
 ### What we need from you
 
