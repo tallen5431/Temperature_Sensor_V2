@@ -60,9 +60,7 @@ knobs documented in `firmware/src/protocol.h`:
   is at or above this. A Fixed unit simply runs a shorter interval, so it never sleeps and stays
   continuously reachable (WiFi modem-sleep only).
 
-> **⚠ Board/firmware reconciliation still pending (tracked in
-> [`MATERIALS_AND_NEXT_STEPS.md`](MATERIALS_AND_NEXT_STEPS.md) #1).** The pin map in `protocol.h` +
-> `BOM.md` currently targets the **ESP32-WROOM-32** (status LED on GPIO2, active-high). The rev-1
-> boards you're building on are **ESP32-C3 SuperMini** (onboard LED on GPIO8, active-**low**, and a
-> boot strapping pin). This is independent of the Portable/Fixed split and must be fixed in firmware +
-> BOM **before you flash the batch** — see that doc's item #1.
+> **Board:** both versions run on the **ESP32-C3 SuperMini** (rev-1). The firmware auto-targets it —
+> status LED on **GPIO8, active-low**, kept boot-safe (GPIO8 is a strapping pin held high at reset) —
+> and falls back to a WROOM's GPIO2 active-high when built for that board. Build/flash with FQBN
+> `esp32:esp32:esp32c3`.

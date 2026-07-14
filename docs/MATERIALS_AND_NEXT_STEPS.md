@@ -184,13 +184,12 @@ The strategy docs are strong on FCC sequencing, margin, and the loaner motion. T
 
 **Tier 1 — bites this week / before the first box**
 
-1. **BOM.md + the firmware pin map target the wrong board (and it contradicts the FCC premise).** Both
-   describe a WROOM-32E (status LED **GPIO2, active-high**); you're building on the bare **C3 SuperMini**
-   (onboard LED **GPIO8, active-low** — a boot strapping pin). DS18B20 on GPIO5 + 4.7 kΩ is correct for
-   both. *Now flagged loudly in [BOM.md](BOM.md) and [VERSIONS.md](VERSIONS.md).* → **Remaining action:**
-   this is a **firmware** fix (set `PIN_STATUS_LED = 8`, `LED_ACTIVE_LOW = true`, keep GPIO8 boot-safe per
-   the IO8 gotcha in [REV2_SCHEMATIC.md](REV2_SCHEMATIC.md)) **plus** the matching BOM board line — do it
-   and re-compile **before** flashing the batch. Confirm your exact board first.
+1. **~~BOM + firmware targeted the wrong board~~ — FIXED.** The firmware now auto-selects the
+   **ESP32-C3 SuperMini** pin map when built for the C3 (status LED **GPIO8, active-low**, kept
+   boot-safe; WROOM GPIO2/active-high fallback retained), and [BOM.md](BOM.md) + [VERSIONS.md](VERSIONS.md)
+   match. The `#if` branch, pin value, and active-low drive levels were verified for both targets.
+   → **Remaining action:** just do one **end-to-end flash of a real board** (FQBN `esp32:esp32:esp32c3`)
+   as your launch-day toolchain gate and confirm the on-board LED blinks.
 2. **Every shipped legal doc still points at `example.com/support`, and there's no domain or business email.** WARRANTY, RETURNS, SUPPORT, PRIVACY all carry the placeholder; the public face is a personal Gmail. → **First action:** register a domain + `support@`/`hello@` forwarding (~$12), then one find-replace across the repo, before printing any label.
 3. **No trademark clearance on "Setpoint"** — a dictionary word almost certainly crowded in USPTO Class 9 (measuring/monitoring instruments). → **First action:** run a free USPTO knockout search on "Setpoint" (Class 9) + "Datum Labs" this week; if crowded, rename before printing brand stock.
 4. **The launch is gated on a toolchain never even compiled — and compiling needs no board.** The FQBN/partition are documented-not-verified. → **First action:** run `arduino-cli compile --fqbn esp32:esp32:esp32c3` on `esp32_temp_probe/` today; only the upload step then needs hardware.

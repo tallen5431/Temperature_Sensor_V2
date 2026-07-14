@@ -7,18 +7,17 @@ build and why. Pin assignments referenced here come from `firmware/src/protocol.
 [ASSEMBLY.md](ASSEMBLY.md) for the wiring. The shipping firmware is the sketch
 `esp32_temp_probe/esp32_temp_probe.ino`.
 
-> **⚠ Board reconciliation pending — read before ordering.** The lines below (and the firmware pin map
-> in `protocol.h`) still describe the **ESP32-WROOM-32** with the status LED on **GPIO2 (active-high)**.
-> The rev-1 boards you're building on are the **ESP32-C3 SuperMini** (USB-C native; onboard LED on
-> **GPIO8, active-low** — also a boot strapping pin). The DS18B20 line (GPIO5 + 4.7 kΩ pull-up) is
-> correct for both; the **board choice and the LED pin/polarity need a firmware + BOM fix before you
-> flash the batch.** Tracked in [`MATERIALS_AND_NEXT_STEPS.md`](MATERIALS_AND_NEXT_STEPS.md) #1.
+> **Board:** the rev-1 unit is the **ESP32-C3 SuperMini** (USB-C native). The firmware now targets it —
+> the status LED is auto-selected to **GPIO8, active-low** when built for the C3 (it falls back to a
+> WROOM's GPIO2 active-high for that board), and GPIO8 is kept boot-safe (it's a strapping pin held
+> high at reset). DS18B20 stays on **GPIO5 + 4.7 kΩ pull-up**. Build/flash with FQBN
+> `esp32:esp32:esp32c3`.
 
-- **Firmware target:** ESP32-WROOM-32 / -32E, firmware **v2.4.0**, protocol v1.
+- **Firmware target:** ESP32-C3 (SuperMini), firmware **v2.4.0**, protocol v1 (FQBN `esp32:esp32:esp32c3`).
 - **Sensor:** DS18B20 (waterproof probe) on **GPIO5** with a 4.7 kΩ pull-up to
   3V3. This is the **only** sensor the current firmware supports.
-- **Status LED:** GPIO2 (`LED_BUILTIN`; on most dev boards the on-board LED, so
-  an external LED is optional if you use a bare dev board).
+- **Status LED:** GPIO8 (the C3 SuperMini's on-board LED, **active-low**), so no external LED is
+  needed. The firmware drives it boot-safe (GPIO8 is a strapping pin, held high at reset).
 - **Power (version-dependent — see [`VERSIONS.md`](VERSIONS.md)):** **Portable** runs on a protected
   lithium cell and deep-sleeps between readings (idle <1 mA) for long runtime (USB-C for charging +
   flashing). **Fixed** runs **always-on from USB-C with no battery** (fewer parts, no lithium).
@@ -32,7 +31,7 @@ build and why. Pin assignments referenced here come from `firmware/src/protocol.
 
 | # | Component | Spec / part example | Qty | Example supplier | Unit cost (USD) |
 |---|-----------|---------------------|-----|------------------|-----------------|
-| 1 | ESP32 dev board | ESP32-WROOM-32E DevKitC (38-pin), USB-C | 1 | DigiKey 1965-ESP32-DEVKITC-32E-ND / Amazon | 6.50 |
+| 1 | ESP32-C3 dev board | ESP32-C3 SuperMini (USB-C native, on-board LED GPIO8) | 1 | Amazon B0DFWG87JS / AliExpress | 3.50 |
 | 2 | DS18B20 waterproof probe | Stainless tube, 1 m lead, 3-wire (VDD/GND/DQ) | 1 | Adafruit #381 / Amazon | 3.50 |
 | 3 | Pull-up resistor | 4.7 kΩ, 1/4 W, ±5% (DS18B20 DQ → 3V3) | 1 | any (buy a strip) | 0.02 |
 | 4 | Status LED | 3 mm or 5 mm, any color (skip if using on-board LED) | 1 | any | 0.05 |
@@ -46,8 +45,9 @@ build and why. Pin assignments referenced here come from `firmware/src/protocol.
 | 12 | Hookup wire / header | Dupont jumpers or 22 AWG solid, plus 0.1" header if socketing | small | any | 0.20 |
 | 13 | Misc (solder, heatshrink, standoffs) | consumables, amortized per unit | — | — | 0.40 |
 
-**Core per-unit material cost ≈ $22.19** (round to **~$22.20**) for the **Portable** build.
-Buying dev boards, probes, and cells in 10+ qty typically drops this to **~$16–18/unit**.
+**Core per-unit material cost ≈ $19.19** (round to **~$19.20**) for the **Portable** build (the C3
+SuperMini is ~$3 cheaper than the old DevKitC). Buying probes, boards, and cells in 10+ qty typically
+drops this to **~$13–15/unit**.
 
 > **Version split (see [`VERSIONS.md`](VERSIONS.md)):** items **6–8 (lithium cell, TP4056 charge
 > board, holder) plus a slide on/off switch (~$0.35)** are **Portable-only**. The **Fixed** version
@@ -82,8 +82,8 @@ the battery, and the printed unit label/QR.
 
 | Build | Material cost | Assembly + test (labor) | Suggested landed cost | **Suggested retail** | Gross margin |
 |-------|---------------|--------------------------|-----------------------|----------------------|--------------|
-| **Portable** (DS18B20, battery) | ~$22.20 | ~$8 (≈20 min @ $24/hr) | ~$30.20 | **$65** | ~54% |
-| **Fixed** (DS18B20, USB, no battery) | ~$17.50 | ~$7 | ~$24.50 | **$55** | ~55% |
+| **Portable** (DS18B20, battery) | ~$19.20 | ~$8 (≈20 min @ $24/hr) | ~$27.20 | **$65** | ~58% |
+| **Fixed** (DS18B20, USB, no battery) | ~$14.50 | ~$7 | ~$21.50 | **$55** | ~61% |
 
 > These are *assembled-unit* maker prices (post-FCC). Today rev-1 sells as **DIY kits** at **$39 / $49**
 > ([`DIY_KIT.md`](DIY_KIT.md)) — the Fixed (no-battery) kit is the cheaper option to list alongside the

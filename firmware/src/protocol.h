@@ -30,15 +30,17 @@
 #define TEMPSENSOR_PROTO      1         // wire protocol version
 
 // ---------------------------------------------------------------------------
-// GPIO PIN MAP  (ESP32-WROOM-32E)  --  keep in sync with docs/BOM.md + ASSEMBLY
+// GPIO PIN MAP  (ESP32-C3 SuperMini — the rev-1 board)  --  keep in sync with docs/BOM.md + ASSEMBLY
 // ---------------------------------------------------------------------------
 // DS18B20 is the ONLY sensor in the current firmware: DATA on ONE_WIRE_BUS with
 // a 4.7k pull-up to 3V3.  (Matches `#define ONE_WIRE_BUS 5` in the .ino.)
 #define ONE_WIRE_BUS   5     // GPIO5  -> DS18B20 DQ (needs 4.7k pull-up to 3V3)
 
-// Status LED: on-board LED of most ESP32 dev boards is GPIO2 (LED_BUILTIN).
-#define STATUS_LED     2     // GPIO2  -> status LED (active-high)
-#define STATUS_LED_ACTIVE_HIGH 1
+// Status LED: the ESP32-C3 SuperMini onboard LED is GPIO8, wired ACTIVE-LOW (also a boot
+// strapping pin, held high at reset by the onboard pull-up). The .ino selects this
+// automatically when built for the C3 target; a WROOM build falls back to GPIO2 active-high.
+#define STATUS_LED     8     // GPIO8  -> status LED (active-low on the C3 SuperMini)
+#define STATUS_LED_ACTIVE_HIGH 0
 
 // ---- FUTURE / OPTIONAL sensors -- NOT in the current firmware --------------
 // The shipping sketch is DS18B20-only.  Nothing below is wired, read, or

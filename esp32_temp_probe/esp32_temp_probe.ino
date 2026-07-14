@@ -34,11 +34,25 @@
 
 // ---------------- Pins & LED ------------------------------------------------
 #define ONE_WIRE_BUS 5
-#ifndef LED_BUILTIN
-  #define LED_BUILTIN 2
+
+// Status LED — auto-selected by build target so one firmware image fits both boards:
+//   * ESP32-C3 SuperMini (the rev-1 board): onboard LED on GPIO8, wired ACTIVE-LOW
+//     (drive LOW = lit). GPIO8 is also a boot strapping pin and must be HIGH at reset;
+//     the SuperMini's onboard pull-up holds it high at boot, and ledInit() drives it
+//     HIGH (LED off) once the app is running, so using it as the status LED is boot-safe.
+//   * ESP32-WROOM-32/-32E (fallback): onboard LED on GPIO2, ACTIVE-HIGH.
+#if defined(CONFIG_IDF_TARGET_ESP32C3)
+  #ifndef PIN_STATUS_LED
+    #define PIN_STATUS_LED 8
+  #endif
+  static const bool LED_ACTIVE_LOW = true;
+#else
+  #ifndef LED_BUILTIN
+    #define LED_BUILTIN 2
+  #endif
+  #define PIN_STATUS_LED LED_BUILTIN
+  static const bool LED_ACTIVE_LOW = false;
 #endif
-#define PIN_STATUS_LED LED_BUILTIN
-static const bool LED_ACTIVE_LOW = false;
 static const bool LED_ENABLED    = (PIN_STATUS_LED != ONE_WIRE_BUS);
 
 inline void ledInit()  { if (LED_ENABLED) { pinMode(PIN_STATUS_LED, OUTPUT); digitalWrite(PIN_STATUS_LED, LED_ACTIVE_LOW ? HIGH : LOW); } }
