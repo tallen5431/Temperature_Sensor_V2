@@ -56,7 +56,9 @@ mistakes before you spend money.
    - LDO in ← battery/5 V (from TP4056 OUT / USB); LDO out → **3V3** net; add C1 in, C2+C3 out.
    - **EN**: R1 (10 kΩ) to 3V3, C4 (1 µF) to GND, SW2 to GND.
    - **IO9** → SW1 (BOOT) to GND.
-   - **IO8** → R2 (10 kΩ) to 3V3, and → R4 → LED → GND.
+   - **IO8**: R2 (10 kΩ) pull-up to 3V3 (boot-strap), and the LED wired **active-low** —
+     `3V3 → R4 → LED → IO8` (never `IO8 → LED → GND`; see the strapping-pin gotcha in
+     [`REV2_SCHEMATIC.md`](REV2_SCHEMATIC.md) Net 6).
    - **IO5** → R3 (4.7 kΩ) to 3V3, and → J1 pin 2 (DS18B20 data). J1 pin 1 = 3V3, pin 3 = GND.
    - Program header/USB-C per §1.
    - Tie the module's **GND pins + center pad** to GND; **3V3 pin** to the 3V3 net.
