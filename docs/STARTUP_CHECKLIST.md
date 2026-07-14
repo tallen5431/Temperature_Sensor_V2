@@ -9,21 +9,25 @@
 
 ## ⚠️ Read this first — the FCC gotcha that changes everything
 
-Your board uses an **ESP32-C3 "SuperMini."** Most SuperMini boards are a **bare ESP32-C3 chip with a
-PCB trace antenna — NOT a pre-certified radio module.** This matters enormously:
+**Confirmed for the board you're using** (ESP32-C3 SuperMini, Amazon `B0DFWG87JS`): it's a **bare
+`ESP32-C3FH4` chip with a PCB trace antenna — NOT a pre-certified radio module.** That puts you on
+the **expensive** FCC path as-is:
 
-- **If the SuperMini carries a pre-certified module** (has its own **FCC ID** printed on it, e.g. an
-  `ESP32-C3-MINI-1`), the intentional-radiator approval carries over and you only need the cheap
-  **Part 15B SDoC** (~$300–1,500) — the good path this whole checklist assumes.
-- **If it's a bare chip + trace antenna** (the common, cheap case), that approval **does NOT carry
-  over.** You'd owe **full intentional-radiator FCC testing** (like a full FCC ID: **~$5,000–15,000+**)
-  — a non-starter for a small batch.
+- A **pre-certified module** (its own **FCC ID** printed on it, e.g. `ESP32-C3-MINI-1`,
+  FCC ID `2AC7Z-ESPC3MINI1`) carries the intentional-radiator approval, so you'd only need the cheap
+  **Part 15B SDoC** (~$300–1,500).
+- A **bare chip + trace antenna** (what the SuperMini is) does **NOT** inherit that approval. Selling
+  assembled units would owe **full intentional-radiator FCC testing** (like a full FCC ID:
+  **~$5,000–15,000+**) — a non-starter for a small batch.
 
-**Action:** Before rev 2, either (a) confirm your exact SuperMini has an FCC-ID'd module, or —
-better and cheaper — **respin the board around a pre-certified module** (`ESP32-C3-MINI-1` or
-`ESP32-C3-WROOM-02`). Same chip, same firmware, same pinout footprint work — but it keeps you on the
-$300–1,500 SDoC path instead of a five-figure filing. **This is the single most important
-manufacturing decision you have left.**
+**Action — respin rev 2 around a pre-certified module** (`ESP32-C3-MINI-1`, or `-WROOM-02`). Same
+ESP32-C3 chip, **zero firmware change**, and you get the cheap SDoC path **plus** a real
+"Contains FCC ID: 2AC7Z-ESPC3MINI1" label. Note the module is a **surface-mount castellated part**,
+not a header-pluggable board — so this is a genuine board redesign (solder the module down instead of
+socketing the SuperMini), the biggest change left in your hardware.
+
+**Your current 50 boards still have a job:** they're fine for **loaner pilots, dev, and DIY kits**
+(kits sidestep finished-product FCC). They're just not the SKU you sell *assembled* at volume.
 
 ---
 
