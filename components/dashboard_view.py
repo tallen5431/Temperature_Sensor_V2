@@ -20,8 +20,13 @@ RANGE_LABELS = {"1h": "last hour", "6h": "last 6 hours", "24h": "last 24 hours",
 # A probe counts as "connected" if seen within this many seconds.
 ONLINE_TIMEOUT_SEC = 60
 
-PROBE_COLORS = ["#00bcd4", "#ff6b6b", "#4ecdc4", "#45b7d1", "#f7b731", "#5f27cd",
-                "#26de81", "#fd9644", "#a55eea", "#2bcbba", "#eb3b5a", "#778ca3"]
+PROBE_COLORS = ["#17b3cc", "#ef8354", "#9b8cf0", "#38c172", "#e5c04b", "#ec6a7a",
+                "#4d9de0", "#b57edc", "#45cbb0", "#f0a94e", "#7f8ea3", "#e05a8a"]
+
+# Shared font stack for Plotly figures — matches assets/theme.css (system fonts,
+# no webfont dependency) so charts read as part of the same UI.
+FONT_STACK = ("-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, "
+              "'Helvetica Neue', Arial, sans-serif")
 
 # --- Gauge Card ---
 GaugeCard = dbc.Card(
@@ -31,7 +36,8 @@ GaugeCard = dbc.Card(
              html.Span(" 🟢 LIVE", id="live-badge", className="ms-2 text-success small fw-bold")],
             className="card-title",
         ),
-        dcc.Graph(id="temp-gauge", style={"height": "230px"}),
+        dcc.Graph(id="temp-gauge", style={"height": "230px"},
+                  config={"displayModeBar": False}),
     ]),
     className="h-100 gauge-card",
 )
@@ -124,7 +130,12 @@ GraphCard = dbc.Card(
             ),
         ], className="mb-2 align-items-center"),
         html.Small(id="time-range-info", className="text-muted d-block mb-2"),
-        dcc.Graph(id="graph-temp", style={"height": "360px"}),
+        dcc.Graph(
+            id="graph-temp", style={"height": "360px"},
+            config={"displaylogo": False, "displayModeBar": "hover", "responsive": True,
+                    "modeBarButtonsToRemove": ["select2d", "lasso2d", "autoScale2d",
+                                               "zoomIn2d", "zoomOut2d", "toggleSpikelines"]},
+        ),
         html.Div([
             dbc.Button("⤓ Export…", id="export-open", color="secondary", outline=True,
                        size="sm", className="mt-2 me-2"),
@@ -384,7 +395,7 @@ def _make_gauge(name, t_c, lo, hi, temp_unit, suffix):
     """
     val = _convert(t_c, temp_unit)
     breach = threshold_breach(t_c, lo, hi)
-    bar = {"high": "#e74c3c", "low": "#45b7d1"}.get(breach, "#2ecc71")
+    bar = {"high": "#f05a54", "low": "#38b6d9"}.get(breach, "#2fbf71")
 
     # Axis range in Celsius, then converted — padded to always include the value.
     if lo is not None and hi is not None:
@@ -404,22 +415,26 @@ def _make_gauge(name, t_c, lo, hi, temp_unit, suffix):
         lo_u = _convert(lo, temp_unit) if lo is not None else ax[0]
         hi_u = _convert(hi, temp_unit) if hi is not None else ax[1]
         steps = [
-            {"range": [ax[0], lo_u], "color": "rgba(69,183,209,0.25)"},
-            {"range": [lo_u, hi_u], "color": "rgba(46,204,113,0.25)"},
-            {"range": [hi_u, ax[1]], "color": "rgba(231,76,60,0.25)"},
+            {"range": [ax[0], lo_u], "color": "rgba(56,182,217,0.20)"},
+            {"range": [lo_u, hi_u], "color": "rgba(47,191,113,0.20)"},
+            {"range": [hi_u, ax[1]], "color": "rgba(240,90,84,0.20)"},
         ]
 
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=val,
-        number={"suffix": suffix, "font": {"size": 40}},
-        title={"text": name, "font": {"size": 15}},
-        gauge={"axis": {"range": ax}, "bar": {"color": bar, "thickness": 0.28},
+        number={"suffix": suffix, "font": {"size": 40, "color": "#e9f1f7"}},
+        title={"text": name, "font": {"size": 15, "color": "#9db0be"}},
+        gauge={"axis": {"range": ax, "tickcolor": "#6e8393",
+                        "tickfont": {"color": "#9db0be", "size": 10}},
+               "bar": {"color": bar, "thickness": 0.28},
+               "bgcolor": "rgba(255,255,255,0.03)",
                "steps": steps, "borderwidth": 0},
         domain={"x": [0, 1], "y": [0, 1]},
     ))
     fig.update_layout(margin=dict(t=40, b=10, l=20, r=20), height=250,
-                      paper_bgcolor="rgba(0,0,0,0)", font_color="white")
+                      paper_bgcolor="rgba(0,0,0,0)",
+                      font=dict(color="#e9f1f7", family=FONT_STACK))
     return fig
 
 
@@ -591,12 +606,21 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
                 dict(dtickrange=["M12", None], value="%Y"),
             ]
 
+        _axis = dict(gridcolor="rgba(255,255,255,0.06)",
+                     zerolinecolor="rgba(255,255,255,0.10)",
+                     linecolor="rgba(255,255,255,0.12)")
         fig.update_layout(
-            margin=dict(t=20, b=20, l=0, r=10), template="plotly_dark",
-            xaxis_title="Time", yaxis_title="Temp " + _unit_symbol(temp_unit),
-            xaxis=xaxis_kwargs,
-            yaxis=dict(range=y_range) if y_range else {},
+            margin=dict(t=24, b=20, l=0, r=10), template="plotly_dark",
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(family=FONT_STACK, color="#9db0be", size=12),
+            xaxis={**_axis, **xaxis_kwargs, "title": "Time"},
+            yaxis={**_axis, **(dict(range=y_range) if y_range else {}),
+                   "title": "Temp " + _unit_symbol(temp_unit)},
             hovermode="x unified", showlegend=multi,
+            hoverlabel=dict(bgcolor="#131f2b", bordercolor="rgba(255,255,255,0.14)",
+                            font=dict(color="#e9f1f7", family=FONT_STACK)),
+            legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(color="#9db0be"),
+                        orientation="h", yanchor="bottom", y=1.0, xanchor="left", x=0),
         )
 
         # --- Statistics ---

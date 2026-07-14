@@ -48,8 +48,10 @@ NAVBAR = dbc.Navbar(
     dbc.Container([
         html.A(
             dbc.Row([
-                dbc.Col(html.Span("🌡️", className="fs-4")),
-                dbc.Col(dbc.NavbarBrand(PRODUCT_NAME, className="ms-2 fw-bold")),
+                dbc.Col(html.Img(src="/assets/logo.svg", height="30", alt="",
+                                 className="d-block"), width="auto"),
+                dbc.Col(dbc.NavbarBrand(PRODUCT_NAME, className="ms-2 fw-bold mb-0"),
+                        width="auto"),
             ], align="center", className="g-0"),
             href="/", style={"textDecoration": "none"},
         ),
