@@ -41,7 +41,7 @@ source of truth used everywhere (mDNS TXT, HTTP headers, `/whoami`).
 ```
 suffix    = last 3 bytes of the ESP32 eFuse (base) MAC, uppercase hex (6 chars)
 probe_id  = "Setpoint-" + suffix          e.g.  Setpoint-9A3F2C
-hostname  = "setpoint-" + lower(suffix) + ".local."   e.g. setpoint-9a3f2c.local.
+hostname  = probe_id + ".local."          e.g.  Setpoint-9A3F2C.local.
 ```
 
 - `probe_id` is stable for the life of the hardware.
@@ -59,7 +59,7 @@ The probe **advertises**; the hub **browses** (zeroconf).
 |-------|-------|
 | Service type | `_temps-probe._tcp.local.` |
 | Transport / port | TCP **80** |
-| Server (host) | `setpoint-<hex>.local.` |
+| Server (host) | `Setpoint-<HEX6>.local.` (== `probe_id`, verbatim) |
 
 ### TXT record keys
 
