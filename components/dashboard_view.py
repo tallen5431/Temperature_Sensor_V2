@@ -57,6 +57,7 @@ MetricsRow = dbc.Row([
         dbc.ButtonGroup([
             dbc.Button("°C", id="unit-celsius", size="sm", color="primary", outline=False),
             dbc.Button("°F", id="unit-fahrenheit", size="sm", color="primary", outline=True),
+            dbc.Button("K", id="unit-kelvin", size="sm", color="primary", outline=True),
         ], size="sm"),
     ]), className="h-100"), xs=6, lg=3),
 ], className="g-3 mb-3")
@@ -256,12 +257,23 @@ DashboardLayout = html.Div([
 
 # --- Helpers -----------------------------------------------------------------
 def _convert(temp_c, unit):
-    return (temp_c * 9.0 / 5.0) + 32.0 if unit == "fahrenheit" else temp_c
+    if unit == "fahrenheit":
+        return (temp_c * 9.0 / 5.0) + 32.0
+    if unit == "kelvin":
+        return temp_c + 273.15
+    return temp_c
+
+
+def _unit_symbol(unit):
+    if unit == "fahrenheit":
+        return "°F"
+    if unit == "kelvin":
+        return "K"
+    return "°C"
 
 
 def _fmt(temp_c, unit):
-    symbol = "°F" if unit == "fahrenheit" else "°C"
-    return f"{_convert(temp_c, unit):.1f} {symbol}"
+    return f"{_convert(temp_c, unit):.1f} {_unit_symbol(unit)}"
 
 
 def _fmt_clock(ts_str, clock_format="24h"):
@@ -471,7 +483,7 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
     clock_format = clock_format if clock_format == "12h" else "24h"
     time_range = time_range or "24h"
     window = RANGE_SECONDS.get(time_range, 86400)
-    suffix = " °F" if temp_unit == "fahrenheit" else " °C"
+    suffix = " " + _unit_symbol(temp_unit)
     logging_status = "ON" if cfg.get("pull_enabled", True) else "OFF"
     probes_online = _reporting_probe_count(db, cfg, finder)
     focus = focus_probe if (focus_probe and focus_probe != "all") else None
@@ -551,7 +563,7 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
                 y = chunk["temperature_c"].apply(lambda x: _convert(x, temp_unit))
                 fig.add_trace(go.Scatter(
                     x=chunk["_dt"], y=y, mode="lines",
-                    name=_friendly_name(cfg, pid) if str(pid).strip() else ("°F" if temp_unit == "fahrenheit" else "°C"),
+                    name=_friendly_name(cfg, pid) if str(pid).strip() else _unit_symbol(temp_unit),
                     line=dict(color=PROBE_COLORS[i % len(PROBE_COLORS)], width=2),
                 ))
             y_all = df["temperature_c"].apply(lambda x: _convert(x, temp_unit))
@@ -581,7 +593,7 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
 
         fig.update_layout(
             margin=dict(t=20, b=20, l=0, r=10), template="plotly_dark",
-            xaxis_title="Time", yaxis_title="Temp °F" if temp_unit == "fahrenheit" else "Temp °C",
+            xaxis_title="Time", yaxis_title="Temp " + _unit_symbol(temp_unit),
             xaxis=xaxis_kwargs,
             yaxis=dict(range=y_range) if y_range else {},
             hovermode="x unified", showlegend=multi,
@@ -718,9 +730,10 @@ def register_dashboard_callbacks(app, finder, cfg, db):
         Output("temp-unit-store", "data"),
         Input("unit-celsius", "n_clicks"),
         Input("unit-fahrenheit", "n_clicks"),
+        Input("unit-kelvin", "n_clicks"),
         prevent_initial_call=True,
     )
-    def toggle_unit(_c, _f):
+    def toggle_unit(_c, _f, _k):
         from dash import callback_context
         if not callback_context.triggered:
             return no_update
@@ -729,15 +742,20 @@ def register_dashboard_callbacks(app, finder, cfg, db):
             return "celsius"
         if button_id == "unit-fahrenheit":
             return "fahrenheit"
+        if button_id == "unit-kelvin":
+            return "kelvin"
         return no_update
 
     @app.callback(
         Output("unit-celsius", "outline"),
         Output("unit-fahrenheit", "outline"),
+        Output("unit-kelvin", "outline"),
         Input("temp-unit-store", "data"),
     )
     def _sync_unit_buttons(temp_unit):
-        return (True, False) if (temp_unit or "celsius") == "fahrenheit" else (False, True)
+        u = temp_unit or "celsius"
+        # outline=True means "not the selected unit"
+        return (u != "celsius", u != "fahrenheit", u != "kelvin")
 
     @app.callback(
         Output("clock-format-store", "data"),

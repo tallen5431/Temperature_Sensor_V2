@@ -93,6 +93,18 @@ def test_build_dashboard_fahrenheit_unit(tmp_path):
     assert gauge.data[0].number.suffix.strip() == "°F"
 
 
+def test_build_dashboard_kelvin_unit(tmp_path):
+    db = Database(tmp_path / "d.db")
+    cfg = Config(tmp_path / "c.json")
+    db.append(_iso(datetime.datetime.now()), 25.0, 77.0, "p")
+    out = build_dashboard(db, cfg, FakeFinder(), "24h", "kelvin")
+    gauge = out[0]
+    # Gauge value converted to K (25C -> 298.15K)
+    assert abs(gauge.data[0].value - 298.15) < 0.01
+    # Kelvin uses no degree symbol
+    assert gauge.data[0].number.suffix.strip() == "K"
+
+
 def test_build_dashboard_alerts_fire(tmp_path):
     db = Database(tmp_path / "d.db")
     cfg = Config(tmp_path / "c.json")
