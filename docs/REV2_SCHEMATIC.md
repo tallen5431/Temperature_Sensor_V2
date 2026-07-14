@@ -29,8 +29,14 @@
 | VIN | U2 `EN`/`CE` (tie to VIN = always on) |
 | VIN | C1 (10 µF) → GND |
 
-> **USB-always-on (restaurant) build:** feed VIN from USB `VBUS` (5 V) instead of the battery — omit
-> the 18650/TP4056/switch. **Battery build:** keep them exactly as rev 1.
+> **Two power builds — decide per SKU:**
+> - **Restaurant / assembled unit → USB-always-on. Drop the battery entirely.** Feed VIN from USB
+>   `VBUS` (5 V); omit the 18650/TP4056/switch. Walk-ins have power, so a battery is only a liability
+>   (swaps, lithium shipping/safety). Simpler board, fewer parts, no cell to ship.
+> - **Portable / homelab → battery**, exactly as rev 1.
+> - ⚠️ A basic TP4056 module has **no true load-sharing** — its OUT just follows the cell, so don't
+>   try to run the board "from USB through the TP4056." Either power from `VBUS` (USB build) **or**
+>   from the battery (battery build); use USB-C only for charging + data on the battery build.
 
 ## Net 2 — 3V3 (regulated)
 
@@ -93,6 +99,12 @@ boot. (This is the classic ESP32-C3 GPIO8 gotcha.)
 | 2 | `IO5` (DATA) — with R3 (4.7 kΩ) pull-up to 3V3 (**mandatory** for 1-Wire) |
 | 3 | GND |
 
+> **Harden the probe line (recommended for restaurant/long runs).** The DS18B20 lead runs 1 m+ into a
+> cold, damp, static-prone walk-in — the #1 field failure. Add an **optional ~100 Ω series resistor**
+> in the DQ line (between J1 pin 2 and IO5, pull-up still to 3V3 on the IO5 side) and a small **TVS/ESD
+> diode** from DQ to GND at the connector. Keep the probe lead ≤3 m for reliable 1-Wire timing, and
+> give it strain relief at the enclosure.
+
 ## Net 8 — Programming (pick ONE per SKU)
 
 ### Option A — UART header J2 (1×6) · simplest, factory-flash, matches `factory_flash.py`
@@ -123,7 +135,9 @@ ESP32-C3 native USB-Serial-JTAG is on IO18 (D−)/IO19 (D+) — no series resist
 
 ## Unused strapping pin
 
-- **IO2** — leave **unconnected**. (It's also a strapping pin; if you ever use it, keep it high at boot.)
+- **IO2** — leave **unconnected**. It's a strapping pin that boots high on the chip's internal
+  pull-up; if you ever see flaky boots, add a 10 kΩ pull-up to 3V3. Don't tie it low, and don't use it
+  for the LED (that's IO8).
 
 ## Pre-flight checklist before you export Gerbers
 
@@ -133,4 +147,6 @@ ESP32-C3 native USB-Serial-JTAG is on IO18 (D−)/IO19 (D+) — no series resist
 - [ ] IO5 has the 4.7 kΩ pull-up.
 - [ ] Module thermal pad tied to GND.
 - [ ] Module at board edge; **antenna keep-out has no copper**.
+- [ ] LDO caps are **ceramic X5R/X7R** (needed for LDO loop stability).
+- [ ] **Test points** exposed for bring-up/QC: 3V3, GND, IO5, EN.
 - [ ] ERC clean, then DRC clean.

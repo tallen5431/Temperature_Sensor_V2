@@ -56,6 +56,9 @@ don't solder" buyer — for a few minutes of header soldering you do in a batch.
   **browser-flash QR**, and links to `docs/ASSEMBLY.md` + `docs/USER_MANUAL.md`.
 - ✅ A **1-line "known-good" test**: "Power on → the LED blinks → it appears on your dashboard within
   a minute." A buyer who can self-verify success won't open a support ticket.
+- ✅ A short **lithium-safety line** (if the kit involves an 18650): *"Use a protected cell, observe
+  polarity, never short the terminals, charge only via the TP4056."* Cheap insurance against a bad
+  outcome and a liability claim.
 - Nice touches that punch above $39: an anti-static bag, labeled parts baggies, a strip of heatshrink,
   and a sticker. Presentation is most of the perceived value at this price.
 
@@ -94,6 +97,9 @@ don't solder" buyer — for a few minutes of header soldering you do in a batch.
 - **Channel:** Tindie (maker audience, kits explicitly welcome, ~5% fee, <48 h approval). Keep your
   own site for the free software + waitlist, not a competing listing (Tindie is web-exclusive per SKU).
 - **Handling time:** set an honest 3–5 business days for hand-bagged batches.
+- **Test every probe before bagging** — power the pre-flashed board, confirm it reads a sane room
+  temperature (not −127/blank). A dead DS18B20 is the most likely bad part and a guaranteed return;
+  catching it at the bench costs seconds.
 - **Track each kit's probe serial** in your batch log (`docs/LABEL_TEMPLATE.md` style) so a support
   request maps to a known unit.
 - **Returns/support:** the pre-flash + foolproof card + honest specs are your best defense against both.
