@@ -1,4 +1,4 @@
-# TempSensor — Rev 2 Build Guide (module-based, certifiable, assembly-ready)
+# Setpoint — Rev 2 Build Guide (module-based, certifiable, assembly-ready)
 
 > Build companion to [`PCB_REV2_MODULE.md`](PCB_REV2_MODULE.md) (the *why* + spec). This is the
 > *how*: the concrete parts list, a step-by-step KiCad flow, and how to order it assembled from

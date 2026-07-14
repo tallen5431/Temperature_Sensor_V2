@@ -1,6 +1,6 @@
-# TempSensor — Manufacturing QC Checklist
+# Setpoint — Manufacturing QC Checklist
 
-Pass/fail gate for **one** TempSensor unit before it is labeled and boxed.
+Pass/fail gate for **one** Setpoint unit before it is labeled and boxed.
 Every line must be **PASS**. Any **FAIL** stops the unit — fix and re-run from
 the failed step. This checklist is driven by
 [`firmware/factory_flash.py`](../firmware/factory_flash.py), which flashes the
@@ -28,7 +28,7 @@ You need this available before running units:
 - [ ] USB-C data cable + the unit's USB power path known-good.
 - [ ] A charged **rechargeable-lithium battery** fitted (or the unit on USB) so
       deep-sleep wake behaviour can be observed.
-- [ ] A **bench TempSensor** running on the LAN (`Start.sh` / `Start.bat`,
+- [ ] A **bench Setpoint** running on the LAN (`Start.sh` / `Start.bat`,
       dashboard at `http://localhost:8080`). Note its LAN URL and device token —
       you will confirm one live ingest into it.
 - [ ] A phone or laptop that can see 2.4 GHz Wi-Fi (to verify the SoftAP).
@@ -48,14 +48,14 @@ tick each item below as the operator confirms it.
       only to re-QC an already-flashed unit.)
 - [ ] **1.2** Unit reboots on its own after flashing (no reset-loop on serial).
 
-### 2. Identity — persistent `TempSensor-<HEX6>`
+### 2. Identity — persistent `Setpoint-<HEX6>`
 - [ ] **2.1** Boot serial prints the machine-readable line
       `[label] probe_id=... ap_ssid=... ap_pass=none`; `factory_flash.py` echoes
       `Probe ID`, `Setup Wi-Fi`.
-- [ ] **2.2** `probe_id` is `TempSensor-<HEX6>` (6 UPPERCASE hex, derived from
+- [ ] **2.2** `probe_id` is `Setpoint-<HEX6>` (6 UPPERCASE hex, derived from
       the DS18B20 sensor ROM and **persisted in NVS**). Confirm it is stable
       across a power-cycle — it must **not** change between boots.
-- [ ] **2.3** `GET http://<probe-ip>/whoami` (or `TempSensor-<HEX6>.local`)
+- [ ] **2.3** `GET http://<probe-ip>/whoami` (or `Setpoint-<HEX6>.local`)
       returns `{id,name,mac,ds18b20_rom,fw_version,...}` with `id` == the printed
       `probe_id` and `fw_version` == **`2.4.0`**.
 - [ ] **2.4** **Uniqueness:** the `probe_id` is not already present in the batch
@@ -64,7 +64,7 @@ tick each item below as the operator confirms it.
 
 ### 3. SoftAP setup network (open)
 - [ ] **3.1** With no saved Wi-Fi, the unit brings up SoftAP SSID
-      **`TempSensor-<HEX6>`** (== `probe_id`), visible on a phone.
+      **`Setpoint-<HEX6>`** (== `probe_id`), visible on a phone.
 - [ ] **3.2** The AP is **open** (no password prompt) and joins directly — no key
       to enter. The serial `[label]` line shows `ap_pass=none`.
 - [ ] **3.3** After joining the AP, `http://192.168.4.1` serves the WiFiManager

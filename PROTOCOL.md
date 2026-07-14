@@ -1,15 +1,15 @@
-# TempSensor ⇄ TempSensor Protocol
+# Setpoint ⇄ Setpoint Protocol
 
 **Protocol version: `proto = 1`**
-Product: **TempSensor** (hub) / **TempSensor** (probe) · Software version: `2.0.0`
+Product: **Setpoint** (hub) / **Setpoint** (probe) · Software version: `2.0.0`
 
-This is the authoritative, versioned contract between TempSensor firmware and the
-TempSensor appliance. It is the single source of truth for the wire format: identity,
+This is the authoritative, versioned contract between Setpoint firmware and the
+Setpoint appliance. It is the single source of truth for the wire format: identity,
 discovery, provisioning, and ingest. Firmware and hub MUST both conform to this
 document. Where this file and code disagree, that is a bug in one of them — fix it,
 don't silently diverge.
 
-TempSensor is a **local-first, no-cloud** appliance. All traffic in this document is
+Setpoint is a **local-first, no-cloud** appliance. All traffic in this document is
 LAN-only (probe ⇄ hub, same subnet). There is no outbound telemetry and no account.
 
 ---
@@ -18,8 +18,8 @@ LAN-only (probe ⇄ hub, same subnet). There is no outbound telemetry and no acc
 
 | Term | Meaning |
 |------|---------|
-| **Hub** | TempSensor — Python/Flask+Dash app served by waitress on TCP **8080**. |
-| **Probe** | TempSensor — ESP32 firmware, HTTP server on TCP **80**. |
+| **Hub** | Setpoint — Python/Flask+Dash app served by waitress on TCP **8080**. |
+| **Probe** | Setpoint — ESP32 firmware, HTTP server on TCP **80**. |
 | **`proto`** | Integer protocol version. This document defines `proto = 1`. |
 | **Device token** | One shared secret per hub. Authenticates mutating hub endpoints **and** is provisioned onto probes, which echo it back as `X-Token`. |
 | **Provision secret** | Per-unit secret printed on the probe's label/QR. Guards the probe's `/provision` endpoint. Distinct from the device token. |
@@ -40,8 +40,8 @@ source of truth used everywhere (mDNS TXT, HTTP headers, `/whoami`).
 
 ```
 suffix    = last 3 bytes of the ESP32 eFuse (base) MAC, uppercase hex (6 chars)
-probe_id  = "TempSensor-" + suffix          e.g.  TempSensor-9A3F2C
-hostname  = "tempsensor-" + lower(suffix) + ".local."   e.g. tempsensor-9a3f2c.local.
+probe_id  = "Setpoint-" + suffix          e.g.  Setpoint-9A3F2C
+hostname  = "setpoint-" + lower(suffix) + ".local."   e.g. setpoint-9a3f2c.local.
 ```
 
 - `probe_id` is stable for the life of the hardware.
@@ -59,13 +59,13 @@ The probe **advertises**; the hub **browses** (zeroconf).
 |-------|-------|
 | Service type | `_temps-probe._tcp.local.` |
 | Transport / port | TCP **80** |
-| Server (host) | `tempsensor-<hex>.local.` |
+| Server (host) | `setpoint-<hex>.local.` |
 
 ### TXT record keys
 
 | Key | Value | Notes |
 |-----|-------|-------|
-| `id` | `<probe_id>` | e.g. `TempSensor-9A3F2C`. **Invariant:** this MUST equal the `X-Probe-ID` header the probe later sends on ingest. |
+| `id` | `<probe_id>` | e.g. `Setpoint-9A3F2C`. **Invariant:** this MUST equal the `X-Probe-ID` header the probe later sends on ingest. |
 | `name` | friendly name, else `<probe_id>` | Human label; falls back to `probe_id`. |
 | `fw` | firmware semver | e.g. `2.0.0`. |
 | `proto` | `1` | Protocol version this firmware speaks. |
@@ -109,13 +109,13 @@ interval. Persisted to NVS so it survives reboots.
 **Response** `200 OK`
 
 ```json
-{ "id": "TempSensor-9A3F2C", "name": "Garage Fridge", "fw": "2.0.0", "accepted": true }
+{ "id": "Setpoint-9A3F2C", "name": "Garage Fridge", "fw": "2.0.0", "accepted": true }
 ```
 
 The probe persists `server_url`, `token`, and `interval_ms` to NVS and begins posting
 (§5).
 
-> **Hub implementation note.** TempSensor's built-in auto-provisioner and the
+> **Hub implementation note.** Setpoint's built-in auto-provisioner and the
 > `POST /api/provision` endpoint push exactly `{server_url, token, interval_ms}` to
 > the probe's `/provision` (trying the probe IP first, then its `.local` hostname).
 > The `X-Provision-Secret` is a per-unit secret held by the operator; supply it via
@@ -124,7 +124,7 @@ The probe persists `server_url`, `token`, and `interval_ms` to NVS and begins po
 ### 4.2 `GET /whoami`
 
 ```json
-{ "id": "TempSensor-9A3F2C", "name": "Garage Fridge", "fw": "2.0.0", "mac": "24:6F:28:9A:3F:2C" }
+{ "id": "Setpoint-9A3F2C", "name": "Garage Fridge", "fw": "2.0.0", "mac": "24:6F:28:9A:3F:2C" }
 ```
 
 `id` MUST equal the mDNS TXT `id` and the `X-Probe-ID` ingest header.
@@ -133,7 +133,7 @@ The probe persists `server_url`, `token`, and `interval_ms` to NVS and begins po
 
 ```json
 {
-  "id": "TempSensor-9A3F2C",
+  "id": "Setpoint-9A3F2C",
   "wifi_rssi": -57,
   "uptime_s": 43120,
   "last_post_ok": true,
@@ -176,7 +176,7 @@ Every `interval_ms`, the probe POSTs the latest good reading to the provisioned
 ```json
 {
   "temperature_c": 4.2,
-  "probe_id": "TempSensor-9A3F2C",
+  "probe_id": "Setpoint-9A3F2C",
   "timestamp": "2026-07-06T14:03:11"
 }
 ```
@@ -197,7 +197,7 @@ Every `interval_ms`, the probe POSTs the latest good reading to the provisioned
 {
   "temperature_c": 24.1,
   "humidity_pct": 58.3,
-  "probe_id": "TempSensor-9A3F2C",
+  "probe_id": "Setpoint-9A3F2C",
   "timestamp": "2026-07-06T14:03:11"
 }
 ```
@@ -328,7 +328,7 @@ value that did reach the hub is rejected by the range/finite checks in §6.
 
 A probe with no saved Wi-Fi credentials brings up onboarding:
 
-1. Probe starts an **open SoftAP** (no password) with SSID `TempSensor-<hex>`.
+1. Probe starts an **open SoftAP** (no password) with SSID `Setpoint-<hex>`.
 2. The operator joins that AP; a **captive portal** at `http://192.168.4.1` lists
    nearby networks.
 3. Operator selects the home SSID and enters its password; the probe **persists the
@@ -340,7 +340,7 @@ A probe with no saved Wi-Fi credentials brings up onboarding:
 
 ## 10. Threat model (LAN-scoped)
 
-TempSensor is designed for a trusted home/small-business LAN, not a hostile network. The
+Setpoint is designed for a trusted home/small-business LAN, not a hostile network. The
 protocol nonetheless hardens against realistic local threats:
 
 | Threat | Mitigation |

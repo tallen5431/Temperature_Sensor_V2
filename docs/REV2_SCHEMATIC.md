@@ -1,4 +1,4 @@
-# TempSensor — Rev 2 Schematic (net-by-net, wireable in KiCad)
+# Setpoint — Rev 2 Schematic (net-by-net, wireable in KiCad)
 
 > The full connection list for the `ESP32-C3-MINI-1` board. Wire the KiCad symbols by **pin name**
 > (the `RF_Module:ESP32-C3-MINI-1` symbol labels pins by function — you connect to `IO5`, `EN`, `3V3`,

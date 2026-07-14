@@ -1,12 +1,12 @@
 {
-  "name": "TempSensor",
+  "name": "Setpoint",
   "version": "2.4.0",
   "new_install_prompt_erase": true,
   "builds": [
     {
       "chipFamily": "ESP32-C3",
       "parts": [
-        { "path": "tempsensor-esp32c3.merged.bin", "offset": 0 }
+        { "path": "setpoint-esp32c3.merged.bin", "offset": 0 }
       ]
     }
   ]

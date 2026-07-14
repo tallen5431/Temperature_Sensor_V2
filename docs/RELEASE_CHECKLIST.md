@@ -9,7 +9,7 @@ most.
 
 | Piece | State |
 | --- | --- |
-| Linux `.tar.gz` bundle | **Verified** — built, launched, served the dashboard, accepted an ingest, and created its data in the per-user dir (`~/.local/share/TempSensor`). |
+| Linux `.tar.gz` bundle | **Verified** — built, launched, served the dashboard, accepted an ingest, and created its data in the per-user dir (`~/.local/share/Setpoint`). |
 | Windows `.exe` installer (Inno Setup) | **Authored, not yet run.** Builds on the `windows-latest` runner; not executed on a real Windows machine. |
 | macOS `.dmg` (`.app` bundle) | **Authored, not yet run.** Builds on the `macos-latest` runner; not executed on a real Mac. |
 | Code signing / notarization | **Off** until the cert secrets are set (see `RELEASE_SIGNING.md`). Installers build **unsigned** meanwhile. |
@@ -41,8 +41,8 @@ release and verify:
 - [ ] Launches from the Start menu / Applications and the dashboard opens in the
       browser at <http://localhost:8088>.
 - [ ] A reading ingests and shows up; **Load demo data** works.
-- [ ] Data lands in the per-user directory (`%LOCALAPPDATA%\TempSensor` /
-      `~/Library/Application Support/TempSensor`), and survives a relaunch.
+- [ ] Data lands in the per-user directory (`%LOCALAPPDATA%\Setpoint` /
+      `~/Library/Application Support/Setpoint`), and survives a relaunch.
 - [ ] Uninstall works (Windows: Apps; macOS: drag to Trash).
 
 ## 3. Turn on code signing (removes the scary OS prompts)
@@ -67,10 +67,10 @@ code change needed.
       no custom icon (`packaging/temperature_hub.spec` has `icon=None`; the `.iss`
       has no `SetupIconFile`). Add `packaging/icon.ico` (Windows) and
       `packaging/icon.icns` (macOS), then set `icon=` in the spec's `EXE(...)` and
-      `BUNDLE(...)`, and `SetupIconFile=..\icon.ico` in `tempsensor.iss`.
+      `BUNDLE(...)`, and `SetupIconFile=..\icon.ico` in `setpoint.iss`.
 - [ ] **Installer EULA.** The Windows installer shows `LICENSE`. If you want
       click-through acceptance of the end-user terms instead, point
-      `LicenseFile` in `tempsensor.iss` at `..\..\docs\EULA.md` (convert to
+      `LicenseFile` in `setpoint.iss` at `..\..\docs\EULA.md` (convert to
       `.txt`/`.rtf` — Inno wants plain text or RTF).
 - [ ] **Version stamping.** The release version comes from the git tag; keep it
       in step with `core/version.py` `HUB_VERSION` so the About/Diagnostics

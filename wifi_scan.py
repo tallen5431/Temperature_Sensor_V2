@@ -105,6 +105,6 @@ class SSIDWatcher:
 
     def seen(self) -> bool:
         # Match either an exact SSID or any SSID that begins with the target,
-        # so a per-probe SoftAP like "TempSensor-9A3F2C" is detected from the
-        # brand prefix "TempSensor".
+        # so a per-probe SoftAP like "Setpoint-9A3F2C" is detected from the
+        # brand prefix "Setpoint".
         return any(s == self.target or s.startswith(self.target) for s in self.latest)

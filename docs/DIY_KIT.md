@@ -18,7 +18,7 @@ firmware."** Kill both and the kit sells itself. Everything below is aimed at th
 
 Flashing is **not** assembly, so pre-flashing the ESP32-C3 is FCC-safe *and* it's the single biggest
 friction remover. Ship each board already running the firmware, so the buyer **never opens a
-toolchain**. Their whole "software" step becomes: power on → join the `TempSensor-XXXXXX` Wi-Fi →
+toolchain**. Their whole "software" step becomes: power on → join the `Setpoint-XXXXXX` Wi-Fi →
 open the dashboard. That's your product's magic moment (auto-provision + onboarding already handle it).
 
 - Belt-and-suspenders: **also** print the QR to your **browser-flash page** (ESP Web Tools) on the

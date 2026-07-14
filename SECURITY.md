@@ -1,6 +1,6 @@
 # Security
 
-TempSensor is a **local-first, LAN-only** appliance: the hub runs on the customer's own PC and
+Setpoint is a **local-first, LAN-only** appliance: the hub runs on the customer's own PC and
 talks only to probes on the local network. There is no cloud service and no internet exposure by
 default. The threat model below assumes an attacker who is **another device/user on the same LAN**
 (the hub is not meant to be port-forwarded to the internet — don't do that).

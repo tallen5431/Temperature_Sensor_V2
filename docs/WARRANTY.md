@@ -2,14 +2,14 @@
 
 _Last updated: 2026_
 
-> **Note for the maker/reseller:** TempSensor is a white-label product. Before you
-> ship, replace **TempSensor** and **TempSensor** with your product names, insert
+> **Note for the maker/reseller:** Setpoint is a white-label product. Before you
+> ship, replace **Setpoint** and **Setpoint** with your product names, insert
 > your legal business name and address, and confirm the warranty period and
 > region-specific terms are correct for where you sell. Update the support link
 > (`https://example.com/support`) to match your `branding` config.
 
 We stand behind the hardware we build. This limited warranty covers the physical
-**TempSensor** hub and **TempSensor** sensor hardware you purchased from us or an
+**Setpoint** hub and **Setpoint** sensor hardware you purchased from us or an
 authorized reseller.
 
 ## What is covered
@@ -55,7 +55,7 @@ This warranty does **not** cover:
 
 ## Important limits
 
-TempSensor is a monitoring aid, **not a certified safety, medical, or
+Setpoint is a monitoring aid, **not a certified safety, medical, or
 life-support device**. Do not rely on it as the sole safeguard for anything
 where a missed or wrong reading could cause loss (medication, high-value stock,
 critical processes). To the fullest extent permitted by law, our total liability
@@ -72,7 +72,7 @@ that cannot legally be waived.
 
 1. **Contact support** at **https://example.com/support** within the warranty
    period. Please include the information listed in `SUPPORT.md` — your order
-   number/proof of purchase, the probe ID (for example `TempSensor-9A3F2C`),
+   number/proof of purchase, the probe ID (for example `Setpoint-9A3F2C`),
    the firmware version, and a clear description of the fault.
 2. **Basic troubleshooting.** We may ask you to try a few quick steps (re-seat
    the probe, re-provision, check power) to confirm it is a hardware fault and

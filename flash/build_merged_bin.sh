@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Build the TempSensor firmware and produce ONE merged .bin that both
+# Build the Setpoint firmware and produce ONE merged .bin that both
 # ESP Web Tools (browser flashing, see flash/index.html) and esptool can flash
 # at offset 0x0.
 #
@@ -30,7 +30,7 @@ SKETCH_NAME="esp32_temp_probe"
 # ESP32-C3 with the No-OTA (2MB APP / 2MB SPIFFS) partition scheme — the scheme
 # the firmware is flashed with. Change the board here if your unit differs.
 FQBN="${FQBN:-esp32:esp32:esp32c3:PartitionScheme=no_ota}"
-OUT="flash/tempsensor-esp32c3.merged.bin"
+OUT="flash/setpoint-esp32c3.merged.bin"
 # Chip passed to esptool for the fallback manual merge.
 CHIP="${CHIP:-esp32c3}"
 

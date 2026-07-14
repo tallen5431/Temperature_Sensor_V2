@@ -1,12 +1,25 @@
 # Changelog
 
-All notable changes to TempSensor (the PC-side hub application) and its TempSensor
-ESP32 firmware are documented in this file.
+All notable changes to Setpoint (the PC-side hub application) and its Setpoint
+ESP32 firmware are documented in this file. (Earlier entries below predate the
+rebrand and refer to the product by its former name, "TempSensor".)
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Changed
+- **Rebranded the product to "Setpoint, by Datum Labs."** The device, hub app, and integration
+  surfaces now carry the new name end to end: the setup Wi-Fi / probe id is `Setpoint-XXXXXX`
+  (was `TempSensor-XXXXXX`), the mDNS hub instance is "Setpoint Hub", the app data directory is
+  `Setpoint`, the Prometheus metrics are namespaced `setpoint_*` (were `tempsensor_*`), the MQTT
+  default base topic is `setpoint` and Home Assistant discovery ids are `setpoint_*`, the log file
+  is `setpoint.log`, and the macOS/Windows installers ship as **Setpoint**. Internal build
+  identifiers (the `temperature-hub` onedir artifact, the `temperature_hub.spec` filename, and the
+  `TEMPSENSOR_FW_VERSION`/`_PROTO` firmware macros) are unchanged. **Re-flash probes** so they
+  advertise the new id; **Prometheus/Grafana dashboards and MQTT subscriptions must update to the
+  `setpoint*` names.** A new `docs/ACTION_PLAN.md` captures the revenue-first go-to-market plan.
 
 ### Added
 - **One-click installers + a release pipeline.** A new `release` GitHub Actions workflow builds a

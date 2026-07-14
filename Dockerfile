@@ -1,4 +1,4 @@
-# TempSensor — containerized hub for homelab / self-hosted deployment.
+# Setpoint — containerized hub for homelab / self-hosted deployment.
 FROM python:3.11-slim
 
 WORKDIR /app

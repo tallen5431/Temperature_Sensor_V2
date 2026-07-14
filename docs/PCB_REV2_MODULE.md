@@ -1,4 +1,4 @@
-# TempSensor — Rev 2 Board Spec (swap SuperMini → pre-certified module)
+# Setpoint — Rev 2 Board Spec (swap SuperMini → pre-certified module)
 
 > **Why this exists:** the rev-1 board sockets an **ESP32-C3 SuperMini** (bare `ESP32-C3FH4` +
 > PCB trace antenna), which carries **no modular FCC grant** — so assembled units can't take the

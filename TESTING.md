@@ -43,7 +43,7 @@ These need a flashed ESP32 + DS18B20 and can't be faked. Keep a written log of
 pass/fail per firmware version.
 
 **First-time provisioning**
-- [ ] Power a probe with no saved Wi-Fi → it starts the `TempSensor-XXXX` SoftAP.
+- [ ] Power a probe with no saved Wi-Fi → it starts the `Setpoint-XXXX` SoftAP.
 - [ ] Join it, set home Wi-Fi at `192.168.4.1`, save.
 - [ ] Within ~20 s the probe appears on the hub **Devices** page and readings start.
 - [ ] Settings → Probe Setup Helper detects the SoftAP SSID.

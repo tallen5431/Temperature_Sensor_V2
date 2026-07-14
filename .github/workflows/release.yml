@@ -48,12 +48,12 @@ jobs:
         run: ./packaging/build.sh
       - name: Package tarball
         run: |
-          tar -C dist -czf "dist/TempSensor-linux-x64-${{ needs.meta.outputs.version }}.tar.gz" temperature-hub
+          tar -C dist -czf "dist/Setpoint-linux-x64-${{ needs.meta.outputs.version }}.tar.gz" temperature-hub
       - name: Attach to release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.meta.outputs.tag }}
-          files: dist/TempSensor-linux-x64-*.tar.gz
+          files: dist/Setpoint-linux-x64-*.tar.gz
 
   windows:
     needs: meta
@@ -71,7 +71,7 @@ jobs:
       - name: Install Inno Setup
         run: choco install innosetup -y --no-progress
       - name: Compile installer
-        run: iscc "/DAppVersion=${{ needs.meta.outputs.version }}" packaging\windows\tempsensor.iss
+        run: iscc "/DAppVersion=${{ needs.meta.outputs.version }}" packaging\windows\setpoint.iss
       - name: Sign installer
         if: env.HAS_WIN_CERT == 'true'
         shell: pwsh
@@ -81,14 +81,14 @@ jobs:
         run: |
           $pfx = Join-Path $env:RUNNER_TEMP "cert.pfx"
           [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERT_BASE64))
-          $setup = Get-ChildItem dist\installer\TempSensor-Setup-*.exe | Select-Object -First 1
+          $setup = Get-ChildItem dist\installer\Setpoint-Setup-*.exe | Select-Object -First 1
           & signtool sign /f $pfx /p $env:WINDOWS_CERT_PASSWORD /fd SHA256 `
             /tr http://timestamp.digicert.com /td SHA256 $setup.FullName
       - name: Attach to release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.meta.outputs.tag }}
-          files: dist/installer/TempSensor-Setup-*.exe
+          files: dist/installer/Setpoint-Setup-*.exe
 
   macos:
     needs: meta
@@ -133,4 +133,4 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.meta.outputs.tag }}
-          files: dist/installer/TempSensor-*.dmg
+          files: dist/installer/Setpoint-*.dmg

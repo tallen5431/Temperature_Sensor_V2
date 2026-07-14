@@ -47,7 +47,7 @@ def _default_data_dir() -> Path:
     exe_dir = Path(sys.executable).resolve().parent
     if (exe_dir / "config.json").exists() or (exe_dir / "temperature_log.db").exists():
         return exe_dir  # existing portable install — keep using it
-    app_name = "TempSensor"
+    app_name = "Setpoint"
     if sys.platform == "win32":
         base = os.getenv("LOCALAPPDATA") or os.path.expanduser("~")
         return Path(base) / app_name

@@ -20,7 +20,7 @@ class MdnsAdvert:
                 s.close()
         return ip
 
-    def start(self, port: int, instance_name: str = "TempSensor Hub", hostname: str = "temps-hub.local."):
+    def start(self, port: int, instance_name: str = "Setpoint Hub", hostname: str = "temps-hub.local."):
         ip = self._lan_ip()
         addr = socket.inet_aton(ip)
         self.info = ServiceInfo(

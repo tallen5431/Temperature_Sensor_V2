@@ -18,7 +18,7 @@ def _help_body():
             _section("1 · Get a probe online", [
                 html.Ol([
                     html.Li("Power the probe (USB or battery) near the area you want to monitor."),
-                    html.Li(["First time? On your phone join the ", html.B("TempSensor-XXXXXX"),
+                    html.Li(["First time? On your phone join the ", html.B("Setpoint-XXXXXX"),
                              " Wi-Fi it broadcasts, then pick your home/office network and save."]),
                     html.Li("Within ~20 seconds it appears on the Devices page and readings start flowing."),
                 ]),

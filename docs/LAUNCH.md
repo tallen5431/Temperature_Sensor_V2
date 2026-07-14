@@ -110,7 +110,7 @@ saves the big cost, but the finished unit still needs:
 
 - [ ] **Hand-build 5–10 units** per `docs/BOM.md` + `docs/ASSEMBLY.md`.
 - [ ] **Flash + QC + label** each with `firmware/factory_flash.py` and `docs/QC_CHECKLIST.md`
-      (unique `TempSensor-<HEX>` serial, SoftAP up, plausible reading, one successful bench POST).
+      (unique `Setpoint-<HEX>` serial, SoftAP up, plausible reading, one successful bench POST).
 - [ ] **Sell direct** to the Phase-0 waitlist on **Tindie** (maker audience, ≤48 h approval, 5% fee) —
       use the ready-to-paste [`TINDIE_LISTING.md`](TINDIE_LISTING.md). Because Tindie is web-exclusive,
       pick it *or* your own **Shopify/Gumroad** page for the paid probe, not both. Price the **1-probe

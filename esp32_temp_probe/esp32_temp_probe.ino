@@ -50,7 +50,7 @@ inline void ledBlink(uint8_t n, uint16_t onMs = 60, uint16_t offMs = 120) {
 }
 
 // ---------------- Identity --------------------------------------------------
-static const char* SENSOR_NAME = "TempSensor";
+static const char* SENSOR_NAME = "Setpoint";
 static const char* FW_VERSION  = "2.4.0";
 
 // The setup SoftAP is intentionally OPEN (no password): it only exists during
@@ -564,7 +564,7 @@ String ds18b20RomHex() {
 }
 
 String buildProbeId(const String& rom, const String& chip) {
-  // "TempSensor-<HEX6>": 6 uppercase hex, wide enough that a manufacturing
+  // "Setpoint-<HEX6>": 6 uppercase hex, wide enough that a manufacturing
   // batch won't collide. Derived from the DS18B20 ROM (globally unique) when the
   // sensor reads, else from the chip's efuse MAC. Persisted by stableProbeId().
   String hex;
@@ -572,7 +572,7 @@ String buildProbeId(const String& rom, const String& chip) {
   else if (chip.length() >= 6) hex = chip.substring(chip.length() - 6);
   else hex = (rom.length() ? rom : chip);
   hex.toUpperCase();
-  return "TempSensor-" + hex;
+  return "Setpoint-" + hex;
 }
 
 // Read the DS18B20 ROM with a few retries.  On a cold boot the 1-Wire bus can
@@ -718,7 +718,7 @@ void setup() {
     wm.addParameter(&p_token);
     wm.addParameter(&p_interval);
 
-    // Per-unit unique, OPEN setup AP (SSID == the probe id, e.g. TempSensor-9A3F2C).
+    // Per-unit unique, OPEN setup AP (SSID == the probe id, e.g. Setpoint-9A3F2C).
     // No password: the AP only exists during first-time setup and disappears once
     // the probe joins the home Wi-Fi, so an open network keeps setup one-tap simple.
     if (!wm.autoConnect(g_probeId.c_str())) {

@@ -17,7 +17,7 @@ python -m PyInstaller --clean --noconfirm packaging\temperature_hub.spec
 Copy-Item -Force LICENSE, THIRD-PARTY-LICENSES.md dist\temperature-hub\
 
 # Compile the installer (Inno Setup's iscc must be on PATH — `choco install innosetup`).
-iscc "/DAppVersion=$Version" "packaging\windows\tempsensor.iss"
+iscc "/DAppVersion=$Version" "packaging\windows\setpoint.iss"
 
-$setup = Get-ChildItem "dist\installer\TempSensor-Setup-*.exe" | Select-Object -First 1
+$setup = Get-ChildItem "dist\installer\Setpoint-Setup-*.exe" | Select-Object -First 1
 Write-Host "[installer] Built $($setup.FullName)"

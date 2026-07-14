@@ -21,10 +21,10 @@ _lock = threading.Lock()
 
 
 def setup_logging(log_dir: Path, level: int = logging.INFO) -> logging.Logger:
-    """Configure the root 'tempsensor' logger once. Safe to call repeatedly."""
+    """Configure the root 'setpoint' logger once. Safe to call repeatedly."""
     global _configured
     with _lock:
-        logger = logging.getLogger("tempsensor")
+        logger = logging.getLogger("setpoint")
         if _configured:
             return logger
         logger.setLevel(level)
@@ -40,7 +40,7 @@ def setup_logging(log_dir: Path, level: int = logging.INFO) -> logging.Logger:
         try:
             log_dir.mkdir(parents=True, exist_ok=True)
             fileh = RotatingFileHandler(
-                log_dir / "tempsensor.log",
+                log_dir / "setpoint.log",
                 maxBytes=2_000_000,
                 backupCount=5,
                 encoding="utf-8",
@@ -60,7 +60,7 @@ def get_logger(name: str = "hub") -> logging.Logger:
     """Return a logger under the ``hub`` tree that ``configure_logging`` wires to
     the console + rotating file handler.
 
-    Historically this returned ``tempsensor.*`` loggers, but that tree was never
+    Historically this returned ``setpoint.*`` loggers, but that tree was never
     configured, so records from the api/audit/mqtt modules (which use this
     helper) were silently dropped and never reached the on-disk hub.log. Routing
     them under ``hub`` puts them in the single configured tree with every other

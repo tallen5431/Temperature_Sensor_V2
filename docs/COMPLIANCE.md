@@ -1,4 +1,4 @@
-# TempSensor — Compliance, Certification & B2B Selling Guide
+# Setpoint — Compliance, Certification & B2B Selling Guide
 
 > **Not legal advice.** This is a practitioner's map of what it takes to sell a Wi-Fi
 > temperature/humidity device, based on regulator and standards-body sources (2022–2026).
@@ -118,7 +118,7 @@ a *feature* to them, not a limitation — lead with it.
 ## 5. Product features that help B2B procurement
 
 **Already shipped (use them in the pitch):**
-- ✅ **Per-unit serial numbers** — the `TempSensor-<HEX6>` ID, derived from the probe's unique
+- ✅ **Per-unit serial numbers** — the `Setpoint-<HEX6>` ID, derived from the probe's unique
   DS18B20 sensor ROM (with an ESP32-MAC fallback) and persisted in NVS, is a stable per-unit serial,
   surfaced in the UI, exports, `/status`, and on the label (so per-unit cal certs can be tied to it).
 - ✅ **Tamper-evident audit trail** — hash-chained, append-only log of config changes and data

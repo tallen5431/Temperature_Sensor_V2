@@ -145,7 +145,7 @@ def _onboarding_card():
             html.P("No data has arrived yet. To get a probe online:", className="mb-2"),
             html.Ol([
                 html.Li("Power your probe on the same Wi-Fi network as this hub."),
-                html.Li(["First-time setup? Join the probe’s ", html.B("TempSensor-XXXXXX"),
+                html.Li(["First-time setup? Join the probe’s ", html.B("Setpoint-XXXXXX"),
                          " Wi-Fi from your phone and choose your network."]),
                 html.Li("It appears on the Devices page within ~20 seconds and readings begin."),
             ], className="mb-2"),

@@ -33,11 +33,11 @@ def _default_token() -> str:
     if os.getenv("DATA_DIR"):
         candidates.append(Path(os.environ["DATA_DIR"]) / "config.json")
     if sys.platform == "win32" and os.getenv("LOCALAPPDATA"):
-        candidates.append(Path(os.environ["LOCALAPPDATA"]) / "TempSensor" / "config.json")
+        candidates.append(Path(os.environ["LOCALAPPDATA"]) / "Setpoint" / "config.json")
     elif sys.platform == "darwin":
-        candidates.append(Path.home() / "Library" / "Application Support" / "TempSensor" / "config.json")
+        candidates.append(Path.home() / "Library" / "Application Support" / "Setpoint" / "config.json")
     else:
-        candidates.append(Path.home() / ".local" / "share" / "TempSensor" / "config.json")
+        candidates.append(Path.home() / ".local" / "share" / "Setpoint" / "config.json")
     candidates.append(Path(__file__).resolve().parent.parent / "config.json")  # dev checkout
     for c in candidates:
         try:
