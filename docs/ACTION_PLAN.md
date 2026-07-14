@@ -193,10 +193,11 @@ Three revenue activities, three different gates. Only one touches the finished-p
 
 ## Deeper docs index
 
-- Revenue-now execution: [docs/DIY_KIT.md](DIY_KIT.md) · [docs/TINDIE_LISTING.md](TINDIE_LISTING.md) · [docs/LISTING.md](LISTING.md) · [docs/PILOT_OFFER.md](PILOT_OFFER.md) · [docs/GO_TO_MARKET.md](GO_TO_MARKET.md) · [docs/LAUNCH.md](LAUNCH.md)
-- Build & QC: [docs/QC_CHECKLIST.md](QC_CHECKLIST.md) · [docs/ASSEMBLY.md](ASSEMBLY.md) · [docs/LABEL_TEMPLATE.md](LABEL_TEMPLATE.md) · [docs/BOM.md](BOM.md) · `docs/kit-quickstart-card.html` · `firmware/factory_flash.py` · `flash/`
+- Product & versions: [docs/VERSIONS.md](VERSIONS.md) (Portable vs Fixed)
+- Revenue-now execution: [docs/DIY_KIT.md](DIY_KIT.md) · [docs/TINDIE_LISTING.md](TINDIE_LISTING.md) · [docs/LISTING.md](LISTING.md) · [docs/PILOT_OFFER.md](PILOT_OFFER.md) · [docs/PREORDER.md](PREORDER.md) · [docs/GO_TO_MARKET.md](GO_TO_MARKET.md) · [docs/LAUNCH.md](LAUNCH.md) · `docs/roi-calculator.html` (restaurant ROI tool)
+- Build, QC & reliability: [docs/QC_CHECKLIST.md](QC_CHECKLIST.md) · [docs/ASSEMBLY.md](ASSEMBLY.md) · [docs/LABEL_TEMPLATE.md](LABEL_TEMPLATE.md) · [docs/BOM.md](BOM.md) · [docs/HUB_RELIABILITY.md](HUB_RELIABILITY.md) · `docs/kit-quickstart-card.html` · `firmware/factory_flash.py` · `flash/`
 - Scale-later (rev-2 + FCC): [docs/REV2_BUILD_GUIDE.md](REV2_BUILD_GUIDE.md) · [docs/REV2_SCHEMATIC.md](REV2_SCHEMATIC.md) · [docs/PCB_REV2_MODULE.md](PCB_REV2_MODULE.md) · [docs/PRODUCT_ROADMAP.md](PRODUCT_ROADMAP.md)
-- Business/legal: [docs/STARTUP_CHECKLIST.md](STARTUP_CHECKLIST.md) · [docs/COMPLIANCE.md](COMPLIANCE.md) · [docs/WARRANTY.md](WARRANTY.md) · [docs/RETURNS.md](RETURNS.md)
+- Business/legal & readiness: [docs/STARTUP_CHECKLIST.md](STARTUP_CHECKLIST.md) · [docs/COMPLIANCE.md](COMPLIANCE.md) · [docs/WARRANTY.md](WARRANTY.md) · [docs/RETURNS.md](RETURNS.md) · [docs/MATERIALS_AND_NEXT_STEPS.md](MATERIALS_AND_NEXT_STEPS.md)
 
 ---
 

@@ -66,6 +66,9 @@ don't solder" buyer — for a few minutes of header soldering you do in a batch.
 - ✅ A short **lithium-safety line** (if the kit involves an 18650): *"Use a protected cell, observe
   polarity, never short the terminals, charge only via the TP4056."* Cheap insurance against a bad
   outcome and a liability claim.
+- ✅ A small **"enjoying it? leave a review" card** — your first 3–5 Tindie reviews set the listing's
+  whole trajectory, so make the ask explicit in the box: a QR straight to the review page and a line
+  like *"a quick review helps a solo maker more than you'd think."* Ask your warmest early buyers first.
 - Nice touches that punch above $39: an anti-static bag, labeled parts baggies, a strip of heatshrink,
   and a sticker. Presentation is most of the perceived value at this price.
 
@@ -101,6 +104,12 @@ don't solder" buyer — for a few minutes of header soldering you do in a batch.
 ## The ops (keep it small and cheap)
 
 - **Buy parts in 10s**, bag by hand — near-zero capital, no inventory risk beyond parts.
+- **Set a reorder point.** DS18B20 probes + TP4056s are 2–4-week overseas lead items — reorder when
+  you're down to ~5 kits of stock so a stockout never stalls fulfillment, and keep a small fast Amazon
+  backup of each.
+- **Track true per-kit cost, not just the BOM.** Add packaging + label + card + payment/Tindie fees +
+  a small returns allowance to the ~$13–15 parts cost — that's your real COGS, and watching it is what
+  keeps the ~$23–30 gross from quietly eroding to ~$12. See [`BOM.md`](BOM.md).
 - **Channel:** Tindie (maker audience, kits explicitly welcome, ~5% fee, <48 h approval). Keep your
   own site for the free software + waitlist, not a competing listing (Tindie is web-exclusive per SKU).
 - **Handling time:** set an honest 3–5 business days for hand-bagged batches.

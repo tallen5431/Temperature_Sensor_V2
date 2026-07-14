@@ -1,0 +1,296 @@
+<title>Setpoint — Cold-Storage ROI Calculator</title>
+<meta name="description" content="Setpoint, by Datum Labs — an interactive calculator that turns your kitchen's cold-storage risk into a payback number: what a walk-in failure costs vs. what monitoring costs once." />
+
+<style>
+  :root {
+    --ground: #eef3f6; --paper: #ffffff; --paper-2: #f5fafb; --ink: #10202a;
+    --ink-soft: #475966; --ink-faint: #7b909e;
+    --line: #d6e1e8; --line-strong: #c2d2db;
+    --accent: #0a8ba1; --accent-bright: #0e9cb5; --accent-wash: #e3f4f7;
+    --loss: #b4460f; --loss-wash: #f8e6dc;        /* money at risk */
+    --save: #157a54; --save-wash: #e0f2ea;        /* payback / savings */
+    --gold: #9c6408;
+    --shadow: 0 18px 44px -26px rgba(16,32,42,.42);
+    --font-display: "Helvetica Neue", "Arial Nova", "Segoe UI", system-ui, sans-serif;
+    --font-body: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0a1218; --paper: #101b24; --paper-2: #152431; --ink: #e7f1f6;
+      --ink-soft: #9fb3c0; --ink-faint: #6b8393; --line: #223849; --line-strong: #2d4658;
+      --accent: #35c8e0; --accent-bright: #5bd8ec; --accent-wash: rgba(53,200,224,.12);
+      --loss: #f0885a; --loss-wash: rgba(240,136,90,.13);
+      --save: #33c88c; --save-wash: rgba(51,200,140,.13); --gold: #eab35c;
+      --shadow: 0 22px 50px -28px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0a1218; --paper: #101b24; --paper-2: #152431; --ink: #e7f1f6;
+    --ink-soft: #9fb3c0; --ink-faint: #6b8393; --line: #223849; --line-strong: #2d4658;
+    --accent: #35c8e0; --accent-bright: #5bd8ec; --accent-wash: rgba(53,200,224,.12);
+    --loss: #f0885a; --loss-wash: rgba(240,136,90,.13);
+    --save: #33c88c; --save-wash: rgba(51,200,140,.13); --gold: #eab35c;
+    --shadow: 0 22px 50px -28px rgba(0,0,0,.7);
+  }
+  :root[data-theme="light"] {
+    --ground: #eef3f6; --paper: #ffffff; --paper-2: #f5fafb; --ink: #10202a;
+    --ink-soft: #475966; --ink-faint: #7b909e; --line: #d6e1e8; --line-strong: #c2d2db;
+    --accent: #0a8ba1; --accent-bright: #0e9cb5; --accent-wash: #e3f4f7;
+    --loss: #b4460f; --loss-wash: #f8e6dc; --save: #157a54; --save-wash: #e0f2ea; --gold: #9c6408;
+    --shadow: 0 18px 44px -26px rgba(16,32,42,.42);
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--ground); color: var(--ink); font-family: var(--font-body); line-height: 1.55; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 28px 20px 56px; }
+  a { color: var(--accent); }
+  :focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 2px; border-radius: 4px; }
+
+  header { margin-bottom: 26px; }
+  .brandrow { display: flex; align-items: baseline; gap: 11px; }
+  .wordmark { font-family: var(--font-display); font-weight: 800; font-size: 1.35rem; letter-spacing: -.03em; }
+  .wordmark .p2 { color: var(--accent); }
+  .byline { font-family: var(--font-mono); font-size: .72rem; font-weight: 600; color: var(--ink-faint); }
+  .eyebrow { font-family: var(--font-mono); font-size: .68rem; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; color: var(--accent); margin: 18px 0 8px; display: flex; align-items: center; gap: 9px; }
+  .eyebrow::before { content: ""; width: 24px; border-top: 2px dashed var(--accent); opacity: .8; }
+  h1 { font-family: var(--font-display); font-weight: 820; font-size: clamp(1.7rem, 4.5vw, 2.5rem); letter-spacing: -.03em; line-height: 1.05; margin: 0; text-wrap: balance; }
+  .lede { color: var(--ink-soft); margin: 12px 0 0; max-width: 62ch; }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
+  @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+
+  .card { background: var(--paper); border: 1px solid var(--line); border-radius: 16px; padding: 22px; box-shadow: var(--shadow); }
+  .card h2 { font-family: var(--font-display); font-size: .82rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint); margin: 0 0 18px; }
+
+  /* controls */
+  .field { margin-bottom: 20px; }
+  .field:last-child { margin-bottom: 0; }
+  .field .top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 7px; }
+  .field label { font-size: .92rem; font-weight: 600; }
+  .field .hint { font-size: .76rem; color: var(--ink-faint); }
+  .field .val { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 700; font-size: 1.02rem; color: var(--accent); background: var(--accent-wash); padding: .12rem .5rem; border-radius: 7px; white-space: nowrap; }
+  input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 6px; border-radius: 999px; background: linear-gradient(90deg, var(--accent) 0 var(--fill,50%), var(--line-strong) var(--fill,50%) 100%); outline-offset: 6px; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 22px; height: 22px; border-radius: 50%; background: var(--paper); border: 3px solid var(--accent); box-shadow: 0 2px 6px rgba(0,0,0,.25); cursor: pointer; }
+  input[type=range]::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; background: var(--paper); border: 3px solid var(--accent); cursor: pointer; }
+  .seg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 10px; overflow: hidden; }
+  .seg button { font-family: var(--font-body); font-size: .84rem; font-weight: 600; padding: .5rem .8rem; border: none; background: var(--paper); color: var(--ink-soft); cursor: pointer; }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+
+  /* results */
+  .result { position: sticky; top: 16px; }
+  .headline { border-radius: 12px; padding: 16px 18px; margin-bottom: 12px; }
+  .headline.loss { background: var(--loss-wash); border: 1px solid color-mix(in srgb, var(--loss) 35%, transparent); }
+  .headline.cost { background: var(--accent-wash); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); }
+  .headline.pay  { background: var(--save-wash); border: 1px solid color-mix(in srgb, var(--save) 35%, transparent); }
+  .headline .k { font-family: var(--font-mono); font-size: .66rem; letter-spacing: .1em; text-transform: uppercase; font-weight: 700; }
+  .headline.loss .k { color: var(--loss); } .headline.cost .k { color: var(--accent); } .headline.pay .k { color: var(--save); }
+  .headline .big { font-family: var(--font-display); font-weight: 820; font-size: clamp(1.8rem, 5vw, 2.6rem); letter-spacing: -.03em; font-variant-numeric: tabular-nums; line-height: 1.05; margin-top: 2px; }
+  .headline .sub { font-size: .82rem; color: var(--ink-soft); margin-top: 3px; }
+
+  .bar { height: 12px; border-radius: 999px; background: var(--line-strong); overflow: hidden; margin: 6px 0 14px; }
+  .bar > span { display: block; height: 100%; background: var(--save); border-radius: 999px; transition: width .25s ease; }
+  @media (prefers-reduced-motion: reduce) { .bar > span { transition: none; } }
+
+  .frame { font-size: .9rem; color: var(--ink); background: var(--paper-2); border: 1px dashed var(--line-strong); border-radius: 10px; padding: 12px 14px; }
+  .frame b { color: var(--loss); font-variant-numeric: tabular-nums; }
+  .frame .g { color: var(--save); font-variant-numeric: tabular-nums; font-weight: 650; }
+
+  .foot { margin-top: 24px; font-size: .78rem; color: var(--ink-faint); }
+  .foot b { color: var(--ink-soft); }
+  .disclaimer { font-style: italic; margin-top: 8px; }
+  .presets { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 22px; }
+  .preset { font-family: var(--font-mono); font-size: .74rem; font-weight: 600; padding: .4rem .7rem; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--paper); color: var(--ink-soft); cursor: pointer; }
+  .preset:hover { border-color: var(--accent); color: var(--accent); }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="brandrow">
+      <span class="wordmark">Set<span class="p2">point</span></span>
+      <span class="byline">by Datum&nbsp;Labs</span>
+    </div>
+    <p class="eyebrow">Cold-storage ROI</p>
+    <h1>What does one overnight walk-in failure cost you?</h1>
+    <p class="lede">A compressor that dies at 2&nbsp;a.m. isn't found until the morning open — and the load is already gone. Set your kitchen's numbers below and see what that risk is worth per year, and how fast monitoring pays for itself.</p>
+  </header>
+
+  <div class="presets" aria-label="Quick presets">
+    <button class="preset" data-preset="cafe">Small café</button>
+    <button class="preset" data-preset="restaurant">Full-service restaurant</button>
+    <button class="preset" data-preset="multi">Busy / multi-unit kitchen</button>
+  </div>
+
+  <div class="grid">
+    <!-- INPUTS -->
+    <section class="card" aria-label="Your kitchen">
+      <h2>Your kitchen</h2>
+
+      <div class="field">
+        <div class="top"><label for="units">Cold units to monitor</label><span class="val" id="units_v">3</span></div>
+        <input type="range" id="units" min="1" max="12" step="1" value="3" />
+        <div class="hint">Walk-in cooler, walk-in freezer, reach-ins, prep line — one probe each.</div>
+      </div>
+
+      <div class="field">
+        <div class="top"><label for="value">Product value in a unit that fails</label><span class="val" id="value_v">$3,000</span></div>
+        <input type="range" id="value" min="500" max="15000" step="250" value="3000" />
+        <div class="hint">A stocked walk-in commonly holds $2,000–$10,000 of food.</div>
+      </div>
+
+      <div class="field">
+        <div class="top"><label for="events">Overnight failures you'd catch in time</label><span class="val" id="events_v">1.0 / yr</span></div>
+        <input type="range" id="events" min="0" max="4" step="0.25" value="1" />
+        <div class="hint">Compressor faults, iced coils, a door left ajar, a tripped breaker — per year.</div>
+      </div>
+
+      <div class="field">
+        <div class="top"><label for="save">Share of the load you'd save by catching it early</label><span class="val" id="save_v">70%</span></div>
+        <input type="range" id="save" min="20" max="100" step="5" value="70" />
+        <div class="hint">An early alert rarely saves 100% — but it saves most of it.</div>
+      </div>
+
+      <div class="field">
+        <div class="top"><label for="price">Price per probe</label><span class="val" id="price_v">$89</span></div>
+        <input type="range" id="price" min="60" max="120" step="1" value="89" />
+        <div class="hint">Your one-time price. The hub software is free forever — no subscription.</div>
+      </div>
+
+      <div class="field">
+        <div class="top"><label>Hub computer</label></div>
+        <div class="seg" role="group" aria-label="Hub computer">
+          <button type="button" id="hub_own" aria-pressed="true">I have an always-on PC (free)</button>
+          <button type="button" id="hub_add" aria-pressed="false">Add a mini-PC (+$149)</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- RESULTS -->
+    <section class="result">
+      <div class="card">
+        <h2>What it's worth</h2>
+
+        <div class="headline loss">
+          <div class="k">Preventable loss you're exposed to</div>
+          <div class="big" id="r_loss">$2,100</div>
+          <div class="sub">per year, at these numbers</div>
+        </div>
+
+        <div class="headline cost">
+          <div class="k">Setpoint — one-time</div>
+          <div class="big" id="r_cost">$267</div>
+          <div class="sub" id="r_cost_sub">3 probes × $89 · free hub software</div>
+        </div>
+
+        <div class="headline pay">
+          <div class="k">Pays for itself in</div>
+          <div class="big" id="r_pay">1.5 months</div>
+          <div class="bar"><span id="r_bar" style="width:12%"></span></div>
+          <div class="sub" id="r_pay_sub">then it protects that load every year after, for free</div>
+        </div>
+
+        <p class="frame" id="r_frame">One prevented failure ≈ <b id="f_event">$2,100</b>. Setpoint is <span class="g" id="f_cost">$267</span> once — so the <b>first</b> cooler it saves more than pays for the whole system.</p>
+      </div>
+
+      <div class="foot">
+        <b>How it's figured:</b> preventable loss/yr = failures/yr × product value × share saved. Payback = one-time cost ÷ (preventable loss ÷ 12).
+        <p class="disclaimer">An estimate to help you decide — not a guarantee. Setpoint is a loss-prevention and logging aid, not a certified/HACCP instrument; it depends on power and your network, and monitoring stops in a full outage. Your results depend on your own kitchen.</p>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+  var $ = function (id) { return document.getElementById(id); };
+  var usd0 = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+
+  var state = { units: 3, value: 3000, events: 1, save: 70, price: 89, hub: 0 };
+
+  function setFill(el) {
+    var min = +el.min, max = +el.max, v = +el.value;
+    el.style.setProperty("--fill", ((v - min) / (max - min) * 100) + "%");
+  }
+
+  function render() {
+    var probes = state.units;
+    var cost = probes * state.price + state.hub;
+    var perEvent = state.value * (state.save / 100);
+    var annualLoss = state.events * perEvent;
+    var payMonths = annualLoss > 0 ? cost / (annualLoss / 12) : Infinity;
+
+    $("units_v").textContent = state.units;
+    $("value_v").textContent = usd0.format(state.value);
+    $("events_v").textContent = state.events.toFixed(2).replace(/\.00$/, ".0") + " / yr";
+    $("save_v").textContent = state.save + "%";
+    $("price_v").textContent = usd0.format(state.price);
+
+    $("r_loss").textContent = usd0.format(Math.round(annualLoss));
+    $("r_cost").textContent = usd0.format(cost);
+    $("r_cost_sub").textContent = probes + (probes === 1 ? " probe × " : " probes × ") + usd0.format(state.price) +
+      (state.hub ? " + " + usd0.format(state.hub) + " mini-PC" : " · free hub software");
+
+    // payback
+    if (!isFinite(payMonths)) {
+      $("r_pay").textContent = "—";
+      $("r_pay_sub").textContent = "set a failure likelihood above 0 to see payback";
+      $("r_bar").style.width = "0%";
+    } else if (perEvent >= cost) {
+      $("r_pay").textContent = "the first prevented failure";
+      $("r_pay_sub").textContent = "one caught cooler more than covers the whole system";
+      $("r_bar").style.width = "100%";
+    } else {
+      var m = payMonths;
+      $("r_pay").textContent = (m < 1 ? "<1" : (m < 12 ? m.toFixed(1) : (m / 12).toFixed(1))) + (m < 12 ? " months" : " years");
+      $("r_pay_sub").textContent = "then it protects that load every year after, for free";
+      // shorter payback => fuller bar (cap the scale at 24 months)
+      $("r_bar").style.width = Math.max(6, Math.min(100, 100 * (1 - Math.min(m, 24) / 24))).toFixed(0) + "%";
+    }
+
+    $("f_event").textContent = usd0.format(Math.round(perEvent));
+    $("f_cost").textContent = usd0.format(cost);
+    var frame = $("r_frame");
+    if (perEvent >= cost) {
+      frame.innerHTML = 'One prevented failure ≈ <b id="f_event">' + usd0.format(Math.round(perEvent)) +
+        '</b>. Setpoint is <span class="g">' + usd0.format(cost) + '</span> once — so the <b>first</b> cooler it saves more than pays for the whole system.';
+    } else {
+      frame.innerHTML = 'One prevented failure ≈ <b>' + usd0.format(Math.round(perEvent)) +
+        '</b>, against a one-time <span class="g">' + usd0.format(cost) + '</span> — and it keeps watching every cooler, every night, after that.';
+    }
+  }
+
+  [["units","units"],["value","value"],["events","events"],["save","save"],["price","price"]].forEach(function (p) {
+    var el = $(p[0]);
+    setFill(el);
+    el.addEventListener("input", function () {
+      state[p[1]] = +el.value; setFill(el); render();
+    });
+  });
+
+  $("hub_own").addEventListener("click", function () {
+    state.hub = 0; $("hub_own").setAttribute("aria-pressed", "true"); $("hub_add").setAttribute("aria-pressed", "false"); render();
+  });
+  $("hub_add").addEventListener("click", function () {
+    state.hub = 149; $("hub_add").setAttribute("aria-pressed", "true"); $("hub_own").setAttribute("aria-pressed", "false"); render();
+  });
+
+  var PRESETS = {
+    cafe:       { units: 2, value: 1500, events: 0.5, save: 70, price: 89, hub: 0 },
+    restaurant: { units: 4, value: 4000, events: 1,   save: 70, price: 89, hub: 0 },
+    multi:      { units: 8, value: 7000, events: 2,   save: 75, price: 79, hub: 149 }
+  };
+  document.querySelectorAll(".preset").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var p = PRESETS[b.dataset.preset]; if (!p) return;
+      Object.keys(p).forEach(function (k) { state[k] = p[k]; });
+      $("units").value = p.units; $("value").value = p.value; $("events").value = p.events;
+      $("save").value = p.save; $("price").value = p.price;
+      ["units","value","events","save","price"].forEach(function (id) { setFill($(id)); });
+      var own = p.hub === 0;
+      $("hub_own").setAttribute("aria-pressed", own ? "true" : "false");
+      $("hub_add").setAttribute("aria-pressed", own ? "false" : "true");
+      render();
+    });
+  });
+
+  render();
+</script>

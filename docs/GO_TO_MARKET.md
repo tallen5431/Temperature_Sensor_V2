@@ -185,6 +185,11 @@ and off-strategy.
   remaining gaps before a full push into those niches.
 - **Power-outage failure mode** — never overclaim "works when the internet is down"; pair with a
   UPS recommendation.
+- **On-prem / security-conscious B2B** will probe the LAN-trust model: the setup SoftAP is **open**
+  and `POST /provision` is **unauthenticated on the local network** (fine for a homelab; a fair
+  question in a restaurant/IT security review). Don't sell it as hardened — state it honestly as a
+  LAN-trust assumption, and keep a **per-unit provision secret / setup-AP password** on the near-term
+  firmware roadmap for buyers who need it.
 - **Solo-maker trust gap & support burden** vs polished incumbent apps — lean on reviews,
   build-in-public credibility, and a focused niche.
 - **Regulated segments** (vaccine/HACCP/cold-chain/labs) are closed without certification — a

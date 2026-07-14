@@ -206,7 +206,10 @@ The strategy docs are strong on FCC sequencing, margin, and the loaner motion. T
    unit that passes may be advertised "verified at 0 °C to within ±0.5 °C." → **Remaining:** add the
    `ice_c` column to the serial-log header in [LABEL_TEMPLATE.md](LABEL_TEMPLATE.md).
 9. **Counterfeit/clone DS18B20s threaten both the accuracy claim and the identity scheme** (fakes are out-of-spec and sometimes share/fake ROM codes, which your `probe_id` derives from). → **First action:** source the first/"verified" batch from Adafruit/DigiKey/Mouser, not the cheapest marketplace listing; the ice-bath step becomes your incoming clone screen.
-10. **Loaner-hub reliability on a restaurant's PC has no runbook** — staff reboot, Windows auto-updates, someone closes the console; "unlimited local history" evaporates on the first reboot. → **First action:** make hub auto-start-on-boot part of the install SOP (service / Docker `restart: unless-stopped`) + a weekly CSV/SQLite export you grab on the screenshot touch.
+10. **~~Loaner-hub reliability had no runbook~~ — DONE.** [HUB_RELIABILITY.md](HUB_RELIABILITY.md) is the
+    one-page uptime SOP: auto-start per OS (Windows service via NSSM / systemd / launchd / Docker
+    `restart: unless-stopped`), firewall + DHCP reservation, weekly export, and a **prove-it** step
+    (reboot the PC, confirm it comes back unattended and the offline alert fires) before you leave.
 11. **The "inconsistent power stories" are now formalized as two versions** — **Portable** (battery,
     deep-sleep) and **Fixed** (USB, always-on), defined in [VERSIONS.md](VERSIONS.md) (same board + probe
     + firmware; only power + read interval differ). → **Remaining action:** add the reachability caveat to
@@ -217,9 +220,16 @@ The strategy docs are strong on FCC sequencing, margin, and the loaner motion. T
 
 12. **No time budget for a solo founder**, and the separate solar side-project is an unmodeled focus risk — the "this week" list is really a quarter. → **First action:** commit this week to only the revenue-critical chain (parts ordered → toolchain compiled → first pilot booked); park rev-2 KiCad and the solar project on a "not until first dollar" list.
 13. **Photography is the #1 Tindie blocker with no plan** — bad phone-on-a-desk photos are why good listings underperform. → **First action:** buy a $15–25 pop-up lightbox (cat 6) and shoot on a phone in daylight. *(The "setup Wi-Fi name & password" listing bug is now fixed — both listings say **open** setup Wi-Fi, no password.)*
-14. **No reorder point or true per-kit COGS discipline** — the overseas lead time stalls fulfillment on a stockout, and packaging nice-touches quietly turn $23 gross into ~$12. → **First action:** set a reorder trigger (reorder probes/TP4056 at ~5 kits of stock) and add a per-kit costs line capturing packaging + label + card + a returns allowance.
-15. **Security posture undercuts the on-prem/air-gapped buyer COMPLIANCE.md courts** — open setup SoftAP + unauthenticated LAN `POST /provision`, fine for a homelabber, a real objection for security-conscious B2B. → **First action:** note it honestly in the B2B pitch as a known LAN-trust assumption and put "per-unit provision secret / setup-AP password" on the near-term firmware roadmap.
-16. **Competitor response and review-seeding are under-planned** — the first 3–5 Tindie reviews set the listing's trajectory, and incumbents can add a "no-cloud mode" faster than you respin. → **First action:** line up your first 3–5 warm buyers as an explicit review ask (a card in the box), and lead on the can't-be-bricked/on-prem moat, not on a price you can't win against Govee.
+14. **~~No reorder point or true-COGS discipline~~ — DONE.** [DIY_KIT.md](DIY_KIT.md) ops now sets a
+    reorder trigger (~5 kits of stock, with a fast Amazon backup) and a true-per-kit-cost line
+    (packaging + label + card + fees + returns allowance on top of parts).
+15. **~~Security posture unaddressed for on-prem B2B~~ — DONE (noted).** [GO_TO_MARKET.md](GO_TO_MARKET.md)
+    §6 risks now states the LAN-trust model honestly (open setup AP + unauthenticated LAN provision) and
+    puts a **per-unit provision secret / setup-AP password** on the near-term firmware roadmap. Building
+    that firmware option remains a future feature, not a doc fix.
+16. **~~Review-seeding under-planned~~ — DONE.** [DIY_KIT.md](DIY_KIT.md) adds a "leave a review" card
+    (QR to the review page) to the kit contents, with a note to ask your first 3–5 warm buyers first.
+    Competitor moat framing (can't-be-bricked / on-prem, not price) is already in GO_TO_MARKET positioning.
 
 > **Cross-cutting:** #1, #7, and #11 are the same disease — doc-drift across partly-inconsistent product definitions. Designate **one** source-of-truth doc (BOM.md, once corrected to the C3) and reconcile DIY_KIT, TINDIE_LISTING, SUPPORT, and PILOT_OFFER to it in one pass, before anything is printed or shipped.
 
