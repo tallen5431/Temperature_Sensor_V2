@@ -184,7 +184,13 @@ The strategy docs are strong on FCC sequencing, margin, and the loaner motion. T
 
 **Tier 1 — bites this week / before the first box**
 
-1. **BOM.md describes the wrong board and contradicts the FCC premise.** It lists a WROOM-32E DevKitC (a *pre-certified* module) with GPIO2 LED / GPIO5 pull-up; everything else assumes the bare C3 SuperMini (IO5 pull-up, IO8 active-low LED). → **First action:** rewrite BOM.md to the C3 SuperMini today, before ordering (Do-next #1).
+1. **BOM.md + the firmware pin map target the wrong board (and it contradicts the FCC premise).** Both
+   describe a WROOM-32E (status LED **GPIO2, active-high**); you're building on the bare **C3 SuperMini**
+   (onboard LED **GPIO8, active-low** — a boot strapping pin). DS18B20 on GPIO5 + 4.7 kΩ is correct for
+   both. *Now flagged loudly in [BOM.md](BOM.md) and [VERSIONS.md](VERSIONS.md).* → **Remaining action:**
+   this is a **firmware** fix (set `PIN_STATUS_LED = 8`, `LED_ACTIVE_LOW = true`, keep GPIO8 boot-safe per
+   the IO8 gotcha in [REV2_SCHEMATIC.md](REV2_SCHEMATIC.md)) **plus** the matching BOM board line — do it
+   and re-compile **before** flashing the batch. Confirm your exact board first.
 2. **Every shipped legal doc still points at `example.com/support`, and there's no domain or business email.** WARRANTY, RETURNS, SUPPORT, PRIVACY all carry the placeholder; the public face is a personal Gmail. → **First action:** register a domain + `support@`/`hello@` forwarding (~$12), then one find-replace across the repo, before printing any label.
 3. **No trademark clearance on "Setpoint"** — a dictionary word almost certainly crowded in USPTO Class 9 (measuring/monitoring instruments). → **First action:** run a free USPTO knockout search on "Setpoint" (Class 9) + "Datum Labs" this week; if crowded, rename before printing brand stock.
 4. **The launch is gated on a toolchain never even compiled — and compiling needs no board.** The FQBN/partition are documented-not-verified. → **First action:** run `arduino-cli compile --fqbn esp32:esp32:esp32c3` on `esp32_temp_probe/` today; only the upload step then needs hardware.
@@ -197,7 +203,11 @@ The strategy docs are strong on FCC sequencing, margin, and the loaner motion. T
 8. **"±0.5 °C, verified" has no per-unit verification SOP** — QC only checks "plausible room temp." Claiming "verified" without evidence manufactures the liability the docs warn against. → **First action:** add an ice-bath (slush) dip to QC, record `ice_c` in the CSV, PASS within ±0.5 °C — only then may you print "verified at 0 °C to within 0.5 °C."
 9. **Counterfeit/clone DS18B20s threaten both the accuracy claim and the identity scheme** (fakes are out-of-spec and sometimes share/fake ROM codes, which your `probe_id` derives from). → **First action:** source the first/"verified" batch from Adafruit/DigiKey/Mouser, not the cheapest marketplace listing; the ice-bath step becomes your incoming clone screen.
 10. **Loaner-hub reliability on a restaurant's PC has no runbook** — staff reboot, Windows auto-updates, someone closes the console; "unlimited local history" evaporates on the first reboot. → **First action:** make hub auto-start-on-boot part of the install SOP (service / Docker `restart: unless-stopped`) + a weekly CSV/SQLite export you grab on the screenshot touch.
-11. **Three inconsistent power stories** — WROOM battery (BOM), C3 deep-sleep battery (plan), USB-always-on (Tindie listing) — and a deep-sleeping probe is unreachable, yet SUPPORT/QC assume its local URLs answer. → **First action:** pick one shipping power model, reconcile BOM/DIY_KIT/TINDIE_LISTING, and add "the probe answers local URLs only briefly when awake — tap reset to wake it" to SUPPORT and QC.
+11. **The "inconsistent power stories" are now formalized as two versions** — **Portable** (battery,
+    deep-sleep) and **Fixed** (USB, always-on), defined in [VERSIONS.md](VERSIONS.md) (same board + probe
+    + firmware; only power + read interval differ). → **Remaining action:** add the reachability caveat to
+    SUPPORT and QC — *"a Portable (deep-sleep) probe answers its local URL only for a few seconds at each
+    wake; tap reset to wake it on demand. A Fixed (USB) probe answers continuously."*
 
 **Tier 3 — erodes focus, margin, and credibility over weeks**
 

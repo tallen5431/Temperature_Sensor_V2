@@ -1,19 +1,27 @@
 # Setpoint — Bill of Materials (BOM)
 
-This is the parts list to build **one** Setpoint unit — the rechargeable,
-battery-powered wireless sensor that pairs with a Setpoint install. Pin
-assignments referenced here come from `firmware/src/protocol.h` (the single
-source of truth); see [ASSEMBLY.md](ASSEMBLY.md) for the wiring. The shipping
-firmware is the sketch `esp32_temp_probe/esp32_temp_probe.ino`.
+This is the parts list to build **one** Setpoint unit. Setpoint ships in **two versions** that share
+this same board, probe, and firmware image — only the power block differs: **Portable** (battery,
+deep-sleep) and **Fixed** (USB, always-on, no battery). See [`VERSIONS.md`](VERSIONS.md) for which to
+build and why. Pin assignments referenced here come from `firmware/src/protocol.h`; see
+[ASSEMBLY.md](ASSEMBLY.md) for the wiring. The shipping firmware is the sketch
+`esp32_temp_probe/esp32_temp_probe.ino`.
+
+> **⚠ Board reconciliation pending — read before ordering.** The lines below (and the firmware pin map
+> in `protocol.h`) still describe the **ESP32-WROOM-32** with the status LED on **GPIO2 (active-high)**.
+> The rev-1 boards you're building on are the **ESP32-C3 SuperMini** (USB-C native; onboard LED on
+> **GPIO8, active-low** — also a boot strapping pin). The DS18B20 line (GPIO5 + 4.7 kΩ pull-up) is
+> correct for both; the **board choice and the LED pin/polarity need a firmware + BOM fix before you
+> flash the batch.** Tracked in [`MATERIALS_AND_NEXT_STEPS.md`](MATERIALS_AND_NEXT_STEPS.md) #1.
 
 - **Firmware target:** ESP32-WROOM-32 / -32E, firmware **v2.4.0**, protocol v1.
 - **Sensor:** DS18B20 (waterproof probe) on **GPIO5** with a 4.7 kΩ pull-up to
   3V3. This is the **only** sensor the current firmware supports.
 - **Status LED:** GPIO2 (`LED_BUILTIN`; on most dev boards the on-board LED, so
   an external LED is optional if you use a bare dev board).
-- **Power:** rechargeable-lithium battery. The firmware deep-sleeps between
-  readings (idle <1 mA), so a single lithium cell gives long runtime; USB-C is
-  used for charging and flashing.
+- **Power (version-dependent — see [`VERSIONS.md`](VERSIONS.md)):** **Portable** runs on a protected
+  lithium cell and deep-sleeps between readings (idle <1 mA) for long runtime (USB-C for charging +
+  flashing). **Fixed** runs **always-on from USB-C with no battery** (fewer parts, no lithium).
 - **Future / not in current firmware:** MAX31855 K-type thermocouple (SPI) and
   SHT4x temp+humidity (I2C) are documented as possible future variants only.
   They are **not** implemented in v2.4.0 and are not populated on shipping units.
@@ -38,9 +46,13 @@ firmware is the sketch `esp32_temp_probe/esp32_temp_probe.ino`.
 | 12 | Hookup wire / header | Dupont jumpers or 22 AWG solid, plus 0.1" header if socketing | small | any | 0.20 |
 | 13 | Misc (solder, heatshrink, standoffs) | consumables, amortized per unit | — | — | 0.40 |
 
-**Core per-unit material cost ≈ $22.19** (round to **~$22.20**).
-Buying dev boards, probes, and cells in 10+ qty typically drops this to
-**~$16–18/unit**.
+**Core per-unit material cost ≈ $22.19** (round to **~$22.20**) for the **Portable** build.
+Buying dev boards, probes, and cells in 10+ qty typically drops this to **~$16–18/unit**.
+
+> **Version split (see [`VERSIONS.md`](VERSIONS.md)):** items **6–8 (lithium cell, TP4056 charge
+> board, holder) plus a slide on/off switch (~$0.35)** are **Portable-only**. The **Fixed** version
+> omits all of them and instead uses a **USB-C wall adapter (~$4)** — so a Fixed unit costs roughly
+> **$5 less** in materials and carries **no lithium**. Kits ship **cell-not-included** either way.
 
 > The DS18B20 is a 1-Wire part and **requires** the 4.7 kΩ pull-up (item 3) — the
 > bus will not read without it.
@@ -70,7 +82,12 @@ the battery, and the printed unit label/QR.
 
 | Build | Material cost | Assembly + test (labor) | Suggested landed cost | **Suggested retail** | Gross margin |
 |-------|---------------|--------------------------|-----------------------|----------------------|--------------|
-| DS18B20 (standard, battery) | ~$22.20 | ~$8 (≈20 min @ $24/hr) | ~$30.20 | **$65** | ~54% |
+| **Portable** (DS18B20, battery) | ~$22.20 | ~$8 (≈20 min @ $24/hr) | ~$30.20 | **$65** | ~54% |
+| **Fixed** (DS18B20, USB, no battery) | ~$17.50 | ~$7 | ~$24.50 | **$55** | ~55% |
+
+> These are *assembled-unit* maker prices (post-FCC). Today rev-1 sells as **DIY kits** at **$39 / $49**
+> ([`DIY_KIT.md`](DIY_KIT.md)) — the Fixed (no-battery) kit is the cheaper option to list alongside the
+> Portable one.
 
 Notes on pricing:
 - These are *single-unit maker* numbers. At batch scale (parts in 10s–100s,
@@ -83,12 +100,13 @@ Notes on pricing:
 
 ---
 
-## Battery, waterproofing & food-safe notes
+## Power, waterproofing & food-safe notes
 
-- **Battery:** use a single protected lithium cell with the TP4056 charge/protect
-  board (items 6–8). The board handles USB-C charging and over-discharge cut-off;
+- **Battery (Portable version only):** use a single protected lithium cell with the TP4056
+  charge/protect board (items 6–8). The board handles USB-C charging and over-discharge cut-off;
   never charge a bare unprotected cell. Keep the cell inside the sealed enclosure,
-  away from the probe gland and any moisture path.
+  away from the probe gland and any moisture path. The **Fixed** version has no cell — it runs from a
+  USB-C wall adapter, so none of these battery cautions apply to it.
 - The **stainless DS18B20 probe tip is the only part rated for immersion.** The
   ESP32, resistor, LED, and battery live inside the enclosure and must stay dry.
 - For fridge / freezer / fermentation: the stainless probe tip is food-contact

@@ -5,6 +5,10 @@
 > the `[BRACKETED]` fields, keep it to one page, and treat these first units as **loaner /
 > evaluation** units (not a sale) so you stay clean on FCC until your SDoC is done. Positioning
 > is **loss prevention**, never HACCP/health-code compliance.
+>
+> **Install the Fixed (USB) version** for pilots (see [`VERSIONS.md`](VERSIONS.md)): a walk-in has power,
+> so drop the battery — you get always-on live readings and instant alerts with **no lithium liability**
+> and nothing to swap. The battery (Portable) version is for portable/homelab use, not fixed installs.
 
 ---
 

@@ -4,6 +4,11 @@
 > assembly labor and (because the buyer builds the radio) it sidesteps finished-product FCC. This doc
 > is about one thing: **removing every reason a buyer hesitates or gives up.** Pairs with
 > [`TINDIE_LISTING.md`](TINDIE_LISTING.md) (listing copy) and [`PRODUCT_ROADMAP.md`](PRODUCT_ROADMAP.md).
+>
+> **Two versions to list** (see [`VERSIONS.md`](VERSIONS.md)): the **Portable** kit (battery + TP4056 +
+> switch — a movable tool you carry to any reading) and a cheaper **Fixed** kit (USB, no battery —
+> always-on for a rack, greenhouse, or walk-in). Same board, probe, and firmware; they're just two power
+> options on the listing. This is orthogonal to the Maker/Plug-Together solder tiers below.
 
 ---
 
