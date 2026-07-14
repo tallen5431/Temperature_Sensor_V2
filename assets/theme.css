@@ -103,6 +103,17 @@ body {
   display: flex; align-items: center; gap: .1rem;
 }
 
+/* KPI / stat cards: vertically centre content so equal-height cards read as
+   intentional rather than top-aligned with empty space below. */
+.metric-row .card-body, .stat-row .card-body {
+  display: flex; flex-direction: column; justify-content: center;
+}
+/* Keep the metric-row content (incl. the °C/°F/K toggle) at its natural width,
+   left-aligned like the KPI numbers, instead of stretching full-width. The
+   stat-row keeps the default stretch so its text-center layout still centres. */
+.metric-row .card-body { align-items: flex-start; }
+.metric-row .card-body .btn-group { width: auto; }
+
 /* KPI / stat labels: turn the dim grey <h6> labels into crisp mono readout
    captions — the signature "instrument" look from the brand pages. */
 .card-body h6.text-muted {

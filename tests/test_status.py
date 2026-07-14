@@ -45,6 +45,23 @@ def test_singular_pluralisation():
     assert "1 probe online" in text   # no trailing "s"
 
 
+def test_reporting_online_counts_db_probes_without_mdns():
+    # A probe posting to the DB but not mDNS-visible (deep sleep / demo data)
+    # still reads as online, so the footer agrees with the dashboard's
+    # "Connected Probes" instead of showing "idle".
+    s = hub_status([], online_timeout=60, total_readings=500, now=1000, reporting_online=2)
+    assert s["state"] == "online" and s["online"] == 2 and s["total"] == 2
+    text, css = footer_status_display(s)
+    assert "2 probes online" in text and "success" in css
+
+
+def test_reporting_online_takes_the_max_of_both_sources():
+    # mDNS sees 1 fresh probe; the DB reports 3 fresh — take the larger.
+    s = hub_status([_probe(995)], online_timeout=60, total_readings=10, now=1000,
+                   reporting_online=3)
+    assert s["state"] == "online" and s["online"] == 3 and s["total"] == 3
+
+
 def test_handles_object_style_probes():
     class P:
         def __init__(self, ls):

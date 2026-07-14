@@ -66,7 +66,7 @@ MetricsRow = dbc.Row([
             dbc.Button("K", id="unit-kelvin", size="sm", color="primary", outline=True),
         ], size="sm"),
     ]), className="h-100"), xs=6, lg=3),
-], className="g-3 mb-3")
+], className="g-3 mb-3 metric-row")
 
 # --- Statistics Row ---
 # xs=12 stacks the three stat cards on a phone; md=4 restores the 3-across row on
@@ -87,7 +87,7 @@ StatsRow = dbc.Row([
         html.H4(id="stat-avg", className="fw-bold text-success mb-0"),
         html.Small(id="stat-avg-info", className="text-muted"),
     ]), className="h-100 text-center"), xs=12, md=4),
-], className="g-3 mb-3")
+], className="g-3 mb-3 stat-row")
 
 # Per-probe Min/Max/Average — only rendered when 2+ probes have data, so a
 # multi-probe deployment doesn't collapse into one misleading aggregate (an
