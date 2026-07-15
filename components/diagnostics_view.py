@@ -109,7 +109,8 @@ def _render(d):
         ("Database size", human_size(db["size_bytes"])),
         ("Newest reading", db["newest_reading"] or "—"),
         ("Retention", f"{d['retention_days']} days" if d["retention_days"] else "Forever"),
-        ("Probes", f"{pr['online']} online / {pr['total']} total"),
+        ("Probes", (f"{pr['reporting']} reporting" if pr.get("reporting") is not None
+                    else f"{pr['online']} online") + f" · {pr['total']} discovered (mDNS)"),
         ("Notifications", _notif_summary(d["notifications"])),
         ("Generated", d["time"]),
     ])

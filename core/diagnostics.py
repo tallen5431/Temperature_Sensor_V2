@@ -72,6 +72,19 @@ def build_diagnostics(cfg, db, finder, public_base: str, version: str,
         probe_list.append({"name": get("name"), "probe_id": pid, "ip": get("ip"),
                            "age_sec": age, "online": is_online})
 
+    # Probes freshly REPORTING to the database — matches the dashboard's
+    # "Connected Probes". A deep-sleep (or otherwise non-mDNS-visible) probe that
+    # keeps posting still counts here even though it never appears in the mDNS
+    # discovery list above, so this figure agrees with the dashboard/footer.
+    reporting = None
+    try:
+        window = max(timeout, 300)
+        epochs = db.last_reading_epoch_per_probe(window_seconds=None) or {}
+        reporting = sum(1 for pid_, ep in epochs.items()
+                        if pid_ and (now - float(ep)) <= window)
+    except Exception:
+        reporting = None
+
     try:
         readings = db.count()
     except Exception:
@@ -110,7 +123,8 @@ def build_diagnostics(cfg, db, finder, public_base: str, version: str,
             "newest_reading": newest,
             "path": getattr(db, "path", None),
         },
-        "probes": {"total": len(probe_list), "online": online, "list": probe_list},
+        "probes": {"total": len(probe_list), "online": online,
+                   "reporting": reporting, "list": probe_list},
         "health": {
             "healthy": health["healthy"],
             "uptime_sec": max(0, int(now - PROCESS_START)),
