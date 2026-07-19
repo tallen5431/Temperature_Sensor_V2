@@ -15,8 +15,10 @@
     (manifest.json -> setpoint-esp32c3.merged.bin) via build_merged_bin.sh. The
     binary is intentionally NOT committed.
 
-    SELLER: replace the STORE_URL / KIT_URL / SUPPORT links below with your real
-    store, Tindie, and support URLs before publishing.
+    SELLER: replace the STORE_URL / KIT_URL / SUPPORT_URL / GUIDE_URL placeholders
+    below with your real store, Tindie, support, and hosted build-guide URLs before
+    publishing. (GUIDE_URL is used instead of repo-relative ../docs links because
+    this folder is served as the Pages site root.)
   -->
   <script
     type="module"
@@ -144,14 +146,14 @@
       <li>Plug the board into a USB port on this computer (power switch <strong>ON</strong>).</li>
       <li>Click <strong>Flash Setpoint</strong> and pick the board's serial port. If none
         appears, try another cable (many are charge-only) or hold <strong>BOOT</strong> while connecting.</li>
-      <li>When it finishes, follow the <a href="../docs/USER_MANUAL.md">setup guide</a>:
+      <li>When it finishes, follow the <a href="GUIDE_URL">setup guide</a>:
         join the <code>Setpoint-XXXXXX</code> Wi-Fi and point it at your dashboard.</li>
     </ol>
 
     <div class="unsupported" id="unsupported">
       This browser can't flash over USB. Open the page in <strong>Chrome, Edge, or Opera
       on a desktop</strong> — Web Serial isn't available in Safari, Firefox, or on mobile.
-      You can also <a href="../firmware/README.md">flash by hand with arduino-cli</a>.
+      You can also <a href="GUIDE_URL">flash by hand with arduino-cli</a>.
     </div>
 
     <div class="flash-row">
@@ -165,7 +167,7 @@
     <p class="note">Already flashed at the factory? This page is here for <b>updates and
       recovery</b> — re-flash any time to the latest version. Installs open firmware onto
       hardware you own; nothing is uploaded anywhere.
-      <a href="../firmware/README.md">Prefer arduino-cli?</a></p>
+      <a href="GUIDE_URL">Prefer arduino-cli?</a></p>
   </main>
 
   <!-- ---- sales cross-sell: turns recovery/update traffic into store visits ---- -->
@@ -189,7 +191,7 @@
 
   <footer>
     <div>
-      <a href="../docs/USER_MANUAL.md">Build guide</a>·
+      <a href="GUIDE_URL">Build guide</a>·
       <a href="STORE_URL">Store</a>·
       <a href="SUPPORT_URL">Support</a>
     </div>
