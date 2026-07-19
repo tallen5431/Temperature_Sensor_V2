@@ -21,6 +21,7 @@ on:
     paths:
       - "esp32_temp_probe/**"
       - "flash/**"
+      - "web/**"
       - ".github/workflows/deploy-flasher.yml"
   workflow_dispatch:
 
@@ -56,14 +57,17 @@ jobs:
       - name: Build merged firmware image
         run: ./flash/build_merged_bin.sh
 
-      - name: Assemble Pages site (flasher at root)
+      - name: Assemble Pages site (hub at root, flasher at /flash/)
         run: |
-          mkdir -p _site
+          mkdir -p _site/flash
+          cp web/index.html _site/index.html
           cp flash/index.html \
              flash/manifest.json \
              flash/setpoint-esp32c3.merged.bin \
-             _site/
-          ls -la _site
+             _site/flash/
+          # Custom domain — keeps setpoint.datumlaboratories.com bound across deploys.
+          echo "setpoint.datumlaboratories.com" > _site/CNAME
+          ls -R _site
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
