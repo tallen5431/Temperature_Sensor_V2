@@ -194,7 +194,7 @@ Setpoint drops into an existing self-hosted stack:
 
 ```bash
 # Ingest a test reading (no probe needed)
-curl "http://localhost:8088/api/ingest?temperature_c=22.3"
+curl -X POST -H 'Content-Type: application/json' -d '{"temperature_c":22.3}' http://localhost:8088/api/ingest"
 # → {"ok": true}
 ```
 

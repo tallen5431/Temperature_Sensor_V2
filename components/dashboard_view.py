@@ -166,7 +166,7 @@ def _onboarding_card():
                    className="mb-2 small"),
             dbc.Button("▶ Load demo data", id="demo-load-btn", color="info", size="sm"),
             html.P(["Or send a real test reading from a terminal: ",
-                    html.Code("curl \"http://localhost:8088/api/ingest?temperature_c=22.3\"")],
+                    html.Code("curl -X POST -H 'Content-Type: application/json' -d '{\"temperature_c\":22.3}' http://localhost:8088/api/ingest")],
                    className="mb-0 mt-2 small"),
         ],
         color="info", className="mb-3",
@@ -650,7 +650,7 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
             for _, row in latest_each.iterrows():
                 pid = row["probe_id"]
                 t_c = row["temperature_c"]
-                cfgt = thresholds.get(pid, thresholds.get("default", {}))
+                cfgt = thresholds.get(pid, thresholds.get("default", {})) or {}
                 hi, lo = cfgt.get("max"), cfgt.get("min")
                 if hi is not None and t_c > hi:
                     alerts.append(dbc.Alert([html.Strong(f"⚠️ {_friendly_name(cfg, pid)}: "),
