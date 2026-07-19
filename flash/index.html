@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌡️</text></svg>">
   <title>Flash your Setpoint</title>
   <meta name="description" content="Install or update the Setpoint firmware on your ESP32-C3 straight from the browser — no toolchain, no account." />
   <!--
@@ -15,9 +16,9 @@
     (manifest.json -> setpoint-esp32c3.merged.bin) via build_merged_bin.sh. The
     binary is intentionally NOT committed.
 
-    SELLER: replace the STORE_URL / KIT_URL / SUPPORT_URL / GUIDE_URL placeholders
+    SELLER: replace the https://datumlaboratories.com / https://datumlaboratories.com#kit / mailto:support@datumlaboratories.com / ../guide.html placeholders
     below with your real store, Tindie, support, and hosted build-guide URLs before
-    publishing. (GUIDE_URL is used instead of repo-relative ../docs links because
+    publishing. (../guide.html is used instead of repo-relative ../docs links because
     this folder is served as the Pages site root.)
   -->
   <script
@@ -146,14 +147,14 @@
       <li>Plug the board into a USB port on this computer (power switch <strong>ON</strong>).</li>
       <li>Click <strong>Flash Setpoint</strong> and pick the board's serial port. If none
         appears, try another cable (many are charge-only) or hold <strong>BOOT</strong> while connecting.</li>
-      <li>When it finishes, follow the <a href="GUIDE_URL">setup guide</a>:
+      <li>When it finishes, follow the <a href="../guide.html">setup guide</a>:
         join the <code>Setpoint-XXXXXX</code> Wi-Fi and point it at your dashboard.</li>
     </ol>
 
     <div class="unsupported" id="unsupported">
       This browser can't flash over USB. Open the page in <strong>Chrome, Edge, or Opera
       on a desktop</strong> — Web Serial isn't available in Safari, Firefox, or on mobile.
-      You can also <a href="GUIDE_URL">flash by hand with arduino-cli</a>.
+      You can also <a href="../guide.html">flash by hand with arduino-cli</a>.
     </div>
 
     <div class="flash-row">
@@ -167,20 +168,20 @@
     <p class="note">Already flashed at the factory? This page is here for <b>updates and
       recovery</b> — re-flash any time to the latest version. Installs open firmware onto
       hardware you own; nothing is uploaded anywhere.
-      <a href="GUIDE_URL">Prefer arduino-cli?</a></p>
+      <a href="../guide.html">Prefer arduino-cli?</a></p>
   </main>
 
   <!-- ---- sales cross-sell: turns recovery/update traffic into store visits ---- -->
   <section class="promo">
     <p class="promo-head">New to Setpoint? Get the hardware</p>
     <div class="promo-grid">
-      <a class="promo-card" href="STORE_URL">
+      <a class="promo-card" href="https://datumlaboratories.com">
         <span class="tag">Ready to run</span>
         <span class="name">Setpoint</span>
         <span class="desc">Assembled &amp; tested Wi-Fi temperature probe, rechargeable. Just add Wi-Fi.</span>
         <span class="go">Shop the finished unit →</span>
       </a>
-      <a class="promo-card" href="KIT_URL">
+      <a class="promo-card" href="https://datumlaboratories.com#kit">
         <span class="tag">Build it yourself</span>
         <span class="name">Setpoint DIY Kit</span>
         <span class="desc">Solder it, flash it, own it. Open firmware and hackable expansion header.</span>
@@ -191,9 +192,9 @@
 
   <footer>
     <div>
-      <a href="GUIDE_URL">Build guide</a>·
-      <a href="STORE_URL">Store</a>·
-      <a href="SUPPORT_URL">Support</a>
+      <a href="../guide.html">Build guide</a>·
+      <a href="https://datumlaboratories.com">Store</a>·
+      <a href="mailto:support@datumlaboratories.com">Support</a>
     </div>
     <div>Setpoint by Datum Labs · not a certified medical/food-safety/life-safety device</div>
   </footer>
