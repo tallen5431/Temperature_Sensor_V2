@@ -295,7 +295,7 @@ def download_backup():
     return Response(
         _stream_file_then_delete(tmp_path),
         mimetype="application/x-sqlite3",
-        headers={"Content-Disposition": "attachment; filename=temperature_hub_backup.db"},
+        headers={"Content-Disposition": "attachment; filename=setpoint_backup.db"},
     )
 
 

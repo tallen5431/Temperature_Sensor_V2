@@ -1,4 +1,4 @@
-"""SQLite-backed reading store for the Temperature Hub.
+"""SQLite-backed reading store for the Setpoint hub.
 
 Replaces the previous append-only CSV file as the system of record.  The CSV
 approach rewrote the whole file to add columns and was read in full by the

@@ -3,13 +3,19 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌡️</text></svg>">
+  <meta property="og:title" content="Setpoint — Start Here">
+<meta property="og:description" content="Set up your Setpoint Wi-Fi temperature probe: build guide, browser flasher, and the dashboard.">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
   <title>Setpoint — Start Here</title>
   <meta name="description" content="Set up your Setpoint: build guide, one-click firmware flasher, and the dashboard download." />
   <!--
     Setpoint hub — the landing page for the QR on cards + the 3D-embossed case.
     Served at the Pages site root (custom domain: setpoint.datumlaboratories.com).
-    The flasher lives at /flash/. Replace GUIDE_URL / DASHBOARD_URL / STORE_URL /
-    SUPPORT_URL / COMPANY_URL placeholders with your real links before launch.
+    The flasher lives at /flash/, the build guide at /guide.html.
+    TODO before wide launch: point "Store" at your Tindie/Shopify URL once live, and set
+    up Cloudflare Email Routing so support@datumlaboratories.com forwards to your inbox.
   -->
   <style>
     :root {
@@ -68,7 +74,7 @@
   </div>
 
   <div class="cards">
-    <a class="card primary" href="GUIDE_URL">
+    <a class="card primary" href="./guide.html">
       <span class="k">Step by step</span>
       <span class="t">Build &amp; setup guide</span>
       <span class="d">Assemble, wire the probe and battery, join Wi-Fi, and see your first reading.</span>
@@ -80,13 +86,13 @@
       <span class="d">Install or update the firmware from your browser — no toolchain. (Units ship pre-flashed.)</span>
       <span class="go">Open the flasher →</span>
     </a>
-    <a class="card" href="DASHBOARD_URL">
+    <a class="card" href="https://github.com/tallen5431/Temperature_Sensor_V2/releases">
       <span class="k">Windows · macOS</span>
       <span class="t">Get the dashboard</span>
       <span class="d">The self-hosted app: live view, per-probe stats, alerts, and CSV export.</span>
       <span class="go">Download →</span>
     </a>
-    <a class="card" href="SUPPORT_URL">
+    <a class="card" href="mailto:support@datumlaboratories.com">
       <span class="k">Stuck?</span>
       <span class="t">Support &amp; contact</span>
       <span class="d">Troubleshooting, FAQs, and how to reach us.</span>
@@ -96,11 +102,11 @@
 
   <div class="need">
     <b>New here?</b> Setpoint is a rechargeable Wi-Fi temperature probe with threshold alerts and a dashboard you run yourself.
-    <a href="STORE_URL" style="color:var(--brand-strong);">See the hardware →</a>
+    <a href="https://datumlaboratories.com" style="color:var(--brand-strong);">See the hardware →</a>
   </div>
 
   <footer>
-    <div><a href="COMPANY_URL">Datum Labs</a> · <a href="STORE_URL">Store</a> · <a href="SUPPORT_URL">Support</a></div>
+    <div><a href="https://datumlaboratories.com">Datum Labs</a> · <a href="https://datumlaboratories.com">Store</a> · <a href="mailto:support@datumlaboratories.com">Support</a></div>
     <div>Not a certified medical / food-safety / life-safety device.</div>
   </footer>
 </body>

@@ -32,7 +32,7 @@ def send_email(email_cfg: dict, subject: str, body: str) -> Tuple[bool, str]:
     port = int(email_cfg.get("smtp_port") or 587)
     user = (email_cfg.get("username") or "").strip()
     password = email_cfg.get("password") or ""
-    sender = (email_cfg.get("from") or user or "temperature-hub@localhost").strip()
+    sender = (email_cfg.get("from") or user or "setpoint@localhost").strip()
     use_tls = email_cfg.get("use_tls", True)
 
     msg = EmailMessage()
