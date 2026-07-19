@@ -807,6 +807,31 @@ def register_dashboard_callbacks(app, finder, cfg, db):
         return (True, False) if (clock_format or "24h") == "12h" else (False, True)
 
     @app.callback(
+        Output("clock-format-store", "data"),
+        Input("clock-24h", "n_clicks"),
+        Input("clock-12h", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def toggle_clock_format(_h24, _h12):
+        from dash import callback_context
+        if not callback_context.triggered:
+            return no_update
+        button_id = callback_context.triggered[0]["prop_id"].split(".")[0]
+        if button_id == "clock-24h":
+            return "24h"
+        if button_id == "clock-12h":
+            return "12h"
+        return no_update
+
+    @app.callback(
+        Output("clock-24h", "outline"),
+        Output("clock-12h", "outline"),
+        Input("clock-format-store", "data"),
+    )
+    def _sync_clock_buttons(clock_format):
+        return (True, False) if (clock_format or "24h") == "12h" else (False, True)
+
+    @app.callback(
         Output("download-btn", "href"),
         Input("time-range-selector", "value"),
         Input("focus-probe-selector", "value"),
