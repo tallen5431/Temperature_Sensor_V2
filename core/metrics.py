@@ -2,7 +2,7 @@
 """Prometheus metrics for the #1 beachhead niche: homelab / self-hosted /
 server-room monitoring.
 
-Exposing a /metrics endpoint lets TempSensor drop straight into an existing
+Exposing a /metrics endpoint lets Setpoint drop straight into an existing
 Prometheus + Grafana stack — the integration those buyers expect and that
 cloud thermometers can't offer. Pure stdlib text exposition format; no deps.
 """
@@ -48,53 +48,53 @@ def render_prometheus(health: dict, latest: dict, probes_count: int, version: st
     lines: list[str] = []
     now = time.time()
 
-    lines.append("# HELP tempsensor_up Whether the hub process is serving (always 1 when scraped).")
-    lines.append("# TYPE tempsensor_up gauge")
-    lines.append(f'tempsensor_up{{version="{_esc_label(version)}"}} 1')
+    lines.append("# HELP setpoint_up Whether the hub process is serving (always 1 when scraped).")
+    lines.append("# TYPE setpoint_up gauge")
+    lines.append(f'setpoint_up{{version="{_esc_label(version)}"}} 1')
 
-    lines.append("# HELP tempsensor_probes_total Number of known probes.")
-    lines.append("# TYPE tempsensor_probes_total gauge")
-    lines.append(f"tempsensor_probes_total {int(probes_count)}")
+    lines.append("# HELP setpoint_probes_total Number of known probes.")
+    lines.append("# TYPE setpoint_probes_total gauge")
+    lines.append(f"setpoint_probes_total {int(probes_count)}")
 
-    lines.append("# HELP tempsensor_rows_written_total Readings written to the log since start.")
-    lines.append("# TYPE tempsensor_rows_written_total counter")
-    lines.append(f"tempsensor_rows_written_total {int(health.get('rows_written', 0))}")
+    lines.append("# HELP setpoint_rows_written_total Readings written to the log since start.")
+    lines.append("# TYPE setpoint_rows_written_total counter")
+    lines.append(f"setpoint_rows_written_total {int(health.get('rows_written', 0))}")
 
-    lines.append("# HELP tempsensor_ingest_rejected_total Ingest requests rejected (bad/out-of-range).")
-    lines.append("# TYPE tempsensor_ingest_rejected_total counter")
-    lines.append(f"tempsensor_ingest_rejected_total {int(health.get('ingest_rejected', 0))}")
+    lines.append("# HELP setpoint_ingest_rejected_total Ingest requests rejected (bad/out-of-range).")
+    lines.append("# TYPE setpoint_ingest_rejected_total counter")
+    lines.append(f"setpoint_ingest_rejected_total {int(health.get('ingest_rejected', 0))}")
 
-    lines.append("# HELP tempsensor_write_failures_total CSV write failures since start.")
-    lines.append("# TYPE tempsensor_write_failures_total counter")
-    lines.append(f"tempsensor_write_failures_total {int(health.get('write_failures', 0))}")
+    lines.append("# HELP setpoint_write_failures_total CSV write failures since start.")
+    lines.append("# TYPE setpoint_write_failures_total counter")
+    lines.append(f"setpoint_write_failures_total {int(health.get('write_failures', 0))}")
 
-    lines.append("# HELP tempsensor_healthy Whether writes are flowing (1) or stale/failing (0).")
-    lines.append("# TYPE tempsensor_healthy gauge")
-    lines.append(f"tempsensor_healthy {1 if health.get('healthy') else 0}")
+    lines.append("# HELP setpoint_healthy Whether writes are flowing (1) or stale/failing (0).")
+    lines.append("# TYPE setpoint_healthy gauge")
+    lines.append(f"setpoint_healthy {1 if health.get('healthy') else 0}")
 
-    lines.append("# HELP tempsensor_probe_temperature_celsius Most recent temperature per probe.")
-    lines.append("# TYPE tempsensor_probe_temperature_celsius gauge")
+    lines.append("# HELP setpoint_probe_temperature_celsius Most recent temperature per probe.")
+    lines.append("# TYPE setpoint_probe_temperature_celsius gauge")
     for pid, r in sorted(latest.items()):
-        lines.append(f'tempsensor_probe_temperature_celsius{{probe_id="{_esc_label(pid)}"}} {r["temp_c"]:.3f}')
+        lines.append(f'setpoint_probe_temperature_celsius{{probe_id="{_esc_label(pid)}"}} {r["temp_c"]:.3f}')
 
     if any("humidity" in r for r in latest.values()):
-        lines.append("# HELP tempsensor_probe_humidity_percent Most recent relative humidity per probe.")
-        lines.append("# TYPE tempsensor_probe_humidity_percent gauge")
+        lines.append("# HELP setpoint_probe_humidity_percent Most recent relative humidity per probe.")
+        lines.append("# TYPE setpoint_probe_humidity_percent gauge")
         for pid, r in sorted(latest.items()):
             if "humidity" in r:
-                lines.append(f'tempsensor_probe_humidity_percent{{probe_id="{_esc_label(pid)}"}} {r["humidity"]:.2f}')
+                lines.append(f'setpoint_probe_humidity_percent{{probe_id="{_esc_label(pid)}"}} {r["humidity"]:.2f}')
 
     if any("vpd" in r for r in latest.values()):
-        lines.append("# HELP tempsensor_probe_vpd_kpa Most recent vapour pressure deficit per probe.")
-        lines.append("# TYPE tempsensor_probe_vpd_kpa gauge")
+        lines.append("# HELP setpoint_probe_vpd_kpa Most recent vapour pressure deficit per probe.")
+        lines.append("# TYPE setpoint_probe_vpd_kpa gauge")
         for pid, r in sorted(latest.items()):
             if "vpd" in r:
-                lines.append(f'tempsensor_probe_vpd_kpa{{probe_id="{_esc_label(pid)}"}} {r["vpd"]:.3f}')
+                lines.append(f'setpoint_probe_vpd_kpa{{probe_id="{_esc_label(pid)}"}} {r["vpd"]:.3f}')
 
-    lines.append("# HELP tempsensor_probe_last_reading_age_seconds Seconds since a probe last reported.")
-    lines.append("# TYPE tempsensor_probe_last_reading_age_seconds gauge")
+    lines.append("# HELP setpoint_probe_last_reading_age_seconds Seconds since a probe last reported.")
+    lines.append("# TYPE setpoint_probe_last_reading_age_seconds gauge")
     for pid, r in sorted(latest.items()):
         age = max(0.0, now - float(r.get("ts", now)))
-        lines.append(f'tempsensor_probe_last_reading_age_seconds{{probe_id="{_esc_label(pid)}"}} {age:.1f}')
+        lines.append(f'setpoint_probe_last_reading_age_seconds{{probe_id="{_esc_label(pid)}"}} {age:.1f}')
 
     return "\n".join(lines) + "\n"

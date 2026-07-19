@@ -3,7 +3,7 @@ import datetime
 import dash_bootstrap_components as dbc
 from dash import Input, Output, dcc, html
 
-from components.dashboard_view import DashboardLayout
+from components.dashboard_view import DashboardLayout, _reporting_probe_count
 from components.devices_panel import DevicesLayout, register_devices_callbacks
 from components.diagnostics_view import DiagnosticsLayout, register_diagnostics_callbacks
 from components.setup_helper import SetupHelper, register_setup_helper_callbacks
@@ -48,8 +48,10 @@ NAVBAR = dbc.Navbar(
     dbc.Container([
         html.A(
             dbc.Row([
-                dbc.Col(html.Span("🌡️", className="fs-4")),
-                dbc.Col(dbc.NavbarBrand(PRODUCT_NAME, className="ms-2 fw-bold")),
+                dbc.Col(html.Img(src="/assets/logo.svg", height="30", alt="",
+                                 className="d-block"), width="auto"),
+                dbc.Col(dbc.NavbarBrand(PRODUCT_NAME, className="ms-2 fw-bold mb-0"),
+                        width="auto"),
             ], align="center", className="g-0"),
             href="/", style={"textDecoration": "none"},
         ),
@@ -92,7 +94,11 @@ def register_footer_callbacks(app, finder, cfg, db):
         try:
             probes = (finder.list_probes() or {}).values()
             timeout = int(cfg.get("probe_online_timeout_sec", 60) or 60)
-            status = hub_status(probes, timeout, db.count())
+            # Use the same DB-based freshness count the dashboard shows, so the
+            # footer agrees with "Connected Probes" (deep-sleep / demo probes
+            # report to the DB but are never mDNS-visible).
+            reporting = _reporting_probe_count(db, cfg, finder)
+            status = hub_status(probes, timeout, db.count(), reporting_online=reporting)
             return footer_status_display(status)
         except Exception:
             return "Status: unknown", "text-muted fw-bold"

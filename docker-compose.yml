@@ -1,13 +1,13 @@
-# TempSensor — homelab deployment.
+# Setpoint — homelab deployment.
 #
 # mDNS probe auto-discovery requires the host network stack, so the default
 # service uses `network_mode: host` (Linux). On Docker Desktop (macOS/Windows)
 # host networking is limited; use the `bridge` override below and point probes
 # at the host's LAN IP, or run the hub natively.
 services:
-  tempsensor:
+  setpoint:
     build: .
-    container_name: tempsensor
+    container_name: setpoint
     restart: unless-stopped
     network_mode: host          # needed for mDNS discovery on the LAN
     volumes:
@@ -18,7 +18,7 @@ services:
       # - PUBLIC_BASE=http://192.168.1.50:8080
 
   # Alternative for Docker Desktop (no host networking / no mDNS auto-discovery):
-  # tempsensor-bridge:
+  # setpoint-bridge:
   #   build: .
   #   restart: unless-stopped
   #   ports:

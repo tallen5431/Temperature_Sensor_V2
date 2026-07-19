@@ -23,7 +23,7 @@ def _probe(name, ip, last_seen, probe_id=None):
 def test_same_ip_collapses_to_freshest():
     # The exact field scenario: one mDNS card (stale) + one ingest card (fresh).
     probes = {
-        "TempSensor-8C58": _probe("TempSensor-8C58", "192.168.1.219", 1000.0),
+        "Setpoint-8C58": _probe("Setpoint-8C58", "192.168.1.219", 1000.0),
         "TempProbe-0002":  _probe("TempProbe-0002",  "192.168.1.219", 3000.0),
     }
     out = dedupe_probes_by_ip(probes)
@@ -36,7 +36,7 @@ def test_freshest_wins_regardless_of_order():
     # Same IP but the fresh entry is listed first — order must not matter.
     probes = {
         "TempProbe-0002":  _probe("TempProbe-0002",  "10.0.0.5", 5000.0),
-        "TempSensor-8C58": _probe("TempSensor-8C58", "10.0.0.5", 1000.0),
+        "Setpoint-8C58": _probe("Setpoint-8C58", "10.0.0.5", 1000.0),
     }
     out = dedupe_probes_by_ip(probes)
     assert len(out) == 1
@@ -66,7 +66,7 @@ def test_unknown_ip_entries_pass_through():
 def test_surviving_entry_keeps_real_key():
     # The provisioner addresses probes by their dict key, so it must survive.
     probes = {
-        "stale-key": _probe("TempSensor-8C58", "192.168.1.219", 1000.0),
+        "stale-key": _probe("Setpoint-8C58", "192.168.1.219", 1000.0),
         "fresh-key": _probe("TempProbe-0002",  "192.168.1.219", 3000.0),
     }
     out = dedupe_probes_by_ip(probes)
@@ -76,7 +76,7 @@ def test_surviving_entry_keeps_real_key():
 def test_handles_dict_style_probes():
     # Discovery may hold dict-shaped entries (minimal ingest records); support both.
     probes = {
-        "TempSensor-8C58": {"name": "TempSensor-8C58", "ip": "192.168.1.219", "last_seen": 1000.0},
+        "Setpoint-8C58": {"name": "Setpoint-8C58", "ip": "192.168.1.219", "last_seen": 1000.0},
         "TempProbe-0002":  {"name": "TempProbe-0002",  "ip": "192.168.1.219", "last_seen": 3000.0},
     }
     out = dedupe_probes_by_ip(probes)

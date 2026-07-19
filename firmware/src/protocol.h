@@ -1,5 +1,5 @@
 // ============================================================================
-// protocol.h  --  Shared TempSensor constants & hardware contract
+// protocol.h  --  Shared Setpoint constants & hardware contract
 // ============================================================================
 // CANONICAL FIRMWARE: the shipping implementation is the Arduino sketch
 //   esp32_temp_probe/esp32_temp_probe.ino
@@ -30,15 +30,17 @@
 #define TEMPSENSOR_PROTO      1         // wire protocol version
 
 // ---------------------------------------------------------------------------
-// GPIO PIN MAP  (ESP32-WROOM-32E)  --  keep in sync with docs/BOM.md + ASSEMBLY
+// GPIO PIN MAP  (ESP32-C3 SuperMini — the rev-1 board)  --  keep in sync with docs/BOM.md + ASSEMBLY
 // ---------------------------------------------------------------------------
 // DS18B20 is the ONLY sensor in the current firmware: DATA on ONE_WIRE_BUS with
 // a 4.7k pull-up to 3V3.  (Matches `#define ONE_WIRE_BUS 5` in the .ino.)
 #define ONE_WIRE_BUS   5     // GPIO5  -> DS18B20 DQ (needs 4.7k pull-up to 3V3)
 
-// Status LED: on-board LED of most ESP32 dev boards is GPIO2 (LED_BUILTIN).
-#define STATUS_LED     2     // GPIO2  -> status LED (active-high)
-#define STATUS_LED_ACTIVE_HIGH 1
+// Status LED: the ESP32-C3 SuperMini onboard LED is GPIO8, wired ACTIVE-LOW (also a boot
+// strapping pin, held high at reset by the onboard pull-up). The .ino selects this
+// automatically when built for the C3 target; a WROOM build falls back to GPIO2 active-high.
+#define STATUS_LED     8     // GPIO8  -> status LED (active-low on the C3 SuperMini)
+#define STATUS_LED_ACTIVE_HIGH 0
 
 // ---- FUTURE / OPTIONAL sensors -- NOT in the current firmware --------------
 // The shipping sketch is DS18B20-only.  Nothing below is wired, read, or
@@ -59,7 +61,7 @@
 // ---------------------------------------------------------------------------
 // SoftAP setup network (used when the probe has no saved Wi-Fi credentials)
 // ---------------------------------------------------------------------------
-// SSID == the probe id, e.g. "TempSensor-9A3F2C" (per-unit unique).  The AP is
+// SSID == the probe id, e.g. "Setpoint-9A3F2C" (per-unit unique).  The AP is
 // OPEN (no password) -- it only exists during first-time setup and is torn down
 // once the probe joins the home Wi-Fi, so an open network keeps setup one-tap
 // simple.  WiFiManager serves the captive setup portal at 192.168.4.1.  (A
@@ -101,11 +103,11 @@
 //               (globally unique per Dallas part); if no sensor is present at
 //               first boot it FALLS BACK to the last 6 hex of the ESP32 efuse
 //               MAC (chip id).  e.g. "9A3F2C".
-//   probe_id  = "TempSensor-" + HEX6            e.g. "TempSensor-9A3F2C"
+//   probe_id  = "Setpoint-" + HEX6            e.g. "Setpoint-9A3F2C"
 //               DERIVED ONCE and PERSISTED IN NVS on first boot, then reused for
 //               the life of the unit -- a later failed ROM read can no longer
 //               flip the identity (see stableProbeId() in the .ino).
-//   mDNS host = probe_id -> "<probe_id>.local"   e.g. "TempSensor-9A3F2C.local"
+//   mDNS host = probe_id -> "<probe_id>.local"   e.g. "Setpoint-9A3F2C.local"
 //   SoftAP SSID = probe_id                        (same string as probe_id)
 //   AP password = NONE. The setup AP is OPEN -- it only exists during first-time
 //                 setup and disappears once the probe joins the home Wi-Fi, so an
@@ -121,7 +123,7 @@
 //   * JSON body field "probe_id" on every ingest POST
 // The sketch logs the id and the "[label]" line at boot.
 // ---------------------------------------------------------------------------
-#define PROBE_ID_PREFIX     "TempSensor-"
+#define PROBE_ID_PREFIX     "Setpoint-"
 // (The setup AP is open, so there is no AP-password prefix.)
 
 // mDNS service advertised by the probe (hub browses for this).

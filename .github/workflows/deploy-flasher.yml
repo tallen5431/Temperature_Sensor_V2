@@ -1,0 +1,85 @@
+name: deploy-flasher
+
+# Builds the ESP32-C3 merged firmware image and publishes the browser flasher
+# (the flash/ folder) to GitHub Pages, so kit buyers and owners can flash from
+# Chrome/Edge/Opera at a stable HTTPS URL.
+#
+# One-time setup: Settings -> Pages -> Source: "GitHub Actions".
+# After the first successful run the flasher is served at:
+#   https://<owner>.github.io/<repo>/
+#
+# The merged binary is .gitignored (never committed); this workflow rebuilds it
+# fresh each time and ships it inside the Pages artifact.
+#
+# NOTE: like every firmware step in this repo, a produced binary must be
+# validated on real ESP32-C3 hardware (docs/QC_CHECKLIST.md) before you point
+# buyers at it. Treat an un-validated deploy as staging only.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "esp32_temp_probe/**"
+      - "flash/**"
+      - "web/**"
+      - ".github/workflows/deploy-flasher.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never run two Pages deploys at once; let an in-flight deploy finish.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install arduino-cli
+        uses: arduino/setup-arduino-cli@v2
+
+      - name: Install ESP32 core + libraries
+        run: |
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32
+          arduino-cli lib install \
+            "WiFiManager" "ArduinoJson" "OneWire" "DallasTemperature"
+
+      - name: Install esptool
+        run: pip install --quiet esptool
+
+      - name: Build merged firmware image
+        run: ./flash/build_merged_bin.sh
+
+      - name: Assemble Pages site (hub at root, flasher at /flash/)
+        run: |
+          mkdir -p _site/flash
+          cp web/index.html _site/index.html
+          cp flash/index.html \
+             flash/manifest.json \
+             flash/setpoint-esp32c3.merged.bin \
+             _site/flash/
+          # Custom domain — keeps setpoint.datumlaboratories.com bound across deploys.
+          echo "setpoint.datumlaboratories.com" > _site/CNAME
+          ls -R _site
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

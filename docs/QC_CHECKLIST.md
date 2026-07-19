@@ -1,6 +1,6 @@
-# TempSensor — Manufacturing QC Checklist
+# Setpoint — Manufacturing QC Checklist
 
-Pass/fail gate for **one** TempSensor unit before it is labeled and boxed.
+Pass/fail gate for **one** Setpoint unit before it is labeled and boxed.
 Every line must be **PASS**. Any **FAIL** stops the unit — fix and re-run from
 the failed step. This checklist is driven by
 [`firmware/factory_flash.py`](../firmware/factory_flash.py), which flashes the
@@ -27,8 +27,14 @@ You need this available before running units:
       (Optional: `esptool` only if you want to log the chip MAC.)
 - [ ] USB-C data cable + the unit's USB power path known-good.
 - [ ] A charged **rechargeable-lithium battery** fitted (or the unit on USB) so
-      deep-sleep wake behaviour can be observed.
-- [ ] A **bench TempSensor** running on the LAN (`Start.sh` / `Start.bat`,
+      deep-sleep wake behaviour can be observed. **Version note** (see [VERSIONS.md](VERSIONS.md)):
+      for a **Portable** (battery/deep-sleep) unit, run QC on USB or with a short read interval so its
+      web endpoints stay reachable while you test — a deep-sleeping unit answers local URLs only for a
+      few seconds at each wake (**tap reset** to wake it on demand). A **Fixed** (USB) unit is always
+      reachable.
+- [ ] A cup of **stirred ice-water slush** (crushed ice + a little water) for the 0 °C accuracy
+      check in step 5.3.
+- [ ] A **bench Setpoint** running on the LAN (`Start.sh` / `Start.bat`,
       dashboard at `http://localhost:8080`). Note its LAN URL and device token —
       you will confirm one live ingest into it.
 - [ ] A phone or laptop that can see 2.4 GHz Wi-Fi (to verify the SoftAP).
@@ -48,14 +54,14 @@ tick each item below as the operator confirms it.
       only to re-QC an already-flashed unit.)
 - [ ] **1.2** Unit reboots on its own after flashing (no reset-loop on serial).
 
-### 2. Identity — persistent `TempSensor-<HEX6>`
+### 2. Identity — persistent `Setpoint-<HEX6>`
 - [ ] **2.1** Boot serial prints the machine-readable line
       `[label] probe_id=... ap_ssid=... ap_pass=none`; `factory_flash.py` echoes
       `Probe ID`, `Setup Wi-Fi`.
-- [ ] **2.2** `probe_id` is `TempSensor-<HEX6>` (6 UPPERCASE hex, derived from
+- [ ] **2.2** `probe_id` is `Setpoint-<HEX6>` (6 UPPERCASE hex, derived from
       the DS18B20 sensor ROM and **persisted in NVS**). Confirm it is stable
       across a power-cycle — it must **not** change between boots.
-- [ ] **2.3** `GET http://<probe-ip>/whoami` (or `TempSensor-<HEX6>.local`)
+- [ ] **2.3** `GET http://<probe-ip>/whoami` (or `Setpoint-<HEX6>.local`)
       returns `{id,name,mac,ds18b20_rom,fw_version,...}` with `id` == the printed
       `probe_id` and `fw_version` == **`2.4.0`**.
 - [ ] **2.4** **Uniqueness:** the `probe_id` is not already present in the batch
@@ -64,7 +70,7 @@ tick each item below as the operator confirms it.
 
 ### 3. SoftAP setup network (open)
 - [ ] **3.1** With no saved Wi-Fi, the unit brings up SoftAP SSID
-      **`TempSensor-<HEX6>`** (== `probe_id`), visible on a phone.
+      **`Setpoint-<HEX6>`** (== `probe_id`), visible on a phone.
 - [ ] **3.2** The AP is **open** (no password prompt) and joins directly — no key
       to enter. The serial `[label]` line shows `ap_pass=none`.
 - [ ] **3.3** After joining the AP, `http://192.168.4.1` serves the WiFiManager
@@ -82,6 +88,13 @@ tick each item below as the operator confirms it.
       `GET /` page shows the same reading in °C/°F.
 - [ ] **5.2** Warming the probe (fingers / breath) moves the reading in the
       right direction within a few sample intervals.
+- [ ] **5.3 Ice-bath 0 °C check (backs the "verified" claim).** Dip the stainless probe tip in the
+      **stirred ice-water slush**, wait ~30 s to settle, and read it. Must be **0 °C ± 0.5 °C**.
+      Record it as `ice_c` in the serial log. **Only a unit that passes this may be advertised as
+      "verified at 0 °C to within ±0.5 °C"** — otherwise claim only the datasheet "±0.5 °C typical,
+      uncalibrated." A reading outside ±0.5 °C: set a per-probe offset in the hub, or quarantine a
+      wildly-off probe as a possible counterfeit DS18B20 (its ROM — and thus the `probe_id` — may be
+      untrustworthy too).
 
 ### 6. One successful ingest to the bench hub
 - [ ] **6.1** Provision the unit against the bench hub (hub auto-provisioner,

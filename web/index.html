@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Setpoint — Start Here</title>
+  <meta name="description" content="Set up your Setpoint: build guide, one-click firmware flasher, and the dashboard download." />
+  <!--
+    Setpoint hub — the landing page for the QR on cards + the 3D-embossed case.
+    Served at the Pages site root (custom domain: setpoint.datumlaboratories.com).
+    The flasher lives at /flash/. Replace GUIDE_URL / DASHBOARD_URL / STORE_URL /
+    SUPPORT_URL / COMPANY_URL placeholders with your real links before launch.
+  -->
+  <style>
+    :root {
+      --brand:#17b3cc; --brand-strong:#3fcbe0; --brand-wash:rgba(23,179,204,.12);
+      --bg:#0b131b; --surface:#131f2b; --surface-2:#18242f; --border:#22323f; --border-strong:#2f4454;
+      --text:#e9f1f7; --text-soft:#9db0be; --text-faint:#6e8393; --warn:#efb02e;
+      --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+      --mono:ui-monospace,"SF Mono","Cascadia Code","Roboto Mono",Menlo,Consolas,monospace;
+      color-scheme: dark;
+    }
+    * { box-sizing:border-box; }
+    body {
+      margin:0; padding:2.75rem 1rem 3rem; color:var(--text);
+      font-family:var(--font); font-size:16px; line-height:1.55;
+      background: radial-gradient(1100px 460px at 50% -8%, rgba(23,179,204,.10), transparent 70%), var(--bg);
+      display:flex; flex-direction:column; align-items:center; gap:1.5rem; -webkit-font-smoothing:antialiased;
+    }
+    .wordmark { display:flex; align-items:baseline; gap:.5rem; font-weight:800; letter-spacing:-.02em; font-size:1.2rem; }
+    .wordmark .by { font-family:var(--mono); font-size:.62rem; letter-spacing:.12em; text-transform:uppercase; color:var(--text-faint); font-weight:400; }
+    .head { max-width:640px; text-align:center; }
+    .eyebrow { font-family:var(--mono); font-size:.72rem; letter-spacing:.18em; text-transform:uppercase; color:var(--brand); margin:0 0 .55rem; }
+    h1 { margin:0 0 .5rem; font-size:2rem; letter-spacing:-.02em; }
+    .head p { margin:0; color:var(--text-soft); }
+
+    .cards { width:100%; max-width:640px; display:grid; grid-template-columns:1fr 1fr; gap:.85rem; }
+    @media (max-width:520px){ .cards { grid-template-columns:1fr; } }
+    .card {
+      background:linear-gradient(180deg,var(--surface),#0f1a24); border:1px solid var(--border);
+      border-radius:14px; padding:1.25rem 1.2rem; text-decoration:none; color:inherit;
+      display:flex; flex-direction:column; gap:.3rem; transition:border-color .12s ease, transform .12s ease;
+    }
+    .card:hover { border-color:var(--brand); transform:translateY(-2px); }
+    .card.primary { border-color:var(--brand); box-shadow:0 0 0 1px var(--brand); }
+    .card .k { font-family:var(--mono); font-size:.64rem; letter-spacing:.12em; text-transform:uppercase; color:var(--brand); }
+    .card .t { font-weight:700; font-size:1.12rem; letter-spacing:-.01em; }
+    .card .d { font-size:.88rem; color:var(--text-soft); }
+    .card .go { font-family:var(--mono); font-size:.78rem; color:var(--brand-strong); margin-top:.3rem; }
+
+    .need { max-width:640px; width:100%; font-family:var(--mono); font-size:.8rem; color:var(--text-soft);
+      background:var(--surface-2); border:1px solid var(--border); border-radius:10px; padding:.7rem .9rem; }
+    .need b { color:var(--text); }
+
+    footer { max-width:640px; width:100%; text-align:center; color:var(--text-faint);
+      font-family:var(--mono); font-size:.74rem; letter-spacing:.02em; line-height:1.8; }
+    footer a { color:var(--text-soft); text-decoration:none; margin:0 .4rem; }
+    footer a:hover { color:var(--brand-strong); }
+  </style>
+</head>
+<body>
+  <div class="wordmark">Setpoint <span class="by">by Datum&nbsp;Labs</span></div>
+
+  <div class="head">
+    <p class="eyebrow">Start here</p>
+    <h1>Set up your Setpoint</h1>
+    <p>Wi-Fi temperature monitoring you own — no hub, no subscription. Pick up where you are:</p>
+  </div>
+
+  <div class="cards">
+    <a class="card primary" href="GUIDE_URL">
+      <span class="k">Step by step</span>
+      <span class="t">Build &amp; setup guide</span>
+      <span class="d">Assemble, wire the probe and battery, join Wi-Fi, and see your first reading.</span>
+      <span class="go">Open the guide →</span>
+    </a>
+    <a class="card" href="./flash/">
+      <span class="k">One click</span>
+      <span class="t">Flash the firmware</span>
+      <span class="d">Install or update the firmware from your browser — no toolchain. (Units ship pre-flashed.)</span>
+      <span class="go">Open the flasher →</span>
+    </a>
+    <a class="card" href="DASHBOARD_URL">
+      <span class="k">Windows · macOS</span>
+      <span class="t">Get the dashboard</span>
+      <span class="d">The self-hosted app: live view, per-probe stats, alerts, and CSV export.</span>
+      <span class="go">Download →</span>
+    </a>
+    <a class="card" href="SUPPORT_URL">
+      <span class="k">Stuck?</span>
+      <span class="t">Support &amp; contact</span>
+      <span class="d">Troubleshooting, FAQs, and how to reach us.</span>
+      <span class="go">Get help →</span>
+    </a>
+  </div>
+
+  <div class="need">
+    <b>New here?</b> Setpoint is a rechargeable Wi-Fi temperature probe with threshold alerts and a dashboard you run yourself.
+    <a href="STORE_URL" style="color:var(--brand-strong);">See the hardware →</a>
+  </div>
+
+  <footer>
+    <div><a href="COMPANY_URL">Datum Labs</a> · <a href="STORE_URL">Store</a> · <a href="SUPPORT_URL">Support</a></div>
+    <div>Not a certified medical / food-safety / life-safety device.</div>
+  </footer>
+</body>
+</html>

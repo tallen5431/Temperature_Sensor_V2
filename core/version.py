@@ -1,7 +1,7 @@
 """Single source of truth for hub version and product metadata."""
 
 HUB_VERSION = "2.4.0"
-PRODUCT_NAME = "TempSensor"
+PRODUCT_NAME = "Setpoint"
 DOCS_URL = "https://github.com/tallen5431/temperature_sensor_v2#readme"
 
 # Firmware<->hub wire protocol version. Probes advertise `proto` in their mDNS

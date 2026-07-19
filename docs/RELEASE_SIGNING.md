@@ -34,7 +34,7 @@ base64 -w0 your-cert.pfx        # copy the output into the secret
 | `WINDOWS_CERT_BASE64` | base64 of the `.pfx` |
 | `WINDOWS_CERT_PASSWORD` | the `.pfx` password |
 
-When present, the workflow signs `TempSensor-Setup-*.exe` with `signtool`
+When present, the workflow signs `Setpoint-Setup-*.exe` with `signtool`
 (SHA-256, RFC-3161 timestamp).
 
 ## macOS (Developer ID + notarization)
@@ -73,7 +73,7 @@ You can build each installer on its own OS without any secrets:
 
 - **Windows:** `packaging\windows\build_installer.ps1` (needs Inno Setup on PATH).
 - **macOS:** `packaging/macos/build_dmg.sh`.
-- **Linux:** `packaging/build.sh`, then `tar -C dist -czf TempSensor-linux.tar.gz temperature-hub`.
+- **Linux:** `packaging/build.sh`, then `tar -C dist -czf Setpoint-linux.tar.gz temperature-hub`.
 
 Set `APPLE_SIGN_IDENTITY` / the `APPLE_API_*` vars before running the macOS
 script to sign locally.

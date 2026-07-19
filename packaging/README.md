@@ -44,9 +44,9 @@ When frozen, the hub keeps `config.json`, `temperature_log.db`, and `logs/` in a
 
 | OS | Default data directory |
 | --- | --- |
-| Windows | `%LOCALAPPDATA%\TempSensor` |
-| macOS | `~/Library/Application Support/TempSensor` |
-| Linux | `~/.local/share/TempSensor` (or `$XDG_DATA_HOME/TempSensor`) |
+| Windows | `%LOCALAPPDATA%\Setpoint` |
+| macOS | `~/Library/Application Support/Setpoint` |
+| Linux | `~/.local/share/Setpoint` (or `$XDG_DATA_HOME/Setpoint`) |
 
 Override with the `DATA_DIR` environment variable (recommended for service
 installs — point it at a dedicated writable directory). For backward

@@ -1,7 +1,7 @@
 # Release Runbook
 
-A lightweight, solo-maker checklist for cutting a TempSensor release and shipping
-a batch of TempSensor units. Do the steps in order; each release is one version
+A lightweight, solo-maker checklist for cutting a Setpoint release and shipping
+a batch of Setpoint units. Do the steps in order; each release is one version
 number applied consistently to the hub, the firmware, and the store listing.
 
 ## 1. Bump the version
@@ -34,7 +34,7 @@ green there before tagging.
 
 ```
 git commit -am "Release vX.Y.Z"
-git tag -a vX.Y.Z -m "TempSensor vX.Y.Z"
+git tag -a vX.Y.Z -m "Setpoint vX.Y.Z"
 git push && git push --tags
 ```
 
@@ -45,7 +45,7 @@ one-file Windows executable:
 
 ```
 pip install pyinstaller
-pyinstaller --onefile --name TempSensor app.py
+pyinstaller --onefile --name Setpoint app.py
 ```
 
 (Bundle `config.example.json` and `assets/` alongside the binary.) Smoke-test the

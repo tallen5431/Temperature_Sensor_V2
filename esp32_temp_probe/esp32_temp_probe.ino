@@ -34,11 +34,25 @@
 
 // ---------------- Pins & LED ------------------------------------------------
 #define ONE_WIRE_BUS 5
-#ifndef LED_BUILTIN
-  #define LED_BUILTIN 2
+
+// Status LED — auto-selected by build target so one firmware image fits both boards:
+//   * ESP32-C3 SuperMini (the rev-1 board): onboard LED on GPIO8, wired ACTIVE-LOW
+//     (drive LOW = lit). GPIO8 is also a boot strapping pin and must be HIGH at reset;
+//     the SuperMini's onboard pull-up holds it high at boot, and ledInit() drives it
+//     HIGH (LED off) once the app is running, so using it as the status LED is boot-safe.
+//   * ESP32-WROOM-32/-32E (fallback): onboard LED on GPIO2, ACTIVE-HIGH.
+#if defined(CONFIG_IDF_TARGET_ESP32C3)
+  #ifndef PIN_STATUS_LED
+    #define PIN_STATUS_LED 8
+  #endif
+  static const bool LED_ACTIVE_LOW = true;
+#else
+  #ifndef LED_BUILTIN
+    #define LED_BUILTIN 2
+  #endif
+  #define PIN_STATUS_LED LED_BUILTIN
+  static const bool LED_ACTIVE_LOW = false;
 #endif
-#define PIN_STATUS_LED LED_BUILTIN
-static const bool LED_ACTIVE_LOW = false;
 static const bool LED_ENABLED    = (PIN_STATUS_LED != ONE_WIRE_BUS);
 
 inline void ledInit()  { if (LED_ENABLED) { pinMode(PIN_STATUS_LED, OUTPUT); digitalWrite(PIN_STATUS_LED, LED_ACTIVE_LOW ? HIGH : LOW); } }
@@ -50,7 +64,7 @@ inline void ledBlink(uint8_t n, uint16_t onMs = 60, uint16_t offMs = 120) {
 }
 
 // ---------------- Identity --------------------------------------------------
-static const char* SENSOR_NAME = "TempSensor";
+static const char* SENSOR_NAME = "Setpoint";
 static const char* FW_VERSION  = "2.4.0";
 
 // The setup SoftAP is intentionally OPEN (no password): it only exists during
@@ -564,7 +578,7 @@ String ds18b20RomHex() {
 }
 
 String buildProbeId(const String& rom, const String& chip) {
-  // "TempSensor-<HEX6>": 6 uppercase hex, wide enough that a manufacturing
+  // "Setpoint-<HEX6>": 6 uppercase hex, wide enough that a manufacturing
   // batch won't collide. Derived from the DS18B20 ROM (globally unique) when the
   // sensor reads, else from the chip's efuse MAC. Persisted by stableProbeId().
   String hex;
@@ -572,7 +586,7 @@ String buildProbeId(const String& rom, const String& chip) {
   else if (chip.length() >= 6) hex = chip.substring(chip.length() - 6);
   else hex = (rom.length() ? rom : chip);
   hex.toUpperCase();
-  return "TempSensor-" + hex;
+  return "Setpoint-" + hex;
 }
 
 // Read the DS18B20 ROM with a few retries.  On a cold boot the 1-Wire bus can
@@ -718,7 +732,7 @@ void setup() {
     wm.addParameter(&p_token);
     wm.addParameter(&p_interval);
 
-    // Per-unit unique, OPEN setup AP (SSID == the probe id, e.g. TempSensor-9A3F2C).
+    // Per-unit unique, OPEN setup AP (SSID == the probe id, e.g. Setpoint-9A3F2C).
     // No password: the AP only exists during first-time setup and disappears once
     // the probe joins the home Wi-Fi, so an open network keeps setup one-tap simple.
     if (!wm.autoConnect(g_probeId.c_str())) {

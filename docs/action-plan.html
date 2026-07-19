@@ -1,0 +1,444 @@
+<title>Setpoint — Master Action Plan</title>
+<meta name="description" content="Setpoint, by Datum Labs — the revenue-first master action plan: DIY kits + restaurant loaner pilots now, rev-2 and FCC gated on proven demand." />
+
+<style>
+  :root {
+    --ground: #eef3f6;
+    --paper: #ffffff;
+    --paper-2: #f6fafb;
+    --ink: #10202a;
+    --ink-soft: #475966;
+    --ink-faint: #7b909e;
+    --line: #d6e1e8;
+    --line-strong: #c2d2db;
+    --accent: #0a8ba1;
+    --accent-bright: #0e9cb5;
+    --accent-wash: #e3f4f7;
+    --gold: #9c6408;
+    --gold-wash: #f6ead2;
+    --green: #157a54;
+    --green-wash: #e0f2ea;
+    --shadow: 0 18px 44px -26px rgba(16,32,42,.42);
+
+    --font-display: "Helvetica Neue", "Arial Nova", "Segoe UI", system-ui, sans-serif;
+    --font-body: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Menlo, Consolas, monospace;
+
+    --maxw: 960px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0a1218; --paper: #101b24; --paper-2: #152431; --ink: #e7f1f6;
+      --ink-soft: #9fb3c0; --ink-faint: #6b8393; --line: #223849; --line-strong: #2d4658;
+      --accent: #35c8e0; --accent-bright: #5bd8ec; --accent-wash: rgba(53,200,224,.12);
+      --gold: #eab35c; --gold-wash: rgba(234,179,92,.13);
+      --green: #33c88c; --green-wash: rgba(51,200,140,.13);
+      --shadow: 0 22px 50px -28px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0a1218; --paper: #101b24; --paper-2: #152431; --ink: #e7f1f6;
+    --ink-soft: #9fb3c0; --ink-faint: #6b8393; --line: #223849; --line-strong: #2d4658;
+    --accent: #35c8e0; --accent-bright: #5bd8ec; --accent-wash: rgba(53,200,224,.12);
+    --gold: #eab35c; --gold-wash: rgba(234,179,92,.13);
+    --green: #33c88c; --green-wash: rgba(51,200,140,.13);
+    --shadow: 0 22px 50px -28px rgba(0,0,0,.7);
+  }
+  :root[data-theme="light"] {
+    --ground: #eef3f6; --paper: #ffffff; --paper-2: #f6fafb; --ink: #10202a;
+    --ink-soft: #475966; --ink-faint: #7b909e; --line: #d6e1e8; --line-strong: #c2d2db;
+    --accent: #0a8ba1; --accent-bright: #0e9cb5; --accent-wash: #e3f4f7;
+    --gold: #9c6408; --gold-wash: #f6ead2; --green: #157a54; --green-wash: #e0f2ea;
+    --shadow: 0 18px 44px -26px rgba(16,32,42,.42);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font-family: var(--font-body); line-height: 1.6;
+    -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+  }
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 22px; }
+  section { padding: 46px 0; border-top: 1px solid var(--line); }
+  section:first-of-type { border-top: none; }
+
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  :focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 3px; border-radius: 3px; }
+
+  /* ---- shared type ---- */
+  .eyebrow {
+    font-family: var(--font-mono); font-size: .7rem; font-weight: 600;
+    letter-spacing: .18em; text-transform: uppercase; color: var(--accent);
+    display: flex; align-items: center; gap: 9px; margin: 0 0 14px;
+  }
+  .eyebrow::before { content: ""; width: 26px; height: 0; border-top: 2px dashed var(--accent); opacity: .8; }
+  h2 { font-family: var(--font-display); font-weight: 800; font-size: clamp(1.5rem, 3.5vw, 2rem); letter-spacing: -.02em; margin: 0 0 6px; text-wrap: balance; }
+  h3 { font-family: var(--font-display); font-weight: 750; font-size: 1.06rem; letter-spacing: -.01em; margin: 0; }
+  .sub { color: var(--ink-soft); font-size: .98rem; margin: 0 0 26px; max-width: 62ch; }
+  p { max-width: 68ch; }
+  strong { color: var(--ink); font-weight: 680; }
+  code { font-family: var(--font-mono); font-size: .84em; background: var(--accent-wash); color: var(--accent); padding: .08rem .34rem; border-radius: 5px; }
+  :root[data-theme="dark"] code, .darkcode { color: var(--accent-bright); }
+
+  /* ---- header ---- */
+  .hero { padding: 40px 0 44px; border-top: none; }
+  .brandrow { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .wordmark { font-family: var(--font-display); font-weight: 800; font-size: 1.5rem; letter-spacing: -.03em; }
+  .wordmark .p2 { color: var(--accent); }
+  .byline { font-family: var(--font-mono); font-size: .74rem; font-weight: 600; color: var(--ink-faint); letter-spacing: .02em; }
+  .h1 { font-family: var(--font-display); font-weight: 820; font-size: clamp(2rem, 6vw, 3.1rem); letter-spacing: -.035em; line-height: 1.03; margin: 22px 0 0; text-wrap: balance; }
+  .northstar { margin: 20px 0 0; font-size: 1.12rem; line-height: 1.55; color: var(--ink); max-width: 40ch; border-left: 3px solid var(--accent); padding-left: 16px; }
+  .northstar b { color: var(--accent); font-weight: 700; }
+
+  .herogrid { display: grid; grid-template-columns: 1.15fr .85fr; gap: 34px; align-items: center; margin-top: 30px; }
+  @media (max-width: 760px) { .herogrid { grid-template-columns: 1fr; gap: 24px; } }
+
+  .chartcard { background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 18px 18px 14px; box-shadow: var(--shadow); }
+  .chartcard .cap { font-family: var(--font-mono); font-size: .64rem; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint); display: flex; justify-content: space-between; margin-bottom: 6px; }
+  .chartcard svg { width: 100%; height: auto; display: block; }
+
+  .statusrow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 26px; }
+  .chip { font-family: var(--font-mono); font-size: .7rem; font-weight: 600; letter-spacing: .02em; padding: .34rem .6rem; border-radius: 999px; border: 1px solid var(--line-strong); color: var(--ink-soft); display: inline-flex; align-items: center; gap: 7px; background: var(--paper-2); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  .dot.go { background: var(--green); } .dot.now { background: var(--gold); } .dot.wait { background: var(--accent); }
+
+  /* ---- priority stack ---- */
+  .stack { display: flex; flex-direction: column; gap: 14px; }
+  .rank { display: grid; grid-template-columns: 54px 1fr; gap: 18px; background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; box-shadow: var(--shadow); }
+  .rank .num { font-family: var(--font-mono); font-weight: 700; font-size: 1.7rem; color: var(--accent); line-height: 1; padding-top: 2px; }
+  .rank.lead { border-color: color-mix(in srgb, var(--gold) 45%, var(--line)); }
+  .rank.lead .num { color: var(--gold); }
+  .rank h3 .star { color: var(--gold); font-size: .8em; }
+  .rank .meta { display: flex; flex-wrap: wrap; gap: 6px 8px; margin: 10px 0 12px; }
+  .tag { font-family: var(--font-mono); font-size: .68rem; font-weight: 600; padding: .22rem .5rem; border-radius: 6px; background: var(--accent-wash); color: var(--accent); }
+  .tag.gold { background: var(--gold-wash); color: var(--gold); }
+  .rank p { margin: 0; font-size: .92rem; color: var(--ink-soft); }
+  .acts { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .acts li { font-size: .87rem; color: var(--ink-soft); padding-left: 20px; position: relative; }
+  .acts li::before { content: "→"; position: absolute; left: 0; color: var(--accent); font-family: var(--font-mono); }
+
+  /* ---- tables ---- */
+  .tblwrap { overflow-x: auto; margin-top: 8px; border: 1px solid var(--line); border-radius: 12px; }
+  table { border-collapse: collapse; width: 100%; font-size: .88rem; min-width: 460px; }
+  caption { text-align: left; font-family: var(--font-mono); font-size: .68rem; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint); padding: 12px 14px 4px; }
+  th, td { text-align: left; padding: 10px 14px; border-top: 1px solid var(--line); vertical-align: top; }
+  thead th { border-top: none; font-family: var(--font-mono); font-size: .68rem; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); font-weight: 600; background: var(--paper-2); }
+  tbody tr:nth-child(even) { background: var(--paper-2); }
+  td.num, th.num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  td .em { color: var(--green); font-weight: 650; }
+
+  /* ---- two tracks ---- */
+  .tracks { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 720px) { .tracks { grid-template-columns: 1fr; } }
+  .track { background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 20px; box-shadow: var(--shadow); position: relative; overflow: hidden; }
+  .track::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; }
+  .track.a::before { background: var(--gold); }
+  .track.b::before { background: var(--accent); }
+  .track .lab { font-family: var(--font-mono); font-size: .68rem; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; }
+  .track.a .lab { color: var(--gold); } .track.b .lab { color: var(--accent); }
+  .track h3 { margin: 6px 0 8px; }
+  .track p { font-size: .9rem; color: var(--ink-soft); margin: 0 0 12px; }
+  .track ul { margin: 0; padding-left: 18px; font-size: .88rem; color: var(--ink-soft); display: flex; flex-direction: column; gap: 5px; }
+  .gate { margin-top: 14px; font-family: var(--font-mono); font-size: .72rem; padding: .5rem .7rem; border-radius: 8px; background: var(--paper-2); border: 1px dashed var(--line-strong); color: var(--ink-soft); }
+  .gate b { color: var(--ink); }
+
+  /* ---- timeline ---- */
+  .timeline { list-style: none; margin: 0; padding: 0; position: relative; }
+  .timeline::before { content: ""; position: absolute; left: 9px; top: 6px; bottom: 6px; width: 2px; background: linear-gradient(var(--accent), var(--line)); }
+  .station { position: relative; padding: 0 0 26px 40px; }
+  .station:last-child { padding-bottom: 0; }
+  .station::before { content: ""; position: absolute; left: 3px; top: 4px; width: 14px; height: 14px; border-radius: 50%; background: var(--paper); border: 3px solid var(--accent); }
+  .station.gate::before { border-color: var(--green); background: var(--green-wash); }
+  .station .when { font-family: var(--font-mono); font-size: .72rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+  .station.gate .when { color: var(--green); }
+  .station .cost { font-family: var(--font-mono); font-size: .68rem; color: var(--ink-faint); margin-left: 8px; letter-spacing: 0; text-transform: none; }
+  .station ul { margin: 8px 0 0; padding-left: 18px; font-size: .89rem; color: var(--ink-soft); display: flex; flex-direction: column; gap: 5px; }
+  .station ul b { color: var(--ink); font-weight: 650; }
+
+  /* ---- checklist ---- */
+  .checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; counter-reset: c; }
+  .check { display: grid; grid-template-columns: 26px 1fr; gap: 12px; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  .check .box { counter-increment: c; width: 22px; height: 22px; border: 1.5px solid var(--accent); border-radius: 6px; display: grid; place-items: center; font-family: var(--font-mono); font-size: .78rem; font-weight: 700; color: var(--accent); }
+  .check .box::before { content: counter(c); }
+  .check b { font-weight: 680; }
+  .check p { margin: 3px 0 0; font-size: .86rem; color: var(--ink-soft); max-width: none; }
+
+  .callout { background: var(--gold-wash); border: 1px solid color-mix(in srgb, var(--gold) 30%, transparent); border-radius: 12px; padding: 16px 18px; margin-top: 22px; }
+  .callout .k { font-family: var(--font-mono); font-size: .66rem; letter-spacing: .12em; text-transform: uppercase; color: var(--gold); font-weight: 700; }
+  .callout p { margin: 5px 0 0; font-size: .92rem; }
+
+  footer { border-top: 1px solid var(--line); padding: 30px 0 48px; color: var(--ink-faint); font-size: .82rem; }
+  footer .links { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-bottom: 12px; font-family: var(--font-mono); font-size: .74rem; }
+  footer .disc { font-style: italic; }
+
+  .fade { opacity: 0; transform: translateY(10px); animation: rise .7s cubic-bezier(.2,.7,.2,1) forwards; }
+  @keyframes rise { to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .fade { animation: none; opacity: 1; transform: none; } }
+</style>
+
+<header class="hero wrap fade">
+  <div class="brandrow">
+    <span class="wordmark">Set<span class="p2">point</span></span>
+    <span class="byline">by Datum&nbsp;Labs</span>
+  </div>
+  <p class="eyebrow" style="margin-top:20px;">Master Action Plan · Revenue-first</p>
+  <h1 class="h1">Make money now. Certify once it's proven.</h1>
+
+  <div class="herogrid">
+    <p class="northstar">Validate demand with near-zero-cost <b>DIY kits</b> and free restaurant <b>loaner pilots</b> to earn <b>this month</b> — and spend real money on the rev-2 respin and FCC only once that demand is proven and has funded it.</p>
+
+    <div class="chartcard" aria-label="A temperature reading crossing its setpoint">
+      <div class="cap"><span>Probe 01 · walk-in</span><span>°C</span></div>
+      <svg viewBox="0 0 300 130" role="img" aria-hidden="true">
+        <defs>
+          <linearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="var(--accent)" stop-opacity="0.28"/>
+            <stop offset="1" stop-color="var(--accent)" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <!-- setpoint line -->
+        <line x1="0" y1="52" x2="300" y2="52" stroke="var(--gold)" stroke-width="1.5" stroke-dasharray="5 4"/>
+        <text x="298" y="46" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="var(--gold)">setpoint</text>
+        <!-- trace -->
+        <path d="M0 92 C 40 90, 60 86, 90 84 C 120 82, 140 80, 165 74 C 185 69, 200 60, 220 44 C 238 30, 255 26, 300 22"
+              fill="none" stroke="var(--accent)" stroke-width="2.4" stroke-linecap="round"/>
+        <path d="M0 92 C 40 90, 60 86, 90 84 C 120 82, 140 80, 165 74 C 185 69, 200 60, 220 44 C 238 30, 255 26, 300 22 L300 130 L0 130 Z"
+              fill="url(#fill)" stroke="none"/>
+        <!-- breach marker where trace crosses setpoint (~x=205) -->
+        <circle cx="205" cy="52" r="4.5" fill="var(--paper)" stroke="var(--gold)" stroke-width="2.5"/>
+      </svg>
+    </div>
+  </div>
+
+  <div class="statusrow">
+    <span class="chip"><span class="dot go"></span>Software &amp; firmware — shipped</span>
+    <span class="chip"><span class="dot now"></span>Rev-1 boards — inbound (→ DIY kits)</span>
+    <span class="chip"><span class="dot wait"></span>Rev-2 + FCC — design now, spend later</span>
+  </div>
+</header>
+
+<section class="wrap">
+  <p class="eyebrow">Secure revenue ASAP</p>
+  <h2>The priority stack</h2>
+  <p class="sub">Ranked by speed-to-first-dollar. Run the top three in parallel this week — every one is FCC-clean because you're selling a kit, a service, software, a deposit, or a certified PC. Never an assembled rev-1 radio.</p>
+
+  <div class="stack">
+    <article class="rank lead">
+      <div class="num">1</div>
+      <div>
+        <h3>Paid pre-orders &amp; founding-batch deposits <span class="star">★ fastest clean dollar</span></h3>
+        <div class="meta"><span class="tag gold">First $: 2–5 days</span><span class="tag gold">$39 full · or $10–25 deposit</span><span class="tag gold">10 orders ≈ $200–490 wk 1</span></div>
+        <p>A Stripe Payment Link (or Gumroad pre-order) for the Maker Kit, sold to your build-in-public audience and warm contacts before a single kit is bagged. Deposits are refundable and lock a founding price.</p>
+        <ul class="acts">
+          <li>Create a Stripe link: <em>"Setpoint Maker Kit — Founding Batch (ships ~4 wks)"</em>, cap 25.</li>
+          <li>Post it once — README banner, r/homelab, r/selfhosted, your restaurant contacts — with an honest ship window.</li>
+          <li>Add a "Reserve a kit" button + email capture to your landing page.</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="rank">
+      <div class="num">2</div>
+      <div>
+        <h3>Restaurant loaner pilot → deposit + paid install</h3>
+        <div class="meta"><span class="tag">First $: 1–2 wks</span><span class="tag">$100–500 deposit + $150–400 setup</span><span class="tag">converted 4-probe kitchen ≈ $329</span></div>
+        <p>Run the free 30-day loaner (an FCC-clean evaluation), but bill around it: a founding-customer reservation deposit and a paid install where you bring a certified $150–250 mini-PC. The probe stays a loaner — you charge labor + an already-FCC'd computer, never the uncertified radio.</p>
+        <ul class="acts">
+          <li>Fill the brackets in the pilot offer; text your two warmest contacts to book a 30-min install.</li>
+          <li>Build + QC 2–3 loaner units the day boards land; label each with serial + firmware.</li>
+          <li>Draft a one-line "Founding-Customer Reservation" (deposit, locked price, refundable).</li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="rank">
+      <div class="num">3</div>
+      <div>
+        <h3>Tindie DIY-kit listing — Maker $39 / Plug-Together $49</h3>
+        <div class="meta"><span class="tag">First $: 2–4 wks</span><span class="tag">~$23–30 gross / kit</span><span class="tag">store = Datum Labs</span></div>
+        <p>The paste-ready first storefront. Gated on boards arriving, one hero-unit photo, and &lt;48 h store approval. Kit-only until the SDoC exists; ship cell-not-included.</p>
+        <ul class="acts">
+          <li>Day boards land: build + QC one hero unit (confirm it reads room temp, not −127).</li>
+          <li>Shoot parts flat-lay + assembled unit + dashboard-on-laptop + probe-in-context.</li>
+          <li>Paste the listing, set price + shipping + inventory, publish kit-only.</li>
+        </ul>
+      </div>
+    </article>
+  </div>
+
+  <div class="tblwrap">
+    <table>
+      <caption>Supporting tactics — turn on this week, they compound</caption>
+      <thead><tr><th>Tactic</th><th>First $</th><th>Per sale</th><th>First action</th></tr></thead>
+      <tbody>
+        <tr><td>Donations / GitHub Sponsors on the free hub</td><td>3–10 days</td><td class="num">$3–100</td><td>Create Ko-fi + apply for Sponsors today (it has a queue)</td></tr>
+        <tr><td>BYO-hardware service tiers (paid setup call, PWYW hub)</td><td>3–10 days</td><td class="num">$15–150</td><td>Gumroad PWYW + a Calendly "Guided Setup — $49"</td></tr>
+        <tr><td>Local in-person kit sales (homelab / brewery / greenhouse)</td><td>1–3 wks</td><td class="num">$39–49</td><td>RSVP the nearest meetup; set up Tap-to-Pay</td></tr>
+        <tr><td>Sponsorship (README slot, sponsor-a-feature)</td><td>3–8 wks</td><td class="num">$25–500+</td><td>Tag 2–3 roadmap items as "sponsorable"</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <span class="k">Honest exclusion</span>
+    <p>Selling <b>assembled probes</b> to restaurants (~$80–90/probe) is the eventual high-value sale — but it's 6–12+ weeks out and gated by rev-2 + FCC. Don't shortcut it with a rev-1 assembled unit. That's where the pilot deposits <em>convert</em> — after the respin, not now.</p>
+  </div>
+</section>
+
+<section class="wrap">
+  <p class="eyebrow">Run both at once</p>
+  <h2>Two tracks</h2>
+  <p class="sub">One engine earns while the other is built. Track&nbsp;B never spends ahead of Track&nbsp;A's proof.</p>
+  <div class="tracks">
+    <article class="track a">
+      <div class="lab">Track A — Revenue now</div>
+      <h3>Rev-1 kits + restaurant pilots</h3>
+      <p>The cash engine. No FCC gate, near-zero capital. Validates the <em>exact same demand</em> as the future assembled unit while it gets designed.</p>
+      <ul>
+        <li>Pre-flashed DIY kits on Tindie (buyer completes the radio)</li>
+        <li>Free loaner pilots → deposits, paid installs, certified mini-PC</li>
+        <li>Free local-first hub does the selling: "it just showed up on my dashboard"</li>
+      </ul>
+      <div class="gate">Gate: <b>none</b> — kits &amp; loaners aren't a finished-radio sale.</div>
+    </article>
+    <article class="track b">
+      <div class="lab">Track B — Scale later</div>
+      <h3>Rev-2 module + FCC SDoC</h3>
+      <p>Respin around the pre-certified <code class="darkcode">ESP32-C3-MINI-1</code> so a cheap Part&nbsp;15B SDoC (~$300–1,500) replaces $5k–15k bare-chip testing. Firmware is unchanged.</p>
+      <ul>
+        <li>Design the KiCad schematic + PCB now — it costs $0</li>
+        <li>Export Gerber/BOM/CPL, then <em>park it</em></li>
+        <li>Order PCBA + run the SDoC only once demand is real</li>
+      </ul>
+      <div class="gate">Gate: <b>proven demand</b> — pilots convert or kits sell steadily.</div>
+    </article>
+  </div>
+</section>
+
+<section class="wrap">
+  <p class="eyebrow">Sequence</p>
+  <h2>The timeline</h2>
+  <p class="sub">Front-load everything free; gate the two real spends — the PCBA batch and the FCC SDoC — behind revenue you've already collected.</p>
+  <ol class="timeline">
+    <li class="station">
+      <span class="when">This week</span><span class="cost">no FCC · ~$100–700 · mostly your time</span>
+      <ul>
+        <li><b>Form Datum Labs LLC</b> (your liability shield + future FCC responsible party), free <b>EIN</b> at IRS.gov, business bank account.</li>
+        <li><b>Turn on no-inventory revenue:</b> Stripe pre-order link, Ko-fi + Sponsors, Gumroad PWYW hub + paid setup call.</li>
+        <li><b>Edit the warranty</b> with real names + the liability cap; ship it with every kit and pilot. Pull 2–3 insurance quotes.</li>
+        <li><b>Order kit parts for 10</b>, set up the flashing PC + bench hub, and <b>text your warmest restaurant contact</b>.</li>
+        <li><b>Start the rev-2 KiCad design</b> — free, do it while the boards ship.</li>
+      </ul>
+    </li>
+    <li class="station">
+      <span class="when">Weeks 2–4</span><span class="cost">boards land</span>
+      <ul>
+        <li>Incoming QC → <b>validate the toolchain on one board</b> (the gate) → build a no-solder test rig.</li>
+        <li>Pair-and-test the batch; shoot photos; <b>publish the kit-only Tindie listing</b>.</li>
+        <li>Build 2–3 loaners; run 15-min qualifying calls; <b>install the first pilot</b> and do the silent-sensor demo live.</li>
+        <li><b>Bind insurance</b> before hardware enters a commercial kitchen. Finish + export rev-2, then park it.</li>
+      </ul>
+    </li>
+    <li class="station">
+      <span class="when">Month 2–3</span>
+      <ul>
+        <li>Fulfill kit orders in 3–5 days; carry a few to a local meetup for cash.</li>
+        <li>Run pilots 30 days; capture every real event it catches. <b>Convert (day 25–30)</b> → deposit + referral + testimonial.</li>
+        <li>If demand is real: <b>order the rev-2 PCBA batch</b> (5–10 units, ~$150–350) and bring them up.</li>
+      </ul>
+    </li>
+    <li class="station gate">
+      <span class="when">The gate — when demand is proven</span><span class="cost">only now spend on certification</span>
+      <ul>
+        <li>Run the <b>FCC Part 15B SDoC</b> (~$300–1,500) on a QC-passed rev-2 unit; keep the signed report.</li>
+        <li>Label "Contains FCC ID: 2AC7Z-ESPC3MINI1"; confirm insurance bound; COI + W-9 ready.</li>
+        <li>Deliver certified units to reserved pilots; <b>sell assembled</b> B2B + a homelab variant on Tindie.</li>
+        <li>Only now consider financing — for <b>inventory scaling</b>, never certification.</li>
+      </ul>
+    </li>
+  </ol>
+</section>
+
+<section class="wrap">
+  <p class="eyebrow">Unit economics</p>
+  <h2>The money math</h2>
+  <p class="sub">Kits and pilots earn first; their revenue funds rev-2 and the SDoC. Certification is always paid for by demand — never borrowed against hope.</p>
+
+  <div class="tblwrap">
+    <table>
+      <caption>Per DIY kit — small batch of ~10, cell not included, ~8% fees</caption>
+      <thead><tr><th>Tier</th><th class="num">Material</th><th class="num">Price</th><th class="num">Gross / kit</th><th class="num">Margin</th></tr></thead>
+      <tbody>
+        <tr><td>Maker (solder-yourself)</td><td class="num">~$12.77</td><td class="num">$39</td><td class="num"><span class="em">~$23</span></td><td class="num">~59%</td></tr>
+        <tr><td>Plug-Together (no iron)</td><td class="num">~$13.07</td><td class="num">$49</td><td class="num"><span class="em">~$30</span></td><td class="num">~61%</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="tblwrap">
+    <table>
+      <caption>Per restaurant site — value-anchored to a $2k–10k loss, not the ~$16–22 BOM</caption>
+      <thead><tr><th>Package</th><th class="num">Probes</th><th class="num">Price</th><th class="num">~Gross</th></tr></thead>
+      <tbody>
+        <tr><td>Per-probe à la carte</td><td class="num">1</td><td class="num">$89</td><td class="num">~$70</td></tr>
+        <tr><td>Essentials (cooler + freezer)</td><td class="num">2</td><td class="num">$179</td><td class="num">~$140</td></tr>
+        <tr><td>Standard (+2 reach-ins)</td><td class="num">4</td><td class="num">$329</td><td class="num">~$255</td></tr>
+        <tr><td>Full Kitchen</td><td class="num">6</td><td class="num">$479</td><td class="num">~$370</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout" style="background:var(--accent-wash);border-color:color-mix(in srgb,var(--accent) 30%,transparent);">
+    <span class="k" style="color:var(--accent);">Break-even</span>
+    <p>All-in to legally sell assembled: <b>~$1,000–3,500</b> (PCBA ~$150–350 · SDoC ~$300–1,500 · LLC + a year of insurance ~$450–1,700). The SDoC is covered by roughly <b>1–4 Full-Kitchen sales, ~13–65 kits, or simply the pilot deposits you collect before you spend.</b></p>
+  </div>
+</section>
+
+<section class="wrap">
+  <p class="eyebrow">Compliance, sequenced</p>
+  <h2>Three activities, three gates</h2>
+  <p class="sub">Only one touches the finished-product FCC test. Sequence around it and you earn this month.</p>
+  <div class="tblwrap">
+    <table>
+      <thead><tr><th>Revenue activity</th><th>FCC gate</th><th>Legal / insurance</th><th>Start</th></tr></thead>
+      <tbody>
+        <tr><td><b>DIY kits</b> — buyer assembles the radio</td><td>None — you never place a finished radio on the market</td><td>LLC + liability-cap warranty in the box</td><td><span class="em">This week</span></td></tr>
+        <tr><td><b>Restaurant loaner pilots</b> — free 30-day eval</td><td>None — a loaner isn't a sale</td><td>Bind insurance before a kitchen install</td><td><span class="em">This week</span></td></tr>
+        <tr><td><b>Selling assembled units</b></td><td>Part 15B SDoC + US responsible party + "Contains FCC ID" label</td><td>LLC is the responsible party + bound insurance</td><td>After rev-2 + SDoC</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p style="font-size:.86rem;color:var(--ink-soft);margin-top:16px;">Hold the honest disclaimer everywhere: <b>±0.5&nbsp;°C typical, uncalibrated</b>; a loss-prevention &amp; logging aid, <b>not</b> a certified, NIST-traceable, or HACCP compliance instrument; it doesn't replace required manual checks, and monitoring stops in a full power outage. Never claim a certification you don't hold.</p>
+</section>
+
+<section class="wrap">
+  <p class="eyebrow">Start tomorrow</p>
+  <h2>This week's top 5</h2>
+  <p class="sub">The five highest-leverage moves. Do these and the rest of the plan unlocks.</p>
+  <ol class="checks">
+    <li class="check"><span class="box"></span><div><b>Form Datum Labs LLC + free EIN + business bank account.</b><p>Your liability shield and future FCC responsible party. ~$50–500, about an hour of forms.</p></div></li>
+    <li class="check"><span class="box"></span><div><b>Put up the Stripe pre-order link for the Maker Kit</b> and post it once to your audience + restaurant contacts.<p>First dollars in 2–5 days, zero inventory.</p></div></li>
+    <li class="check"><span class="box"></span><div><b>Text your warmest restaurant contact the pilot opener</b> (and line up two more).<p>Book a 30-min loaner install; the deposit + setup fee is your fastest B2B cash.</p></div></li>
+    <li class="check"><span class="box"></span><div><b>Order kit parts for 10 and set up the flashing PC + bench hub</b> — and put real names + the liability cap into the warranty.<p>So you can build the moment boards land, and ship a warranty in every box.</p></div></li>
+    <li class="check"><span class="box"></span><div><b>Start the rev-2 KiCad schematic.</b><p>It's $0 and fully designable before you spend a cent — so the day a pilot converts, you're only ~6 weeks from a certified, sellable unit.</p></div></li>
+  </ol>
+</section>
+
+<footer class="wrap">
+  <div class="links">
+    <span>Deeper docs →</span>
+    <span>DIY_KIT.md</span><span>PILOT_OFFER.md</span><span>TINDIE_LISTING.md</span><span>REV2_BUILD_GUIDE.md</span><span>STARTUP_CHECKLIST.md</span><span>ACTION_PLAN.md</span>
+  </div>
+  <p class="disc">Setpoint, by Datum Labs · Working plan, not legal, tax, or insurance advice — confirm specifics with an accountant, a broker, and an FCC test lab before binding money.</p>
+</footer>
+
+<script>
+  // Stagger the on-load rise for the hero only; everything else is static + reduced-motion safe.
+  document.addEventListener("DOMContentLoaded", function () {
+    var h = document.querySelector(".hero");
+    if (h) h.style.animationDelay = "40ms";
+  });
+</script>

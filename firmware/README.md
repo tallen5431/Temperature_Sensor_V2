@@ -1,9 +1,9 @@
-# TempSensor Firmware
+# Setpoint Firmware
 
-Reference ESP32 firmware for the **TempSensor** — the wireless, battery-powered
-temperature probe that feeds the local-first **TempSensor** appliance. This is the
+Reference ESP32 firmware for the **Setpoint** — the wireless, battery-powered
+temperature probe that feeds the local-first **Setpoint** appliance. This is the
 actual image flashed onto manufactured units. It implements the *probe side* of
-TempSensor protocol **v1**.
+Setpoint protocol **v1**.
 
 The canonical, shipping firmware is the Arduino sketch
 [`../esp32_temp_probe/esp32_temp_probe.ino`](../esp32_temp_probe/esp32_temp_probe.ino)
@@ -100,14 +100,14 @@ identity from the boot serial `[label]` line (see **Identity** below).
 ## 4. First-run setup (SoftAP)
 
 With no saved Wi-Fi, the probe starts an **open SoftAP** (no password) whose SSID
-**is the probe id** (e.g. `TempSensor-9A3F2C`). Join it with a phone/laptop, let
+**is the probe id** (e.g. `Setpoint-9A3F2C`). Join it with a phone/laptop, let
 the WiFiManager captive portal open (or browse to `http://192.168.4.1`), and enter:
 
 - your home Wi-Fi SSID + password (required), and
 - optionally the server URL / ingest token / read interval.
 
 The probe stores the credentials to NVS and joins your network. It then appears
-**automatically** in TempSensor — the hub discovers it over mDNS and pushes the
+**automatically** in Setpoint — the hub discovers it over mDNS and pushes the
 ingest URL + token via `POST /provision`. On a later deep-sleep wake the probe
 fast-reconnects to the saved network **without** re-opening the portal.
 
@@ -122,8 +122,8 @@ Derived **once** at first boot and **persisted in NVS** for the life of the unit
 HEX6        = UPPERCASE hex of the LAST 6 hex (3 bytes) of the DS18B20 sensor
               ROM code; if no sensor is present, the last 6 hex of the ESP32
               efuse MAC (chip id).                         e.g. 9A3F2C
-probe_id    = "TempSensor-" + HEX6                        e.g. TempSensor-9A3F2C
-mDNS host   = probe_id  ->  <probe_id>.local              -> TempSensor-9A3F2C.local
+probe_id    = "Setpoint-" + HEX6                        e.g. Setpoint-9A3F2C
+mDNS host   = probe_id  ->  <probe_id>.local              -> Setpoint-9A3F2C.local
 SoftAP SSID = probe_id
 SoftAP      = open (no password); only up during first-time setup
 ```
@@ -132,7 +132,7 @@ At every boot the firmware prints a machine-readable line that `factory_flash.py
 parses for the label:
 
 ```
-[label] probe_id=TempSensor-9A3F2C ap_ssid=TempSensor-9A3F2C ap_pass=none
+[label] probe_id=Setpoint-9A3F2C ap_ssid=Setpoint-9A3F2C ap_pass=none
 ```
 
 The same `probe_id` is sent as the mDNS TXT `id`, the HTTP `X-Probe-ID` header,
@@ -161,7 +161,7 @@ setup, not by a custom endpoint.
 
 > **No provision secret in the current firmware:** `POST /provision` is accepted
 > on the trusted LAN with no `X-Provision-Secret` gate, which is what keeps
-> TempSensor's zero-touch auto-provisioning working. A per-unit provision secret
+> Setpoint's zero-touch auto-provisioning working. A per-unit provision secret
 > is a possible future hardening, not a shipped feature.
 
 ## Reachability & deep sleep
@@ -180,11 +180,11 @@ Every `interval_ms` the probe reads the DS18B20 and POSTs to the provisioned
 
 ```
 POST /api/ingest
-X-Probe-ID: TempSensor-9A3F2C
+X-Probe-ID: Setpoint-9A3F2C
 X-Token: <token pushed by the hub, if set>
 Content-Type: application/json
 
-{"timestamp":"2026-07-11T14:03:00Z","temperature_c":4.31,"temperature_f":39.76,"probe_id":"TempSensor-9A3F2C"}
+{"timestamp":"2026-07-11T14:03:00Z","temperature_c":4.31,"temperature_f":39.76,"probe_id":"Setpoint-9A3F2C"}
 ```
 
 If the POST fails or the network is down, the reading is appended to the LittleFS

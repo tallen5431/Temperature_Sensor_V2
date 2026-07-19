@@ -2,18 +2,18 @@
 
 _Last updated: 2026_
 
-> **Note for the maker/reseller:** TempSensor is a white-label product. Before you
-> ship, replace **TempSensor** with your product name and swap the support link
+> **Note for the maker/reseller:** Setpoint is a white-label product. Before you
+> ship, replace **Setpoint** with your product name and swap the support link
 > (`https://example.com/support`) for your own — it must match the `support_url`
 > in your `branding` config.
 
-**Short version: TempSensor does not collect your data. There is no cloud, no
+**Short version: Setpoint does not collect your data. There is no cloud, no
 account, and no telemetry. Your temperature readings stay on your own PC.**
 
-## What TempSensor is
+## What Setpoint is
 
-TempSensor is a local-first temperature-monitoring appliance. It runs as a small
-app on your own Windows or Linux computer. Wireless TempSensor sensors on your
+Setpoint is a local-first temperature-monitoring appliance. It runs as a small
+app on your own Windows or Linux computer. Wireless Setpoint sensors on your
 own network send their readings to it, and you view everything in your web
 browser at `http://localhost:8080`. Nothing is hosted by us, and there is
 nothing to sign up for.
@@ -22,15 +22,15 @@ nothing to sign up for.
 
 - **No account.** You never create a login, and you never give us your name,
   email, or payment details to run the software.
-- **No cloud.** TempSensor does not upload your readings anywhere. There is no
-  TempSensor server to receive them.
+- **No cloud.** Setpoint does not upload your readings anywhere. There is no
+  Setpoint server to receive them.
 - **No telemetry.** The software does not phone home. It does not send usage
   statistics, crash reports, analytics, device fingerprints, or "check for
   updates" pings to us or to anyone else.
 
 ## Where your data lives
 
-Everything TempSensor stores stays on the computer you run it on:
+Everything Setpoint stores stays on the computer you run it on:
 
 - **`temperature_log.csv`** — your temperature history. Columns are
   `timestamp,temperature_c,temperature_f,probe_id`. This is a plain text file
@@ -47,7 +47,7 @@ copy anywhere.
 
 ## What talks to what on your network
 
-- **Hub <-> probes only.** The hub discovers TempSensor sensors on your local
+- **Hub <-> probes only.** The hub discovers Setpoint sensors on your local
   network (mDNS/zeroconf) and receives their readings over plain HTTP on your
   LAN. The hub and probes only ever talk to each other on your own network.
 - **A private device token** is generated on first run and shared only with your
@@ -56,12 +56,12 @@ copy anywhere.
   it through your firewall on a Private network, other PCs on your own network
   can view it — that is your choice, not a default upload to the internet.
 
-TempSensor does not need internet access to do its job. It works fully offline.
+Setpoint does not need internet access to do its job. It works fully offline.
 
 ## The optional email / webhook alerts
 
 Alerts are **off by default**. If you turn them on (in the notifications
-settings), and only then, TempSensor will contact the destination **you**
+settings), and only then, Setpoint will contact the destination **you**
 configure — nobody else:
 
 - **Email alerts** are sent through **your own SMTP server** (the `smtp_host`,
@@ -80,7 +80,7 @@ alert traffic ever leaves your machine.
 
 ## Children
 
-TempSensor is a monitoring appliance, not directed at children, and it collects
+Setpoint is a monitoring appliance, not directed at children, and it collects
 no personal information from anyone.
 
 ## Changes

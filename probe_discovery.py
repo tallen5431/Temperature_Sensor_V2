@@ -16,7 +16,7 @@ _MAX_PROBES = 512
 
 @dataclass
 class ProbeInfo:
-    name: str                 # e.g. TempSensor-9A3F
+    name: str                 # e.g. Setpoint-9A3F
     host: str                 # e.g. temps-probe-9a3f.local.
     ip: str                   # resolved IPv4 string
     port: int                 # advertised port (80)
@@ -158,9 +158,9 @@ class ProbeDiscovery:
 
         elif state_change == ServiceStateChange.Removed:
             with self._lock:
-                # name is like "TempSensor-9A3F._temps-probe._tcp.local."
+                # name is like "Setpoint-9A3F._temps-probe._tcp.local."
                 # Match only when the probe name is followed by "." or is an
-                # exact match, so "TempSensor-9A" never removes "TempSensor-9A3F".
+                # exact match, so "Setpoint-9A" never removes "Setpoint-9A3F".
                 to_delete = []
                 for host, p in self._probes.items():
                     probe_name = p.name if not isinstance(p, dict) else p.get('name', '')

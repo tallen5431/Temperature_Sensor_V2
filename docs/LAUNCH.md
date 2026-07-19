@@ -1,4 +1,4 @@
-# TempSensor — Launch Runbook (start selling small, scale when it makes sense)
+# Setpoint — Launch Runbook (start selling small, scale when it makes sense)
 
 > **The core principle: stop building features and start selling.** The product is
 > feature-complete for a first market (hub + firmware + docs + integrations). The
@@ -17,7 +17,7 @@ bottom rung (near-zero cost and risk), and only climb when demand is proven. Eac
 reuses everything below it.
 
 **Rung 0 — Software + "bring your own hardware" ($0, no compliance, do this now).**
-TempSensor is already free, local-first software. Publish it plus the firmware and the
+Setpoint is already free, local-first software. Publish it plus the firmware and the
 **browser-flash page** (`flash/`, powered by ESP Web Tools): a homelabber opens a link,
 clicks one button, and flashes their own ESP32 + DS18B20 from Chrome — no toolchain, no
 account. You ship bytes: no inventory, no FCC. This **builds the audience and validates
@@ -110,7 +110,7 @@ saves the big cost, but the finished unit still needs:
 
 - [ ] **Hand-build 5–10 units** per `docs/BOM.md` + `docs/ASSEMBLY.md`.
 - [ ] **Flash + QC + label** each with `firmware/factory_flash.py` and `docs/QC_CHECKLIST.md`
-      (unique `TempSensor-<HEX>` serial, SoftAP up, plausible reading, one successful bench POST).
+      (unique `Setpoint-<HEX>` serial, SoftAP up, plausible reading, one successful bench POST).
 - [ ] **Sell direct** to the Phase-0 waitlist on **Tindie** (maker audience, ≤48 h approval, 5% fee) —
       use the ready-to-paste [`TINDIE_LISTING.md`](TINDIE_LISTING.md). Because Tindie is web-exclusive,
       pick it *or* your own **Shopify/Gumroad** page for the paid probe, not both. Price the **1-probe

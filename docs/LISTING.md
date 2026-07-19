@@ -1,11 +1,12 @@
-# Online Store Listing — TempSensor (Homelab / Server-Room edition)
+# Online Store Listing — Setpoint (Homelab / Server-Room edition)
 
 > _Selling on **Tindie**? See [`TINDIE_LISTING.md`](TINDIE_LISTING.md) — the same copy mapped
 > field-by-field onto Tindie's listing form, with kit/assembled options and the exclusivity/FCC notes._
 
 > _**Maker note (delete before publishing):** this is a ready-to-paste template for the **lead
 > product** — the always-on, USB-powered, DS18B20 temperature probe aimed at homelab / server-room
-> buyers. Replace **TempSensor**/**TempSensor** with your brand, set your real **price**, drop in your
+> buyers. The brand is set — product **Setpoint**, company **Datum Labs** ("Setpoint, by Datum
+> Labs"). Set your real **price**, drop in your
 > **photos** and **support link** (`https://example.com/support`), and confirm the spec numbers match
 > the exact unit you ship. Keep the "Honest specs" section — it prevents returns and builds trust with
 > technical buyers. Do not add "no subscription" as the headline (every competitor already claims it);
@@ -15,18 +16,18 @@
 
 ## Title (benefit-led)
 
-**TempSensor — Wi-Fi Temperature Monitor for Homelabs & Server Rooms · 100% Local, No Cloud, No Account · Prometheus + Home Assistant Ready**
+**Setpoint by Datum Labs — Wi-Fi Temperature Monitor for Homelabs & Server Rooms · 100% Local, No Cloud, No Account · Prometheus + Home Assistant Ready**
 
 _Alternate titles:_
-- **TempSensor — Self-Hosted Wi-Fi Temperature Sensor · Runs on Your Own PC · Grafana / Home Assistant / MQTT**
-- **TempSensor — Local-First Server-Room & Rack Temperature Monitor (No Cloud, No Subscription)**
+- **Setpoint — Self-Hosted Wi-Fi Temperature Sensor · Runs on Your Own PC · Grafana / Home Assistant / MQTT**
+- **Setpoint — Local-First Server-Room & Rack Temperature Monitor (No Cloud, No Subscription)**
 
 ---
 
 ## Hook
 
 Know the instant your rack, closet, or NAS gets too hot — without handing your data to somebody
-else's cloud. TempSensor reports to a small app on **your own** PC or server, so your readings never
+else's cloud. Setpoint reports to a small app on **your own** PC or server, so your readings never
 leave the building and your alerts keep working even when the internet doesn't.
 
 ---
@@ -61,7 +62,7 @@ leave the building and your alerts keep working even when the internet doesn't.
 
 ## Honest specs
 
-| Spec | TempSensor (standard) |
+| Spec | Setpoint (standard) |
 |---|---|
 | Sensor | Maxim **DS18B20**, waterproof stainless probe (1 m lead) |
 | **Accuracy** | **±0.5 °C typical (−10 to +85 °C), uncalibrated.** Add a per-probe offset in the app to trim to your reference. |
@@ -83,10 +84,10 @@ leave the building and your alerts keep working even when the internet doesn't.
 
 ## What's in the box
 
-- 1× TempSensor unit (ESP32 + waterproof DS18B20 probe in an enclosure)
+- 1× Setpoint unit (ESP32 + waterproof DS18B20 probe in an enclosure)
 - 1× USB power cable
 - 1× quick-start card (join Wi-Fi → open dashboard → done) + link to the full user manual
-- Unit label with its serial ID, setup Wi-Fi name & password, and a setup QR code
+- Unit label with its serial ID, **open** setup Wi-Fi name (no password), and a setup QR code
 
 _(The hub app is a free download — no disc, no account.)_
 
@@ -141,7 +142,7 @@ us.
 
 ## Honest claims (keep this)
 
-TempSensor is a general-purpose monitoring device. Stated accuracy (±0.5 °C typical) is the sensor's
+Setpoint is a general-purpose monitoring device. Stated accuracy (±0.5 °C typical) is the sensor's
 uncalibrated datasheet figure — resolution (0.0625 °C) is not accuracy. It is **not** a certified,
 NIST-traceable, medical, food-safety, or regulatory-compliance instrument, and is not sold for those
 uses. Local alerting depends on power to the probe, your network, and the hub; pair it with a UPS if

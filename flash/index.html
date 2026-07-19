@@ -3,95 +3,204 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Flash your TempSensor</title>
+  <title>Flash your Setpoint</title>
+  <meta name="description" content="Install or update the Setpoint firmware on your ESP32-C3 straight from the browser — no toolchain, no account." />
   <!--
-    Browser-based flashing for the TempSensor firmware, powered by ESP Web Tools.
+    Browser-based flashing for Setpoint firmware, powered by ESP Web Tools.
     Host this folder on any HTTPS static host (e.g. GitHub Pages). Web Serial —
     which does the flashing — only works in Chrome/Edge/Opera over HTTPS (or
     http://localhost), so a plain file:// open will show the "not supported" note.
 
-    Before this page can flash anything you must generate the firmware binary it
-    points at (flash/manifest.json → tempsensor-esp32c3.merged.bin). See flash/README.md
-    (run flash/build_merged_bin.sh). The binary is intentionally NOT committed.
+    Before this page can flash anything, generate the firmware binary it points at
+    (manifest.json -> setpoint-esp32c3.merged.bin) via build_merged_bin.sh. The
+    binary is intentionally NOT committed.
+
+    SELLER: replace the STORE_URL / KIT_URL / SUPPORT_URL / GUIDE_URL placeholders
+    below with your real store, Tindie, support, and hosted build-guide URLs before
+    publishing. (GUIDE_URL is used instead of repo-relative ../docs links because
+    this folder is served as the Pages site root.)
   -->
   <script
     type="module"
     src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js"></script>
   <style>
-    :root { color-scheme: light dark; }
+    :root {
+      --brand: #17b3cc;
+      --brand-strong: #3fcbe0;
+      --brand-wash: rgba(23,179,204,.14);
+      --bg: #0b131b;
+      --surface: #131f2b;
+      --surface-2: #18242f;
+      --border: #22323f;
+      --border-strong: #2f4454;
+      --text: #e9f1f7;
+      --text-soft: #9db0be;
+      --text-faint: #6e8393;
+      --warn: #efb02e;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --mono: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Menlo, Consolas, monospace;
+      --radius: 14px;
+      color-scheme: dark;
+    }
     * { box-sizing: border-box; }
     body {
-      margin: 0; padding: 2rem 1rem;
-      font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-      background: #0f1520; color: #e7edf5;
-      display: flex; justify-content: center;
+      margin: 0; padding: 2.5rem 1rem 3rem;
+      font-family: var(--font); font-size: 16px; line-height: 1.55;
+      background:
+        radial-gradient(1100px 460px at 50% -8%, rgba(23,179,204,.10), transparent 70%),
+        var(--bg);
+      color: var(--text);
+      display: flex; flex-direction: column; align-items: center; gap: 1.25rem;
+      -webkit-font-smoothing: antialiased;
     }
+    .wordmark {
+      display: flex; align-items: baseline; gap: .5rem; font-weight: 800;
+      letter-spacing: -.02em; font-size: 1.15rem;
+    }
+    .wordmark .by { font-family: var(--mono); font-size: .62rem; letter-spacing: .12em;
+      text-transform: uppercase; color: var(--text-faint); font-weight: 400; }
+
     .card {
-      width: 100%; max-width: 640px;
-      background: #172131; border: 1px solid #24344a; border-radius: 14px;
-      padding: 2rem; box-shadow: 0 10px 40px rgba(0,0,0,.35);
+      width: 100%; max-width: 660px;
+      background: linear-gradient(180deg, var(--surface), #0f1a24);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 2rem 2rem 1.75rem;
+      box-shadow: 0 24px 60px -30px rgba(0,0,0,.7);
     }
-    h1 { margin: 0 0 .25rem; font-size: 1.6rem; }
-    h1 .brand { color: #35c2e6; }
-    p.sub { margin: 0 0 1.5rem; color: #9fb0c4; }
-    ol { padding-left: 1.2rem; }
-    ol li { margin: .4rem 0; }
-    .flash-row { text-align: center; margin: 1.75rem 0 1rem; }
-    esp-web-install-button { --esp-tools-button-color: #35c2e6; }
-    .note {
-      font-size: .9rem; color: #9fb0c4;
-      border-top: 1px solid #24344a; margin-top: 1.5rem; padding-top: 1rem;
+    .eyebrow {
+      font-family: var(--mono); font-size: .72rem; letter-spacing: .16em;
+      text-transform: uppercase; color: var(--brand);
+      display: flex; align-items: center; gap: .6rem; margin: 0 0 .7rem;
     }
-    .unsupported {
-      display: none; background: #3a1e1e; border: 1px solid #6b2b2b;
-      color: #ffd7d7; padding: .8rem 1rem; border-radius: 8px; margin: 1rem 0;
+    .eyebrow::before { content: ""; width: 20px; height: 1px; background: var(--brand); }
+    h1 { margin: 0 0 .4rem; font-size: 1.85rem; letter-spacing: -.02em; }
+    .sub { margin: 0 0 1.4rem; color: var(--text-soft); }
+    .ver { font-family: var(--mono); font-size: .72rem; color: var(--text-faint);
+      border: 1px solid var(--border-strong); border-radius: 100px; padding: .15rem .6rem; }
+
+    .need { font-family: var(--mono); font-size: .82rem; color: var(--text-soft);
+      background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: 10px; padding: .7rem .9rem; margin: 0 0 1.4rem; }
+    .need b { color: var(--text); }
+
+    ol { padding-left: 1.2rem; margin: 0 0 1.5rem; }
+    ol li { margin: .45rem 0; color: var(--text-soft); }
+    ol li strong { color: var(--text); }
+    code { font-family: var(--mono); font-size: .85em; background: #0d1620;
+      border: 1px solid var(--border); padding: .05rem .35rem; border-radius: 5px; color: var(--brand-strong); }
+
+    .flash-row { display: flex; justify-content: center; margin: 1.6rem 0 .5rem; }
+    esp-web-install-button { --esp-tools-button-color: var(--brand); }
+    esp-web-install-button button[slot="activate"] {
+      font-family: var(--mono); font-size: .95rem; letter-spacing: .02em;
+      background: var(--brand); color: #04222a; border: none; cursor: pointer;
+      padding: .85rem 1.6rem; border-radius: 10px; font-weight: 600;
+      transition: transform .12s ease, box-shadow .12s ease;
     }
-    code { background: #0d1420; padding: .1rem .35rem; border-radius: 4px; }
-    a { color: #35c2e6; }
+    esp-web-install-button button[slot="activate"]:hover {
+      transform: translateY(-1px); box-shadow: 0 10px 24px -12px var(--brand); }
+
+    .unsupported { display: none; background: rgba(239,176,46,.10);
+      border: 1px solid rgba(239,176,46,.4); color: #ffe9bd;
+      padding: .8rem 1rem; border-radius: 10px; margin: 1rem 0; font-size: .9rem; }
+    .note { font-size: .84rem; color: var(--text-faint);
+      border-top: 1px solid var(--border); margin-top: 1.4rem; padding-top: 1rem; }
+    a { color: var(--brand-strong); }
+
+    /* ---- sales cross-sell ---- */
+    .promo { width: 100%; max-width: 660px; }
+    .promo-head { font-family: var(--mono); font-size: .72rem; letter-spacing: .14em;
+      text-transform: uppercase; color: var(--text-faint); text-align: center; margin: .5rem 0 .9rem; }
+    .promo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .9rem; }
+    @media (max-width: 520px) { .promo-grid { grid-template-columns: 1fr; } }
+    .promo-card { background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 1.1rem 1.15rem; text-decoration: none; color: inherit;
+      display: flex; flex-direction: column; gap: .35rem;
+      transition: border-color .12s ease, transform .12s ease; }
+    .promo-card:hover { border-color: var(--brand); transform: translateY(-2px); }
+    .promo-card .tag { font-family: var(--mono); font-size: .64rem; letter-spacing: .1em;
+      text-transform: uppercase; color: var(--brand); }
+    .promo-card .name { font-weight: 700; font-size: 1.05rem; letter-spacing: -.01em; }
+    .promo-card .desc { font-size: .85rem; color: var(--text-soft); }
+    .promo-card .go { font-family: var(--mono); font-size: .78rem; color: var(--brand-strong); margin-top: .25rem; }
+
+    footer { max-width: 660px; width: 100%; text-align: center; color: var(--text-faint);
+      font-family: var(--mono); font-size: .74rem; letter-spacing: .02em; line-height: 1.8; }
+    footer a { color: var(--text-soft); text-decoration: none; margin: 0 .5rem; }
+    footer a:hover { color: var(--brand-strong); }
   </style>
 </head>
 <body>
-  <main class="card">
-    <h1>Flash your <span class="brand">TempSensor</span></h1>
-    <p class="sub">Put the firmware on an ESP32-C3 board straight from your browser — no
-      Arduino IDE, no toolchain, no installs.</p>
+  <div class="wordmark">Setpoint <span class="by">by Datum Labs</span></div>
 
-    <p><strong>You'll need:</strong> a desktop Chrome, Edge, or Opera browser, and an
-      ESP32-C3 board connected to this computer with a USB-C data cable.</p>
+  <main class="card">
+    <p class="eyebrow">Firmware installer</p>
+    <h1>Flash your Setpoint</h1>
+    <p class="sub">Put the latest firmware on an ESP32-C3 straight from your browser — no
+      Arduino IDE, no toolchain, no account. <span class="ver">firmware v2.4.0</span></p>
+
+    <p class="need"><b>You'll need:</b> desktop <b>Chrome, Edge, or Opera</b> · an ESP32-C3
+      board on a <b>USB-C data cable</b> (not charge-only).</p>
 
     <ol>
-      <li>Plug the ESP32-C3 board into a USB port on this computer.</li>
-      <li>Click <strong>Flash TempSensor</strong> below and pick the board's serial
-        port when prompted. (If nothing appears, use a different USB cable — many are
-        charge-only — or install the CP210x / CH340 USB-serial driver for your board.)</li>
-      <li>Wait for it to finish, then unplug and follow
-        <a href="../docs/USER_MANUAL.md">the setup guide</a>: join the probe's
-        <code>TempSensor-XXXXXX</code> Wi-Fi and point it at your TempSensor.</li>
+      <li>Plug the board into a USB port on this computer (power switch <strong>ON</strong>).</li>
+      <li>Click <strong>Flash Setpoint</strong> and pick the board's serial port. If none
+        appears, try another cable (many are charge-only) or hold <strong>BOOT</strong> while connecting.</li>
+      <li>When it finishes, follow the <a href="GUIDE_URL">setup guide</a>:
+        join the <code>Setpoint-XXXXXX</code> Wi-Fi and point it at your dashboard.</li>
     </ol>
 
     <div class="unsupported" id="unsupported">
-      This browser can't flash over USB. Open this page in <strong>Chrome, Edge, or
-      Opera on a desktop</strong> (Web Serial isn't available in Safari, Firefox, or on
-      mobile). You can always flash manually with <code>arduino-cli</code> instead —
-      see <a href="../firmware/README.md">firmware/README.md</a>.
+      This browser can't flash over USB. Open the page in <strong>Chrome, Edge, or Opera
+      on a desktop</strong> — Web Serial isn't available in Safari, Firefox, or on mobile.
+      You can also <a href="GUIDE_URL">flash by hand with arduino-cli</a>.
     </div>
 
     <div class="flash-row">
       <esp-web-install-button manifest="./manifest.json">
-        <button slot="activate">⚡ Flash TempSensor</button>
+        <button slot="activate">⚡ Flash Setpoint</button>
         <span slot="unsupported"></span>
         <span slot="not-allowed">Serial access was blocked — reload and allow the port.</span>
       </esp-web-install-button>
     </div>
 
-    <p class="note">This installs open firmware onto hardware you own; nothing is
-      uploaded anywhere and no account is required. Prefer to do it by hand?
-      <a href="../firmware/README.md">Build and flash with arduino-cli.</a></p>
+    <p class="note">Already flashed at the factory? This page is here for <b>updates and
+      recovery</b> — re-flash any time to the latest version. Installs open firmware onto
+      hardware you own; nothing is uploaded anywhere.
+      <a href="GUIDE_URL">Prefer arduino-cli?</a></p>
   </main>
 
+  <!-- ---- sales cross-sell: turns recovery/update traffic into store visits ---- -->
+  <section class="promo">
+    <p class="promo-head">New to Setpoint? Get the hardware</p>
+    <div class="promo-grid">
+      <a class="promo-card" href="STORE_URL">
+        <span class="tag">Ready to run</span>
+        <span class="name">Setpoint</span>
+        <span class="desc">Assembled &amp; tested Wi-Fi temperature probe, rechargeable. Just add Wi-Fi.</span>
+        <span class="go">Shop the finished unit →</span>
+      </a>
+      <a class="promo-card" href="KIT_URL">
+        <span class="tag">Build it yourself</span>
+        <span class="name">Setpoint DIY Kit</span>
+        <span class="desc">Solder it, flash it, own it. Open firmware and hackable expansion header.</span>
+        <span class="go">Get the kit →</span>
+      </a>
+    </div>
+  </section>
+
+  <footer>
+    <div>
+      <a href="GUIDE_URL">Build guide</a>·
+      <a href="STORE_URL">Store</a>·
+      <a href="SUPPORT_URL">Support</a>
+    </div>
+    <div>Setpoint by Datum Labs · not a certified medical/food-safety/life-safety device</div>
+  </footer>
+
   <script>
-    // ESP Web Tools hides its own button and exposes a `slot="unsupported"` when
-    // Web Serial is missing; surface a clearer, actionable message too.
+    // ESP Web Tools hides its own button and exposes slot="unsupported" when Web Serial
+    // is missing; surface a clearer, actionable message too.
     if (!('serial' in navigator)) {
       document.getElementById('unsupported').style.display = 'block';
     }

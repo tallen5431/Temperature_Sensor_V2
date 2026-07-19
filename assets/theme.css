@@ -1,47 +1,218 @@
-:root { --brand-color: #00bcd4; }
-body { font-family: 'Inter', sans-serif; }
-.navbar-brand { color: var(--brand-color) !important; letter-spacing: 0.5px; }
-.navbar-dark .nav-link.active { border-bottom: 2px solid var(--brand-color); }
-.card { border-radius: 0.75rem; box-shadow: 0 2px 6px rgba(0,0,0,0.25); transition: transform 0.1s ease-in-out; }
-/* Only lift cards that are meant to be interactive (probe cards on Devices), not
-   every static stat/settings card — a whole settings section jumping on hover is
-   distracting. */
-.probe-card { cursor: default; }
-.probe-card:hover { transform: translateY(-3px); }
-.gauge-card, .graph-card { min-height: 400px; overflow: visible !important; }
-.status-dot { font-size: 0.9rem; }
-.text-success { color: #2ecc71 !important; }
-.text-warning { color: #f1c40f !important; }
-.text-danger { color: #e74c3c !important; }
-.btn-primary { background-color: var(--brand-color); border-color: var(--brand-color); }
-.btn-outline-primary { color: var(--brand-color); border-color: var(--brand-color); }
-.btn-outline-primary:hover { background-color: var(--brand-color); border-color: var(--brand-color); }
+/* ============================================================================
+   Setpoint hub — design layer over the vendored Bootstrap/CYBORG base.
+   A cool, layered dark theme with a teal brand accent and monospace "readout"
+   labels, matching the Setpoint / Datum Labs marketing pages so the whole
+   product reads as one brand. CSS only — no webfonts (offline/CSP-safe).
+   ========================================================================== */
 
-/* --- Dark form controls -------------------------------------------------------
-   The base theme renders inputs/selects bright white, which is harsh against the
-   dark UI. Match them to the theme so a form reads as one surface. */
+:root {
+  --brand:        #17b3cc;   /* teal accent */
+  --brand-strong: #3fcbe0;
+  --brand-deep:   #0e94ab;
+  --brand-wash:   rgba(23, 179, 204, .14);
+
+  --bg:        #0b131b;      /* page */
+  --surface:   #131f2b;      /* cards */
+  --surface-2: #18242f;      /* raised / hover */
+  --border:      #22323f;
+  --border-strong: #2f4454;
+
+  --text:      #e9f1f7;
+  --text-soft: #9db0be;
+  --text-faint:#6e8393;
+
+  --ok:    #2fbf71;
+  --warn:  #efb02e;
+  --bad:   #f05a54;
+  --cool:  #38b6d9;
+
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Menlo, Consolas, monospace;
+
+  --radius: 14px;
+  --shadow: 0 14px 34px -22px rgba(0, 0, 0, .7);
+}
+
+/* ---- base ---------------------------------------------------------------- */
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+#page-content { max-width: 1400px; margin: 0 auto; }
+::selection { background: var(--brand-wash); }
+
+/* ---- navbar -------------------------------------------------------------- */
+.navbar {
+  background: linear-gradient(180deg, #10202c, #0d1a24) !important;
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 1px 0 rgba(255,255,255,.02), 0 8px 24px -20px rgba(0,0,0,.8);
+  padding-top: .55rem; padding-bottom: .55rem;
+}
+.navbar-brand {
+  color: var(--text) !important;
+  font-weight: 800; letter-spacing: -.01em; font-size: 1.2rem;
+}
+.navbar-brand .brand-2 { color: var(--brand); }
+.navbar .navbar-brand img { display: block; }
+.navbar .nav-link {
+  color: var(--text-soft) !important;
+  font-weight: 600; font-size: .93rem;
+  padding: .4rem .85rem !important; border-radius: 8px;
+  transition: color .15s ease, background .15s ease;
+}
+.navbar .nav-link:hover { color: var(--text) !important; background: rgba(255,255,255,.04); }
+.navbar .nav-link.active {
+  color: var(--brand-strong) !important;
+  background: var(--brand-wash);
+  border-bottom: 2px solid var(--brand);
+}
+
+/* Help button — the base "info" colour renders as a jarring magenta; make it a
+   quiet ghost button that matches the brand. */
+#help-open, #help-open.btn-info {
+  background: transparent !important;
+  border: 1px solid var(--border-strong) !important;
+  color: var(--text-soft) !important;
+  font-weight: 600; border-radius: 8px;
+}
+#help-open:hover { border-color: var(--brand) !important; color: var(--brand-strong) !important; background: var(--brand-wash) !important; }
+
+/* ---- cards --------------------------------------------------------------- */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.card-body { padding: 1.15rem 1.25rem; }
+/* Only interactive probe cards lift on hover — not static stat/settings cards. */
+.probe-card { cursor: default; transition: transform .12s ease, border-color .12s ease; }
+.probe-card:hover { transform: translateY(-3px); border-color: var(--border-strong); }
+.gauge-card, .graph-card { min-height: 400px; overflow: visible !important; }
+
+/* Big section titles (gauge / graph / page headings). */
+.card-title, .card-body > h5, h4.mb-3, #page-content > div > h4 {
+  color: var(--text) !important;
+  font-weight: 700; letter-spacing: -.01em;
+}
+.card-title {
+  padding-bottom: .55rem; margin-bottom: .9rem;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: .1rem;
+}
+
+/* KPI / stat cards: vertically centre content so equal-height cards read as
+   intentional rather than top-aligned with empty space below. */
+.metric-row .card-body, .stat-row .card-body {
+  display: flex; flex-direction: column; justify-content: center;
+}
+/* Keep the metric-row content (incl. the °C/°F/K toggle) at its natural width,
+   left-aligned like the KPI numbers, instead of stretching full-width. The
+   stat-row keeps the default stretch so its text-center layout still centres. */
+.metric-row .card-body { align-items: flex-start; }
+.metric-row .card-body .btn-group { width: auto; }
+
+/* KPI / stat labels: turn the dim grey <h6> labels into crisp mono readout
+   captions — the signature "instrument" look from the brand pages. */
+.card-body h6.text-muted {
+  color: var(--text-faint) !important;
+  font-family: var(--mono);
+  font-size: .68rem; font-weight: 600;
+  letter-spacing: .11em; text-transform: uppercase;
+  margin-bottom: .5rem !important;
+}
+/* KPI / stat values: tight, tabular, confident. */
+.card-body h2, .card-body h4 {
+  font-weight: 800; letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums;
+}
+.card-body .small, .card-body small { color: var(--text-faint); }
+
+/* Semantic value colours (replaces the base theme's off-brand rainbow). */
+.text-success { color: var(--ok) !important; }
+.text-warning { color: var(--warn) !important; }
+.text-danger  { color: var(--bad) !important; }
+.text-info    { color: var(--cool) !important; }
+.text-muted   { color: var(--text-faint) !important; }
+
+/* ---- buttons ------------------------------------------------------------- */
+.btn { border-radius: 8px; font-weight: 600; }
+.btn-primary {
+  background: var(--brand); border-color: var(--brand); color: #04222a;
+}
+.btn-primary:hover, .btn-primary:focus { background: var(--brand-strong); border-color: var(--brand-strong); color: #04222a; }
+.btn-outline-primary { color: var(--brand); border-color: var(--border-strong); }
+.btn-outline-primary:hover { background: var(--brand); border-color: var(--brand); color: #04222a; }
+.btn-secondary, .btn-outline-secondary {
+  background: transparent; color: var(--text-soft); border-color: var(--border-strong);
+}
+.btn-outline-secondary:hover, .btn-secondary:hover { background: var(--surface-2); color: var(--text); border-color: var(--border-strong); }
+
+/* Segmented control (°C / °F / K and similar button groups). */
+.btn-group > .btn { font-family: var(--mono); font-weight: 700; letter-spacing: .02em; }
+.btn-group > .btn-outline-primary { background: var(--surface-2); }
+
+/* ---- selects / inputs ---------------------------------------------------- */
 .form-control, .form-select {
-  background-color: #1b2532;
-  border-color: #33465c;
-  color: #e7edf5;
+  background-color: var(--surface-2);
+  border-color: var(--border-strong);
+  color: var(--text);
+  border-radius: 8px;
 }
 .form-control:focus, .form-select:focus {
-  background-color: #1b2532;
-  color: #ffffff;
-  border-color: var(--brand-color);
-  box-shadow: 0 0 0 0.2rem rgba(0, 188, 212, 0.25);
+  background-color: var(--surface-2); color: #fff;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 .2rem var(--brand-wash);
 }
-.form-control::placeholder { color: #6c7a8a; opacity: 1; }
-.form-control:disabled, .form-control[readonly] { background-color: #131b25; color: #8b9bad; }
+.form-control::placeholder { color: var(--text-faint); opacity: 1; }
+.form-control:disabled, .form-control[readonly] { background-color: #0f1922; color: var(--text-faint); }
 
-/* Section headings: the base theme dims .card-title to a low-contrast grey.
-   Brighten them and add a subtle divider so sections read clearly. */
-.card-title {
-  color: #e7edf5;
-  font-weight: 600;
-  padding-bottom: 0.4rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+/* ---- badges / status chips ---------------------------------------------- */
+.badge {
+  font-family: var(--mono); font-weight: 600; letter-spacing: .03em;
+  border-radius: 999px; padding: .32em .62em;
 }
+.badge.bg-success, .badge.bg-secondary, .badge.bg-danger, .badge.bg-warning {
+  background: var(--brand-wash) !important;
+}
+#live-badge { font-family: var(--mono); letter-spacing: .08em; }
+
+/* ---- the "Viewing" focus selector row ----------------------------------- */
+#time-range-selector, #focus-probe-selector { min-width: 160px; }
+
+/* ---- demo banner (subtle amber, not a loud block) ----------------------- */
+.demo-banner {
+  background-color: rgba(239, 176, 46, .10) !important;
+  border: 1px solid rgba(239, 176, 46, .28) !important;
+  border-left: 4px solid var(--warn) !important;
+  color: var(--text) !important;
+  border-radius: 12px;
+}
+
+/* ---- alerts / onboarding ------------------------------------------------- */
+.alert { border-radius: 12px; border-color: var(--border); }
+.alert-info {
+  background: var(--brand-wash); border-color: rgba(23,179,204,.30); color: var(--text);
+}
+.alert-heading { color: var(--text); font-weight: 700; }
+
+/* ---- Plotly chart surface: seat it into the card, tidy the toolbar ------- */
+.js-plotly-plot .plotly .modebar { opacity: .35; transition: opacity .2s ease; }
+.js-plotly-plot:hover .plotly .modebar { opacity: .9; }
+.js-plotly-plot .plotly .modebar-btn svg { fill: var(--text-soft); }
+
+/* ---- footer -------------------------------------------------------------- */
+.footer { border-top: 1px solid var(--border); margin-top: 1rem; }
+.footer .text-muted { color: var(--text-faint) !important; }
+.footer hr { border-color: var(--border); opacity: 1; }
+
+/* ---- misc ---------------------------------------------------------------- */
+hr { border-color: var(--border); opacity: 1; }
+a { color: var(--brand); }
+a:hover { color: var(--brand-strong); }
+code { color: var(--brand-strong); background: var(--brand-wash); padding: .06rem .3rem; border-radius: 5px; }
 
 /* Demo-mode notice: a subtle amber info bar with a left accent, rather than a
    loud solid-orange block that dominates the otherwise dark, refined dashboard. */
@@ -54,5 +225,6 @@ body { font-family: 'Inter', sans-serif; }
 
 @media (max-width: 768px) {
   .gauge-card, .graph-card { min-height: 320px; }
-  .navbar-brand { font-size: 1rem; }
+  .navbar-brand { font-size: 1.05rem; }
+  #page-content { padding: 1rem !important; }
 }

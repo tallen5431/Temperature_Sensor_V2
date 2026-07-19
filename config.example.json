@@ -48,7 +48,7 @@
     "port": 1883,
     "username": "",
     "password": "",
-    "base_topic": "tempsensor",
+    "base_topic": "setpoint",
     "discovery_prefix": "homeassistant",
     "discovery_enabled": true
   }

@@ -2,8 +2,8 @@
 
 _Last updated: 2026_
 
-> **Note for the maker/reseller:** TempSensor is a white-label product. Before you
-> ship, replace **TempSensor**/**TempSensor** with your product names, confirm
+> **Note for the maker/reseller:** Setpoint is a white-label product. Before you
+> ship, replace **Setpoint**/**Setpoint** with your product names, confirm
 > the return window and who pays return shipping fit your business and local law,
 > and update the support link (`https://example.com/support`) to match your
 > `branding` config.
@@ -30,7 +30,7 @@ do not ship anything back without a return authorization.
   window is handled under the **Limited Hardware Warranty** (`docs/WARRANTY.md`),
   which runs for one year.
 
-Because TempSensor is **local-first with no cloud and no account**, there is no
+Because Setpoint is **local-first with no cloud and no account**, there is no
 subscription to cancel and no server-side data to delete — anything the software
 stored lives only on your PC (see `PRIVACY.md`).
 

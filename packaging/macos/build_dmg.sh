@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build TempSensor.app with PyInstaller and package it into a .dmg. Signs with a
+# Build Setpoint.app with PyInstaller and package it into a .dmg. Signs with a
 # Developer ID and notarizes with Apple ONLY if the relevant env vars are set —
 # otherwise it produces a working but UNSIGNED .dmg (users bypass Gatekeeper with
 # right-click -> Open). Run on macOS.
@@ -12,7 +12,7 @@
 #   APPLE_API_KEY_ID      the key's ID
 #   APPLE_API_ISSUER      the issuer UUID
 #
-# Output: dist/installer/TempSensor-<version>.dmg
+# Output: dist/installer/Setpoint-<version>.dmg
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -20,13 +20,13 @@ ROOT="$(cd "$HERE/../.." && pwd)"
 cd "$ROOT"
 
 VERSION="${TEMPSENSOR_VERSION:-0.0.0}"
-APP="dist/TempSensor.app"
+APP="dist/Setpoint.app"
 OUT_DIR="dist/installer"
-DMG="$OUT_DIR/TempSensor-$VERSION.dmg"
+DMG="$OUT_DIR/Setpoint-$VERSION.dmg"
 ENTITLEMENTS="$HERE/entitlements.plist"
 PY="${PYTHON:-python3}"
 
-echo "[dmg] Building TempSensor.app (v$VERSION)"
+echo "[dmg] Building Setpoint.app (v$VERSION)"
 $PY -m pip install --upgrade pip -q
 $PY -m pip install -r requirements.txt pyinstaller -q
 $PY packaging/gen_third_party_licenses.py
@@ -45,7 +45,7 @@ fi
 
 echo "[dmg] Creating $DMG …"
 rm -f "$DMG"
-hdiutil create -volname "TempSensor" -srcfolder "$APP" -ov -format UDZO "$DMG"
+hdiutil create -volname "Setpoint" -srcfolder "$APP" -ov -format UDZO "$DMG"
 
 if [ -n "${APPLE_SIGN_IDENTITY:-}" ]; then
   codesign --force --timestamp --sign "$APPLE_SIGN_IDENTITY" "$DMG"

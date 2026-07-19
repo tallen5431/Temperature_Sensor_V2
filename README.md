@@ -1,4 +1,4 @@
-# TempSensor
+# Setpoint
 
 [![CI](https://github.com/tallen5431/temperature_sensor_v2/actions/workflows/ci.yml/badge.svg)](https://github.com/tallen5431/temperature_sensor_v2/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue)
@@ -7,14 +7,14 @@
 
 **Local-first temperature (and humidity) monitoring for your fridge, freezer, fermentation, server closet, or greenhouse — with no cloud, no account, and no telemetry.**
 
-TempSensor is a small appliance app that runs on your own Windows or Linux PC (or a NAS / Docker host). Wireless **TempSensor** sensors send their readings to it over your home or office network, and you watch everything live in your web browser. Data is stored in a local **SQLite** database on your machine and never leaves it — there is nothing to sign up for and nothing phoning home. Designed for **end users**: plug in the hub PC, power a probe, and data starts flowing with no manual setup.
+Setpoint is a small appliance app that runs on your own Windows or Linux PC (or a NAS / Docker host). Wireless **Setpoint** sensors send their readings to it over your home or office network, and you watch everything live in your web browser. Data is stored in a local **SQLite** database on your machine and never leaves it — there is nothing to sign up for and nothing phoning home. Designed for **end users**: plug in the hub PC, power a probe, and data starts flowing with no manual setup.
 
 ---
 
-## Why TempSensor
+## Why Setpoint
 
 - **Your data stays yours.** Readings are kept in a local SQLite database (WAL mode) on your PC and are exportable to CSV — or as a full database snapshot — at any time. No cloud service, no account, no tracking.
-- **Plug and play.** Power a TempSensor on your Wi-Fi and it shows up automatically — the hub discovers it over mDNS and provisions it for you.
+- **Plug and play.** Power a Setpoint on your Wi-Fi and it shows up automatically — the hub discovers it over mDNS and provisions it for you.
 - **Live dashboard.** A clean web page shows current temperature (plus humidity and VPD on grow probes), charts, and rolling statistics for every probe.
 - **Export anytime.** One click downloads a spreadsheet-ready CSV, or a consistent SQLite snapshot for backup.
 - **Calibrate & alert.** Trim each probe against a reference (ice bath) and get server-side notifications when a temperature drifts out of range — including when a probe goes silent.
@@ -31,7 +31,7 @@ TempSensor is a small appliance app that runs on your own Windows or Linux PC (o
 
 > **Windows users:** During the Python installer tick **"Add Python to PATH"**, then click Install Now.
 
-No other software is required. All Python packages are installed automatically on first run. If you would rather not install Python at all, TempSensor also ships as a **single executable** — see [Shipping a no-Python build](#shipping-a-no-python-build).
+No other software is required. All Python packages are installed automatically on first run. If you would rather not install Python at all, Setpoint also ships as a **single executable** — see [Shipping a no-Python build](#shipping-a-no-python-build).
 
 ---
 
@@ -42,7 +42,7 @@ No other software is required. All Python packages are installed automatically o
 1. Double-click **`Start.bat`**
 2. If Windows Firewall prompts, click **Allow** → **Private networks**
 3. Your browser opens automatically at `http://localhost:8088`
-4. Power the TempSensor via USB — readings appear within ~20 seconds
+4. Power the Setpoint via USB — readings appear within ~20 seconds
 
 ### macOS / Linux
 
@@ -60,7 +60,7 @@ If it does not open, navigate there manually.
 
 ### Connect a probe
 
-Power a TempSensor (USB adapter or rechargeable battery). On first use the probe broadcasts a **`TempSensor-XXXXXX`** Wi-Fi setup network — join it, then follow the captive-portal page (or the sticker on the unit) to hand it your home Wi-Fi credentials. Within a few seconds the probe appears on the dashboard and readings begin. Full step-by-step instructions are in the **[User Manual](docs/USER_MANUAL.md)** — no technical background needed.
+Power a Setpoint (USB adapter or rechargeable battery). On first use the probe broadcasts a **`Setpoint-XXXXXX`** Wi-Fi setup network — join it, then follow the captive-portal page (or the sticker on the unit) to hand it your home Wi-Fi credentials. Within a few seconds the probe appears on the dashboard and readings begin. Full step-by-step instructions are in the **[User Manual](docs/USER_MANUAL.md)** — no technical background needed.
 
 > **Bare ESP32 board?** Flash the firmware straight from Chrome/Edge — no toolchain — with the browser-based installer in **[`flash/`](flash/)** (ESP Web Tools). It's the lowest-friction way for a maker/hobbyist to bring their own hardware online.
 
@@ -153,7 +153,7 @@ MQTT / Home Assistant. Plain temperature-only probes are unaffected — those co
 
 ## Homelab / self-hosted
 
-TempSensor drops into an existing self-hosted stack:
+Setpoint drops into an existing self-hosted stack:
 
 - **Prometheus** — scrape `http://<hub>:8088/metrics` (per-probe temperature / humidity / VPD gauges plus health counters) straight into Grafana. Toggle via `metrics.enabled`.
 - **Home Assistant / MQTT** — enable the optional `mqtt` config block (off by default) and each probe appears automatically as a Home Assistant sensor (MQTT auto-discovery).
@@ -182,7 +182,7 @@ TempSensor drops into an existing self-hosted stack:
 | `components/` | Dash UI panels (dashboard, devices, settings, diagnostics, probe setup wizard) |
 | `config.example.json` | Default config seeded to `config.json` on first run |
 | `Dockerfile` / `docker-compose.yml` | Headless deployment on a NAS/server with a persistent volume |
-| `esp32_temp_probe/` | ESP32 TempSensor firmware — the deep-sleep/battery Arduino sketch (`esp32_temp_probe.ino`) |
+| `esp32_temp_probe/` | ESP32 Setpoint firmware — the deep-sleep/battery Arduino sketch (`esp32_temp_probe.ino`) |
 | `firmware/` | Firmware contract (`src/protocol.h`), factory-flash/QC tooling, and firmware README |
 | `packaging/` | PyInstaller spec + build scripts and service install for the no-Python build |
 | `temperature_log.db` | SQLite data store (created automatically) |
@@ -232,7 +232,7 @@ See **[TESTING.md](TESTING.md)** for the full test plan — automated suite,
 hardware-in-the-loop, resilience/failure injection, notification checks, soak/load,
 and a pre-release checklist. Contributing guidelines are in
 **[CONTRIBUTING.md](CONTRIBUTING.md)**; security/deployment notes in
-**[SECURITY.md](SECURITY.md)**. The ESP32 TempSensor firmware is the Arduino
+**[SECURITY.md](SECURITY.md)**. The ESP32 Setpoint firmware is the Arduino
 sketch in `esp32_temp_probe/`; `firmware/` holds the firmware contract
 (`src/protocol.h`) and the factory-flash/QC tooling.
 
@@ -263,7 +263,7 @@ prototype to product:
 
 ## Licensing
 
-TempSensor and its TempSensor firmware are **proprietary** — see
+Setpoint and its Setpoint firmware are **proprietary** — see
 **[LICENSE](LICENSE)** (all rights reserved). They are built on open-source
 components, each under its own license, catalogued in
 **[THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md)** (regenerate with

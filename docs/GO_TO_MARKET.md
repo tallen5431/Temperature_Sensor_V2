@@ -1,4 +1,4 @@
-# TempSensor — Go-to-Market Strategy
+# Setpoint — Go-to-Market Strategy
 
 > A practical plan for selling a small-batch, local-first temperature-monitoring product
 > online. Grounded in market research (competitor pricing, community sizes, and documented
@@ -48,7 +48,7 @@
   multiple probes, and (for cannabis) have a genuine privacy motive.
 - **WTP:** $129–499 observed (Pulse Zero $129 / One $199 / Pro $499).
 - **The old blocker — now cleared (shipped in this repo):** this niche buys on **VPD**, which
-  needs **humidity**. TempSensor was temperature-only; that gap is now closed. A **SHT4x
+  needs **humidity**. Setpoint was temperature-only; that gap is now closed. A **SHT4x
   temperature + humidity** firmware variant (`-D SENSOR_SHT4x`) ships, the hub **computes VPD
   itself** (Tetens formula, with an optional leaf-temperature offset) from every reading, and
   Humidity + VPD now surface on the dashboard, in Prometheus `/metrics`, and via MQTT/Home
@@ -82,7 +82,7 @@
 
 ## 2. Positioning
 
-> **"TempSensor answers to you, not a server.** It runs entirely on your own PC and network — no
+> **"Setpoint answers to you, not a server.** It runs entirely on your own PC and network — no
 > cloud, no account, no subscription — so your temperature data never leaves the building, and
 > your alerts keep firing on your LAN even when the internet drops or the company that sold it to
 > you is gone."
@@ -123,7 +123,7 @@ savings" (rivals already match no-fee).
 | VPD kit (RH/VPD now shipped) | **~$149–199** | *"VPD alerts never behind a paywall"* vs. Pulse. |
 
 Frame the sale on **5-year total cost of ownership**: competitors are "subscription-free" but you
-re-buy a $100 gateway per ecosystem or rent Pulse's cloud goodwill; TempSensor has nothing to rent
+re-buy a $100 gateway per ecosystem or rent Pulse's cloud goodwill; Setpoint has nothing to rent
 and *cannot be paywalled later*. Deliberately **do not chase the ~$15 Govee floor** — unwinnable
 and off-strategy.
 
@@ -185,6 +185,11 @@ and off-strategy.
   remaining gaps before a full push into those niches.
 - **Power-outage failure mode** — never overclaim "works when the internet is down"; pair with a
   UPS recommendation.
+- **On-prem / security-conscious B2B** will probe the LAN-trust model: the setup SoftAP is **open**
+  and `POST /provision` is **unauthenticated on the local network** (fine for a homelab; a fair
+  question in a restaurant/IT security review). Don't sell it as hardened — state it honestly as a
+  LAN-trust assumption, and keep a **per-unit provision secret / setup-AP password** on the near-term
+  firmware roadmap for buyers who need it.
 - **Solo-maker trust gap & support burden** vs polished incumbent apps — lean on reviews,
   build-in-public credibility, and a focused niche.
 - **Regulated segments** (vaccine/HACCP/cold-chain/labs) are closed without certification — a

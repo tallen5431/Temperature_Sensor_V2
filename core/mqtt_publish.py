@@ -35,7 +35,7 @@ _METRICS = {
 def discovery_topic(discovery_prefix: str, probe_id: str, metric: str = "temperature") -> str:
     # HA object_id must be unique per entity and use only safe chars.
     node = probe_id.replace("-", "_")
-    return f"{discovery_prefix.rstrip('/')}/sensor/tempsensor_{node}_{metric}/config"
+    return f"{discovery_prefix.rstrip('/')}/sensor/setpoint_{node}_{metric}/config"
 
 
 def discovery_payload(probe_id: str, friendly_name: str, base_topic: str, metric: str = "temperature") -> dict:
@@ -44,17 +44,17 @@ def discovery_payload(probe_id: str, friendly_name: str, base_topic: str, metric
     name = friendly_name or probe_id
     payload = {
         "name": f"{name} {m['label']}",
-        "unique_id": f"tempsensor_{probe_id}_{metric}",
+        "unique_id": f"setpoint_{probe_id}_{metric}",
         "state_topic": state_topic(base_topic, probe_id),
         "value_template": f"{{{{ value_json.{m['field']} }}}}",
         "unit_of_measurement": m["unit"],
         "state_class": "measurement",
         "expire_after": 120,
         "device": {
-            "identifiers": [f"tempsensor_{probe_id}"],
+            "identifiers": [f"setpoint_{probe_id}"],
             "name": name,
-            "manufacturer": "TempSensor",
-            "model": "TempSensor",
+            "manufacturer": "Setpoint",
+            "model": "Setpoint",
         },
     }
     if m["device_class"]:
@@ -67,7 +67,7 @@ class MqttPublisher:
         self._client = None
         self._lock = threading.Lock()
         self._enabled = False
-        self._base_topic = "tempsensor"
+        self._base_topic = "setpoint"
         self._discovery_prefix = "homeassistant"
         self._discovery_enabled = True
         self._announced: set[str] = set()
@@ -83,7 +83,7 @@ class MqttPublisher:
                         "(`pip install paho-mqtt`); MQTT publishing is off.")
             return
 
-        self._base_topic = m.get("base_topic", "tempsensor")
+        self._base_topic = m.get("base_topic", "setpoint")
         self._discovery_prefix = m.get("discovery_prefix", "homeassistant")
         self._discovery_enabled = bool(m.get("discovery_enabled", True))
         try:

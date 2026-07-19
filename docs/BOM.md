@@ -1,19 +1,26 @@
-# TempSensor — Bill of Materials (BOM)
+# Setpoint — Bill of Materials (BOM)
 
-This is the parts list to build **one** TempSensor unit — the rechargeable,
-battery-powered wireless sensor that pairs with a TempSensor install. Pin
-assignments referenced here come from `firmware/src/protocol.h` (the single
-source of truth); see [ASSEMBLY.md](ASSEMBLY.md) for the wiring. The shipping
-firmware is the sketch `esp32_temp_probe/esp32_temp_probe.ino`.
+This is the parts list to build **one** Setpoint unit. Setpoint ships in **two versions** that share
+this same board, probe, and firmware image — only the power block differs: **Portable** (battery,
+deep-sleep) and **Fixed** (USB, always-on, no battery). See [`VERSIONS.md`](VERSIONS.md) for which to
+build and why. Pin assignments referenced here come from `firmware/src/protocol.h`; see
+[ASSEMBLY.md](ASSEMBLY.md) for the wiring. The shipping firmware is the sketch
+`esp32_temp_probe/esp32_temp_probe.ino`.
 
-- **Firmware target:** ESP32-WROOM-32 / -32E, firmware **v2.4.0**, protocol v1.
+> **Board:** the rev-1 unit is the **ESP32-C3 SuperMini** (USB-C native). The firmware now targets it —
+> the status LED is auto-selected to **GPIO8, active-low** when built for the C3 (it falls back to a
+> WROOM's GPIO2 active-high for that board), and GPIO8 is kept boot-safe (it's a strapping pin held
+> high at reset). DS18B20 stays on **GPIO5 + 4.7 kΩ pull-up**. Build/flash with FQBN
+> `esp32:esp32:esp32c3`.
+
+- **Firmware target:** ESP32-C3 (SuperMini), firmware **v2.4.0**, protocol v1 (FQBN `esp32:esp32:esp32c3`).
 - **Sensor:** DS18B20 (waterproof probe) on **GPIO5** with a 4.7 kΩ pull-up to
   3V3. This is the **only** sensor the current firmware supports.
-- **Status LED:** GPIO2 (`LED_BUILTIN`; on most dev boards the on-board LED, so
-  an external LED is optional if you use a bare dev board).
-- **Power:** rechargeable-lithium battery. The firmware deep-sleeps between
-  readings (idle <1 mA), so a single lithium cell gives long runtime; USB-C is
-  used for charging and flashing.
+- **Status LED:** GPIO8 (the C3 SuperMini's on-board LED, **active-low**), so no external LED is
+  needed. The firmware drives it boot-safe (GPIO8 is a strapping pin, held high at reset).
+- **Power (version-dependent — see [`VERSIONS.md`](VERSIONS.md)):** **Portable** runs on a protected
+  lithium cell and deep-sleeps between readings (idle <1 mA) for long runtime (USB-C for charging +
+  flashing). **Fixed** runs **always-on from USB-C with no battery** (fewer parts, no lithium).
 - **Future / not in current firmware:** MAX31855 K-type thermocouple (SPI) and
   SHT4x temp+humidity (I2C) are documented as possible future variants only.
   They are **not** implemented in v2.4.0 and are not populated on shipping units.
@@ -24,7 +31,7 @@ firmware is the sketch `esp32_temp_probe/esp32_temp_probe.ino`.
 
 | # | Component | Spec / part example | Qty | Example supplier | Unit cost (USD) |
 |---|-----------|---------------------|-----|------------------|-----------------|
-| 1 | ESP32 dev board | ESP32-WROOM-32E DevKitC (38-pin), USB-C | 1 | DigiKey 1965-ESP32-DEVKITC-32E-ND / Amazon | 6.50 |
+| 1 | ESP32-C3 dev board | ESP32-C3 SuperMini (USB-C native, on-board LED GPIO8) | 1 | Amazon B0DFWG87JS / AliExpress | 3.50 |
 | 2 | DS18B20 waterproof probe | Stainless tube, 1 m lead, 3-wire (VDD/GND/DQ) | 1 | Adafruit #381 / Amazon | 3.50 |
 | 3 | Pull-up resistor | 4.7 kΩ, 1/4 W, ±5% (DS18B20 DQ → 3V3) | 1 | any (buy a strip) | 0.02 |
 | 4 | Status LED | 3 mm or 5 mm, any color (skip if using on-board LED) | 1 | any | 0.05 |
@@ -38,9 +45,14 @@ firmware is the sketch `esp32_temp_probe/esp32_temp_probe.ino`.
 | 12 | Hookup wire / header | Dupont jumpers or 22 AWG solid, plus 0.1" header if socketing | small | any | 0.20 |
 | 13 | Misc (solder, heatshrink, standoffs) | consumables, amortized per unit | — | — | 0.40 |
 
-**Core per-unit material cost ≈ $22.19** (round to **~$22.20**).
-Buying dev boards, probes, and cells in 10+ qty typically drops this to
-**~$16–18/unit**.
+**Core per-unit material cost ≈ $19.19** (round to **~$19.20**) for the **Portable** build (the C3
+SuperMini is ~$3 cheaper than the old DevKitC). Buying probes, boards, and cells in 10+ qty typically
+drops this to **~$13–15/unit**.
+
+> **Version split (see [`VERSIONS.md`](VERSIONS.md)):** items **6–8 (lithium cell, TP4056 charge
+> board, holder) plus a slide on/off switch (~$0.35)** are **Portable-only**. The **Fixed** version
+> omits all of them and instead uses a **USB-C wall adapter (~$4)** — so a Fixed unit costs roughly
+> **$5 less** in materials and carries **no lithium**. Kits ship **cell-not-included** either way.
 
 > The DS18B20 is a 1-Wire part and **requires** the 4.7 kΩ pull-up (item 3) — the
 > bus will not read without it.
@@ -70,25 +82,31 @@ the battery, and the printed unit label/QR.
 
 | Build | Material cost | Assembly + test (labor) | Suggested landed cost | **Suggested retail** | Gross margin |
 |-------|---------------|--------------------------|-----------------------|----------------------|--------------|
-| DS18B20 (standard, battery) | ~$22.20 | ~$8 (≈20 min @ $24/hr) | ~$30.20 | **$65** | ~54% |
+| **Portable** (DS18B20, battery) | ~$19.20 | ~$8 (≈20 min @ $24/hr) | ~$27.20 | **$65** | ~58% |
+| **Fixed** (DS18B20, USB, no battery) | ~$14.50 | ~$7 | ~$21.50 | **$55** | ~61% |
+
+> These are *assembled-unit* maker prices (post-FCC). Today rev-1 sells as **DIY kits** at **$39 / $49**
+> ([`DIY_KIT.md`](DIY_KIT.md)) — the Fixed (no-battery) kit is the cheaper option to list alongside the
+> Portable one.
 
 Notes on pricing:
 - These are *single-unit maker* numbers. At batch scale (parts in 10s–100s,
   jigged flashing/test) landed cost drops materially and you can either widen
   margin or cut retail toward ~$49.
-- TempSensor is the free local-first software; the TempSensor hardware is the
+- Setpoint is the free local-first software; the Setpoint hardware is the
   revenue item. One hub can serve many probes, so upsell is additional probes.
 - The thermocouple / humidity variants are not priced here because they are not
   yet supported by the firmware (see above).
 
 ---
 
-## Battery, waterproofing & food-safe notes
+## Power, waterproofing & food-safe notes
 
-- **Battery:** use a single protected lithium cell with the TP4056 charge/protect
-  board (items 6–8). The board handles USB-C charging and over-discharge cut-off;
+- **Battery (Portable version only):** use a single protected lithium cell with the TP4056
+  charge/protect board (items 6–8). The board handles USB-C charging and over-discharge cut-off;
   never charge a bare unprotected cell. Keep the cell inside the sealed enclosure,
-  away from the probe gland and any moisture path.
+  away from the probe gland and any moisture path. The **Fixed** version has no cell — it runs from a
+  USB-C wall adapter, so none of these battery cautions apply to it.
 - The **stainless DS18B20 probe tip is the only part rated for immersion.** The
   ESP32, resistor, LED, and battery live inside the enclosure and must stay dry.
 - For fridge / freezer / fermentation: the stainless probe tip is food-contact
