@@ -60,7 +60,7 @@ jobs:
       - name: Assemble Pages site (hub at root, flasher at /flash/)
         run: |
           mkdir -p _site/flash
-          cp web/index.html _site/index.html
+          cp web/*.html _site/
           cp flash/index.html \
              flash/manifest.json \
              flash/setpoint-esp32c3.merged.bin \

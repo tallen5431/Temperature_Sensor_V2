@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Setpoint DIY Kit — Build Guide</title>
+<style>
+  :root{--brand:#17b3cc;--brand-strong:#3fcbe0;--bg:#0b131b;--surface:#131f2b;--surface-2:#18242f;
+    --border:#22323f;--border-strong:#2f4454;--text:#e9f1f7;--soft:#9db0be;--faint:#6e8393;--warn:#efb02e;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code","Roboto Mono",Menlo,Consolas,monospace;color-scheme:dark;}
+  *{box-sizing:border-box;} body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font);
+    font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  .top{border-bottom:1px solid var(--border);background:rgba(11,19,27,.8);position:sticky;top:0;backdrop-filter:blur(8px);}
+  .top .in{max-width:800px;margin:0 auto;padding:.9rem 1.2rem;display:flex;align-items:baseline;gap:.5rem;}
+  .top .mk{font-weight:800;letter-spacing:-.02em;font-size:1.1rem;}
+  .top .by{font-family:var(--mono);font-size:.6rem;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);}
+  .top a{margin-left:auto;font-family:var(--mono);font-size:.8rem;color:var(--soft);text-decoration:none;}
+  .top a:hover{color:var(--brand-strong);}
+  main{max-width:800px;margin:0 auto;padding:2rem 1.2rem 4rem;}
+  h1{font-size:2rem;letter-spacing:-.02em;line-height:1.1;margin:.2rem 0 .3rem;}
+  h2{font-size:1.4rem;letter-spacing:-.01em;margin:2.2rem 0 .6rem;padding-top:1.2rem;border-top:1px solid var(--border);}
+  h3{font-size:1.1rem;margin:1.6rem 0 .5rem;color:var(--brand-strong);}
+  p,li{color:var(--soft);} strong{color:var(--text);}
+  a{color:var(--brand-strong);}
+  em{color:var(--faint);font-style:italic;}
+  blockquote{border-left:3px solid var(--warn);margin:1rem 0;padding:.3rem 0 .3rem 1rem;color:var(--soft);background:rgba(239,176,46,.06);}
+  code{font-family:var(--mono);font-size:.86em;background:#0d1620;border:1px solid var(--border);padding:.05rem .35rem;border-radius:5px;color:var(--brand-strong);}
+  table{border-collapse:collapse;width:100%;margin:1rem 0;font-size:.92rem;display:block;overflow-x:auto;}
+  th,td{border:1px solid var(--border);padding:.5rem .7rem;text-align:left;}
+  th{background:var(--surface-2);color:var(--text);font-family:var(--mono);font-size:.78rem;letter-spacing:.04em;text-transform:uppercase;}
+  hr{border:none;border-top:1px solid var(--border);margin:2rem 0;}
+  ol,ul{padding-left:1.4rem;} li{margin:.35rem 0;}
+</style></head><body>
+<div class="top"><div class="in"><span class="mk">Setpoint</span><span class="by">by Datum Labs</span>
+  <a href="./">&larr; Back to Start</a></div></div>
+<main><h1>Setpoint DIY Kit — Build Guide (Module Carrier)</h1>
+<p><em>For the module-based carrier board: an </em><em>ESP32-C3 SuperMini</em><em>, a </em><em>TP4056 charging module (with protection)</em><em>, a slide switch, and a DS18B20 probe, soldered onto the carrier. All through-hole / module soldering — no fine-pitch SMD. Budget ~30 min.</em></p>
+<hr />
+<h2>What's in your kit</h2>
+<table>
+<thead>
+<tr>
+<th>Part</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Carrier PCB</td>
+<td>The through-hole board</td>
+</tr>
+<tr>
+<td>ESP32-C3 SuperMini</td>
+<td>The brain; has its own USB-C (for flashing)</td>
+</tr>
+<tr>
+<td>TP4056 module (<strong>with protection</strong>)</td>
+<td>Charges the cell over its own USB-C; DW01+FS8205 protection on-board</td>
+</tr>
+<tr>
+<td>SPDT slide switch</td>
+<td>Power on/off (stops shelf drain)</td>
+</tr>
+<tr>
+<td>DS18B20 waterproof probe</td>
+<td>Temperature sensor</td>
+</tr>
+<tr>
+<td>4.7 kΩ resistor</td>
+<td>DS18B20 pull-up (+ any others per silk)</td>
+</tr>
+<tr>
+<td>Header pins</td>
+<td>To mount the SuperMini + TP4056 module</td>
+</tr>
+<tr>
+<td>18650 holder <em>(optional)</em></td>
+<td>For the cell</td>
+</tr>
+</tbody>
+</table>
+<p><strong>You supply:</strong> an 18650 cell. <strong>Protected <em>or</em> unprotected is fine here</strong> — the TP4056 module provides protection. (This is the one product where your unprotected cells are OK.)</p>
+<h2>Tools</h2>
+<p>Soldering iron + solder · flush cutters · <strong>USB-C data cable</strong> (not charge-only) · Chrome / Edge / Opera on desktop · multimeter (for the battery polarity check).</p>
+<hr />
+<h2>Step 1 — Solder the modules &amp; parts</h2>
+<p>Solder header rows first, then seat each module onto them. <strong>Point both USB-C ports toward the board edge.</strong>
+1. <strong>ESP32-C3 SuperMini</strong> — solder its header rows to the carrier; USB-C facing out.
+2. <strong>TP4056 module</strong> — solder in place; its USB-C facing out.
+3. <strong>4.7 kΩ resistor</strong> — in the DS18B20 pull-up position (marked on silk).
+4. <strong>SPDT slide switch</strong> — seat flat, solder the 3 pins.</p>
+<p>Trim leads flush. Check for solder bridges on the header rows.</p>
+<blockquote>
+<p><strong>Two USB-C ports:</strong> the <strong>SuperMini's</strong> port is for <em>flashing &amp; data</em>; the <strong>TP4056's</strong> is for <em>charging only</em>. Don't mix them up in Step 5.</p>
+</blockquote>
+<h2>Step 2 — Wire the probe</h2>
+<p>Connect the DS18B20's three wires at the <strong>DS18B20</strong> pads: <strong>VCC / DATA / GND</strong> (follow the silk). The 4.7 kΩ pull-up you just soldered handles the DATA line.</p>
+<h2>Step 3 — Wire the battery ⚠️</h2>
+<ol>
+<li>Connect the 18650 holder to the carrier's <strong>battery pads</strong> (to the TP4056 module's <strong>B+ / B−</strong>).</li>
+<li><strong>Confirm polarity with a multimeter</strong> — holder <strong>red (+) → B+</strong>, <strong>black (−) → B−</strong>. Reversed polarity can damage the module/board.</li>
+<li>Protected or unprotected cell both work (module has protection). Insert the cell with the switch <strong>OFF</strong>.</li>
+</ol>
+<h2>Step 4 — Power check</h2>
+<p>Switch <strong>OFF</strong> → plug the <strong>SuperMini USB-C</strong> → switch <strong>ON</strong>. The SuperMini's onboard LED should light. If anything gets warm, unplug and re-check Step 1 for bridges.</p>
+<h2>Step 5 — Flash the firmware (browser)</h2>
+<ol>
+<li>Open the <strong>Setpoint web flasher</strong> <em>(your hosted flash-page URL)</em> in <strong>Chrome/Edge/Opera</strong>.</li>
+<li>Plug the <strong>SuperMini's USB-C</strong> into your computer (switch ON).</li>
+<li>Click <strong>Install/Connect</strong>, choose the port, flash. The C3 flashes natively over USB — no adapter.</li>
+</ol>
+<blockquote>
+<p>✅ <strong>Firmware just works:</strong> the stock v2.4.0 image already targets this board — DS18B20 on <strong>GPIO5</strong>, status LED on the SuperMini's <strong>GPIO8</strong> (auto-selected for the ESP32-C3 target). One image fits both the kit and the finished product; no special build needed.</p>
+</blockquote>
+<h2>Step 6 — Join Wi-Fi</h2>
+<p>On first boot the board opens its <strong>setup portal</strong>. Connect to it, pick your <strong>2.4 GHz</strong> network, save. It reconnects on its own afterward.</p>
+<h2>Step 7 — Verify</h2>
+<p>Open your <strong>Setpoint dashboard</strong> — the probe should appear and report temperature. Pinch the tip; the reading should rise. Set a threshold and confirm the alert fires.</p>
+<p>✅ Done.</p>
+<hr />
+<h2>Safety</h2>
+<ul>
+<li>The TP4056 module provides cell protection, but <strong>still verify battery polarity</strong> before first power-on.</li>
+<li>Don't leave the first charge unattended; confirm the cell doesn't get hot.</li>
+<li>Not a certified medical/food-safety/life-safety device. DIY builds carry <strong>no hardware warranty</strong>.</li>
+</ul>
+<h2>Troubleshooting</h2>
+<table>
+<thead>
+<tr>
+<th>Symptom</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>No LED on USB</td>
+<td>Switch off · bridge · charge-only cable — use a data cable · wrong USB-C port (use the SuperMini's)</td>
+</tr>
+<tr>
+<td>Warm/hot</td>
+<td>Short — unplug, re-inspect header rows and battery polarity</td>
+</tr>
+<tr>
+<td>Flasher can't see port</td>
+<td>Chrome/Edge/Opera, over <strong>HTTPS</strong>, data cable · hold BOOT while connecting</td>
+</tr>
+<tr>
+<td>No temperature</td>
+<td>Probe VCC/DATA/GND order wrong · cold joint at the DS18B20 pads (DATA = GPIO5)</td>
+</tr>
+<tr>
+<td>Won't join Wi-Fi</td>
+<td>Must be <strong>2.4 GHz</strong> · re-enter password</td>
+</tr>
+<tr>
+<td>No charge</td>
+<td>Use the <strong>TP4056</strong> USB-C port for charging (not the SuperMini's)</td>
+</tr>
+</tbody>
+</table>
+<hr /></main>
+</body></html>
