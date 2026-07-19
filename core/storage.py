@@ -119,9 +119,10 @@ def normalize_payload(payload: dict):
 
     # Enforce the ingest contract (PROTOCOL.md §6): the resolved value must be a
     # finite number in a physically sane band. This rejects NaN/inf (which would
-    # otherwise 500 on the NOT NULL insert or poison stats/exports) and sensor
-    # fault codes (85.0 power-on, -127 disconnected) before they reach the DB and
-    # fire spurious alerts. Callers turn the ValueError into a clean 400.
+    # otherwise 500 on the NOT NULL insert or poison stats/exports) and the -127
+    # disconnected sensor fault code before it reaches the DB and fires a
+    # spurious alert. (85.0, the DS18B20 power-on value, is physically plausible
+    # and is intentionally left in-band.) Callers turn the ValueError into a clean 400.
     if not (math.isfinite(t_c) and math.isfinite(t_f)):
         raise ValueError("temperature must be a finite number")
     if not (-60.0 <= t_c <= 150.0):
