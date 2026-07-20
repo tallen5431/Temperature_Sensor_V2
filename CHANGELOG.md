@@ -32,6 +32,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is POST-only and rejected the prior GET with 405).
 
 ### Changed
+- **Release/CI housekeeping.** Bumped the GitHub Actions that were pinned to the
+  now-deprecated Node 20 runtime (`actions/checkout` v4→v5, `actions/setup-python`
+  v5→v6, `softprops/action-gh-release` v2→v3) so workflow runs stop emitting
+  deprecation warnings. The `release` workflow now auto-populates each Release's
+  notes from `packaging/RELEASE_NOTES.md` (download table + the "first launch
+  shows a security prompt" guidance for the unsigned installers).
 - **Rebranded the product to "Setpoint, by Datum Labs."** The device, hub app, and integration
   surfaces now carry the new name end to end: the setup Wi-Fi / probe id is `Setpoint-XXXXXX`
   (was `TempSensor-XXXXXX`), the mDNS hub instance is "Setpoint Hub", the app data directory is

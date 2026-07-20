@@ -40,8 +40,8 @@ jobs:
     needs: meta
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Build onedir bundle
@@ -50,9 +50,10 @@ jobs:
         run: |
           tar -C dist -czf "dist/Setpoint-linux-x64-${{ needs.meta.outputs.version }}.tar.gz" temperature-hub
       - name: Attach to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.meta.outputs.tag }}
+          body_path: packaging/RELEASE_NOTES.md
           files: dist/Setpoint-linux-x64-*.tar.gz
 
   windows:
@@ -61,8 +62,8 @@ jobs:
     env:
       HAS_WIN_CERT: ${{ secrets.WINDOWS_CERT_BASE64 != '' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Build onedir bundle
@@ -85,9 +86,10 @@ jobs:
           & signtool sign /f $pfx /p $env:WINDOWS_CERT_PASSWORD /fd SHA256 `
             /tr http://timestamp.digicert.com /td SHA256 $setup.FullName
       - name: Attach to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.meta.outputs.tag }}
+          body_path: packaging/RELEASE_NOTES.md
           files: dist/installer/Setpoint-Setup-*.exe
 
   macos:
@@ -98,8 +100,8 @@ jobs:
       HAS_NOTARY_KEY: ${{ secrets.APPLE_API_KEY_BASE64 != '' }}
       APPLE_SIGN_IDENTITY: ${{ secrets.APPLE_SIGN_IDENTITY }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Import Developer ID certificate
@@ -130,7 +132,8 @@ jobs:
           APPLE_API_KEY_PATH: ${{ env.HAS_NOTARY_KEY == 'true' && format('{0}/nkey.p8', runner.temp) || '' }}
         run: ./packaging/macos/build_dmg.sh
       - name: Attach to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.meta.outputs.tag }}
+          body_path: packaging/RELEASE_NOTES.md
           files: dist/installer/Setpoint-*.dmg
