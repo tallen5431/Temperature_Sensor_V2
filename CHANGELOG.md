@@ -11,6 +11,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Dashboard freshness consistency (review follow-up).** A code review found
+  that "is this probe fresh?" was decided several different ways, so the same
+  probe could read differently on one screen. Unified on a single shared helper
+  (`core.status.probe_fresh_window`) and fixed the fallout:
+  the **alert banner** and the "needs attention" gauge no longer fire for a probe
+  that breached once and then went silent (they now agree with its "● stale"
+  card); **focus mode's "Last Update"** tracks the focused probe instead of the
+  hub-wide newest reading (a silent focused probe no longer reads "Just now");
+  the **Diagnostics** "reporting" count and the **Devices** grid's online colour
+  now use that same interval/offline-aware window as the dashboard; the
+  **humidity/VPD** cards use the same 7-day presence window as every other
+  per-probe view; the **Logging Status** KPI is amber (not success-green) when
+  logging is OFF; and the "all" range skips a full-table `COUNT(*)` on every tick.
+  Devices edit-modal fixes: an inverted **min > max** threshold is now corrected
+  instead of alerting on every reading, and saving a name/threshold-only change
+  no longer writes a spurious per-probe interval override or re-provisions the
+  probe. Covered by `tests/test_dashboard_freshness.py`.
 - **Hub dashboard (v2.4.1):** removed a duplicated clock-format callback block
   that registered a second pair of callbacks on the same outputs
   (`clock-format-store.data` and the 24h/12h button outlines). With no

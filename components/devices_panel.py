@@ -4,6 +4,8 @@ import logging
 from dash import html, dcc, Output, Input, State, no_update, ALL
 import dash_bootstrap_components as dbc
 
+from core.status import probe_fresh_window
+
 log = logging.getLogger("hub.devices")
 
 DevicesLayout = html.Div([
@@ -157,15 +159,20 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                         else:
                             dt = datetime.datetime.fromisoformat(str(last).rstrip('Z'))
                         seconds = (now - dt).total_seconds()
+                        # Colour by the SAME interval-aware freshness window the
+                        # dashboard/footer/Diagnostics use, so a probe reporting on
+                        # its normal (possibly slow deep-sleep) cadence is not shown
+                        # red here while every other view calls it online.
+                        fresh = seconds <= probe_fresh_window(cfg, probe_id)
+                        status_color = 'success' if fresh else 'danger'
                         if seconds < 15:
-                            status_color = 'success'
                             delta = 'Just now'
                         elif seconds < 60:
-                            status_color = 'warning'
                             delta = f'{int(seconds)} s ago'
-                        else:
-                            status_color = 'danger'
+                        elif seconds < 3600:
                             delta = f'{int(seconds // 60)} min ago'
+                        else:
+                            delta = f'{int(seconds // 3600)} h ago'
                     except Exception:
                         pass
 
@@ -324,6 +331,16 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                         probe_thresholds['max'] = float(max_value)
                 except (TypeError, ValueError):
                     pass
+                # Guard against an inverted range (min > max): threshold_breach
+                # checks 'value > max' first, so with min=30/max=10 essentially
+                # EVERY reading is classified as a breach and the probe alerts
+                # forever. Swap so the stored range is always valid.
+                if ('min' in probe_thresholds and 'max' in probe_thresholds
+                        and probe_thresholds['min'] > probe_thresholds['max']):
+                    probe_thresholds['min'], probe_thresholds['max'] = (
+                        probe_thresholds['max'], probe_thresholds['min'])
+                    log.warning('Probe %s: min > max on save, swapped to %s',
+                                stored_probe_id, probe_thresholds)
                 if probe_thresholds:
                     alert_thresholds[stored_probe_id] = probe_thresholds
                 else:
@@ -341,21 +358,43 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                     calibration_offsets.pop(stored_probe_id, None)
                 cfg.update({'calibration_offsets': calibration_offsets})
 
-                # --- Save per-probe interval ---
+                # --- Save per-probe interval (only when it actually differs) ---
+                # The modal pre-fills this field with the EFFECTIVE interval
+                # (override if present, else the global default), so writing it
+                # unconditionally created a spurious per-probe override the first
+                # time only a name/threshold was edited — silently decoupling the
+                # probe from the global default and re-provisioning it every save.
+                # Persist an override only when the value truly differs from global.
                 global_interval_sec = cfg.get('interval_sec', 5)
-                try:
-                    new_interval_sec = float(interval_value) if interval_value not in (None, '') else global_interval_sec
-                    new_interval_sec = max(0.5, new_interval_sec)
-                except (TypeError, ValueError):
-                    new_interval_sec = global_interval_sec
-
                 probe_intervals = cfg.get('probe_intervals', {})
-                probe_intervals[stored_probe_id] = new_interval_sec
+                prev_override = probe_intervals.get(stored_probe_id)
+                try:
+                    prev_effective = float(prev_override if prev_override is not None
+                                           else global_interval_sec)
+                except (TypeError, ValueError):
+                    prev_effective = float(global_interval_sec)
+
+                if interval_value in (None, ''):
+                    new_interval_sec = float(global_interval_sec)  # blank = inherit global
+                else:
+                    try:
+                        new_interval_sec = max(0.5, float(interval_value))
+                    except (TypeError, ValueError):
+                        new_interval_sec = prev_effective
+
+                if new_interval_sec == float(global_interval_sec):
+                    probe_intervals.pop(stored_probe_id, None)  # inherit, no override stored
+                else:
+                    probe_intervals[stored_probe_id] = new_interval_sec
                 cfg.update({'probe_intervals': probe_intervals})
-                log.info('Saved interval for %s: %s s', stored_probe_id, new_interval_sec)
+                interval_changed = new_interval_sec != prev_effective
+                if interval_changed:
+                    log.info('Saved interval for %s: %s s', stored_probe_id, new_interval_sec)
 
                 # --- Push new interval to the probe immediately (best-effort) ---
-                if public_base_func is not None:
+                # Only when the interval actually changed — a name/threshold-only
+                # edit must not trigger an HTTP re-provision round-trip.
+                if interval_changed and public_base_func is not None:
                     try:
                         from provisioning import provision_probe
                         probes = (finder.list_probes() or {}).values()
