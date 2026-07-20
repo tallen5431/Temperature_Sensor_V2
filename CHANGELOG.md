@@ -11,6 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Hub dashboard (v2.4.1):** removed a duplicated clock-format callback block
+  that registered a second pair of callbacks on the same outputs
+  (`clock-format-store.data` and the 24h/12h button outlines). With no
+  `allow_duplicate`, Dash's browser renderer rejects the *entire* callback graph
+  on page load, so the dashboard drew its static shell but **no callback ever
+  fired** — the page-content stayed empty and the footer was stuck on
+  "Status: starting…". Server-side registration accepted both callbacks and all
+  unit tests passed, so only a full callback-graph load surfaced it; a new
+  regression test (`tests/test_callback_graph.py`) now fails on any duplicate
+  callback output.
 - **Firmware (v2.4.1):** a deep-sleep probe that wakes during a Wi-Fi/router
   outage now restores its clock from the RTC *before* the Wi-Fi check, so it
   buffers readings to LittleFS instead of dropping them for want of a
