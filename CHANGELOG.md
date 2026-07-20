@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Firmware (v2.4.1):** a deep-sleep probe that wakes during a Wi-Fi/router
+  outage now restores its clock from the RTC *before* the Wi-Fi check, so it
+  buffers readings to LittleFS instead of dropping them for want of a
+  timestamp. Previously the RTC restore was gated behind the Wi-Fi-connected
+  branch, so readings taken while offline were silently lost — the exact case
+  the offline buffer exists for.
+- **Hub:** `/api/diagnostics` no longer exposes the absolute database path to
+  unauthenticated LAN callers; the onboarding `curl` example uses POST (ingest
+  is POST-only and rejected the prior GET with 405).
+
 ### Changed
 - **Rebranded the product to "Setpoint, by Datum Labs."** The device, hub app, and integration
   surfaces now carry the new name end to end: the setup Wi-Fi / probe id is `Setpoint-XXXXXX`
