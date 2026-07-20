@@ -65,7 +65,7 @@ inline void ledBlink(uint8_t n, uint16_t onMs = 60, uint16_t offMs = 120) {
 
 // ---------------- Identity --------------------------------------------------
 static const char* SENSOR_NAME = "Setpoint";
-static const char* FW_VERSION  = "2.4.0";
+static const char* FW_VERSION  = "2.4.1";
 
 // The setup SoftAP is intentionally OPEN (no password): it only exists during
 // first-time Wi-Fi setup and is torn down once the probe joins the home network,
@@ -763,23 +763,27 @@ void setup() {
   }
 
   // ── NTP / time ────────────────────────────────────────────────────────────
-  if (WiFi.status() == WL_CONNECTED) {
-    if (fromDeepSleep && rtc_timeValid && rtc_epochAtSleep > 0) {
-      // The ESP32 RTC timer ran during sleep so we can reconstruct the current
-      // time accurately without hitting NTP every cycle.
-      time_t approxNow = (time_t)(rtc_epochAtSleep + (int64_t)(rtc_sleepMs / 1000));
-      struct timeval tv = { .tv_sec = approxNow, .tv_usec = 0 };
-      settimeofday(&tv, nullptr);
-      g_timeValid = true;
-      Serial.printf("[Time] Restored from RTC: %s\n", nowIso().c_str());
+  // Restore the clock from the RTC FIRST, independent of Wi-Fi. The ESP32 RTC
+  // timer keeps running through deep sleep, so a probe that wakes during a
+  // Wi-Fi / router outage still gets a valid timestamp — and can therefore
+  // BUFFER its readings to LittleFS instead of dropping them for want of a
+  // clock (bufferAppend() early-returns on an empty timestamp).
+  if (fromDeepSleep && rtc_timeValid && rtc_epochAtSleep > 0) {
+    time_t approxNow = (time_t)(rtc_epochAtSleep + (int64_t)(rtc_sleepMs / 1000));
+    struct timeval tv = { .tv_sec = approxNow, .tv_usec = 0 };
+    settimeofday(&tv, nullptr);
+    g_timeValid = true;
+    Serial.printf("[Time] Restored from RTC: %s\n", nowIso().c_str());
+  }
 
-      // Periodic NTP resync to correct accumulated RTC drift
-      if (rtc_bootCount % NTP_RESYNC_INTERVAL == 0) {
-        Serial.println("[NTP] Scheduled resync...");
-        syncTime();
-      }
-    } else {
-      // Cold boot or first sync — must contact NTP
+  if (WiFi.status() == WL_CONNECTED) {
+    // Online housekeeping: get or refresh NTP time, advertise, flush the buffer.
+    if (!g_timeValid) {
+      // Cold boot / never-synced — must contact NTP for an initial clock.
+      syncTime();
+    } else if (rtc_bootCount % NTP_RESYNC_INTERVAL == 0) {
+      // Clock came from the RTC; resync periodically to correct accumulated drift.
+      Serial.println("[NTP] Scheduled resync...");
       syncTime();
     }
     ledBlink(3, 120, 120);
