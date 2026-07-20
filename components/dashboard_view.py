@@ -8,6 +8,7 @@ import plotly.graph_objs as go
 from dash import Input, Output, State, dcc, html, no_update
 
 from core.storage import threshold_breach
+from core.status import probe_fresh_window as _probe_fresh_window, ONLINE_TIMEOUT_SEC
 from core.demo import has_demo_data, load_demo_data, clear_demo_data
 
 log = logging.getLogger("hub.dashboard")
@@ -17,10 +18,12 @@ RANGE_SECONDS = {"1h": 3600, "6h": 21600, "24h": 86400, "7d": 604800, "30d": 259
 RANGE_LABELS = {"1h": "last hour", "6h": "last 6 hours", "24h": "last 24 hours",
                 "7d": "last week", "30d": "last month", "all": "all time"}
 
-# A probe counts as "connected" if seen within this many seconds.
-ONLINE_TIMEOUT_SEC = 60
+# How far back the per-probe views (status cards, focus dropdown, humidity/VPD
+# cards, Devices merge) look for a probe's latest reading, so a probe that
+# reports less often than daily still appears everywhere consistently.
+PROBE_PRESENCE_WINDOW = 7 * 86400  # 7 days
 
-PROBE_COLORS = ["#17b3cc", "#ef8354", "#9b8cf0", "#38c172", "#e5c04b", "#ec6a7a",
+PROBE_COLORS =["#17b3cc", "#ef8354", "#9b8cf0", "#38c172", "#e5c04b", "#ec6a7a",
                 "#4d9de0", "#b57edc", "#45cbb0", "#f0a94e", "#7f8ea3", "#e05a8a"]
 
 # Shared font stack for Plotly figures — matches assets/theme.css (system fonts,
@@ -321,39 +324,18 @@ def _age_text(age_sec):
     return f"{int(age_sec // 3600)} h ago"
 
 
-# A probe is "fresh" until it has been silent for this many times its own
-# reporting interval — so a deep-sleep probe that wakes every few minutes is not
-# flagged stale between wakes.
-STALE_INTERVAL_MULTIPLIER = 2.5
+def _row_age_seconds(row, now_dt=None):
+    """Age in seconds of a latest-per-probe row's timestamp, or None if unparseable.
 
-# Fallback offline threshold, matching alert_monitor's ``offline_after_sec``
-# default (5 min). The dashboard uses the same number so a probe never reads
-# "stale" here while the alert engine still considers it online, and vice versa.
-OFFLINE_AFTER_SEC = 300
-
-
-def _probe_fresh_window(cfg, probe_id):
-    """Seconds a probe may be silent before it counts as stale/offline.
-
-    The larger of: the configured online timeout, the alert monitor's offline
-    threshold (so the dashboard and the alerting engine agree on "offline"), and
-    ~2.5x this probe's reporting interval (so a slow deep-sleep cadence doesn't
-    read as offline between wakes). The 5-min floor means a typical battery probe
-    counts as connected out of the box, with no per-probe configuration.
+    Used to decide whether a probe's most recent reading is fresh enough to still
+    count as an active alert / breach (via ``_probe_fresh_window``).
     """
-    base = ONLINE_TIMEOUT_SEC
-    for key, default in (("probe_online_timeout_sec", ONLINE_TIMEOUT_SEC),
-                         ("offline_after_sec", OFFLINE_AFTER_SEC)):
-        try:
-            base = max(base, int(cfg.get(key, default) or default))
-        except (TypeError, ValueError):
-            pass
+    now_dt = now_dt or datetime.datetime.now()
     try:
-        intervals = cfg.get("probe_intervals", {}) or {}
-        interval = float(intervals.get(probe_id, cfg.get("interval_sec", 5) or 5))
-    except (TypeError, ValueError):
-        interval = 5.0
-    return max(base, interval * STALE_INTERVAL_MULTIPLIER)
+        dt = datetime.datetime.fromisoformat(str(row["timestamp"]).rstrip("Z"))
+        return max(0.0, (now_dt - dt).total_seconds())
+    except Exception:
+        return None
 
 
 def _reporting_probe_count(db, cfg, finder):
@@ -502,6 +484,7 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
     logging_status = "ON" if cfg.get("pull_enabled", True) else "OFF"
     probes_online = _reporting_probe_count(db, cfg, finder)
     focus = focus_probe if (focus_probe and focus_probe != "all") else None
+    focus_ts = None  # the focused probe's OWN latest timestamp (for "Last Update")
 
     try:
         latest = db.latest()
@@ -518,10 +501,11 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
             # overview while the dropdown and its card still show the probe. ---
             frow = None
             try:
-                lp = db.latest_per_probe(7 * 86400)
+                lp = db.latest_per_probe(PROBE_PRESENCE_WINDOW)
                 match = lp[lp["probe_id"] == focus]
                 if not match.empty:
                     frow = match.iloc[0]
+                    focus_ts = frow["timestamp"]
             except Exception:
                 frow = None
             if frow is None:
@@ -542,8 +526,12 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
             focus_lo, focus_hi = thr.get("min"), thr.get("max")
             try:
                 best = None  # (severity, pid, t_c, lo, hi)
+                now_dt = datetime.datetime.now()
                 for _, r in db.latest_per_probe(window).iterrows():
                     pid = r["probe_id"]
+                    age = _row_age_seconds(r, now_dt)
+                    if age is not None and age > _probe_fresh_window(cfg, pid):
+                        continue  # a stale breach must not hijack the "needs attention" gauge
                     tc = float(r["temperature_c"])
                     t = thresholds.get(pid, thresholds.get("default", {})) or {}
                     lo, hi = t.get("min"), t.get("max")
@@ -563,8 +551,10 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
         if focus is not None and not df.empty:
             df = df[df["probe_id"] == focus]
         stats = db.window_stats(window_seconds=window, probe_id=focus)
-        total_points = db.count()
         filtered_points = stats["count"]
+        # "all" renders the same figure for filtered and total, so skip the extra
+        # full-table COUNT(*) scan on every 5s tick in that view.
+        total_points = filtered_points if time_range == "all" else db.count()
 
         # --- Graph ---
         fig = go.Figure()
@@ -643,13 +633,21 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
                           f"({RANGE_LABELS.get(time_range, 'selected range')})")
 
         # --- Alerts (latest reading per probe vs thresholds) ---
+        # Only ACTIVE (fresh) probes raise an alert. A probe that breached once
+        # and then went silent must not keep showing a red banner for the whole
+        # window — its per-probe card already reads "● stale" and Connected Probes
+        # drops it, so the banner has to agree.
         alerts = []
         thresholds = cfg.get("alert_thresholds", {})
         if thresholds:
+            now_dt = datetime.datetime.now()
             latest_each = db.latest_per_probe(window_seconds=window)
             for _, row in latest_each.iterrows():
                 pid = row["probe_id"]
                 t_c = row["temperature_c"]
+                age = _row_age_seconds(row, now_dt)
+                if age is not None and age > _probe_fresh_window(cfg, pid):
+                    continue  # stale/offline probe — not an active alert
                 cfgt = thresholds.get(pid, thresholds.get("default", {})) or {}
                 hi, lo = cfgt.get("max"), cfgt.get("min")
                 if hi is not None and t_c > hi:
@@ -662,7 +660,10 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
                                   color="warning", className="mb-2"))
 
         # --- Heartbeat + human-friendly "Last Update" ---
-        ts = latest["timestamp"]
+        # In focus mode, base "Last Update"/heartbeat on the FOCUSED probe's own
+        # latest reading, not the hub-wide newest — otherwise a silent focused
+        # probe would read "Just now" because a different probe is still reporting.
+        ts = focus_ts if (focus is not None and focus_ts is not None) else latest["timestamp"]
         last_update = str(ts)
         try:
             last_dt = datetime.datetime.fromisoformat(str(ts).rstrip("Z"))
@@ -878,7 +879,7 @@ def register_dashboard_callbacks(app, finder, cfg, db):
         temp_unit = temp_unit or "celsius"
         focus = focus_probe if (focus_probe and focus_probe != "all") else None
         try:
-            latest = db.latest_per_probe(window_seconds=7 * 86400)
+            latest = db.latest_per_probe(window_seconds=PROBE_PRESENCE_WINDOW)
         except Exception:
             return []
         if latest is None or latest.empty:
@@ -943,7 +944,7 @@ def register_dashboard_callbacks(app, finder, cfg, db):
         temperature-only deployment so the layout is unchanged for most users."""
         focus = focus_probe if (focus_probe and focus_probe != "all") else None
         try:
-            latest_each = db.latest_per_probe(window_seconds=86400)
+            latest_each = db.latest_per_probe(window_seconds=PROBE_PRESENCE_WINDOW)
         except Exception:
             return []
         cards = []
@@ -979,6 +980,7 @@ def register_dashboard_callbacks(app, finder, cfg, db):
         Output("stat-avg", "children"),
         Output("stat-avg-info", "children"),
         Output("alerts-container", "children"),
+        Output("metric-logging", "className"),
         Input("dash-refresh", "n_intervals"),
         Input("time-range-selector", "value"),
         Input("temp-unit-store", "data"),
@@ -986,7 +988,11 @@ def register_dashboard_callbacks(app, finder, cfg, db):
         Input("clock-format-store", "data"),
     )
     def update_dashboard(_n, time_range, temp_unit, focus_probe, clock_format):
-        return build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe, clock_format)
+        out = build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe, clock_format)
+        # Colour the Logging KPI by state (its value is out[4]): green when ON,
+        # amber when OFF — so "OFF" no longer renders in success-green.
+        logging_class = "fw-bold mb-0 " + ("text-success" if out[4] == "ON" else "text-warning")
+        return (*out, logging_class)
 
     @app.callback(
         Output("focus-probe-selector", "options"),
@@ -997,7 +1003,7 @@ def register_dashboard_callbacks(app, finder, cfg, db):
         'All probes' first. Values are probe ids; labels are friendly names."""
         opts = [{"label": "All probes (overview)", "value": "all"}]
         try:
-            latest = db.latest_per_probe(window_seconds=7 * 86400)
+            latest = db.latest_per_probe(window_seconds=PROBE_PRESENCE_WINDOW)
             pids = [p for p in latest["probe_id"].tolist() if str(p).strip()]
             for pid in sorted(pids, key=lambda p: _friendly_name(cfg, p).lower()):
                 opts.append({"label": _friendly_name(cfg, pid), "value": pid})

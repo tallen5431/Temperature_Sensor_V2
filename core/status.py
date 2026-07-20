@@ -8,6 +8,47 @@ from __future__ import annotations
 import time
 from typing import Any, Dict, Iterable
 
+# A probe counts as "connected" if seen within this many seconds (mDNS default).
+ONLINE_TIMEOUT_SEC = 60
+
+# A probe is "fresh" until it has been silent for this many times its own
+# reporting interval — so a deep-sleep probe that wakes every few minutes is not
+# flagged stale between wakes.
+STALE_INTERVAL_MULTIPLIER = 2.5
+
+# Fallback offline threshold, matching alert_monitor's ``offline_after_sec``
+# default (5 min). Shared by the dashboard, footer, Devices grid and Diagnostics
+# so every surface agrees on when a probe is "offline".
+OFFLINE_AFTER_SEC = 300
+
+
+def probe_fresh_window(cfg, probe_id) -> float:
+    """Seconds a probe may be silent before it counts as stale/offline.
+
+    The larger of: the configured online timeout, the alert monitor's offline
+    threshold (so the dashboard and the alerting engine agree on "offline"), and
+    ~2.5x this probe's reporting interval (so a slow deep-sleep cadence doesn't
+    read as offline between wakes). The 5-min floor means a typical battery probe
+    counts as connected out of the box, with no per-probe configuration.
+
+    This is the single source of truth for "is this probe fresh?" — the dashboard
+    KPI/cards/alerts, the footer, the Devices grid and the Diagnostics page all
+    call it so they can never disagree on the same screen.
+    """
+    base = ONLINE_TIMEOUT_SEC
+    for key, default in (("probe_online_timeout_sec", ONLINE_TIMEOUT_SEC),
+                         ("offline_after_sec", OFFLINE_AFTER_SEC)):
+        try:
+            base = max(base, int(cfg.get(key, default) or default))
+        except (TypeError, ValueError):
+            pass
+    try:
+        intervals = cfg.get("probe_intervals", {}) or {}
+        interval = float(intervals.get(probe_id, cfg.get("interval_sec", 5) or 5))
+    except (TypeError, ValueError):
+        interval = 5.0
+    return max(base, interval * STALE_INTERVAL_MULTIPLIER)
+
 
 def hub_status(probes: Iterable[Any], online_timeout: float,
                total_readings: int, now: float | None = None,
