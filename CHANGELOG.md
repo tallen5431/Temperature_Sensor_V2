@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.6] - 2026-07-21
+
+### Fixed
+
+- **History graph dropped a probe's readings after it was flashed to millisecond
+  firmware.** Firmware ≥ 2.5.0 stamps readings with millisecond precision, so a
+  just-flashed probe's 24 h window mixes pre-flash whole-second
+  (`…T03:00:00`) and post-flash millisecond (`…T03:00:00.500`) timestamps. The
+  dashboard parsed the timestamp column with pandas' default `to_datetime`, which
+  infers a single format from the first row and silently coerces the other
+  precision to `NaT` — so the probe kept recording (its per-probe stats and count
+  were correct) but its points **vanished from the graph**. Both timestamp parses
+  now use `format="ISO8601"`, which accepts either precision. Regression test in
+  `tests/test_dashboard_freshness.py`.
+
 ## [2.4.5] - 2026-07-21
 
 ### Added

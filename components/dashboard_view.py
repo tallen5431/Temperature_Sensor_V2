@@ -294,7 +294,10 @@ def _fmt(temp_c, unit):
 def _fmt_clock(ts_str, clock_format="24h"):
     fmt = "%I:%M %p" if clock_format == "12h" else "%H:%M"
     try:
-        return pd.to_datetime(str(ts_str).rstrip("Z"), errors="coerce").strftime(fmt)
+        # format="ISO8601" parses whole-second AND millisecond stamps alike; the
+        # default parser infers one format and NaTs the odd precision out.
+        return pd.to_datetime(str(ts_str).rstrip("Z"), format="ISO8601",
+                              errors="coerce").strftime(fmt)
     except Exception:
         return "N/A"
 
@@ -560,7 +563,15 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
         fig = go.Figure()
         if not df.empty:
             df = df.copy()
-            df["_dt"] = pd.to_datetime(df["timestamp"].astype(str).str.rstrip("Z"), errors="coerce")
+            # format="ISO8601" is REQUIRED: after a probe is flashed to firmware
+            # that stamps milliseconds, its window mixes pre-flash whole-second
+            # ("...T03:00:00") and post-flash millisecond ("...T03:00:00.500")
+            # timestamps. pandas' default parser infers ONE format from the first
+            # row and silently coerces the other precision to NaT — so the newly
+            # flashed probe records fine (stats count it) but its points vanish
+            # from the graph. ISO8601 parses both precisions.
+            df["_dt"] = pd.to_datetime(df["timestamp"].astype(str).str.rstrip("Z"),
+                                       format="ISO8601", errors="coerce")
             probe_ids = list(df["probe_id"].unique())
             multi = len([p for p in probe_ids if str(p).strip()]) > 1
             for i, pid in enumerate(probe_ids):

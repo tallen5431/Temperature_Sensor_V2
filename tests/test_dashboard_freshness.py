@@ -85,6 +85,32 @@ def test_graph_uirevision_preserves_zoom_but_resets_on_view_change(tmp_path):
     assert rev("24h", "fahrenheit") != base       # unit change -> view resets
 
 
+def test_graph_renders_mixed_second_and_millisecond_timestamps(tmp_path):
+    """A probe whose window mixes pre-flash whole-second and post-flash
+    millisecond timestamps must render EVERY point on the graph.
+
+    Regression: firmware >= 2.5.0 stamps milliseconds, so after a probe is
+    flashed its 24 h window contains both precisions. pandas' default
+    ``to_datetime`` infers one format from the first row and coerces the other
+    precision to NaT — the probe records fine (stats count it) but its points
+    disappear from the chart. The parse must use ``format="ISO8601"``.
+    """
+    import pandas as pd
+    db = Database(tmp_path / "d.db")
+    cfg = Config(tmp_path / "c.json")
+    now = datetime.datetime.now().replace(microsecond=0)
+    # pre-flash whole-second rows, then post-flash millisecond rows (oldest first)
+    db.append((now - datetime.timedelta(seconds=4)).isoformat(), 20.0, 68.0, "A")
+    db.append((now - datetime.timedelta(seconds=3)).isoformat(), 20.1, 68.2, "A")
+    db.append((now - datetime.timedelta(seconds=2)).isoformat() + ".500", 20.2, 68.4, "A")
+    db.append((now - datetime.timedelta(seconds=1)).isoformat() + ".250", 20.3, 68.5, "A")
+
+    fig = build_dashboard(db, cfg, _FakeFinder(), "24h", "celsius")[1]
+    xs = list(fig.data[0].x)
+    assert len(xs) == 4                                   # all points present
+    assert not any(pd.isna(x) for x in xs)               # none coerced to NaT
+
+
 def test_probe_fresh_window_floor_and_interval_aware():
     # 5-minute floor out of the box
     assert probe_fresh_window({"interval_sec": 5}, "x") == 300
