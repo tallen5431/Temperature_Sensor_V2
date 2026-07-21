@@ -31,6 +31,21 @@ class LatestReadings:
                 entry["vpd"] = float(vpd)
             self._data[probe_id] = entry
 
+    def evict(self, probe_id: str) -> None:
+        """Forget a probe's latest reading — call when a probe is removed so a
+        decommissioned probe stops appearing as a frozen /metrics series (the
+        dashboard/Devices/Diagnostics drop it immediately; this keeps Prometheus
+        in step instead of serving its last temperature forever)."""
+        if not probe_id:
+            return
+        with self._lock:
+            self._data.pop(probe_id, None)
+
+    def clear(self) -> None:
+        """Forget every probe (used when clearing demo data)."""
+        with self._lock:
+            self._data.clear()
+
     def snapshot(self) -> dict[str, dict]:
         with self._lock:
             return {k: dict(v) for k, v in self._data.items()}
@@ -43,8 +58,15 @@ def _esc_label(v: str) -> str:
     return str(v).replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
 
 
-def render_prometheus(health: dict, latest: dict, probes_count: int, version: str) -> str:
-    """Render the Prometheus text exposition format for scraping."""
+def render_prometheus(health: dict, latest: dict, probes_count: int, version: str,
+                      probes_online: int | None = None) -> str:
+    """Render the Prometheus text exposition format for scraping.
+
+    ``probes_online`` (when given) is the count of probes currently reporting
+    within their freshness window — the same figure the dashboard shows as
+    "Connected Probes" — so a Grafana alert on ``setpoint_probes_online`` agrees
+    with the built-in UI instead of flapping for a deep-sleep probe.
+    """
     lines: list[str] = []
     now = time.time()
 
@@ -55,6 +77,12 @@ def render_prometheus(health: dict, latest: dict, probes_count: int, version: st
     lines.append("# HELP setpoint_probes_total Number of known probes.")
     lines.append("# TYPE setpoint_probes_total gauge")
     lines.append(f"setpoint_probes_total {int(probes_count)}")
+
+    if probes_online is not None:
+        lines.append("# HELP setpoint_probes_online Probes reporting within their freshness "
+                     "window (matches the dashboard's Connected Probes).")
+        lines.append("# TYPE setpoint_probes_online gauge")
+        lines.append(f"setpoint_probes_online {int(probes_online)}")
 
     lines.append("# HELP setpoint_rows_written_total Readings written to the log since start.")
     lines.append("# TYPE setpoint_rows_written_total counter")

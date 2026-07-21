@@ -324,6 +324,49 @@ class Database:
                      "humidity_pct", "vpd_kpa"],
         )
 
+    def fetch_readings(self, window_seconds: Optional[int] = None,
+                       probe_id: Optional[str] = None,
+                       start_epoch: Optional[int] = None,
+                       end_epoch: Optional[int] = None,
+                       limit: Optional[int] = None,
+                       max_points: int = 6000) -> list:
+        """Return readings as a list of dict rows for the JSON read API.
+
+        Accepts the same filters as :meth:`export_csv` (a rolling
+        ``window_seconds``, a single ``probe_id``, and an absolute
+        ``start_epoch``/``end_epoch`` range, all AND-ed). Unlike
+        :meth:`window_df` the rows include humidity and VPD. The result is
+        bounded to at most ``limit`` (default ``max_points``, hard cap 50 000)
+        of the most RECENT matching rows, returned oldest-first, so a
+        months-long store can never emit an unbounded payload over the API.
+        """
+        conn = self._conn()
+        clauses, params_list = [], []
+        cutoff = self._cutoff(window_seconds)
+        if cutoff is not None:
+            clauses.append("epoch >= ?"); params_list.append(cutoff)
+        if start_epoch is not None:
+            clauses.append("epoch >= ?"); params_list.append(int(start_epoch))
+        if end_epoch is not None:
+            clauses.append("epoch <= ?"); params_list.append(int(end_epoch))
+        if probe_id:
+            clauses.append("probe_id = ?"); params_list.append(probe_id)
+        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        try:
+            cap = int(limit) if limit else int(max_points)
+        except (TypeError, ValueError):
+            cap = int(max_points)
+        cap = max(1, min(cap, 50000))
+        rows = conn.execute(
+            f"SELECT ts AS timestamp, temperature_c, temperature_f, probe_id, "
+            f"humidity_pct, vpd_kpa FROM readings {where} "
+            f"ORDER BY epoch DESC, id DESC LIMIT ?",
+            tuple(params_list) + (cap,),
+        ).fetchall()
+        out = [dict(r) for r in rows]
+        out.reverse()  # oldest-first for charting/time-series consumers
+        return out
+
     # -- maintenance -----------------------------------------------------------
     def purge_older_than(self, days: int) -> int:
         """Delete readings older than ``days`` days. Returns rows removed."""

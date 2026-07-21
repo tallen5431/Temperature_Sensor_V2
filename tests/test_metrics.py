@@ -11,6 +11,27 @@ def test_latest_readings_record_and_snapshot():
     assert "" not in lr.snapshot()
 
 
+def test_latest_readings_evict_and_clear():
+    lr = LatestReadings()
+    lr.record("A", 1.0)
+    lr.record("B", 2.0)
+    lr.evict("A")
+    assert "A" not in lr.snapshot() and "B" in lr.snapshot()
+    lr.evict("")  # empty id is a harmless no-op
+    lr.clear()
+    assert lr.snapshot() == {}
+
+
+def test_render_prometheus_probes_online_gauge():
+    health = {"rows_written": 0, "healthy": True}
+    out = render_prometheus(health, {}, probes_count=3, version="2.0.0", probes_online=2)
+    assert "# TYPE setpoint_probes_online gauge" in out
+    assert "setpoint_probes_online 2" in out
+    # Backwards compatible: omitted entirely when the count isn't supplied.
+    out2 = render_prometheus(health, {}, probes_count=3, version="2.0.0")
+    assert "setpoint_probes_online" not in out2
+
+
 def test_render_prometheus_format():
     health = {"rows_written": 3, "ingest_rejected": 1, "write_failures": 0, "healthy": True}
     latest = {"Setpoint-9A3F2C": {"temp_c": 4.25, "ts": 1000.0}}

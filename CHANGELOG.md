@@ -9,6 +9,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.3] - 2026-07-21
+
+### Added
+
+- **Read your data as JSON — live, without the CSV download.** A new read-only,
+  unauthenticated JSON API (the JSON twin of the CSV export and `/metrics`):
+  - `GET /api/readings/latest` — the current reading of every probe
+    (`probe_id`, `timestamp`, `temperature_c/_f`, `humidity_pct`, `vpd_kpa`);
+    the 90% case for polling live values into another process.
+  - `GET /api/readings?window=24h&probe=<id>&from=&to=&limit=N` — historical
+    readings with the same filters the CSV download accepts, plus an exact
+    `stats` block over the full window. The row list is capped (newest kept) so
+    a months-long store can't return an unbounded body.
+  Covered by `tests/test_api_readings.py`. The Help page now has a short
+  **"Connect it to other tools"** section pointing at this API, the Prometheus
+  `/metrics` scrape endpoint, and MQTT/Home Assistant — all of which already
+  existed but were undiscoverable in the UI.
+- **`/metrics`: `setpoint_probes_online` gauge** — probes reporting within their
+  freshness window, matching the dashboard's "Connected Probes", so a Grafana
+  alert on it agrees with the built-in UI.
+
+### Fixed
+
+- **"Online/connected" now means the same thing on every surface.** The
+  dashboard/Diagnostics counted a probe connected via an interval-aware freshness
+  window, but `/api/probes`, `/api/health` and `/metrics` still used a flat 60 s
+  mDNS timeout — so a deep-sleep battery probe read "connected" on-screen yet
+  `online: false` (and dropped from the online count) via the API between wakes,
+  making a Grafana panel flap on a probe the UI said was fine. All surfaces now
+  derive "reporting" from one shared helper (`core.status.reporting_probe_ids`),
+  and a DB-only (never-mDNS-seen) probe is listed by `/api/probes` too.
+- **`/metrics` ghost series after "Remove device".** The Prometheus registry
+  never evicted a removed probe, so `/metrics` kept serving its frozen last
+  temperature (and an ever-climbing `last_reading_age`) forever — a probe the
+  dashboard, Devices grid and Diagnostics had already dropped. Removing a device
+  (and clearing demo data) now evicts it from the registry.
+- **Misleading blended "Average Temperature" on the multi-probe overview.** With
+  two or more probes the headline average blended, e.g., a freezer and a room
+  into one number no probe is near. The overview now points that tile to the
+  per-probe breakdown below (which already existed) and keeps global Min/Max as
+  the coldest/hottest reading anywhere. Single-probe and focus mode are
+  unchanged — there the average is meaningful.
+
+### Changed
+
+- **Devices grid labels status in words, not colour alone** ("Online · 5 min
+  ago" / "Offline · 12 min ago"), fixing a colour-only (WCAG 1.4.1) state that
+  made an online and an offline probe read identically, and matching Diagnostics
+  and the dashboard cards.
+- **Settings — alert fields dim when alerts are off.** With the master "Enable
+  alerts" switch off, the alert-configuration block is now dimmed and
+  non-interactive with an inline note, so the form can't look configured while
+  nothing will fire.
+
 ## [2.4.2] - 2026-07-20
 
 ### Fixed

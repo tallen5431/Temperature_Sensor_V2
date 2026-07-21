@@ -13,7 +13,7 @@ import shutil
 from typing import Any, Dict, List, Optional
 
 from core.applog import HEALTH, PROCESS_START
-from core.status import probe_fresh_window
+from core.status import reporting_probe_ids
 
 
 def _int(v: Any, default: int) -> int:
@@ -79,12 +79,10 @@ def build_diagnostics(cfg, db, finder, public_base: str, version: str,
     # discovery list above, so this figure agrees with the dashboard/footer.
     reporting = None
     try:
-        # Judge each probe against its OWN interval-aware freshness window — the
-        # exact function the dashboard/footer use — so "reporting" here can never
-        # disagree with the dashboard's "Connected Probes" for the same probe.
-        epochs = db.last_reading_epoch_per_probe(window_seconds=None) or {}
-        reporting = sum(1 for pid_, ep in epochs.items()
-                        if pid_ and (now - float(ep)) <= probe_fresh_window(cfg, pid_))
+        # Judge each probe against its OWN interval-aware freshness window via the
+        # shared helper the dashboard/API/metrics also use — so "reporting" here
+        # can never disagree with the dashboard's "Connected Probes".
+        reporting = len(reporting_probe_ids(cfg, db, now=now))
     except Exception:
         reporting = None
 

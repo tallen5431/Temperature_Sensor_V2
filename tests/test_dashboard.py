@@ -204,7 +204,13 @@ def test_focus_mode_filters_to_one_probe(tmp_path):
 
     allm = build_dashboard(db, cfg, FakeFinder(), "24h", "celsius", "all")
     assert len(allm[1].data) == 2          # graph overlays both probes
-    assert allm[11] == "2.0 °C"            # global avg mixes the two (misleading)
+    # The overview no longer headlines a blended cross-probe average (a freezer
+    # + a room averaged together is meaningless); it points to the per-probe
+    # breakdown instead. Global Min/Max stay as the coldest/hottest anywhere.
+    assert allm[11] != "2.0 °C"
+    assert "probe" in allm[12].lower()     # avg tile points to per-probe stats
+    assert allm[7] == "-20.0 °C"           # global min = coldest reading anywhere
+    assert allm[9] == "24.0 °C"            # global max = hottest reading anywhere
 
     foc = build_dashboard(db, cfg, FakeFinder(), "24h", "celsius", "A")
     assert len(foc[0].data) == 1           # gauge shows one probe

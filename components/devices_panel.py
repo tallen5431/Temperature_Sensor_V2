@@ -5,6 +5,7 @@ from dash import html, dcc, Output, Input, State, no_update, ALL
 import dash_bootstrap_components as dbc
 
 from core.status import probe_fresh_window
+from core.metrics import LATEST
 
 log = logging.getLogger("hub.devices")
 
@@ -217,8 +218,17 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                 ]
                 if interval_note:
                     card_body_children.append(interval_note)
+                # Label the state in WORDS, not colour alone (WCAG 1.4.1) — and
+                # consistently with Diagnostics ("online"/"offline") and the
+                # Dashboard cards ("OK"/"stale"). A colourblind user (or anyone on
+                # a poor display) could otherwise not tell two "5 min ago" probes
+                # apart when one is offline.
+                state_word = {'success': 'Online', 'danger': 'Offline',
+                              'secondary': 'Unknown'}.get(status_color, '')
+                status_text = f'{state_word} · {delta}' if (state_word and delta) \
+                    else (state_word or delta or 'Unknown')
                 card_body_children.append(
-                    html.Div(html.Span(f'● {delta or "Unknown"}', className=f'status-dot text-{status_color} fw-bold mt-2'))
+                    html.Div(html.Span(f'● {status_text}', className=f'status-dot text-{status_color} fw-bold mt-2'))
                 )
 
                 card = dbc.Col(dbc.Card(dbc.CardBody(card_body_children), className='h-100 probe-card'), width=12, lg=4, md=6)
@@ -484,6 +494,13 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                 forgotten = finder.forget_probe(probe_id)
             except Exception:
                 log.debug('forget_probe unavailable/failed for %s', probe_id, exc_info=True)
+            # Drop the probe from the Prometheus latest-reading registry too, so
+            # /metrics stops serving its frozen last temperature after removal
+            # (every other surface drops it immediately — keep /metrics in step).
+            try:
+                LATEST.evict(probe_id)
+            except Exception:
+                log.debug('LATEST.evict failed for %s', probe_id, exc_info=True)
             log.info('Removed device %s (%d readings, %d discovery entries)',
                      probe_id, deleted, forgotten)
             msg = dbc.Alert(f"✅ Removed {probe_id} — deleted {deleted:,} reading(s). "

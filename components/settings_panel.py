@@ -26,6 +26,13 @@ NotificationSettings = dbc.Card(dbc.CardBody([
              className="small d-block mb-2"),
 
     dbc.Switch(id="notif-enabled", label="Enable alerts", value=False),
+    html.Div(id="alert-config-note", className="mt-1"),
+
+    # Everything below only takes effect while "Enable alerts" is on. When it's
+    # off the whole block is dimmed and made non-interactive (see
+    # _toggle_alert_config) so a user can't fill the form, see it fully lit, and
+    # walk away believing alerts are configured when nothing will ever fire.
+    html.Div(id="alert-config-body", children=[
 
     # --- When to alert -------------------------------------------------------
     _section_title("When to alert"),
@@ -100,6 +107,8 @@ NotificationSettings = dbc.Card(dbc.CardBody([
         dbc.Input(id="webhook-url", placeholder="https://hooks.slack.com/services/...",
                   className="mt-1"),
     ]), className="mt-2 mb-1"), id="webhook-collapse", is_open=False),
+
+    ]),  # end alert-config-body
 
     html.Div([
         dbc.Button("Save", id="notif-save", color="primary", className="mt-3 me-2"),
@@ -249,6 +258,23 @@ def register_settings_callbacks(app, cfg):
     )
     def _toggle_webhook(enabled):
         return bool(enabled)
+
+    # Dim + disable the whole alert-config block while the master switch is off,
+    # with an inline note, so the form never looks live when it isn't.
+    @app.callback(
+        Output("alert-config-body", "style"),
+        Output("alert-config-note", "children"),
+        Input("notif-enabled", "value"),
+    )
+    def _toggle_alert_config(enabled):
+        if enabled:
+            return {}, None
+        return (
+            {"opacity": 0.5, "pointerEvents": "none"},
+            html.Small(
+                "Alerts are off — turn on “Enable alerts” above and Save to activate "
+                "the settings below.", className="text-warning"),
+        )
 
     # Retention is destructive above 0 — say so plainly as the user types.
     @app.callback(
