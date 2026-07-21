@@ -8,7 +8,8 @@ import plotly.graph_objs as go
 from dash import Input, Output, State, dcc, html, no_update
 
 from core.storage import threshold_breach
-from core.status import probe_fresh_window as _probe_fresh_window, ONLINE_TIMEOUT_SEC
+from core.status import (probe_fresh_window as _probe_fresh_window,
+                         reporting_probe_ids, ONLINE_TIMEOUT_SEC)
 from core.demo import has_demo_data, load_demo_data, clear_demo_data
 
 log = logging.getLogger("hub.dashboard")
@@ -293,7 +294,10 @@ def _fmt(temp_c, unit):
 def _fmt_clock(ts_str, clock_format="24h"):
     fmt = "%I:%M %p" if clock_format == "12h" else "%H:%M"
     try:
-        return pd.to_datetime(str(ts_str).rstrip("Z"), errors="coerce").strftime(fmt)
+        # format="ISO8601" parses whole-second AND millisecond stamps alike; the
+        # default parser infers one format and NaTs the odd precision out.
+        return pd.to_datetime(str(ts_str).rstrip("Z"), format="ISO8601",
+                              errors="coerce").strftime(fmt)
     except Exception:
         return "N/A"
 
@@ -347,10 +351,9 @@ def _reporting_probe_count(db, cfg, finder):
     both are handled here. Falls back to mDNS discovery if the DB query fails.
     """
     try:
-        epochs = db.last_reading_epoch_per_probe(window_seconds=None)
-        now = time.time()
-        return sum(1 for pid, ep in epochs.items()
-                   if pid and (now - ep) <= _probe_fresh_window(cfg, pid))
+        # Shared with Diagnostics, the API and /metrics so every surface counts
+        # the same probes as "connected".
+        return len(reporting_probe_ids(cfg, db))
     except Exception:
         return _online_probe_count(
             finder, cfg.get("probe_online_timeout_sec", ONLINE_TIMEOUT_SEC))
@@ -560,7 +563,15 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
         fig = go.Figure()
         if not df.empty:
             df = df.copy()
-            df["_dt"] = pd.to_datetime(df["timestamp"].astype(str).str.rstrip("Z"), errors="coerce")
+            # format="ISO8601" is REQUIRED: after a probe is flashed to firmware
+            # that stamps milliseconds, its window mixes pre-flash whole-second
+            # ("...T03:00:00") and post-flash millisecond ("...T03:00:00.500")
+            # timestamps. pandas' default parser infers ONE format from the first
+            # row and silently coerces the other precision to NaT — so the newly
+            # flashed probe records fine (stats count it) but its points vanish
+            # from the graph. ISO8601 parses both precisions.
+            df["_dt"] = pd.to_datetime(df["timestamp"].astype(str).str.rstrip("Z"),
+                                       format="ISO8601", errors="coerce")
             probe_ids = list(df["probe_id"].unique())
             multi = len([p for p in probe_ids if str(p).strip()]) > 1
             for i, pid in enumerate(probe_ids):
@@ -623,10 +634,19 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
         if filtered_points:
             stat_min = _fmt(stats["min"], temp_unit)
             stat_max = _fmt(stats["max"], temp_unit)
-            stat_avg = _fmt(stats["avg"], temp_unit)
             stat_min_time = f"at {_fmt_clock(stats['min_ts'], clock_format)}"
             stat_max_time = f"at {_fmt_clock(stats['max_ts'], clock_format)}"
-            stat_avg_info = f"{filtered_points:,} readings"
+            if focus is None and multi:
+                # An "average" across probes of different ranges (a −18 °C freezer
+                # and a 22 °C room) is a number no probe is near — so the overview
+                # doesn't headline a blended average. It points to the per-probe
+                # breakdown just below instead. Global Min/Max stay meaningful as
+                # the coldest / hottest reading anywhere.
+                stat_avg = "Per-probe"
+                stat_avg_info = "see per-probe stats below"
+            else:
+                stat_avg = _fmt(stats["avg"], temp_unit)
+                stat_avg_info = f"{filtered_points:,} readings"
         else:
             stat_min = stat_max = stat_avg = "N/A"
             stat_min_time = stat_max_time = stat_avg_info = ""

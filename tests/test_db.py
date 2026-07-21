@@ -168,6 +168,26 @@ def test_last_reading_epoch_per_probe(db):
     assert last["A"] >= last["B"]  # A's newest is more recent than B's
 
 
+def test_subsecond_epoch_is_fractional():
+    # A millisecond timestamp keeps its sub-second part in the epoch (not floored
+    # to a whole second), so high-rate readings stay ordered and distinguishable.
+    assert iso_to_epoch("2026-07-21T00:42:04.500") % 1 == 0.5
+    assert iso_to_epoch("2026-07-21T00:42:04") % 1 == 0.0  # whole second unchanged
+
+
+def test_subsecond_readings_ordering_and_export(db):
+    # Two readings in the same wall-clock second, 0.5 s apart (a 2 Hz cadence).
+    db.append("2026-07-21T00:42:04.000", 20.0, 68.0, "A")
+    db.append("2026-07-21T00:42:04.500", 20.5, 68.9, "A")
+    # "latest" resolves within the second: the .500 reading wins.
+    assert float(db.latest_per_probe().iloc[0]["temperature_c"]) == 20.5
+    # The export's UTC column carries the millisecond precision through.
+    buf = io.StringIO()
+    db.export_csv(buf)
+    body = buf.getvalue()
+    assert ".500Z" in body and "00:42:04.500" in body
+
+
 def test_stats_per_probe(db):
     now = datetime.datetime.now()
     # Freezer probe A: cold range; room probe B: warm range.

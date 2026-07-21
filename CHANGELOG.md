@@ -9,6 +9,141 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.6] - 2026-07-21
+
+### Fixed
+
+- **History graph dropped a probe's readings after it was flashed to millisecond
+  firmware.** Firmware ≥ 2.5.0 stamps readings with millisecond precision, so a
+  just-flashed probe's 24 h window mixes pre-flash whole-second
+  (`…T03:00:00`) and post-flash millisecond (`…T03:00:00.500`) timestamps. The
+  dashboard parsed the timestamp column with pandas' default `to_datetime`, which
+  infers a single format from the first row and silently coerces the other
+  precision to `NaT` — so the probe kept recording (its per-probe stats and count
+  were correct) but its points **vanished from the graph**. Both timestamp parses
+  now use `format="ISO8601"`, which accepts either precision. Regression test in
+  `tests/test_dashboard_freshness.py`.
+
+## [2.4.5] - 2026-07-21
+
+### Added
+
+- **Per-probe sensor resolution, set from the dashboard (firmware v2.6.0 + hub).**
+  The Devices → ✏️ Edit modal now has a **Sensor Resolution** dropdown (9–12 bit;
+  0.5 °C → 0.0625 °C steps). Like the per-probe interval, it's stored as an
+  override (`probe_resolutions` in config, falling back to a global
+  `resolution_bits` default of 11), pushed to the probe via `/provision`, and
+  persisted to the probe's NVS. The firmware applies it live and keeps the
+  conversion-wait in step, and echoes `resolution_bits` in `/whoami` and
+  `/status` so the auto-provisioner only re-pushes when it actually differs.
+  `provision_probe(... resolution_bits=...)`, `POST /api/provision`, and the
+  auto-provisioner all carry the field; it's omitted when unset, so old
+  firmware/callers are unaffected. Higher resolution resolves finer detail (the
+  0.5 °C stair-steps seen in a freezer door-open capture); it does not change the
+  sensor's ±0.5 °C absolute accuracy. Covered by new cases in
+  `tests/test_provisioning.py` and `tests/test_config_schema.py`.
+
+## [2.4.4] - 2026-07-21
+
+### Added
+
+- **Firmware v2.5.1 — adaptive "disturbance burst" for freezers / hard-to-reach
+  spots.** In deep-sleep mode the probe is asleep between wakes, so a brief event
+  (a freezer door opening) and the short connectivity window it opens could be
+  slept through. Now, when a wake reading jumps more than `BURST_DELTA_C` (1 °C
+  default) from the previous one — carried across sleep in RTC memory — the probe
+  treats it as a disturbance: it stays awake, keeps Wi-Fi up, samples every
+  second and flushes the offline buffer hard for ~20 s before returning to deep
+  sleep, so the event and any backlog reach the hub while they can. It also
+  retries the Wi-Fi association during the burst (a closed freezer is an RF box;
+  the door opening may be the first real chance to connect). Bounded by a
+  consecutive-burst cap so a door held open (or a slow thaw) can't hold the probe
+  awake and flatten the battery. This catches an event only if a scheduled wake
+  lands during it, so it helps most at short/moderate intervals; true
+  wake-on-temperature would need an analog sensor + comparator on a wake pin (a
+  hardware revision — the DS18B20 has no interrupt output). Set
+  `BURST_ON_DISTURBANCE false` to disable.
+
+### Changed
+
+- **Firmware v2.5.1 — battery & data-quality tuning.** (1) Per-wake Wi-Fi
+  reconnect budget cut from 15 s to 8 s with a **backoff**: after repeated
+  failures a probe that can't associate (deep in a freezer, hub down) only
+  attempts a connect every Nth wake — radio off on the others — instead of
+  burning up to 15 s of radio every wake; the single biggest drain in poor RF.
+  (2) The 3 s HTTP provisioning window is now served on the first few wakes and
+  then periodically, not on every deep-sleep wake. (3) DS18B20 resolution raised
+  **9-bit → 11-bit** (0.5 °C → 0.125 °C steps, ~375 ms conversion), resolving
+  gradual changes that previously quantised into visible stair-steps while still
+  fitting the 500 ms minimum interval (12-bit's 750 ms would not). This changes
+  the quantisation step, not the sensor's ±0.5 °C absolute accuracy. (4) A failed
+  (`DEVICE_DISCONNECTED_C`) sensor read is retried up to twice within the wake
+  before being treated as a fault, so a transient 1-Wire glitch no longer leaves
+  a gap in the log.
+- **Millisecond timestamps end-to-end (firmware v2.5.1 + hub).** Readings are now
+  stamped to millisecond precision (`2026-07-21T00:42:04.500Z`), which the hub
+  preserves through ingest, storage (a fractional epoch, backward-compatible with
+  existing integer rows), the CSV export's `timestamp_utc` column, and the JSON
+  API. A high-rate cadence (down to the firmware's 500 ms floor) stays
+  distinguishable instead of collapsing multiple readings onto one whole-second
+  stamp — as happened when logging a freezer door-open transient at 0.5 s. A
+  probe that only sends whole seconds is unchanged (no spurious `.000`). Covered
+  by new cases in `tests/test_storage.py` and `tests/test_db.py`.
+
+## [2.4.3] - 2026-07-21
+
+### Added
+
+- **Read your data as JSON — live, without the CSV download.** A new read-only,
+  unauthenticated JSON API (the JSON twin of the CSV export and `/metrics`):
+  - `GET /api/readings/latest` — the current reading of every probe
+    (`probe_id`, `timestamp`, `temperature_c/_f`, `humidity_pct`, `vpd_kpa`);
+    the 90% case for polling live values into another process.
+  - `GET /api/readings?window=24h&probe=<id>&from=&to=&limit=N` — historical
+    readings with the same filters the CSV download accepts, plus an exact
+    `stats` block over the full window. The row list is capped (newest kept) so
+    a months-long store can't return an unbounded body.
+  Covered by `tests/test_api_readings.py`. The Help page now has a short
+  **"Connect it to other tools"** section pointing at this API, the Prometheus
+  `/metrics` scrape endpoint, and MQTT/Home Assistant — all of which already
+  existed but were undiscoverable in the UI.
+- **`/metrics`: `setpoint_probes_online` gauge** — probes reporting within their
+  freshness window, matching the dashboard's "Connected Probes", so a Grafana
+  alert on it agrees with the built-in UI.
+
+### Fixed
+
+- **"Online/connected" now means the same thing on every surface.** The
+  dashboard/Diagnostics counted a probe connected via an interval-aware freshness
+  window, but `/api/probes`, `/api/health` and `/metrics` still used a flat 60 s
+  mDNS timeout — so a deep-sleep battery probe read "connected" on-screen yet
+  `online: false` (and dropped from the online count) via the API between wakes,
+  making a Grafana panel flap on a probe the UI said was fine. All surfaces now
+  derive "reporting" from one shared helper (`core.status.reporting_probe_ids`),
+  and a DB-only (never-mDNS-seen) probe is listed by `/api/probes` too.
+- **`/metrics` ghost series after "Remove device".** The Prometheus registry
+  never evicted a removed probe, so `/metrics` kept serving its frozen last
+  temperature (and an ever-climbing `last_reading_age`) forever — a probe the
+  dashboard, Devices grid and Diagnostics had already dropped. Removing a device
+  (and clearing demo data) now evicts it from the registry.
+- **Misleading blended "Average Temperature" on the multi-probe overview.** With
+  two or more probes the headline average blended, e.g., a freezer and a room
+  into one number no probe is near. The overview now points that tile to the
+  per-probe breakdown below (which already existed) and keeps global Min/Max as
+  the coldest/hottest reading anywhere. Single-probe and focus mode are
+  unchanged — there the average is meaningful.
+
+### Changed
+
+- **Devices grid labels status in words, not colour alone** ("Online · 5 min
+  ago" / "Offline · 12 min ago"), fixing a colour-only (WCAG 1.4.1) state that
+  made an online and an offline probe read identically, and matching Diagnostics
+  and the dashboard cards.
+- **Settings — alert fields dim when alerts are off.** With the master "Enable
+  alerts" switch off, the alert-configuration block is now dimmed and
+  non-interactive with an inline note, so the form can't look configured while
+  nothing will fire.
+
 ## [2.4.2] - 2026-07-20
 
 ### Fixed

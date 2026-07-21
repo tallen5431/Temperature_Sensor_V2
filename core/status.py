@@ -50,6 +50,36 @@ def probe_fresh_window(cfg, probe_id) -> float:
     return max(base, interval * STALE_INTERVAL_MULTIPLIER)
 
 
+def reporting_probe_ids(cfg, db, now: float | None = None) -> set:
+    """Set of probe ids whose most recent DB reading is within their own fresh
+    window (see :func:`probe_fresh_window`).
+
+    This is the single source of truth for "which probes are currently
+    reporting". The dashboard's "Connected Probes" KPI, the Diagnostics page,
+    the ``/api/probes`` + ``/api/health`` online counts and the Prometheus
+    ``/metrics`` gauges all derive from it, so no surface can disagree with the
+    others for the same probe — a deep-sleep probe on a slow cadence reads
+    connected on every screen or none. Judged off ingest (the database), not
+    mDNS, so a probe whose radio sleeps between readings still counts.
+    Returns an empty set if the store can't be read.
+    """
+    now = time.time() if now is None else now
+    try:
+        epochs = db.last_reading_epoch_per_probe(window_seconds=None) or {}
+    except Exception:
+        return set()
+    out = set()
+    for pid, ep in epochs.items():
+        if not pid:
+            continue
+        try:
+            if (now - float(ep)) <= probe_fresh_window(cfg, pid):
+                out.add(pid)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
 def hub_status(probes: Iterable[Any], online_timeout: float,
                total_readings: int, now: float | None = None,
                reporting_online: int = 0) -> Dict[str, Any]:

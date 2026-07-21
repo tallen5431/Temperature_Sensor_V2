@@ -1,4 +1,27 @@
 // ESP32 + DS18B20 + WiFiManager + mDNS + OTA + WebServer
+// v2.6.0 — provisionable sensor resolution: the DS18B20 resolution (9..12 bit,
+//           0.5..0.0625 °C) is now set per-probe from the hub's Devices page,
+//           delivered via /provision, persisted to NVS, and applied live. The
+//           conversion-wait tracks the resolution automatically (see g_convMs /
+//           applyResolution). Reported in /whoami and /status as resolution_bits.
+// v2.5.1 — battery: (a) per-wake Wi-Fi reconnect budget cut 15 s -> 8 s with a
+//           backoff — after repeated failures a probe that can't associate (deep
+//           in a freezer, hub down) only attempts a connect every Nth wake, radio
+//           off on the others, instead of burning 15 s every wake; (b) the 3 s
+//           HTTP provisioning window is served on the first few wakes and then
+//           periodically, not on every wake; (c) the disturbance burst is capped
+//           at BURST_MAX_CONSECUTIVE back-to-back fires so a repeatedly-opened
+//           door can't hold the probe awake and flatten the battery.
+// v2.5.0 — (a) millisecond timestamps: readings are stamped to ms precision so a
+//           high-rate cadence (e.g. 0.5 s while a freezer door is open) stays
+//           distinguishable instead of collapsing onto one whole-second stamp.
+//           (b) disturbance burst: in deep-sleep mode a wake reading that jumps
+//           more than BURST_DELTA_C from the previous one (a freezer door
+//           opening, a compressor kick) makes the probe stay awake, keep Wi-Fi
+//           up, sample fast and flush the offline buffer hard for a short window
+//           before sleeping again — so a brief event and the connectivity window
+//           it opens aren't slept through. (True wake-on-temperature would need
+//           an analog sensor + comparator on a wake pin — a hardware revision.)
 // v1.6.0 — stable probe identity: the probe id is derived once (DS18B20 ROM,
 //           with retry, else the chip id) and persisted to NVS, so a later
 //           failed sensor read can no longer flip the identity and make the hub
@@ -65,7 +88,7 @@ inline void ledBlink(uint8_t n, uint16_t onMs = 60, uint16_t offMs = 120) {
 
 // ---------------- Identity --------------------------------------------------
 static const char* SENSOR_NAME = "Setpoint";
-static const char* FW_VERSION  = "2.4.1";
+static const char* FW_VERSION  = "2.6.0";
 
 // The setup SoftAP is intentionally OPEN (no password): it only exists during
 // first-time Wi-Fi setup and is torn down once the probe joins the home network,
@@ -94,20 +117,73 @@ static const uint32_t DEEP_SLEEP_MIN_MS   = 10000UL;  // 10 s
 static const uint32_t WEBSERVER_WINDOW_MS =  3000UL;  //  3 s
 static const uint32_t NTP_RESYNC_INTERVAL =    30UL;  // every 30 wakes
 
+// ---------------- Disturbance burst (freezer door / rapid change) -----------
+// In deep-sleep mode the probe is asleep between wakes, so a brief event (a
+// freezer door opening) and the short connectivity window it opens can be slept
+// through. When a wake reading differs from the previous one by more than
+// BURST_DELTA_C, the probe treats it as a disturbance: it stays awake, keeps
+// Wi-Fi up, samples every BURST_SAMPLE_MS and flushes the offline buffer hard
+// for BURST_WINDOW_MS before returning to deep sleep — so the event and any
+// backlog reach the hub while they can. This only CATCHES an event if a
+// scheduled wake lands during it, so it helps most at short/moderate intervals;
+// true wake-on-temperature needs an analog sensor + comparator on a wake pin
+// (a hardware revision — the DS18B20 has no interrupt output). Set to false to
+// disable and keep the plain fixed-interval deep-sleep behaviour.
+#define BURST_ON_DISTURBANCE  true
+static const float    BURST_DELTA_C   = 1.0f;     // °C change vs last wake that counts as a disturbance
+static const uint32_t BURST_WINDOW_MS = 20000UL;  // stay awake/flushing this long after one
+static const uint32_t BURST_SAMPLE_MS =  1000UL;  // sample cadence during the burst
+// Battery guard: cap back-to-back bursts so a repeatedly-opened door (or a slow
+// thaw drifting past the threshold every wake) can't hold the probe awake and
+// flatten the battery. After this many bursts in a row the burst is suppressed
+// until a settled (non-disturbed) wake re-arms it — normal fixed-interval
+// logging continues throughout; only the aggressive stay-awake flush is paused.
+static const uint32_t BURST_MAX_CONSECUTIVE = 3;
+
+// ---------------- Wake-time / radio budget (battery) ------------------------
+// A freezer is an RF box, so a probe that can't associate must not hold its
+// radio on for the old 15 s every wake. The per-wake reconnect budget is 8 s,
+// and after WIFI_FAIL_BACKOFF_AFTER consecutive failures the probe only ATTEMPTS
+// a connect every WIFI_FAIL_BACKOFF_EVERY-th wake (radio stays off on the
+// others; readings are still taken and buffered). A disturbance burst always
+// retries regardless — that's when connectivity is most likely to have returned.
+static const uint32_t WIFI_CONNECT_MS         = 8000UL;
+static const uint32_t WIFI_FAIL_BACKOFF_AFTER = 3;
+static const uint32_t WIFI_FAIL_BACKOFF_EVERY = 4;
+
+// The hub's auto-provisioner only needs to reach the probe occasionally, so the
+// 3 s HTTP window isn't held on every deep-sleep wake: it's served for the first
+// WEBSERVER_WARMUP_WAKES (initial provisioning) and then every
+// WEBSERVER_WINDOW_EVERY-th wake, reclaiming awake-time on all the others.
+static const uint32_t WEBSERVER_WARMUP_WAKES = 5;
+static const uint32_t WEBSERVER_WINDOW_EVERY = 6;
+
 // ---------------- DS18B20 ---------------------------------------------------
 OneWire           oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
 
-// 9-bit resolution → ~94 ms conversion. setWaitForConversion(false) means
-// requestTemperatures() returns instantly and the loop never blocks.
-static const uint8_t  DS_RESOLUTION_BITS = 9;
-static const uint16_t DS_CONV_MS         = 94;
+// 11-bit resolution → 0.125 °C steps, ~375 ms conversion. This is 4x finer than
+// 9-bit (which quantised gradual changes into visible 0.5 °C stair-steps) while
+// STILL fitting the 500 ms minimum interval — 12-bit's 750 ms conversion would
+// exceed it and silently cap the fastest sample rate. Resolution changes the
+// quantisation step, not the sensor's ±0.5 °C absolute accuracy (worse below
+// -10 °C); use the per-probe calibration offset for absolute correction.
+// setWaitForConversion(false) means requestTemperatures() returns instantly and
+// the loop never blocks; g_convMs (set by applyResolution) is how long Phase 2
+// waits before reading. 11-bit is the DEFAULT; the resolution is provisionable
+// per-probe (9..12) from the hub's Devices page and persisted to NVS.
+static const uint8_t  DS_RESOLUTION_DEFAULT_BITS = 11;
+// Retry a failed (DEVICE_DISCONNECTED_C) read this many times within the wake
+// before treating it as a real fault, so a transient 1-Wire glitch (marginal
+// pull-up, long lead, EMI) doesn't punch a gap in the log.
+static const uint8_t  DS_READ_RETRIES    = 2;
 
 // ---------------- Config (NVS) ----------------------------------------------
 Preferences prefs;   // namespace: "tscfg"
 String   cfg_server_url = "";
 String   cfg_token      = "";
 uint32_t cfg_interval   = 5000;   // ms between readings
+uint8_t  cfg_res_bits   = DS_RESOLUTION_DEFAULT_BITS;  // DS18B20 resolution (9..12), provisionable
 
 // ---------------- WiFiManager parameters ------------------------------------
 WiFiManager wm;
@@ -140,6 +216,9 @@ RTC_DATA_ATTR static uint32_t rtc_bootCount    = 0;    // wake counter
 RTC_DATA_ATTR static bool     rtc_timeValid    = false; // true once NTP has synced
 RTC_DATA_ATTR static int64_t  rtc_epochAtSleep = 0;    // unix epoch saved before sleep
 RTC_DATA_ATTR static uint32_t rtc_sleepMs      = 0;    // intended sleep duration
+RTC_DATA_ATTR static float    rtc_lastReadingC   = -999.0f; // last temp (across sleep) for disturbance detection; -999 = unset
+RTC_DATA_ATTR static uint32_t rtc_burstStreak    = 0;       // consecutive wakes that fired a burst (cap guard)
+RTC_DATA_ATTR static uint32_t rtc_wifiFailStreak = 0;       // consecutive deep-sleep reconnect failures (backoff)
 
 // ---------------- State -----------------------------------------------------
 static bool          g_timeValid     = false;
@@ -152,6 +231,7 @@ static bool          g_wasConnected  = false;
 static unsigned long g_lastFlushAt   = 0;
 static unsigned long g_wakeStart     = 0;   // millis() at top of setup()
 static bool          g_deepSleepMode = false;
+static uint16_t      g_convMs        = 375;  // DS18B20 conversion wait; tracks cfg_res_bits (applyResolution)
 
 // ============================================================================
 // Time helpers
@@ -172,13 +252,20 @@ void syncTime() {
   }
 }
 
-// Returns current UTC time as ISO 8601 string, or "" if time is unknown.
+// Returns current UTC time as an ISO 8601 string WITH milliseconds
+// ("2026-07-21T00:42:04.500Z"), or "" if time is unknown. Sub-second precision
+// keeps a high-rate cadence (down to the 500 ms floor) distinguishable instead
+// of collapsing multiple readings onto one whole-second stamp. Seconds and
+// milliseconds are taken from the same gettimeofday() call so they can't skew.
 String nowIso() {
   if (!g_timeValid) return "";
+  struct timeval tv;
+  if (gettimeofday(&tv, nullptr) != 0 || tv.tv_sec < 1000000000L) return "";
   struct tm ti;
-  if (!getLocalTime(&ti, 0)) return "";
-  char buf[25];
-  strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &ti);
+  gmtime_r(&tv.tv_sec, &ti);  // configTime(0,0,...) runs the clock in UTC
+  char buf[32];
+  size_t n = strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", &ti);
+  snprintf(buf + n, sizeof(buf) - n, ".%03ldZ", (long)(tv.tv_usec / 1000));
   return String(buf);
 }
 
@@ -190,6 +277,7 @@ void loadConfig() {
   cfg_server_url = prefs.getString("server_url", cfg_server_url);
   cfg_token      = prefs.getString("token",      cfg_token);
   cfg_interval   = prefs.getUInt  ("interval",   cfg_interval);
+  cfg_res_bits   = prefs.getUChar ("res_bits",   cfg_res_bits);
   prefs.end();
 }
 
@@ -198,7 +286,24 @@ void saveConfig() {
   prefs.putString("server_url", cfg_server_url);
   prefs.putString("token",      cfg_token);
   prefs.putUInt  ("interval",   cfg_interval);
+  prefs.putUChar ("res_bits",   cfg_res_bits);
   prefs.end();
+}
+
+// DS18B20 conversion time doubles per resolution bit: 12b≈750, 11≈375, 10≈188,
+// 9≈94 ms. applyResolution() sets the sensor AND the matching Phase-2 wait in one
+// place so they can never drift apart (a too-short wait reads a stale value).
+static uint16_t convMsFor(uint8_t bits) {
+  if (bits < 9)  bits = 9;
+  if (bits > 12) bits = 12;
+  return (uint16_t)(750UL >> (12 - bits));
+}
+void applyResolution(uint8_t bits) {
+  if (bits < 9)  bits = 9;
+  if (bits > 12) bits = 12;
+  cfg_res_bits = bits;
+  sensors.setResolution(bits);
+  g_convMs = convMsFor(bits);
 }
 
 uint32_t loadBufPos() {
@@ -453,6 +558,7 @@ void handleWhoAmI() {
   doc["ds18b20_rom"] = g_romHex;
   doc["fw_version"]  = FW_VERSION;
   doc["interval_ms"] = cfg_interval;
+  doc["resolution_bits"] = cfg_res_bits;
   doc["server_url"]  = cfg_server_url;
   doc["time_valid"]  = g_timeValid;
   sendJSON(200, doc);
@@ -462,6 +568,7 @@ void handleStatus() {
   StaticJsonDocument<384> doc;
   doc["id"]          = g_probeId;
   doc["interval_ms"] = cfg_interval;
+  doc["resolution_bits"] = cfg_res_bits;
   doc["server_url"]  = cfg_server_url;
   doc["time_valid"]  = g_timeValid;
   if (!isnan(g_lastC)) {
@@ -504,6 +611,8 @@ void handleProvision() {
   String   url      = doc["server_url"] | "";
   String   tok      = doc["token"]      | "";
   uint32_t interval = (uint32_t)(doc["interval_ms"] | cfg_interval);
+  // resolution_bits is optional — a hub that doesn't send it leaves ours as-is.
+  uint8_t  resBits  = (uint8_t)(doc["resolution_bits"] | cfg_res_bits);
 
   if (url.length() == 0) {
     StaticJsonDocument<64> e; e["ok"] = false; e["error"] = "server_url required";
@@ -513,12 +622,17 @@ void handleProvision() {
   cfg_server_url = url;
   cfg_token      = tok;
   cfg_interval   = interval < 500 ? 500 : interval;
+  if (resBits < 9)  resBits = 9;
+  if (resBits > 12) resBits = 12;
+  cfg_res_bits   = resBits;
   saveConfig();
+  applyResolution(cfg_res_bits);   // apply the new resolution live
 
-  StaticJsonDocument<128> out;
+  StaticJsonDocument<160> out;
   out["ok"]          = true;
   out["server_url"]  = cfg_server_url;
   out["interval_ms"] = cfg_interval;
+  out["resolution_bits"] = cfg_res_bits;
   sendJSON(200, out);
 }
 
@@ -626,6 +740,57 @@ String stableProbeId(const String& rom, const String& chip) {
 // Deep sleep
 // ============================================================================
 
+// Stay awake, keep Wi-Fi up, sample fast and flush the offline buffer for
+// BURST_WINDOW_MS, then return so the caller can deep-sleep. Called from the
+// deep-sleep path when a wake reading shows a rapid change (e.g. a freezer door
+// opened) so the event AND any buffered backlog reach the hub during the
+// connectivity window the disturbance opened. A closed freezer is an RF box, so
+// this also retries the Wi-Fi association: the door opening may be the first
+// real chance to connect.
+void runDisturbanceBurst() {
+  Serial.printf("[Burst] Disturbance detected — staying awake %lus to flush.\n",
+                (unsigned long)(BURST_WINDOW_MS / 1000UL));
+  ledBlink(1, 40, 0);
+  unsigned long burstEnd   = millis() + BURST_WINDOW_MS;
+  unsigned long lastSample = 0;
+
+  while (millis() < burstEnd) {
+    http.handleClient();
+
+    if (WiFi.status() != WL_CONNECTED) {
+      WiFi.begin();
+      unsigned long t0 = millis();
+      while (WiFi.status() != WL_CONNECTED && millis() - t0 < 4000UL) {
+        http.handleClient();
+        delay(50);
+      }
+      if (WiFi.status() == WL_CONNECTED) { rtc_wifiFailStreak = 0; mdnsAdvertise(); }
+    }
+    if (WiFi.status() == WL_CONNECTED) bufferFlush();
+
+    if (millis() - lastSample >= BURST_SAMPLE_MS) {
+      lastSample = millis();
+      sensors.requestTemperatures();
+      delay(g_convMs + 5);
+      float tC = sensors.getTempCByIndex(0);
+      if (tC != DEVICE_DISCONNECTED_C) {
+        float  tF = DallasTemperature::toFahrenheit(tC);
+        String ts = nowIso();
+        g_lastC          = tC;
+        g_lastAtMs       = millis();
+        rtc_lastReadingC = tC;   // keep the across-sleep baseline current
+        if (WiFi.status() == WL_CONNECTED) {
+          if (!postWithTimestamp(ts, tC, tF, g_probeId)) bufferAppend(ts, tC, tF);
+        } else {
+          bufferAppend(ts, tC, tF);
+        }
+      }
+    }
+    delay(10);
+  }
+  Serial.println("[Burst] Window elapsed — returning to deep sleep.");
+}
+
 // Persist time, power down WiFi and mDNS, then deep-sleep for durationMs ms.
 // On wakeup the ESP32 runs setup() again from the top; the wakeup cause will
 // be ESP_SLEEP_WAKEUP_TIMER so setup() takes the fast-reconnect path.
@@ -669,9 +834,10 @@ void setup() {
 
   // DS18B20: 9-bit, non-blocking
   sensors.begin();
-  sensors.setResolution(DS_RESOLUTION_BITS);
+  applyResolution(cfg_res_bits);   // sets sensor resolution + matching g_convMs
   sensors.setWaitForConversion(false);
-  Serial.printf("DS18B20 sensors found: %d\n", sensors.getDeviceCount());
+  Serial.printf("DS18B20 sensors found: %d (res %u-bit)\n",
+                sensors.getDeviceCount(), cfg_res_bits);
 
   // Cache identity strings.  The probe id is derived once and persisted, so it
   // stays stable across reboots even if a later DS18B20 ROM read fails.
@@ -706,19 +872,35 @@ void setup() {
     // Fast reconnect path: skip the WiFiManager portal.  WiFiManager saves
     // credentials into the ESP32 WiFi NVS so WiFi.begin() (no args) reconnects
     // to the same network as before.
-    WiFi.mode(WIFI_STA);
-    WiFi.begin();
-    Serial.print("[WiFi] Reconnecting (deep-sleep wake)...");
-    uint32_t t0 = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - t0 < 15000UL) {
-      delay(100);
-    }
-    if (WiFi.status() == WL_CONNECTED) {
-      Serial.printf(" OK (%lu ms)  IP: %s\n",
-                    millis() - t0, WiFi.localIP().toString().c_str());
-      g_wasConnected = true;
+    //
+    // Backoff: a probe that keeps failing to associate (deep in a freezer, hub
+    // down) must not power its radio for a full connect attempt every single
+    // wake. Once the failure streak passes WIFI_FAIL_BACKOFF_AFTER, only attempt
+    // a connect every WIFI_FAIL_BACKOFF_EVERY-th wake — the rest read+buffer with
+    // the radio off. (A disturbance burst in loop() still forces a reconnect
+    // regardless, since a door-open is exactly when the network may return.)
+    bool skipConnect = (rtc_wifiFailStreak >= WIFI_FAIL_BACKOFF_AFTER) &&
+                       (rtc_bootCount % WIFI_FAIL_BACKOFF_EVERY != 0);
+    if (skipConnect) {
+      Serial.printf("[WiFi] Backoff (%u consecutive fails) — radio stays off this wake.\n",
+                    rtc_wifiFailStreak);
     } else {
-      Serial.println(" FAILED — reading will be buffered.");
+      WiFi.mode(WIFI_STA);
+      WiFi.begin();
+      Serial.print("[WiFi] Reconnecting (deep-sleep wake)...");
+      uint32_t t0 = millis();
+      while (WiFi.status() != WL_CONNECTED && millis() - t0 < WIFI_CONNECT_MS) {
+        delay(100);
+      }
+      if (WiFi.status() == WL_CONNECTED) {
+        Serial.printf(" OK (%lu ms)  IP: %s\n",
+                      millis() - t0, WiFi.localIP().toString().c_str());
+        g_wasConnected = true;
+        rtc_wifiFailStreak = 0;
+      } else {
+        rtc_wifiFailStreak++;
+        Serial.printf(" FAILED (streak %u) — reading will be buffered.\n", rtc_wifiFailStreak);
+      }
     }
   } else {
     // Cold boot: full WiFiManager flow (opens portal if no saved network)
@@ -814,6 +996,14 @@ void setup() {
                 g_deepSleepMode ? "deep-sleep" : "always-on", cfg_interval);
 }
 
+// True when the deep-sleep HTTP window should be served this wake: always for the
+// first few wakes (so the hub can auto-provision a freshly-appeared probe), then
+// only periodically — reclaiming ~3 s of awake-time on every other wake.
+bool webserverWindowDue() {
+  return rtc_bootCount <= WEBSERVER_WARMUP_WAKES
+      || (rtc_bootCount % WEBSERVER_WINDOW_EVERY == 0);
+}
+
 // ============================================================================
 void loop() {
   http.handleClient();
@@ -876,14 +1066,24 @@ void loop() {
   }
 
   // ── Phase 2: read result once the conversion window has elapsed ───────────
-  if (g_convPending && (now - g_convReqAt >= DS_CONV_MS)) {
+  if (g_convPending && (now - g_convReqAt >= g_convMs)) {
     g_convPending = false;
     float tC = sensors.getTempCByIndex(0);
+
+    // Retry a bad read a couple of times before declaring a fault: a transient
+    // 1-Wire glitch reads as DEVICE_DISCONNECTED_C, and dropping the whole
+    // reading over one blip leaves a gap in the log. Only the error path blocks
+    // (the normal successful read never enters this loop).
+    for (uint8_t attempt = 0; tC == DEVICE_DISCONNECTED_C && attempt < DS_READ_RETRIES; attempt++) {
+      sensors.requestTemperatures();
+      delay(g_convMs + 5);
+      tC = sensors.getTempCByIndex(0);
+    }
 
     if (tC == DEVICE_DISCONNECTED_C) {
       Serial.println("[Temp] Sensor disconnected — reinitialising bus...");
       sensors.begin();
-      sensors.setResolution(DS_RESOLUTION_BITS);
+      sensors.setResolution(cfg_res_bits);
       sensors.setWaitForConversion(false);
       ledBlink(2, 60, 160);
 
@@ -902,6 +1102,13 @@ void loop() {
     g_lastC    = tC;
     g_lastAtMs = now;
 
+    // Disturbance detection for the deep-sleep burst: compare this reading to the
+    // previous one carried across sleep in RTC memory. An abrupt change in either
+    // direction (freezer door open = rise, compressor kick = fall) counts.
+    bool disturbance = BURST_ON_DISTURBANCE && rtc_lastReadingC > -900.0f
+                       && fabsf(tC - rtc_lastReadingC) >= BURST_DELTA_C;
+    rtc_lastReadingC = tC;
+
     if (connected) {
       if (postWithTimestamp(ts, tC, tF, g_probeId)) {
         ledOn(); delay(20); ledOff();
@@ -919,14 +1126,31 @@ void loop() {
 
     // ── Deep sleep ────────────────────────────────────────────────────────
     if (g_deepSleepMode) {
-      // Keep the HTTP server live for WEBSERVER_WINDOW_MS so the hub's
-      // auto-provision request (and any browser visit) can reach us.
-      // Skip the window when WiFi is down — the server is unreachable anyway.
-      if (connected) {
-        unsigned long windowEnd = millis() + WEBSERVER_WINDOW_MS;
-        while (millis() < windowEnd) {
-          http.handleClient();
-          delay(5);
+      // A disturbance (e.g. the freezer door just opened) means an event worth
+      // capturing AND a likely connectivity window — stay awake to flush it all
+      // before sleeping. But cap consecutive bursts (battery guard): once the
+      // streak hits BURST_MAX_CONSECUTIVE the burst is suppressed until a settled
+      // wake re-arms it, so a door held open (or a slow thaw) can't keep the
+      // probe awake indefinitely. Otherwise keep the HTTP server live for the
+      // short provisioning window — but only when it's due (first wakes + every
+      // Nth), not on every wake, reclaiming that awake-time the rest of the time.
+      bool doBurst = disturbance && rtc_burstStreak < BURST_MAX_CONSECUTIVE;
+      if (doBurst) {
+        rtc_burstStreak++;
+        runDisturbanceBurst();
+      } else {
+        if (disturbance) {
+          Serial.printf("[Burst] Suppressed — %u consecutive bursts hit the cap (battery guard).\n",
+                        rtc_burstStreak);
+        } else {
+          rtc_burstStreak = 0;   // a settled wake re-arms the burst
+        }
+        if (connected && webserverWindowDue()) {
+          unsigned long windowEnd = millis() + WEBSERVER_WINDOW_MS;
+          while (millis() < windowEnd) {
+            http.handleClient();
+            delay(5);
+          }
         }
       }
 

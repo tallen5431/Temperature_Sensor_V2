@@ -11,6 +11,7 @@ from flask import Blueprint, jsonify, request
 from provisioning import provision_probe, resolve_host
 from core.diagnostics import build_diagnostics
 from core.storage import normalize_payload, extract_humidity, compute_vpd, sanitize_probe_id
+from core.status import reporting_probe_ids
 from core.version import HUB_VERSION, PRODUCT_NAME
 from core.applog import HEALTH, get_logger
 from core.metrics import LATEST
@@ -24,6 +25,62 @@ DEFAULT_ONLINE_TIMEOUT_SEC = 60
 
 # Reject absurdly large ingest bodies (DoS / disk-fill protection).
 MAX_INGEST_BYTES = 64 * 1024
+
+# Named rolling windows accepted by ``GET /api/readings`` (mirrors the CSV
+# download's ?window= values in app.py). ``all`` / unknown -> no window.
+_WINDOW_SECONDS = {"1h": 3600, "6h": 21600, "24h": 86400, "7d": 604800, "30d": 2592000}
+
+# Probes reporting within this window are considered "present" for
+# ``/api/readings/latest`` (matches the dashboard's 7-day per-probe view), so a
+# long-retired probe doesn't linger in the latest-values feed.
+_LATEST_PRESENCE_SEC = 7 * 86400
+
+
+def _num(v):
+    """Coerce a DB/pandas value to a JSON-safe float, mapping NaN/None -> None.
+
+    ``jsonify`` renders a float NaN as the bare token ``NaN`` (invalid JSON), so
+    a missing humidity/VPD must become ``null`` instead."""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return None if f != f else f  # NaN != NaN
+
+
+def _reading_row(r) -> Dict[str, Any]:
+    """Normalise one reading (pandas Series or dict) to a JSON object."""
+    def g(k):
+        try:
+            return r[k] if k in r else None
+        except (KeyError, TypeError):
+            return None
+    pid = g("probe_id")
+    ts = g("timestamp")
+    return {
+        "probe_id": ("" if pid is None else str(pid)),
+        "timestamp": (None if ts is None else str(ts)),
+        "temperature_c": _num(g("temperature_c")),
+        "temperature_f": _num(g("temperature_f")),
+        "humidity_pct": _num(g("humidity_pct")),
+        "vpd_kpa": _num(g("vpd_kpa")),
+    }
+
+
+def _parse_date_epoch(s, end_of_day=False):
+    """Parse a hub-local ``YYYY-MM-DD`` (or full ISO) string to a unix epoch.
+    A bare date maps to the start (or, for ``end_of_day``, the last second) of
+    that day. Returns None for blank/invalid input so the filter is skipped."""
+    s = (s or "").strip()
+    if not s:
+        return None
+    try:
+        d = datetime.datetime.fromisoformat(s.replace("Z", ""))
+        if len(s) == 10 and end_of_day:
+            d = d.replace(hour=23, minute=59, second=59)
+        return int(d.timestamp())
+    except (ValueError, TypeError):
+        return None
 
 # Config keys whose values must never be returned over the API.
 _SECRET_KEYS = ("provision_token", "server_token", "token", "secret", "password",
@@ -135,6 +192,29 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
                 "age_sec": round(age, 1) if age is not None else None,
                 "online": (age is not None and age <= timeout),
             })
+
+        # Overlay database-reporting freshness (the same interval-aware window the
+        # dashboard/Diagnostics use) so this endpoint agrees with the built-in UI:
+        #  * a probe posting on its own (possibly slow deep-sleep) cadence counts
+        #    as online even when mDNS hasn't seen it inside the fixed timeout, and
+        #  * a DB-only probe (deep-sleep radio off, never mDNS-discovered) is still
+        #    listed here instead of vanishing from the API between wakes.
+        try:
+            reporting = reporting_probe_ids(cfg, db)
+        except Exception:
+            reporting = set()
+        seen = set()
+        for p in out:
+            if p["probe_id"]:
+                seen.add(p["probe_id"])
+                if p["probe_id"] in reporting:
+                    p["online"] = True
+        for pid in sorted(reporting - seen):
+            out.append({
+                "host": None, "ip": None, "port": None, "name": pid,
+                "probe_id": pid, "last_seen": None, "age_sec": None,
+                "online": True, "source": "readings",
+            })
         return sorted(out, key=lambda p: (p.get("name") or "", p.get("ip") or ""))
 
     # --- endpoints ---
@@ -214,6 +294,70 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
     def list_probes():
         return jsonify(_iter_probes())
 
+    @bp.get("/readings/latest")
+    def readings_latest():
+        """Latest reading per probe as JSON — the JSON twin of ``/metrics`` and
+        the 90% case for "poll the current temperatures into another process".
+
+        Returns ``{"count", "readings": [{probe_id, timestamp, temperature_c,
+        temperature_f, humidity_pct, vpd_kpa}, ...]}``. Unauthenticated, matching
+        ``/api/health`` and ``/api/probes`` — it exposes readings, not secrets.
+        Bounded to probes seen in the last 7 days so retired probes drop out.
+        """
+        try:
+            df = db.latest_per_probe(window_seconds=_LATEST_PRESENCE_SEC)
+            rows = [_reading_row(r) for _, r in df.iterrows()
+                    if str(r.get("probe_id") or "").strip()]
+        except Exception:
+            log.exception("readings/latest failed")
+            return jsonify(ok=False, error="unavailable"), 503
+        rows.sort(key=lambda r: r["probe_id"])
+        return jsonify(count=len(rows), readings=rows)
+
+    @bp.get("/readings")
+    def readings():
+        """Historical readings as JSON. Same filters as the CSV download:
+        ``?window=24h`` (rolling), ``?probe=<id>``, an absolute
+        ``?from=YYYY-MM-DD&to=YYYY-MM-DD`` range, and ``?limit=N``.
+
+        The ``readings`` list is capped (newest kept) so a months-long store
+        can't return an unbounded body; ``stats`` (when present) is computed over
+        the FULL window, not just the returned rows — the same split the
+        dashboard uses between its downsampled chart and exact statistics.
+        """
+        args = request.args
+        window_label = (args.get("window") or "").strip().lower()
+        window = _WINDOW_SECONDS.get(window_label)
+        probe = (args.get("probe") or args.get("probe_id") or "").strip() or None
+        start_epoch = _parse_date_epoch(args.get("from"), end_of_day=False)
+        end_epoch = _parse_date_epoch(args.get("to"), end_of_day=True)
+        try:
+            limit = int(args.get("limit")) if args.get("limit") else None
+        except (TypeError, ValueError):
+            limit = None
+        try:
+            rows = db.fetch_readings(window_seconds=window, probe_id=probe,
+                                     start_epoch=start_epoch, end_epoch=end_epoch,
+                                     limit=limit)
+        except Exception:
+            log.exception("readings query failed")
+            return jsonify(ok=False, error="unavailable"), 503
+        readings_out = [_reading_row(r) for r in rows]
+        # Attach exact stats only for a plain rolling-window query; window_stats
+        # has no from/to filter, so pairing it with an absolute range would report
+        # numbers that don't match the returned rows. Omit it there instead.
+        stats = None
+        if start_epoch is None and end_epoch is None:
+            try:
+                s = db.window_stats(window_seconds=window, probe_id=probe)
+                if s and s.get("count"):
+                    stats = {"count": s["count"], "min_c": s["min"], "max_c": s["max"],
+                             "avg_c": s["avg"], "min_ts": s["min_ts"], "max_ts": s["max_ts"]}
+            except Exception:
+                stats = None
+        return jsonify(probe=probe, window=window_label or "all",
+                       count=len(readings_out), stats=stats, readings=readings_out)
+
     @bp.get("/audit/verify")
     def audit_verify():
         """Report tamper-evident audit-chain integrity (auth required)."""
@@ -234,6 +378,8 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
         except (ValueError, TypeError):
             return jsonify(ok=False, error="invalid port"), 400
         interval_ms = int(data.get("interval_ms") or data.get("interval") or 5000)
+        # Optional per-probe DS18B20 resolution (9..12); omitted -> probe keeps its own.
+        res_bits = data.get("resolution_bits")
         tok = (data.get("token") or TOKEN or "").strip()
         base = public_base().rstrip("/")
 
@@ -256,7 +402,8 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
         failed: List[str] = []
         for h, prt in targets:
             try:
-                if provision_probe(h, prt, base, token=tok, interval_ms=interval_ms):
+                if provision_probe(h, prt, base, token=tok, interval_ms=interval_ms,
+                                   resolution_bits=res_bits):
                     succeeded.append(f"{h}:{prt}")
                 else:
                     failed.append(f"{h}:{prt}")

@@ -17,6 +17,7 @@ from core.db import Database, migrate_csv_if_present
 from core.logging_setup import configure_logging
 from core.mdns_advert import MdnsAdvert
 from core.metrics import LATEST, render_prometheus
+from core.status import reporting_probe_ids
 from core.applog import HEALTH
 from core.audit import AUDIT
 from core.mqtt_publish import MQTT
@@ -202,11 +203,26 @@ def metrics():
     """Prometheus text exposition for a homelab Prometheus + Grafana stack."""
     if not (cfg.get("metrics", {}) or {}).get("enabled", True):
         return "metrics disabled", 404
+    # Count probes the same way every other surface does: union of mDNS-discovered
+    # and database-reporting ids, with "online" judged by the interval-aware
+    # freshness window — so setpoint_probes_online matches the dashboard's
+    # "Connected Probes" and a deep-sleep probe isn't dropped between wakes.
     try:
-        probes = len(finder.list_probes() or {})
+        reporting = reporting_probe_ids(cfg, db)
     except Exception:
-        probes = 0
-    body = render_prometheus(HEALTH.snapshot(), LATEST.snapshot(), probes, HUB_VERSION)
+        reporting = set()
+    try:
+        discovered = {
+            (p.get("properties", {}) or {}).get("id") if isinstance(p, dict)
+            else getattr(p, "probe_id", None)
+            for p in (finder.list_probes() or {}).values()
+        }
+        discovered.discard(None)
+    except Exception:
+        discovered = set()
+    total = len(discovered | reporting) or len(reporting)
+    body = render_prometheus(HEALTH.snapshot(), LATEST.snapshot(), total, HUB_VERSION,
+                             probes_online=len(reporting))
     return body, 200, {"Content-Type": "text/plain; version=0.0.4; charset=utf-8"}
 
 

@@ -58,7 +58,7 @@ PARTITION_OPTION = "PartitionScheme=no_ota"   # verify key/value for your core v
 # Documentation only -- kept identical to firmware/src/protocol.h. The real
 # values come from the firmware's [label] serial line, NOT from the MAC.
 PROBE_ID_PREFIX    = "Setpoint-"
-FW_VERSION         = "2.4.0"
+FW_VERSION         = "2.6.0"
 
 # Matches the firmware's machine-readable boot line. The setup AP is open, so
 # ap_pass is always `none`; it is still captured so the format stays stable.

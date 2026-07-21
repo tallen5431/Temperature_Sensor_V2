@@ -26,7 +26,7 @@ QR to the setup page.
 Notes:
 - Fields 1–2 both come from the same `[label]` serial line the firmware prints on
   every boot; capture them together and do **not** hand-edit one without the other.
-- The current firmware (**v2.4.0**) has **no** provision secret — `POST /provision`
+- The current firmware (**v2.6.0**) has **no** provision secret — `POST /provision`
   is accepted on the trusted LAN. The setup network is an **open** SoftAP (no
   password), present only during first-time setup, so there is nothing secret to print.
 - The **setup QR** should point at the customer setup entry point, e.g.
@@ -49,7 +49,7 @@ Small 2-up thermal/laser label, roughly 50 × 25 mm. Adjust to your stock.
 |  Setup Wi-Fi : Setpoint-9A3F2C   (open)           |
 |  host: Setpoint-9A3F2C.local                      |
 +------------------------------------------------------+
-   fw 2.4.0 / proto 1        S/N: __________  QC:____
+   fw 2.6.0 / proto 1        S/N: __________  QC:____
 ```
 
 - Top-right: the setup **QR** (field 3).
@@ -82,7 +82,7 @@ serial,build_date,operator,mac,probe_id,ap_ssid,fw_version,version,test_wifi_ssi
 | `mac` | Full chip MAC from esptool (log/traceability only) | `A4:CF:12:9A:3F:2C` |
 | `probe_id` | `Setpoint-<HEX6>` from the `[label]` line (must be unique in file) | `Setpoint-9A3F2C` |
 | `ap_ssid` | SoftAP SSID (== probe_id); the AP is **open** | `Setpoint-9A3F2C` |
-| `fw_version` | Flashed firmware version | `2.4.0` |
+| `fw_version` | Flashed firmware version | `2.6.0` |
 | `version` | Product version built ([VERSIONS.md](VERSIONS.md)) — `Portable` or `Fixed` | `Portable` |
 | `test_wifi_ssid` | Bench Wi-Fi the unit joined in QC | `bench-2g` |
 | `temperature_c` | Plausible `last_c` observed at QC | `23.4` |
@@ -95,6 +95,6 @@ Example rows:
 
 ```
 serial,build_date,operator,mac,probe_id,ap_ssid,fw_version,version,test_wifi_ssid,temperature_c,ice_c,ingest_ok,qc_result,notes
-TP2607-001,2026-07-06,TJ,A4:CF:12:9A:3F:2C,Setpoint-9A3F2C,Setpoint-9A3F2C,2.4.0,Portable,bench-2g,23.4,0.1,yes,PASS,plug-and-play
-TP2607-002,2026-07-06,TJ,A4:CF:12:7B:10:44,Setpoint-7B1044,Setpoint-7B1044,2.4.0,Fixed,bench-2g,22.9,-0.1,yes,PASS,plug-and-play
+TP2607-001,2026-07-06,TJ,A4:CF:12:9A:3F:2C,Setpoint-9A3F2C,Setpoint-9A3F2C,2.6.0,Portable,bench-2g,23.4,0.1,yes,PASS,plug-and-play
+TP2607-002,2026-07-06,TJ,A4:CF:12:7B:10:44,Setpoint-7B1044,Setpoint-7B1044,2.6.0,Fixed,bench-2g,22.9,-0.1,yes,PASS,plug-and-play
 ```

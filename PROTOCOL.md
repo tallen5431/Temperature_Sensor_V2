@@ -102,9 +102,16 @@ interval. Persisted to NVS so it survives reboots.
 {
   "server_url": "http://192.168.1.50:8080/api/ingest",
   "token": "s3cr3t-device-token",
-  "interval_ms": 5000
+  "interval_ms": 5000,
+  "resolution_bits": 11
 }
 ```
+
+- `resolution_bits` is **optional** (DS18B20 resolution, `9`..`12`; 9=0.5 °C/~94 ms,
+  10=0.25 °C, 11=0.125 °C/~375 ms default, 12=0.0625 °C/~750 ms). Omitting it leaves
+  the probe's current resolution unchanged, so a hub that doesn't manage it (or an
+  older one) is unaffected; an older probe simply ignores the unknown field. Note
+  that 12-bit's 750 ms conversion exceeds a 500 ms interval and caps the sample rate.
 
 **Response** `200 OK`
 
@@ -112,12 +119,13 @@ interval. Persisted to NVS so it survives reboots.
 { "id": "Setpoint-9A3F2C", "name": "Garage Fridge", "fw": "2.0.0", "accepted": true }
 ```
 
-The probe persists `server_url`, `token`, and `interval_ms` to NVS and begins posting
-(§5).
+The probe persists `server_url`, `token`, `interval_ms`, and `resolution_bits` to NVS
+and begins posting (§5). It echoes `resolution_bits` in `/whoami` and `/status` so the
+hub can confirm the applied value.
 
 > **Hub implementation note.** Setpoint's built-in auto-provisioner and the
-> `POST /api/provision` endpoint push exactly `{server_url, token, interval_ms}` to
-> the probe's `/provision` (trying the probe IP first, then its `.local` hostname).
+> `POST /api/provision` endpoint push `{server_url, token, interval_ms, resolution_bits}`
+> to the probe's `/provision` (trying the probe IP first, then its `.local` hostname).
 > The `X-Provision-Secret` is a per-unit secret held by the operator; supply it via
 > the provisioning caller for units that enforce it.
 
@@ -185,9 +193,13 @@ Every `interval_ms`, the probe POSTs the latest good reading to the provisioned
   other. (For robustness the hub also accepts the aliases `temp_c`/`t_c`/`c` and
   `temp_f`/`t_f`/`f`, but firmware SHOULD emit `temperature_c`.)
 - `probe_id` in the body is optional but SHOULD be sent and MUST match `X-Probe-ID`.
-- `timestamp` is optional ISO-8601. The hub holds the authoritative clock, so if
-  the field is omitted **or not a valid ISO datetime** (probes have no RTC) the hub
-  stamps its own receipt time. (Alias `ts` also accepted.) Firmware SHOULD omit it.
+- `timestamp` is optional ISO-8601, and **may carry millisecond precision**
+  (`2026-07-06T14:03:11.500Z`), which the hub preserves so a high-rate cadence
+  (down to the 500 ms floor) stays distinguishable instead of collapsing onto one
+  whole-second stamp. The hub holds the authoritative clock, so if the field is
+  omitted **or not a valid ISO datetime** the hub stamps its own receipt time. A
+  probe with a synced clock (NTP, or an RTC restored across deep sleep) SHOULD
+  send it — the current firmware does, to ms precision. (Alias `ts` also accepted.)
 - **`humidity_pct`** is **optional** (0–100 %RH). Only the SHT4x build variant emits
   it; temperature-only probes omit it. The hub validates it (finite, 0–100) and
   silently ignores anything invalid. (Aliases `humidity`/`rh`/`h` also accepted.)

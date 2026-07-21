@@ -54,10 +54,17 @@ def clear_demo_data(db, cfg) -> int:
                 if str(pid).startswith(DEMO_PREFIX)}
     except Exception:
         pass
+    from core.metrics import LATEST
     removed = 0
     for pid in ids:
         try:
             removed += db.delete_probe(pid)
+        except Exception:
+            pass
+        # Keep the Prometheus latest-reading registry in step so a cleared demo
+        # probe doesn't linger as a frozen /metrics series.
+        try:
+            LATEST.evict(pid)
         except Exception:
             pass
     for key in _DICTS:

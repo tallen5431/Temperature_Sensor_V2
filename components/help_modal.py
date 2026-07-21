@@ -48,6 +48,24 @@ def _help_body():
                         "one-click database ", html.B("backup"), "."], className="mb-1"),
             ]),
 
+            _section("5 · Connect it to other tools (advanced)", [
+                html.P(["Beyond the ", html.B("Download CSV"), " button, the hub can feed your "
+                        "data to other software live:"], className="mb-1"),
+                html.Ul([
+                    html.Li([html.B("Live JSON API"), " — ",
+                             html.Code("GET /api/readings/latest"), " for the current reading of "
+                             "each probe, or ", html.Code("GET /api/readings?window=24h&probe=<id>"),
+                             " for history. Point any script or dashboard at it."]),
+                    html.Li([html.B("Prometheus / Grafana"), " — scrape ",
+                             html.Code("/metrics"), " (on by default) for live per-probe values."]),
+                    html.Li([html.B("Home Assistant / MQTT"), " — enable the ",
+                             html.Code("mqtt"), " block in config.json and each probe is "
+                             "published (with auto-discovery) the moment it reports."]),
+                ], className="mb-1"),
+                html.Small("These are read-only and run on the LAN; no cloud account needed.",
+                           className="text-muted"),
+            ]),
+
             _section("Troubleshooting", [
                 html.Ul([
                     html.Li("Probe shown but no readings? Give the auto-provisioner ~20 s, or check the probe’s "
