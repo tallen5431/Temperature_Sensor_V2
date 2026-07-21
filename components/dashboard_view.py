@@ -607,6 +607,12 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
             yaxis={**_axis, **(dict(range=y_range) if y_range else {}),
                    "title": "Temp " + _unit_symbol(temp_unit)},
             hovermode="x unified", showlegend=multi,
+            # Preserve the user's zoom/pan across the 5s auto-refresh: while
+            # uirevision is unchanged Plotly keeps the interacted view instead of
+            # snapping back to the default range. Keyed to range/unit/focus so it
+            # DOES reset when the user changes what they're viewing (a new data
+            # domain), but not on a plain data tick.
+            uirevision=f"{time_range}|{temp_unit}|{focus}",
             hoverlabel=dict(bgcolor="#131f2b", bordercolor="rgba(255,255,255,0.14)",
                             font=dict(color="#e9f1f7", family=FONT_STACK)),
             legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(color="#9db0be"),
