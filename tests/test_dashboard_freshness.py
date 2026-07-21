@@ -66,6 +66,25 @@ def test_focus_last_update_reflects_focused_probe(tmp_path):
     assert "ago" in out[LAST_UPDATE]         # reflects A's real ~3 h age
 
 
+def test_graph_uirevision_preserves_zoom_but_resets_on_view_change(tmp_path):
+    """The history graph sets uirevision so a 5 s refresh keeps the user's zoom,
+    keyed to range/unit/focus so it still resets when the view domain changes."""
+    db = Database(tmp_path / "d.db")
+    cfg = Config(tmp_path / "c.json")
+    now = datetime.datetime.now()
+    for i in range(4):
+        db.append(_iso(now - datetime.timedelta(minutes=4 - i)), 20.0 + i, 68.0, "A")
+
+    def rev(rng, unit):
+        return build_dashboard(db, cfg, _FakeFinder(), rng, unit)[1].layout.uirevision
+
+    base = rev("24h", "celsius")
+    assert base                                   # present
+    assert rev("24h", "celsius") == base          # stable across a plain refresh -> zoom kept
+    assert rev("7d", "celsius") != base           # range change -> view resets
+    assert rev("24h", "fahrenheit") != base       # unit change -> view resets
+
+
 def test_probe_fresh_window_floor_and_interval_aware():
     # 5-minute floor out of the box
     assert probe_fresh_window({"interval_sec": 5}, "x") == 300
