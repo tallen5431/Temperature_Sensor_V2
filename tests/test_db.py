@@ -110,6 +110,105 @@ def test_latest_per_probe(db):
     assert by_probe == {"A": 25.0, "B": 30.0}
 
 
+def test_latest_per_probe_window_and_same_second_tie(db):
+    now = datetime.datetime.now()
+    ts = _iso(now)
+    db.append(ts, 20.0, 0.0, "A")
+    db.append(ts, 21.0, 0.0, "A")  # same second: the later insert (higher id) wins
+    db.append(_iso(now - datetime.timedelta(hours=2)), 5.0, 0.0, "OLD")
+    latest = db.latest_per_probe(window_seconds=3600)
+    by_probe = {r["probe_id"]: r["temperature_c"] for _, r in latest.iterrows()}
+    assert by_probe == {"A": 21.0}  # OLD is outside the window entirely
+
+
+def test_battery_stored_and_exposed(db):
+    now = datetime.datetime.now()
+    db.append(_iso(now), 20.0, 68.0, "A", battery=87.5)
+    db.append(_iso(now), 4.0, 39.2, "B")  # no battery telemetry -> NULL
+    latest = db.latest_per_probe()
+    by_probe = {r["probe_id"]: r["battery_pct"] for _, r in latest.iterrows()}
+    assert by_probe["A"] == 87.5
+    # SQL NULL surfaces as None/NaN in the frame (matches humidity_pct; the API
+    # maps either to JSON null via _num).
+    assert by_probe["B"] is None or by_probe["B"] != by_probe["B"]
+    rows = {r["probe_id"]: r for r in db.fetch_readings()}
+    assert rows["A"]["battery_pct"] == 87.5
+    assert rows["B"]["battery_pct"] is None
+
+
+def test_has_probe_prefix(db):
+    assert db.has_probe_prefix("DEMO-") is False  # empty store
+    now = datetime.datetime.now()
+    db.append(_iso(now), 4.0, 39.2, "DEMO-Fridge")
+    db.append(_iso(now), 20.0, 68.0, "REAL-1")
+    assert db.has_probe_prefix("DEMO-") is True
+    assert db.has_probe_prefix("XYZ-") is False
+    # An empty prefix degenerates to "any reading at all".
+    assert db.has_probe_prefix("") is True
+
+
+def test_has_probe_prefix_is_index_backed(db):
+    # The whole point of the helper is an O(log N) probe: the GLOB prefix must
+    # rewrite to a range seek on idx_readings_probe_epoch, never a table scan.
+    # (If a SQLite build stops applying the optimisation, switch the helper to
+    # the equivalent  probe_id >= 'DEMO-' AND probe_id < 'DEMO.'  range form.)
+    plan = " ".join(
+        str(r[3]) for r in db._conn().execute(
+            "EXPLAIN QUERY PLAN SELECT EXISTS"
+            "(SELECT 1 FROM readings WHERE probe_id GLOB ?)", ("DEMO-*",))
+    )
+    assert "idx_readings_probe_epoch" in plan
+
+
+def test_record_and_list_events(db):
+    now = datetime.datetime.now()
+    db.record_event("high", "A", temperature_c=30.0, limit=25.0,
+                    ts=_iso(now - datetime.timedelta(seconds=20)))
+    db.record_event("recovery", "A", temperature_c=24.0, limit=25.0,
+                    ts=_iso(now - datetime.timedelta(seconds=10)))
+    db.record_event("offline", "B", ts=_iso(now))
+    events = db.list_events()
+    assert [e["kind"] for e in events] == ["offline", "recovery", "high"]  # newest first
+    assert set(events[0]) == {"timestamp", "epoch", "kind", "probe_id",
+                              "temperature_c", "limit_c"}
+    assert events[2]["probe_id"] == "A"
+    assert events[2]["temperature_c"] == 30.0 and events[2]["limit_c"] == 25.0
+    assert events[0]["temperature_c"] is None and events[0]["limit_c"] is None
+    # limit caps the payload, keeping the newest rows
+    assert [e["kind"] for e in db.list_events(limit=2)] == ["offline", "recovery"]
+
+
+def test_list_events_window(db):
+    now = datetime.datetime.now()
+    db.record_event("low", "A", ts=_iso(now - datetime.timedelta(hours=2)))
+    db.record_event("online", "A", ts=_iso(now))
+    assert len(db.list_events()) == 2
+    recent = db.list_events(window_seconds=3600)
+    assert [e["kind"] for e in recent] == ["online"]
+
+
+def test_record_event_tolerates_bad_input(db):
+    # Unparseable numerics are coerced to NULL, never raised to the caller.
+    db.record_event("high", "A", temperature_c="not-a-number", limit=object())
+    ev = db.list_events()[0]
+    assert ev["kind"] == "high" and ev["temperature_c"] is None and ev["limit_c"] is None
+    # A blank kind is skipped; a garbage ts falls back to ~now via iso_to_epoch.
+    db.record_event("", "A")
+    assert len(db.list_events()) == 1
+    db.record_event("rate", None, ts="not-a-date")
+    ev = db.list_events()[0]
+    assert ev["kind"] == "rate" and ev["probe_id"] == ""
+    assert abs(ev["epoch"] - time.time()) < 5
+
+
+def test_record_event_defaults_ts_to_now(db):
+    db.record_event("offline", "A")
+    ev = db.list_events()[0]
+    assert abs(ev["epoch"] - time.time()) < 5
+    # the stored timestamp is a local ISO-seconds string
+    datetime.datetime.fromisoformat(ev["timestamp"])
+
+
 def test_export_csv_roundtrip(db):
     now = datetime.datetime.now()
     db.append(_iso(now), 22.123, 71.821, "probeX")

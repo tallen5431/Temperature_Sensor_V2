@@ -56,6 +56,22 @@ def test_readings_latest_one_row_per_probe(tmp_path):
     assert rows["A"]["humidity_pct"] is None
 
 
+def test_readings_rows_carry_battery_pct(tmp_path):
+    # Battery-reporting probes surface their level in both JSON feeds; probes
+    # without battery telemetry read as JSON null, never a missing key.
+    client, db, _ = _client(tmp_path)
+    now = datetime.datetime.now()
+    db.append(_iso(now), 20.0, 68.0, "A", battery=87.0)
+    db.append(_iso(now), 21.0, 69.8, "B")
+    latest = client.get("/api/readings/latest").get_json()
+    rows = {r["probe_id"]: r for r in latest["readings"]}
+    assert rows["A"]["battery_pct"] == 87.0
+    assert rows["B"]["battery_pct"] is None
+    hist = client.get("/api/readings").get_json()
+    assert hist["count"] == 2
+    assert all("battery_pct" in r for r in hist["readings"])
+
+
 def test_readings_history_window_probe_and_stats(tmp_path):
     client, db, _ = _client(tmp_path)
     now = datetime.datetime.now()

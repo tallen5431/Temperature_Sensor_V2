@@ -82,6 +82,7 @@ class HealthState:
         self.ingest_rejected = 0
         self.write_failures = 0
         self.last_write_ts: float | None = None
+        self.last_failure_ts: float | None = None
 
     def record_write(self) -> None:
         with self._lock:
@@ -95,17 +96,30 @@ class HealthState:
     def record_failure(self) -> None:
         with self._lock:
             self.write_failures += 1
+            self.last_failure_ts = time.time()
 
-    def snapshot(self) -> dict:
+    def snapshot(self, fresh_window_sec: float = 120) -> dict:
+        """Health counters plus the derived ``healthy`` flag.
+
+        ``fresh_window_sec`` bounds how old the newest successful write may be
+        before the appliance counts as unhealthy; callers monitoring slow-cadence
+        probes can pass an interval-aware bound instead of the 120 s default.
+        A write failure no longer latches the flag forever: only a failure NEWER
+        than the latest successful write marks the appliance unhealthy, so one
+        transient hiccup months ago cannot condemn a recovered system.
+        """
         with self._lock:
             last = self.last_write_ts
             age = (time.time() - last) if last else None
+            failing = (self.last_failure_ts is not None
+                       and (last is None or self.last_failure_ts > last))
             return {
                 "rows_written": self.rows_written,
                 "ingest_rejected": self.ingest_rejected,
                 "write_failures": self.write_failures,
                 "last_write_age_sec": round(age, 1) if age is not None else None,
-                "healthy": bool(last and age is not None and age < 120 and self.write_failures == 0),
+                "healthy": bool(last and age is not None and age < fresh_window_sec
+                                and not failing),
             }
 
 

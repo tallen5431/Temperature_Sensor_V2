@@ -63,6 +63,28 @@ def test_build_counts_online_and_offline():
     assert d["version"] == "2.2.1"
 
 
+def test_probe_rows_overlay_db_reporting_freshness():
+    # A probe that is mDNS-stale but still freshly POSTING to the DB (a
+    # deep-sleep battery probe between radio wakes) must read online in the
+    # per-probe rows — the same overlay /api/probes applies.
+    class _ReportingDB(_FakeDB):
+        def last_reading_epoch_per_probe(self, window_seconds=None):
+            return {"p2": 950}  # posted 50 s before now=1000
+
+    probes = {
+        "p1": {"name": "Fridge", "ip": "10.0.0.2", "properties": {"id": "p1"}, "last_seen": 995},
+        "p2": {"name": "Freezer", "ip": "10.0.0.3", "properties": {"id": "p2"}, "last_seen": 100},
+    }
+    cfg = {"probe_online_timeout_sec": 60}
+    d = build_diagnostics(cfg, _ReportingDB(3), _FakeFinder(probes), "http://hub",
+                          "2.4.0", "Setpoint", now=1000.0)
+    rows = {p["probe_id"]: p for p in d["probes"]["list"]}
+    assert rows["p1"]["online"] is True   # fresh via mDNS
+    assert rows["p2"]["online"] is True   # stale via mDNS, fresh via readings
+    assert d["probes"]["online"] == 2
+    assert d["probes"]["reporting"] == 1
+
+
 def test_build_contains_no_secrets():
     # Notification host/url/password/token must never appear in the snapshot.
     cfg = {

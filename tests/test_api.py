@@ -65,6 +65,24 @@ def test_ingest_rejects_non_finite_and_out_of_range(tmp_path):
     assert db.count() == 1
 
 
+def test_ingest_battery_pct_rides_along(tmp_path):
+    # battery_pct rides along the ingest payload into the nullable battery_pct
+    # column. Extraction lives in core.storage.extract_battery; on a build where
+    # that helper has not landed yet the reading still stores, just with a NULL
+    # battery — tolerate both so a partial upgrade never fails ingest.
+    import core.storage as storage
+    client, db, _ = _make_client(tmp_path)
+    r = client.post("/api/ingest", json={"temperature_c": 21.0, "probe_id": "p1",
+                                         "battery_pct": 87})
+    assert r.status_code == 200
+    assert db.count() == 1
+    stored = db.latest_per_probe().iloc[0]["battery_pct"]
+    if hasattr(storage, "extract_battery"):
+        assert float(stored) == 87.0
+    else:
+        assert stored is None
+
+
 def test_ingest_missing_temperature_is_400(tmp_path):
     client, db, _ = _make_client(tmp_path)
     r = client.post("/api/ingest", json={"probe_id": "p1"})

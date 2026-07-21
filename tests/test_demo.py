@@ -24,6 +24,21 @@ def test_demo_load_and_clear(tmp_path):
     assert not any(k.startswith(DEMO_PREFIX) for k in cfg.get("probe_names", {}))
 
 
+def test_has_demo_data_falls_back_without_fast_helper(tmp_path):
+    # has_demo_data prefers the O(log N) Database.has_probe_prefix probe, but an
+    # older Database without it (or one that errors) must still answer via the
+    # legacy per-probe scan rather than reporting "no demo data" incorrectly.
+    class _LegacyDB(Database):
+        def has_probe_prefix(self, prefix):
+            raise RuntimeError("helper unavailable")
+
+    db = _LegacyDB(tmp_path / "d.db")
+    cfg = Config(tmp_path / "c.json")
+    assert has_demo_data(db) is False
+    load_demo_data(db, cfg, hours=1, step_min=30)
+    assert has_demo_data(db) is True
+
+
 def test_clear_demo_preserves_real_probes(tmp_path):
     db = Database(tmp_path / "d.db")
     cfg = Config(tmp_path / "c.json")

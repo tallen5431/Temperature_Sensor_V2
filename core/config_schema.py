@@ -54,6 +54,8 @@ _NUMBERS = [
     ("alert_freshness_sec", 600, 1, True),
     ("offline_after_sec", 300, 1, True),
     ("alert_hysteresis_c", 0.5, 0, False),
+    ("rate_alert_c", 0.0, 0, False),
+    ("rate_window_min", 10, 1, True),
     ("resolution_bits", 11, 9, True),
 ]
 _BOOLS = [("pull_enabled", True), ("auto_provision", True)]
@@ -225,5 +227,17 @@ def normalize_config(raw: Any) -> Tuple[Dict[str, Any], Warnings]:
             webhook = notif["webhook"]
         if isinstance(webhook, dict):
             _fix_bool(webhook, "enabled", False, warns, label="notifications.webhook.enabled")
+
+        summary = notif.get("daily_summary")
+        if "daily_summary" in notif and not isinstance(summary, dict):
+            warns.append("notifications.daily_summary must be an object; resetting")
+            notif["daily_summary"] = {}
+            summary = notif["daily_summary"]
+        if isinstance(summary, dict):
+            _fix_bool(summary, "enabled", False, warns, label="notifications.daily_summary.enabled")
+            _fix_number(summary, "hour", 8, 0, True, warns)
+            if summary.get("hour", 0) > 23:
+                warns.append("notifications.daily_summary.hour out of range; using 8")
+                summary["hour"] = 8
 
     return cfg, warns

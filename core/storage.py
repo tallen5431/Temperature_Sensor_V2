@@ -145,12 +145,15 @@ def normalize_payload(payload: dict):
 
 
 def threshold_breach(value, lo, hi):
-    """Single source of truth for 'is this reading out of range?'.
+    """Raw-limit check: 'is this reading outside its configured range right now?'.
 
     Returns "high" if value > hi, "low" if value < lo, else None. A None bound is
     ignored — but a bound of 0 is a REAL threshold (freezer/greenhouse), so this
-    checks ``is not None`` rather than truthiness. Both the dashboard alert banner
-    and the server-side notifier use this so they can't diverge.
+    checks ``is not None`` rather than truthiness. This is the instantaneous
+    check the dashboard banner starts from; the notifier's state machine
+    (``core.alerts.classify``) layers a hysteresis deadband on top, so a probe
+    can read in-range here while the notifier still HOLDS the breach until it
+    clears the limit by the deadband (see ``core.alerts.HELD``).
     """
     try:
         if hi is not None and value > float(hi):
@@ -178,6 +181,38 @@ def extract_humidity(payload: dict):
             if math.isfinite(rh) and 0.0 <= rh <= 100.0:
                 return rh
             return None
+    return None
+
+
+def extract_battery(payload: dict):
+    """Return a validated battery charge percentage (0..100) from an ingest
+    payload, or None.
+
+    Accepts ``battery_pct`` (used directly when finite and within 0..100) or,
+    failing that, ``battery_v`` — a single-cell LiPo pack voltage mapped
+    linearly 3.0 V -> 0 %, 4.2 V -> 100 % and clamped to that range. A voltage
+    outside the plausible cell band (2.5..5.0 V) is sensor junk, not a nearly
+    full/empty cell, so it — like any non-finite or out-of-band value — means
+    'no battery reading' (returns None). A mains-powered probe simply omits
+    both keys.
+    """
+    if "battery_pct" in payload and payload["battery_pct"] not in (None, ""):
+        try:
+            pct = float(payload["battery_pct"])
+        except (TypeError, ValueError):
+            return None
+        if math.isfinite(pct) and 0.0 <= pct <= 100.0:
+            return pct
+        return None
+    if "battery_v" in payload and payload["battery_v"] not in (None, ""):
+        try:
+            volts = float(payload["battery_v"])
+        except (TypeError, ValueError):
+            return None
+        if not (math.isfinite(volts) and 2.5 <= volts <= 5.0):
+            return None
+        pct = (volts - 3.0) / (4.2 - 3.0) * 100.0
+        return max(0.0, min(100.0, pct))
     return None
 
 

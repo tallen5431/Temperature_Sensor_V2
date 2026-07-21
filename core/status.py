@@ -21,6 +21,12 @@ STALE_INTERVAL_MULTIPLIER = 2.5
 # so every surface agrees on when a probe is "offline".
 OFFLINE_AFTER_SEC = 300
 
+# Bound the per-probe "last reading" GROUP BY behind :func:`reporting_probe_ids`
+# to the last week. Any probe silent longer than this is unambiguously not
+# reporting (fresh windows top out at minutes, not days), and the cutoff keeps
+# the query cost tracking recent rows instead of the entire retained history.
+REPORTING_LOOKBACK_SEC = 7 * 86400
+
 
 def probe_fresh_window(cfg, probe_id) -> float:
     """Seconds a probe may be silent before it counts as stale/offline.
@@ -65,7 +71,7 @@ def reporting_probe_ids(cfg, db, now: float | None = None) -> set:
     """
     now = time.time() if now is None else now
     try:
-        epochs = db.last_reading_epoch_per_probe(window_seconds=None) or {}
+        epochs = db.last_reading_epoch_per_probe(window_seconds=REPORTING_LOOKBACK_SEC) or {}
     except Exception:
         return set()
     out = set()
