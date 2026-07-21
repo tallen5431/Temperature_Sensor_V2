@@ -1,4 +1,30 @@
 // ESP32 + DS18B20 + WiFiManager + mDNS + OTA + WebServer
+// v2.7.0 — reliability: (a) power-outage lockout fix — the captive portal now
+//           times out after PORTAL_TIMEOUT_S (180 s) instead of blocking
+//           forever, so a probe whose router reboots slower than it does after
+//           an outage continues into normal operation OFFLINE on its saved
+//           credentials (readings buffered, Wi-Fi retried periodically / next
+//           wake); a probe with NO saved credentials re-opens the portal in a
+//           loop instead of hard-blocking. (b) buffer-flush hardening — the
+//           buf_pos checkpoint is zeroed BEFORE the buffer file is deleted
+//           (a crash between the two used to leave a stale offset that
+//           silently skipped the start of the NEXT buffer file), and a
+//           checkpoint beyond EOF is treated as corrupt: flush restarts from 0
+//           instead of deleting unsent data. (c) /provision recomputes the
+//           deep-sleep/always-on mode live, so an always-on probe provisioned
+//           to a >=10 s interval starts deep-sleeping without a power cycle.
+//           (d) a disturbance burst is followed by a FULL cfg_interval sleep,
+//           not the collapsed 100 ms floor. (e) non-blocking NTP — configTime()
+//           starts async SNTP; only a cold boot waits (bounded, <=3 s) and
+//           loop() polls validity with a 60 s -> 5 min backoff, so a LAN
+//           without internet NTP no longer freezes the loop 8 s per attempt.
+//           (f) clock-drift fix — the pre-sleep instant is checkpointed to
+//           MILLISECOND precision and restored ms-exact on wake (before the
+//           Wi-Fi block), and the drift resync is driven by a wakes-since-
+//           successful-sync counter instead of bootCount % 30. (g) flush
+//           budget — buf_pos checkpoints every 10 uploaded lines (and always
+//           on stop/completion), and a deep-sleep wake caps its flush at
+//           ~20 s, resuming the backlog next wake.
 // v2.6.0 — provisionable sensor resolution: the DS18B20 resolution (9..12 bit,
 //           0.5..0.0625 °C) is now set per-probe from the hub's Devices page,
 //           delivered via /provision, persisted to NVS, and applied live. The
@@ -53,6 +79,7 @@
 #include <DallasTemperature.h>
 #include <LittleFS.h>
 #include <time.h>
+#include <esp_sntp.h>
 #include <esp_sleep.h>
 
 // ---------------- Pins & LED ------------------------------------------------
@@ -88,7 +115,7 @@ inline void ledBlink(uint8_t n, uint16_t onMs = 60, uint16_t offMs = 120) {
 
 // ---------------- Identity --------------------------------------------------
 static const char* SENSOR_NAME = "Setpoint";
-static const char* FW_VERSION  = "2.6.0";
+static const char* FW_VERSION  = "2.7.0";
 
 // The setup SoftAP is intentionally OPEN (no password): it only exists during
 // first-time Wi-Fi setup and is torn down once the probe joins the home network,
@@ -110,12 +137,13 @@ static const char* FW_VERSION  = "2.6.0";
 // and any browser visit must arrive within this window.  Increase it if you
 // need more time to reach /provision after a config change.
 //
-// NTP_RESYNC_INTERVAL: re-sync with NTP every N deep-sleep wakes to correct
-// accumulated RTC drift.
+// NTP_RESYNC_INTERVAL: once this many deep-sleep wakes have passed since the
+// last SUCCESSFUL NTP sync, an async resync is kicked on the next CONNECTED
+// wake to correct accumulated RTC drift (see rtc_wakesSinceSync / ntpService).
 #define DEEP_SLEEP_ENABLED true
 static const uint32_t DEEP_SLEEP_MIN_MS   = 10000UL;  // 10 s
 static const uint32_t WEBSERVER_WINDOW_MS =  3000UL;  //  3 s
-static const uint32_t NTP_RESYNC_INTERVAL =    30UL;  // every 30 wakes
+static const uint32_t NTP_RESYNC_INTERVAL =    30UL;  // wakes since last successful sync
 
 // ---------------- Disturbance burst (freezer door / rapid change) -----------
 // In deep-sleep mode the probe is asleep between wakes, so a brief event (a
@@ -150,6 +178,16 @@ static const uint32_t BURST_MAX_CONSECUTIVE = 3;
 static const uint32_t WIFI_CONNECT_MS         = 8000UL;
 static const uint32_t WIFI_FAIL_BACKOFF_AFTER = 3;
 static const uint32_t WIFI_FAIL_BACKOFF_EVERY = 4;
+
+// Captive-portal timeout (power-outage lockout guard). A cold boot whose saved
+// Wi-Fi is unreachable (e.g. after a power outage the router reboots slower
+// than the probe) used to block in the portal FOREVER (portal timeout 0),
+// taking no readings until a human power-cycled it. The portal now gives up
+// after PORTAL_TIMEOUT_S: with saved credentials the probe continues into
+// normal operation OFFLINE (readings buffered, Wi-Fi retried periodically in
+// loop() / on the next wake); with NO saved credentials the portal is simply
+// re-opened in a loop — there is nothing useful to run without them.
+static const uint32_t PORTAL_TIMEOUT_S = 180;
 
 // The hub's auto-provisioner only needs to reach the probe occasionally, so the
 // 3 s HTTP window isn't held on every deep-sleep wake: it's served for the first
@@ -207,6 +245,14 @@ static const char*    BUFFER_FILE      = "/buf.csv";
 static const uint32_t BUFFER_MAX_BYTES = 1900UL * 1024UL;  // 1.9 MB cap
 static const uint32_t BUFFER_MIN_FREE  =    8UL * 1024UL;  // 8 KB FS headroom
 static const char*    BUF_POS_KEY = "buf_pos";
+// Flush checkpoint/budget: persist buf_pos every N successful uploads (plus
+// always when a flush stops or completes) instead of after every line — the
+// same resume guarantee at ~1/10th the NVS write wear. In deep-sleep mode one
+// wake spends at most FLUSH_BUDGET_MS flushing backlog and resumes from the
+// checkpoint on the next wake, so a large backlog can't pin the probe awake
+// for minutes; always-on mode has no cap (it can afford to finish the job).
+static const uint16_t FLUSH_CHECKPOINT_EVERY = 10;
+static const uint32_t FLUSH_BUDGET_MS        = 20000UL;
 
 // ---------------- RTC memory (survives deep sleep) --------------------------
 // These variables live in the ESP32 RTC slow-memory SRAM and retain their
@@ -214,8 +260,9 @@ static const char*    BUF_POS_KEY = "buf_pos";
 // hard chip reset.
 RTC_DATA_ATTR static uint32_t rtc_bootCount    = 0;    // wake counter
 RTC_DATA_ATTR static bool     rtc_timeValid    = false; // true once NTP has synced
-RTC_DATA_ATTR static int64_t  rtc_epochAtSleep = 0;    // unix epoch saved before sleep
+RTC_DATA_ATTR static int64_t  rtc_epochMsAtSleep = 0;  // unix epoch in MILLISECONDS saved before sleep
 RTC_DATA_ATTR static uint32_t rtc_sleepMs      = 0;    // intended sleep duration
+RTC_DATA_ATTR static uint32_t rtc_wakesSinceSync = 0;  // deep-sleep wakes since last SUCCESSFUL NTP sync
 RTC_DATA_ATTR static float    rtc_lastReadingC   = -999.0f; // last temp (across sleep) for disturbance detection; -999 = unset
 RTC_DATA_ATTR static uint32_t rtc_burstStreak    = 0;       // consecutive wakes that fired a burst (cap guard)
 RTC_DATA_ATTR static uint32_t rtc_wifiFailStreak = 0;       // consecutive deep-sleep reconnect failures (backoff)
@@ -237,19 +284,32 @@ static uint16_t      g_convMs        = 375;  // DS18B20 conversion wait; tracks 
 // Time helpers
 // ============================================================================
 
-// Call once after WiFi connects.  Blocks up to 8 s waiting for SNTP.
-void syncTime() {
+// SNTP is used ASYNCHRONOUSLY: configTime() only starts the background query
+// and returns immediately. Only a cold boot waits for the first sync — briefly
+// and bounded (NTP_COLDBOOT_WAIT_MS) — so first-boot readings can carry real
+// stamps when NTP answers quickly. Everywhere else validity is polled
+// opportunistically from ntpService() with a growing backoff, so a LAN without
+// internet NTP can never freeze the loop (the old syncTime() blocked 8 s per
+// attempt, retried every 60 s, forever).
+static const time_t   NTP_SANE_EPOCH       = 1672531200;  // 2023-01-01 — clock is "set" past this
+static const uint32_t NTP_COLDBOOT_WAIT_MS = 3000UL;      // bounded first-sync wait, cold boot only
+static const uint32_t NTP_BACKOFF_MIN_MS   = 60000UL;     // first async retry after 60 s...
+static const uint32_t NTP_BACKOFF_MAX_MS   = 300000UL;    // ...doubling up to a 5 min cap
+
+static bool          g_sntpStarted   = false;
+static uint32_t      g_ntpBackoffMs  = NTP_BACKOFF_MIN_MS;
+static unsigned long g_ntpLastKickAt = 0;
+
+// True once the system clock holds real time — set by SNTP in the background,
+// or restored from the RTC after deep sleep.
+bool clockLooksValid() { return time(nullptr) >= NTP_SANE_EPOCH; }
+
+// Start (or restart) the asynchronous SNTP query. Returns immediately; lwip
+// sets the system clock in the background whenever a server answers.
+void ntpKick() {
   configTime(0, 0, "pool.ntp.org", "time.nist.gov");
-  Serial.print("[NTP] Syncing...");
-  struct tm ti;
-  if (getLocalTime(&ti, 8000)) {
-    g_timeValid = rtc_timeValid = true;
-    char buf[32];
-    strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &ti);
-    Serial.printf(" OK (%s)\n", buf);
-  } else {
-    Serial.println(" FAILED — readings will not be buffered until time syncs.");
-  }
+  g_sntpStarted   = true;
+  g_ntpLastKickAt = millis();
 }
 
 // Returns current UTC time as an ISO 8601 string WITH milliseconds
@@ -267,6 +327,44 @@ String nowIso() {
   size_t n = strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", &ti);
   snprintf(buf + n, sizeof(buf) - n, ".%03ldZ", (long)(tv.tv_usec / 1000));
   return String(buf);
+}
+
+// Non-blocking NTP service — safe to call every loop() iteration; never blocks.
+//  1. Promotes g_timeValid (and the RTC copy) once the async SNTP query lands,
+//     zeroing the drift-resync wake counter.
+//  2. While the clock is still unset and Wi-Fi is up, re-kicks the query with
+//     a growing backoff (60 s doubling to a 5 min cap), so a LAN with no
+//     internet NTP costs a cheap periodic retry instead of a frozen loop.
+void ntpService(bool connected) {
+  // A completed SNTP round — initial sync OR a drift resync of an already-valid
+  // clock — resets the wakes-since-sync counter. (sntp_get_sync_status()
+  // returns COMPLETED once per finished round, then resets itself.)
+  if (g_sntpStarted && sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED) {
+    bool first = !g_timeValid;
+    g_timeValid = rtc_timeValid = true;
+    rtc_wakesSinceSync = 0;
+    Serial.printf("[NTP] %s: %s\n", first ? "Synced" : "Drift resync done",
+                  nowIso().c_str());
+    return;
+  }
+  // The clock can also turn valid without us catching COMPLETED (status already
+  // consumed elsewhere) — a sane epoch is proof enough to start stamping and
+  // buffering readings.
+  if (!g_timeValid && clockLooksValid()) {
+    g_timeValid = rtc_timeValid = true;
+    rtc_wakesSinceSync = 0;
+    Serial.printf("[NTP] Clock valid: %s\n", nowIso().c_str());
+    return;
+  }
+  // Still no clock: retry the async query with backoff while connected.
+  if (!g_timeValid && connected &&
+      (!g_sntpStarted || millis() - g_ntpLastKickAt >= g_ntpBackoffMs)) {
+    Serial.printf("[NTP] Async retry (next in %lus).\n",
+                  (unsigned long)(g_ntpBackoffMs / 1000UL));
+    ntpKick();
+    g_ntpBackoffMs = (g_ntpBackoffMs >= NTP_BACKOFF_MAX_MS / 2)
+                     ? NTP_BACKOFF_MAX_MS : g_ntpBackoffMs * 2;
+  }
 }
 
 // ============================================================================
@@ -380,8 +478,11 @@ bool postWithTimestamp(const String& ts, float tC, float tF,
 }
 
 // Upload every reading stored in the buffer file, then delete it.
-// Byte-offset of the next line is persisted in NVS after every successful
-// POST so a mid-flush drop can resume without duplicates.
+// Byte-offset of the next line is persisted in NVS every
+// FLUSH_CHECKPOINT_EVERY successful POSTs — and ALWAYS when the flush stops or
+// completes — so a mid-flush drop resumes with at most a few duplicates.
+// In deep-sleep mode a single wake's flush is capped at FLUSH_BUDGET_MS and
+// the backlog resumes from the checkpoint on the next wake.
 void bufferFlush() {
   if (!LittleFS.exists(BUFFER_FILE)) return;
 
@@ -391,10 +492,25 @@ void bufferFlush() {
   uint32_t fileSize = f.size();
   uint32_t pos      = loadBufPos();
 
-  if (pos >= fileSize) {
-    f.close();
-    LittleFS.remove(BUFFER_FILE);
+  if (pos > fileSize) {
+    // Checkpoint beyond EOF: the buffer file was replaced or truncated behind
+    // the saved offset (e.g. a crash between delete and checkpoint on older
+    // firmware). Corrupt state — reset and flush from the start rather than
+    // deleting a file full of unsent readings.
+    Serial.printf("[Buffer] Checkpoint %u > file size %u — corrupt; flushing from 0.\n",
+                  pos, fileSize);
+    pos = 0;
     saveBufPos(0);
+  }
+
+  if (pos == fileSize) {
+    f.close();
+    // Order matters: zero the checkpoint BEFORE removing the file. A crash
+    // between the two then leaves pos=0 (worst case a harmless re-upload)
+    // instead of a stale offset that would silently skip the start of the
+    // NEXT buffer file.
+    saveBufPos(0);
+    LittleFS.remove(BUFFER_FILE);
     return;
   }
 
@@ -402,10 +518,22 @@ void bufferFlush() {
                 pos, fileSize);
   f.seek(pos);
 
-  int uploaded = 0, failed = 0;
+  int  uploaded  = 0, failed = 0;
+  bool budgetHit = false;
+  unsigned long flushStart = millis();
 
   while (f.available()) {
     http.handleClient();
+
+    // Deep-sleep flush budget: a big backlog must not pin the probe awake for
+    // minutes. Stop after ~FLUSH_BUDGET_MS; the checkpoint below means the
+    // next wake resumes right here. Always-on mode has no cap.
+    if (g_deepSleepMode && millis() - flushStart >= FLUSH_BUDGET_MS) {
+      budgetHit = true;
+      Serial.printf("[Buffer] Wake flush budget (%lus) spent after %d uploads — resuming next wake.\n",
+                    (unsigned long)(FLUSH_BUDGET_MS / 1000UL), uploaded);
+      break;
+    }
 
     String line = f.readStringUntil('\n');
     line.trim();
@@ -415,8 +543,7 @@ void bufferFlush() {
     int c2 = (c1 >= 0) ? line.indexOf(',', c1 + 1) : -1;
     int c3 = (c2 >= 0) ? line.indexOf(',', c2 + 1) : -1;
     if (c1 < 0 || c2 < 0 || c3 < 0) {
-      pos = f.position();
-      saveBufPos(pos);
+      pos = f.position();   // skip malformed line; persisted at the next checkpoint/exit
       continue;
     }
 
@@ -427,8 +554,10 @@ void bufferFlush() {
 
     if (postWithTimestamp(ts, tC, tF, pid)) {
       pos = f.position();
-      saveBufPos(pos);
       uploaded++;
+      // Checkpoint every FLUSH_CHECKPOINT_EVERY uploads, not after each one:
+      // the same resume guarantee at a fraction of the NVS write wear.
+      if (uploaded % FLUSH_CHECKPOINT_EVERY == 0) saveBufPos(pos);
       Serial.printf("[Buffer] Uploaded %d  (ts=%s tC=%.1f)\n",
                     uploaded, ts.c_str(), tC);
     } else {
@@ -440,13 +569,16 @@ void bufferFlush() {
 
   f.close();
 
-  if (failed == 0) {
-    LittleFS.remove(BUFFER_FILE);
+  if (failed == 0 && !budgetHit) {
+    // Complete flush. Zero the checkpoint BEFORE removing the file (see the
+    // ordering note above).
     saveBufPos(0);
+    LittleFS.remove(BUFFER_FILE);
     Serial.printf("[Buffer] Flush complete — %d readings uploaded.\n", uploaded);
   } else {
-    Serial.printf("[Buffer] Partial flush: %d uploaded, stopped. "
-                  "Will retry on next reconnect.\n", uploaded);
+    saveBufPos(pos);   // always checkpoint the exact stop position
+    Serial.printf("[Buffer] Partial flush: %d uploaded, stopped at offset %u. "
+                  "Will resume later.\n", uploaded, pos);
   }
 }
 
@@ -634,6 +766,14 @@ void handleProvision() {
   out["interval_ms"] = cfg_interval;
   out["resolution_bits"] = cfg_res_bits;
   sendJSON(200, out);
+
+  // Re-evaluate the sleep mode with the SAME expression setup() uses, so an
+  // always-on probe provisioned to an interval >= DEEP_SLEEP_MIN_MS starts
+  // deep-sleeping after its next reading — without needing a power cycle. The
+  // reverse direction (a deep-sleep probe provisioned to a short interval)
+  // resolves naturally on the next wake: setup() recomputes the mode from the
+  // freshly persisted config.
+  g_deepSleepMode = DEEP_SLEEP_ENABLED && (cfg_interval >= DEEP_SLEEP_MIN_MS);
 }
 
 // ============================================================================
@@ -646,6 +786,11 @@ void startConfigPortal() {
   wm.setClass("invert");
   wm.setTitle(String(SENSOR_NAME) + " (" + FW_VERSION + ")");
   wm.setConfigPortalBlocking(true);
+  // Finite portal (power-outage lockout guard): the blocking portal returns
+  // after PORTAL_TIMEOUT_S instead of holding the probe hostage forever. The
+  // caller decides what happens next — continue offline on saved credentials,
+  // or re-open the portal when there are none.
+  wm.setConfigPortalTimeout(PORTAL_TIMEOUT_S);
   wm.setParamsPage(true);
 
   p_server.setValue(cfg_server_url.c_str(), cfg_server_url.length());
@@ -669,7 +814,8 @@ void startConfigPortal() {
     Serial.print("[WiFi] IP: "); Serial.println(WiFi.localIP());
     ledBlink(3, 120, 120);
   } else {
-    Serial.println("[WiFi] Portal closed without connection.");
+    Serial.printf("[WiFi] Portal closed without connection (timeout %lus).\n",
+                  (unsigned long)PORTAL_TIMEOUT_S);
   }
 }
 
@@ -795,10 +941,19 @@ void runDisturbanceBurst() {
 // On wakeup the ESP32 runs setup() again from the top; the wakeup cause will
 // be ESP_SLEEP_WAKEUP_TIMER so setup() takes the fast-reconnect path.
 void enterDeepSleep(uint32_t durationMs) {
-  // Save the current epoch so setup() can restore system time on wake without
-  // an NTP round-trip.  The ESP32 RTC timer tracks elapsed time during sleep.
-  rtc_epochAtSleep = (int64_t)time(nullptr);
-  rtc_sleepMs      = durationMs;
+  // Last-chance NTP poll: an async SNTP answer that landed during this wake
+  // must promote g_timeValid / rtc_timeValid (and zero the drift-resync
+  // counter) BEFORE the clock is checkpointed below.
+  ntpService(WiFi.status() == WL_CONNECTED);
+
+  // Checkpoint the pre-sleep instant to MILLISECOND precision so setup() can
+  // restore system time on wake without an NTP round-trip. The old
+  // whole-second time(nullptr) checkpoint truncated up to ~1 s per cycle,
+  // and that drift compounded across the hundreds of wakes between resyncs.
+  struct timeval tv;
+  gettimeofday(&tv, nullptr);
+  rtc_epochMsAtSleep = (int64_t)tv.tv_sec * 1000LL + (int64_t)(tv.tv_usec / 1000L);
+  rtc_sleepMs        = durationMs;
 
   Serial.printf("[Sleep] Deep sleep %.1f s  (next wake #%u)\n",
                 durationMs / 1000.0f, rtc_bootCount + 1);
@@ -825,6 +980,10 @@ void setup() {
   esp_sleep_wakeup_cause_t wakeupCause = esp_sleep_get_wakeup_cause();
   bool fromDeepSleep = (wakeupCause == ESP_SLEEP_WAKEUP_TIMER);
   rtc_bootCount++;
+  // Drift-resync accounting: count wakes since the last SUCCESSFUL NTP sync
+  // (ntpService() zeroes this when a sync completes). Once it reaches
+  // NTP_RESYNC_INTERVAL, the next CONNECTED wake kicks an async resync.
+  if (fromDeepSleep) rtc_wakesSinceSync++;
 
   Serial.printf("\n%s FW %s  wake #%u (%s)\n",
                 SENSOR_NAME, FW_VERSION, rtc_bootCount,
@@ -867,6 +1026,25 @@ void setup() {
     }
   }
 
+  // ── Clock restore (BEFORE Wi-Fi — timestamps must not depend on the radio) ─
+  // Restore the clock from the RTC checkpoint FIRST. The ESP32 RTC timer keeps
+  // running through deep sleep, so a probe that wakes during a Wi-Fi / router
+  // outage still gets a valid timestamp — and can therefore BUFFER its readings
+  // to LittleFS instead of dropping them for want of a clock (bufferAppend()
+  // early-returns on an empty timestamp). The pre-sleep instant was saved to
+  // MILLISECOND precision; adding the programmed sleep length plus the
+  // milliseconds since this boot started reconstructs "now" without the old
+  // whole-second truncation that drifted the clock by up to ~1 s per wake.
+  if (fromDeepSleep && rtc_timeValid && rtc_epochMsAtSleep > 0) {
+    int64_t nowMs = rtc_epochMsAtSleep + (int64_t)rtc_sleepMs + (int64_t)millis();
+    struct timeval tv;
+    tv.tv_sec  = (time_t)(nowMs / 1000);
+    tv.tv_usec = (suseconds_t)((nowMs % 1000) * 1000);
+    settimeofday(&tv, nullptr);
+    g_timeValid = true;
+    Serial.printf("[Time] Restored from RTC: %s\n", nowIso().c_str());
+  }
+
   // ── WiFi ──────────────────────────────────────────────────────────────────
   if (fromDeepSleep) {
     // Fast reconnect path: skip the WiFiManager portal.  WiFiManager saves
@@ -906,7 +1084,11 @@ void setup() {
     // Cold boot: full WiFiManager flow (opens portal if no saved network)
     WiFi.mode(WIFI_STA);
     wm.setConnectTimeout(20);
-    wm.setConfigPortalTimeout(0);
+    // Finite portal timeout (power-outage lockout guard, see PORTAL_TIMEOUT_S):
+    // the old timeout of 0 blocked here FOREVER when the saved Wi-Fi was
+    // unreachable — every probe in the house died in the portal after a power
+    // outage the router took longer to recover from.
+    wm.setConfigPortalTimeout(PORTAL_TIMEOUT_S);
     wm.setHostname(SENSOR_NAME);
 
     // Register parameters exactly once
@@ -918,13 +1100,28 @@ void setup() {
     // No password: the AP only exists during first-time setup and disappears once
     // the probe joins the home Wi-Fi, so an open network keeps setup one-tap simple.
     if (!wm.autoConnect(g_probeId.c_str())) {
-      Serial.println("[WiFi] No known network; opening portal.");
-      p_server.setValue(cfg_server_url.c_str(), cfg_server_url.length());
-      p_token.setValue (cfg_token.c_str(),      cfg_token.length());
-      char ibuf[12];
-      snprintf(ibuf, sizeof(ibuf), "%lu", (unsigned long)cfg_interval);
-      p_interval.setValue(ibuf, strlen(ibuf));
-      startConfigPortal();
+      if (wm.getWiFiIsSaved()) {
+        // Saved credentials, but no join and the portal timed out: power-outage
+        // recovery. Continue into normal operation OFFLINE — readings are
+        // buffered (once the clock is valid) and Wi-Fi keeps retrying in
+        // loop()'s watchdog (always-on) or on the next wake (deep sleep).
+        Serial.println("[WiFi] Saved network unreachable; portal timed out — continuing OFFLINE.");
+        WiFi.mode(WIFI_STA);
+        WiFi.begin();   // keep the STA retrying in the background meanwhile
+      } else {
+        // No credentials at all: nothing useful can run offline, so re-open the
+        // portal in a LOOP (each round bounded by PORTAL_TIMEOUT_S) until it is
+        // configured — never a single infinite hard-block.
+        while (WiFi.status() != WL_CONNECTED && !wm.getWiFiIsSaved()) {
+          Serial.println("[WiFi] No known network; opening portal.");
+          p_server.setValue(cfg_server_url.c_str(), cfg_server_url.length());
+          p_token.setValue (cfg_token.c_str(),      cfg_token.length());
+          char ibuf[12];
+          snprintf(ibuf, sizeof(ibuf), "%lu", (unsigned long)cfg_interval);
+          p_interval.setValue(ibuf, strlen(ibuf));
+          startConfigPortal();
+        }
+      }
     }
 
     if (WiFi.status() == WL_CONNECTED) {
@@ -945,28 +1142,29 @@ void setup() {
   }
 
   // ── NTP / time ────────────────────────────────────────────────────────────
-  // Restore the clock from the RTC FIRST, independent of Wi-Fi. The ESP32 RTC
-  // timer keeps running through deep sleep, so a probe that wakes during a
-  // Wi-Fi / router outage still gets a valid timestamp — and can therefore
-  // BUFFER its readings to LittleFS instead of dropping them for want of a
-  // clock (bufferAppend() early-returns on an empty timestamp).
-  if (fromDeepSleep && rtc_timeValid && rtc_epochAtSleep > 0) {
-    time_t approxNow = (time_t)(rtc_epochAtSleep + (int64_t)(rtc_sleepMs / 1000));
-    struct timeval tv = { .tv_sec = approxNow, .tv_usec = 0 };
-    settimeofday(&tv, nullptr);
-    g_timeValid = true;
-    Serial.printf("[Time] Restored from RTC: %s\n", nowIso().c_str());
-  }
-
+  // (The RTC clock restore already ran, before the Wi-Fi block above.)
   if (WiFi.status() == WL_CONNECTED) {
-    // Online housekeeping: get or refresh NTP time, advertise, flush the buffer.
+    // Online housekeeping: start/refresh NTP, advertise, flush the buffer.
     if (!g_timeValid) {
-      // Cold boot / never-synced — must contact NTP for an initial clock.
-      syncTime();
-    } else if (rtc_bootCount % NTP_RESYNC_INTERVAL == 0) {
-      // Clock came from the RTC; resync periodically to correct accumulated drift.
-      Serial.println("[NTP] Scheduled resync...");
-      syncTime();
+      // Never synced (cold boot, or RTC state lost): start the ASYNC SNTP
+      // query. Only a cold boot waits — briefly and bounded — so the very
+      // first readings can carry real stamps when NTP answers quickly; a
+      // deep-sleep wake never blocks (ntpService() polls validity instead).
+      ntpKick();
+      if (!fromDeepSleep) {
+        Serial.print("[NTP] Cold boot — bounded wait for first sync...");
+        uint32_t t0 = millis();
+        while (!clockLooksValid() && millis() - t0 < NTP_COLDBOOT_WAIT_MS) delay(50);
+        Serial.println(clockLooksValid() ? " OK" : " pending (async retries continue).");
+      }
+      ntpService(true);   // promote immediately if the sync already landed
+    } else if (rtc_wakesSinceSync >= NTP_RESYNC_INTERVAL) {
+      // Clock is RTC-carried and a drift resync is due — kick it ASYNC. The
+      // wake never waits on it; ntpService() zeroes the counter once the sync
+      // completes (polled in loop() and again just before deep sleep).
+      Serial.printf("[NTP] Drift resync due (%u wakes since last sync).\n",
+                    (unsigned)rtc_wakesSinceSync);
+      ntpKick();
     }
     ledBlink(3, 120, 120);
     mdnsAdvertise();
@@ -1011,6 +1209,12 @@ void loop() {
   unsigned long now       = millis();
   bool          connected = (WiFi.status() == WL_CONNECTED);
 
+  // ── Non-blocking NTP upkeep (both modes) ─────────────────────────────────
+  // Promotes time-validity the moment the async SNTP answer lands, accounts a
+  // completed drift resync, and re-kicks the query with backoff (60 s -> 5 min
+  // cap) while the clock is unset. Never blocks.
+  ntpService(connected);
+
   // ── WiFi watchdog & buffer retry (always-on mode only) ───────────────────
   // In deep-sleep mode we reconnect fresh in setup() every cycle, so these
   // continuous watchdog tasks are not needed.
@@ -1033,20 +1237,15 @@ void loop() {
       Serial.print("[WiFi] Reconnected. IP: ");
       Serial.println(WiFi.localIP());
       g_wasConnected = true;
-      if (!g_timeValid) syncTime();
+      if (!g_timeValid) {
+        // Fresh network — kick SNTP immediately and restart the retry backoff
+        // (ntpService() above handles promotion + subsequent retries).
+        g_ntpBackoffMs = NTP_BACKOFF_MIN_MS;
+        ntpKick();
+      }
       mdnsAdvertise();
       g_lastFlushAt = now;
       bufferFlush();
-    }
-
-    // Periodic NTP retry
-    if (connected && !g_timeValid) {
-      static unsigned long lastNtpRetry = 0;
-      if (now - lastNtpRetry >= 60000UL) {
-        lastNtpRetry = now;
-        Serial.println("[NTP] Retrying time sync...");
-        syncTime();
-      }
     }
 
     // Periodic buffer retry (stops on first failed POST, retries here every 30 s)
@@ -1155,11 +1354,20 @@ void loop() {
       }
 
       // Sleep for the remainder of the interval.
-      // Unsigned arithmetic: if elapsed > cfg_interval we sleep 100 ms minimum
-      // to avoid a tight reboot loop.
+      // After a burst the whole interval (and more) has usually elapsed — sleep
+      // a FULL cfg_interval then: the burst already logged the event at high
+      // rate, and the old collapsed 100 ms floor doubled the wake rate exactly
+      // when the battery was being hit hardest.
+      // Otherwise, unsigned arithmetic: if elapsed > cfg_interval we sleep
+      // 100 ms minimum to avoid a tight reboot loop.
       unsigned long elapsed = millis() - g_wakeStart;
-      uint32_t sleepMs = cfg_interval > (uint32_t)elapsed
-                         ? (uint32_t)(cfg_interval - elapsed) : 100UL;
+      uint32_t sleepMs;
+      if (doBurst) {
+        sleepMs = cfg_interval;
+      } else {
+        sleepMs = cfg_interval > (uint32_t)elapsed
+                  ? (uint32_t)(cfg_interval - elapsed) : 100UL;
+      }
       enterDeepSleep(sleepMs);
       // never reached
     }

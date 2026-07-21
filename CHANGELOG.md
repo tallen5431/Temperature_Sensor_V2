@@ -9,6 +9,94 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-07-21
+
+The "better product" release: everything from a full six-lens review of the
+codebase (bugs, firmware, ease of use, visual design, performance, product
+gaps), with every finding verified against source before implementation.
+
+### Fixed
+
+- **Offline alert spam for deep-sleep probes (the #1 review bug).** The alert
+  engine still used one flat global `offline_after_sec` while every screen used
+  the interval-aware freshness window — so a 10-minute battery freezer probe
+  flapped offline→online on every wake (~288 spurious notifications/day) while
+  the UI showed it green. The notifier now judges each probe by its own
+  `probe_fresh_window`, and `DEMO-` probes never alert.
+- **Honest hysteresis.** A breach held open by the deadband no longer emails
+  numerically false "above the threshold" reminders while the dashboard shows
+  green OK: reminder text now says the reading has not yet cleared the limit by
+  the deadband, and the probe card shows an amber "recovering" badge (via the
+  new shared `core.alerts.HELD` registry) until the alert actually clears.
+- **Power-outage lockout (firmware).** A cold boot with saved Wi-Fi credentials
+  but no reachable network (router still booting after an outage) sat in the
+  captive portal forever, logging nothing at ~100 mA. The portal now times out
+  (180 s) and falls through to offline logging with periodic reconnects.
+- **Offline-buffer data loss (firmware).** A brownout between deleting the
+  flushed buffer file and zeroing its NVS offset could silently delete the NEXT
+  outage's backlog. The offset is now zeroed first, and an implausible offset
+  re-flushes from the start instead of deleting.
+- **Provisioner fought the operator.** The auto-provisioner froze the global
+  interval at boot and actively re-provisioned the fleet back to the stale value
+  after `interval_sec` was changed; it now reads config live each cycle.
+- **Diagnostics probe rows** now use the same reporting-freshness overlay as
+  every other surface (no more red "offline" rows for healthy deep-sleep probes
+  on the exact page users copy for support).
+- **Health flag un-latched:** one transient write failure no longer marks the
+  hub "Needs attention" forever — only a failure newer than the last successful
+  write counts.
+- **Thresholds in your unit.** The Devices edit modal displayed °C fields even
+  when the dashboard showed °F — "Max 40" meant 104 °F and the alert never
+  fired. Thresholds and calibration now display and accept the active unit
+  (correct delta math for the offset) and store °C canonically.
+
+### Added
+
+- **Event history.** Breaches, recoveries, offline/online transitions and rate
+  alerts are recorded to a new SQLite `events` table (even when notifications
+  are off) and shown in a "Recent events" card on the dashboard — the product
+  can finally answer "did anything go out of range while I was away?".
+- **Rate-of-change alerts.** "Rose more than X °C within Y minutes" (Settings →
+  Alerts, 0 = off) catches a failing freezer or open door in minutes, hours
+  before the static threshold trips.
+- **Daily summary email.** One email a day (configurable hour) with each
+  probe's 24 h min/avg/max — doubles as a dead-man's switch proving the email
+  pipeline works.
+- **Battery telemetry.** Ingest accepts `battery_pct`/`battery_v` (3.0–4.2 V
+  mapped); shown on probe and Devices cards ("Batt NN%", amber < 20) and in the
+  JSON API. Firmware wiring for the standard divider can follow.
+- **Threshold bands on the chart.** Focused (or single-probe) history draws the
+  min/max limits and shades the out-of-range regions.
+- **MQTT from the UI.** New Settings → Integrations card (host/port/user/
+  password/base topic/HA discovery, blank password keeps saved) applies live —
+  no more config.json hand-editing for the flagship integration; Help updated.
+- **Install to home screen (PWA).** Web-app manifest + meta so the dashboard
+  adds to a phone home screen and launches full-screen.
+- **Firmware v2.7.0** also gains: non-blocking NTP with backoff (an
+  internet-less LAN no longer freezes the probe 8 s/min and disables
+  buffering), millisecond-accurate clock restore across deep sleep with a
+  proper resync counter, buffer-flush checkpointing every 10 lines with a ~20 s
+  per-wake budget, and a full-interval sleep after a disturbance burst.
+
+### Changed
+
+- **Performance at scale:** `latest_per_probe` rewritten from an O(window)
+  scan to per-probe index seeks; the dashboard skips full rebuilds when nothing
+  changed (per-client render signature, 15 s staleness bucket); per-tick
+  duplicate window scans folded; `reporting_probe_ids` bounded to a 7-day
+  lookback; demo detection is an O(log N) index probe; the provisioner skips
+  sleeping probes and redundant status checks.
+- **Visual polish:** status badges regain per-state colors (and LOW no longer
+  falls through to magenta); low-temperature alerts render cool blue instead of
+  amber; small-caption contrast raised to WCAG AA; native controls render dark
+  (`color-scheme`); KPI values share one scale; the LIVE badge uses a CSS
+  pulsing dot; OS emoji removed from UI chrome; gauge fits its card.
+- **Setup & docs truthfulness:** Setup Helper names the real per-unit
+  "Setpoint-XXXXXX" network (and tells you which one it found); the user manual
+  no longer promises humidity/VPD alert settings that don't exist, uses correct
+  click-paths, documents wrong-Wi-Fi recovery and the new features; PROTOCOL.md
+  documents the battery ingest fields.
+
 ## [2.4.6] - 2026-07-21
 
 ### Fixed

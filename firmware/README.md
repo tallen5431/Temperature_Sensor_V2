@@ -13,7 +13,7 @@ offline buffer, NTP time). The former PlatformIO project (`platformio.ini` +
 
 - **MCU:** ESP32-WROOM-32E
 - **Toolchain:** Arduino (Arduino IDE or `arduino-cli`) — **not** PlatformIO
-- **Firmware version:** 2.6.0 · **Protocol:** 1
+- **Firmware version:** 2.7.0 · **Protocol:** 1
 - **Sensor:** DS18B20 (1-Wire) — the **only** sensor in the current firmware
 - **Power:** rechargeable-lithium battery; deep-sleeps between readings for long
   battery life
@@ -41,7 +41,7 @@ Libraries used by the sketch:
 - **ArduinoJson** (v6 or v7) — ingest + API JSON
 - **OneWire** + **DallasTemperature** — DS18B20
 - **ESPmDNS**, **LittleFS**, **Preferences** (NVS) — bundled with the ESP32 core
-- Core headers: `WiFi`, `HTTPClient`, `WebServer`, `time.h`, `esp_sleep`, `esp_random`
+- Core headers: `WiFi`, `HTTPClient`, `WebServer`, `time.h`, `esp_sntp.h`, `esp_sleep`, `esp_random`
 
 Recommended partition scheme (Arduino IDE → Tools → Partition Scheme, or an
 `arduino-cli` board option): **"No OTA (2MB APP/2MB SPIFFS)"** — the ~2 MB

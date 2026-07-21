@@ -214,6 +214,19 @@ Every `interval_ms`, the probe POSTs the latest good reading to the provisioned
 }
 ```
 
+- **`battery_pct`** is **optional** (0–100 %): a battery-powered probe MAY report its
+  remaining charge. Mains-powered probes simply omit it.
+- **`battery_v`** is **optional** (volts): as an alternative to `battery_pct`, a probe
+  may report its raw single-cell LiPo pack voltage and let the hub do the conversion —
+  the hub maps it linearly **3.0 V → 0 %, 4.2 V → 100 %** and clamps to that range. A
+  voltage outside the plausible cell band (2.5–5.0 V) is sensor junk, not a nearly
+  full/empty cell, and is treated as "no battery reading". When `battery_pct` is
+  present it takes precedence and `battery_v` is not consulted.
+- Both battery fields are **ignored when absent or invalid** — like humidity, battery
+  is never a reason to reject a good temperature (see §6). The derived percentage is
+  stored per reading and surfaced in the hub UI and readings API; adding these
+  backward-compatible optional fields required **no `proto` change**.
+
 #### Humidity & VPD
 
 The probe only ever reports **temperature** and (on the SHT4x variant) **humidity**.
@@ -264,6 +277,11 @@ The hub validates every reading before it touches the log:
    `0 ≤ rh ≤ 100`, else it is dropped (the reading is still accepted — humidity is
    never a reason to reject a good temperature). When a valid humidity is present the
    hub derives **VPD** from it (see §5, *Humidity & VPD*).
+8. **Battery (optional):** if `battery_pct` is present it must be finite and within
+   `0 ≤ pct ≤ 100`, else it is dropped. Failing that, a present `battery_v` must be
+   finite and within `2.5 ≤ v ≤ 5.0`; it is mapped linearly `3.0 V → 0 %`,
+   `4.2 V → 100 %` and clamped. An absent or invalid battery value never rejects the
+   reading (see §5).
 
 Accepted readings are persisted to the CSV log with columns:
 

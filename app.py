@@ -194,6 +194,33 @@ app = Dash(__name__, external_stylesheets=[], server=server,
 app.title = PRODUCT_NAME
 app.layout = LAYOUT
 
+# PWA/mobile: link the web-app manifest and set the browser-chrome/status-bar
+# colours so "Add to Home Screen" installs the hub as a standalone dark app.
+# This is Dash's default index with three extra <head> lines; the colour matches
+# the --bg token in assets/theme.css and assets/manifest.json.
+app.index_string = """<!DOCTYPE html>
+<html>
+    <head>
+        {%metas%}
+        <title>{%title%}</title>
+        <link rel="manifest" href="/assets/manifest.json">
+        <meta name="theme-color" content="#0b131b">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+        <meta name="apple-mobile-web-app-title" content="Setpoint">
+        {%favicon%}
+        {%css%}
+    </head>
+    <body>
+        {%app_entry%}
+        <footer>
+            {%config%}
+            {%scripts%}
+            {%renderer%}
+        </footer>
+    </body>
+</html>"""
+
 
 WINDOW_SECONDS = {"1h": 3600, "6h": 21600, "24h": 86400, "7d": 604800, "30d": 2592000}
 

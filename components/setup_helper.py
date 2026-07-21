@@ -20,13 +20,15 @@ SetupHelper = dbc.Card(
         ]),
         html.P(
             "If a probe is unprovisioned, it starts a temporary Wi-Fi network named "
-            "Setpoint. This hub can't control your computer's Wi-Fi, but it will watch "
-            "for that SSID and guide you to connect when it's nearby.",
+            "Setpoint-XXXXXX (matching the sticker on your unit). This hub can't "
+            "control your computer's Wi-Fi, but it will watch for that network and "
+            "guide you to connect when it's nearby.",
             className="mt-2",
         ),
         html.Ul([
             html.Li("Put the probe in setup mode (power up without Wi-Fi)."),
-            html.Li("When you see the “Setpoint” SSID below, join it from your computer."),
+            html.Li("When its “Setpoint-XXXXXX” network (matching the sticker on your "
+                    "unit) appears below, join it from your computer."),
             html.Li("Then open the config page (192.168.4.1) to select your home Wi-Fi."),
             html.Li("Come back here — the probe should appear in Devices and provision automatically."),
         ], className="small"),
@@ -54,13 +56,19 @@ def register_setup_helper_callbacks(app):
     )
     def _update_ap(_n):
         _watcher.start()  # idempotent; first call begins scanning
-        seen = _watcher.seen()
-        label = "Setpoint: visible" if seen else "Setpoint: not found"
-        if seen:
-            msg = ("✅ Found Setpoint SoftAP nearby. Connect your computer to the "
-                   "“Setpoint” Wi-Fi network, then click the button below to open "
-                   "the probe's config page.")
-            return msg, "success", label, {}
-        msg = ("Waiting for Setpoint SoftAP… Power the probe with no saved Wi-Fi so it "
-               "starts the setup network. This page checks every few seconds.")
+        # matched() returns the CONCRETE SSIDs seen (e.g. "Setpoint-9A3F2C"),
+        # so we can tell the user exactly which network to join instead of the
+        # generic brand prefix.
+        names = _watcher.matched()
+        if names:
+            shown = ", ".join(names)
+            join = ("join that network" if len(names) == 1
+                    else "join the one matching the sticker on your unit")
+            msg = (f"Found {shown} nearby — {join} from your computer, then click "
+                   "the button below to open the probe's config page.")
+            return msg, "success", f"Found: {shown}", {}
+        label = "Setpoint-XXXXXX: not found"
+        msg = ("Waiting for the probe's Setpoint-XXXXXX setup network… Power the probe "
+               "with no saved Wi-Fi so it starts the setup network (its name matches "
+               "the sticker on your unit). This page checks every few seconds.")
         return msg, "secondary", label, {"pointerEvents": "none", "opacity": 0.5}

@@ -1,6 +1,7 @@
 import datetime
 import logging
 
+import pandas as pd
 from dash import html, dcc, Output, Input, State, no_update, ALL
 import dash_bootstrap_components as dbc
 
@@ -9,8 +10,72 @@ from core.metrics import LATEST
 
 log = logging.getLogger("hub.devices")
 
+
+# --- Unit conversion helpers -------------------------------------------------
+# The dashboard's unit toggle (temp-unit-store) affects DISPLAY only; config
+# always stores Celsius. Absolute temperatures (thresholds) and temperature
+# DELTAS (the calibration offset) convert differently: a delta scales but never
+# shifts (-0.5 °C of correction is -0.9 °F, NOT 31.1 °F), and a Kelvin delta
+# equals a Celsius delta. Pure and module-level so they can be unit-tested.
+
+def _unit_symbol(unit):
+    if unit == 'fahrenheit':
+        return '°F'
+    if unit == 'kelvin':
+        return 'K'
+    return '°C'
+
+
+def temp_c_to_unit(temp_c, unit):
+    """Convert an absolute Celsius temperature to ``unit`` for display."""
+    if temp_c is None:
+        return None
+    t = float(temp_c)
+    if unit == 'fahrenheit':
+        return round(t * 9.0 / 5.0 + 32.0, 2)
+    if unit == 'kelvin':
+        return round(t + 273.15, 2)
+    return t
+
+
+def temp_unit_to_c(value, unit):
+    """Convert an absolute temperature entered in ``unit`` back to Celsius."""
+    if value is None:
+        return None
+    v = float(value)
+    if unit == 'fahrenheit':
+        return round((v - 32.0) * 5.0 / 9.0, 2)
+    if unit == 'kelvin':
+        return round(v - 273.15, 2)
+    return v
+
+
+def delta_c_to_unit(delta_c, unit):
+    """Convert a Celsius temperature DELTA (calibration offset) to ``unit``."""
+    if delta_c is None:
+        return None
+    d = float(delta_c)
+    if unit == 'fahrenheit':
+        return round(d * 9.0 / 5.0, 2)
+    return d
+
+
+def delta_unit_to_c(value, unit):
+    """Convert a temperature DELTA entered in ``unit`` back to Celsius."""
+    if value is None:
+        return None
+    v = float(value)
+    if unit == 'fahrenheit':
+        return round(v * 5.0 / 9.0, 2)
+    return v
+
 DevicesLayout = html.Div([
     html.H4('Connected Probes'),
+    # Mirror of the dashboard's unit picker. Only one page renders at a time, so
+    # the id never collides; storage_type='local' means both stores read the
+    # SAME persisted browser value, letting the edit modal know the active unit
+    # even though the dashboard (and its store) is not mounted on this page.
+    dcc.Store(id='temp-unit-store', storage_type='local', data='celsius'),
     dcc.Interval(id='device-refresh', interval=5000, n_intervals=0),
     html.Div(id='device-grid', className='row g-3'),
     # Modal for editing probe name and read interval
@@ -52,7 +117,8 @@ DevicesLayout = html.Div([
                            "rate. Changes the step size, not absolute accuracy (~±0.5 °C).",
                            className='text-muted'),
                 html.Hr(),
-                html.Label("Alert Thresholds (°C):", className='fw-bold mb-2 mt-1 d-block'),
+                html.Label("Alert Thresholds (°C):", id='edit-probe-thresholds-label',
+                           className='fw-bold mb-2 mt-1 d-block'),
                 dbc.Row([
                     dbc.Col([
                         html.Small("Min Temperature", className='text-muted d-block mb-1'),
@@ -78,8 +144,13 @@ DevicesLayout = html.Div([
                     ], width=6),
                 ]),
                 html.Small("Leave blank to disable threshold alerts for this probe", className='text-muted d-block mt-1'),
+                html.Small(
+                    "Breaches always show on the dashboard; email/webhook "
+                    "notifications are configured in Settings → Alerts.",
+                    id='edit-probe-alerts-breadcrumb', className='text-muted d-block mt-1'),
                 html.Hr(),
-                html.Label("Calibration Offset (°C):", className='fw-bold mb-2 mt-1 d-block'),
+                html.Label("Calibration Offset (°C):", id='edit-probe-cal-label',
+                           className='fw-bold mb-2 mt-1 d-block'),
                 dbc.Input(
                     id='edit-probe-cal-input',
                     type='number',
@@ -156,7 +227,8 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                         except Exception:
                             pass
                         merged[pid] = {'name': pid, 'probe_id': pid, 'ip': 'via readings',
-                                       'port': '', 'last_seen': last}
+                                       'port': '', 'last_seen': last,
+                                       'battery_pct': r.get('battery_pct')}
                 except Exception:
                     log.debug('devices: DB probe merge failed', exc_info=True)
 
@@ -206,11 +278,14 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                     )
 
                 # Create edit button (only if we have a probe_id)
-                edit_button = html.Span(
-                    '✏️',
+                edit_button = dbc.Button(
+                    'Edit',
                     id={'type': 'edit-probe-btn', 'index': probe_id or name},
                     n_clicks=0,
-                    style={'cursor': 'pointer', 'fontSize': '1.2rem', 'marginLeft': '8px'},
+                    size='sm',
+                    outline=True,
+                    color='secondary',
+                    className='ms-2',
                     title='Edit probe'
                 ) if probe_id else html.Span()
 
@@ -235,6 +310,14 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                 ]
                 if interval_note:
                     card_body_children.append(interval_note)
+                # Battery level rides along DB-merged rows (latest_per_probe);
+                # mDNS-only entries have no reading and therefore no battery.
+                # Same presentation as the dashboard probe cards.
+                batt = info.get('battery_pct')
+                if batt is not None and pd.notna(batt):
+                    batt_cls = 'text-warning' if float(batt) < 20 else 'text-muted'
+                    card_body_children.append(
+                        html.Small(f'Batt {float(batt):.0f}%', className=f'd-block {batt_cls}'))
                 # Label the state in WORDS, not colour alone (WCAG 1.4.1) — and
                 # consistently with Diagnostics ("online"/"offline") and the
                 # Dashboard cards ("OK"/"stale"). A colourblind user (or anyone on
@@ -275,6 +358,9 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
         Output('edit-probe-max-input', 'value'),
         Output('edit-probe-cal-input', 'value'),
         Output('edit-probe-resolution-input', 'value'),
+        Output('edit-probe-thresholds-label', 'children'),
+        Output('edit-probe-cal-label', 'children'),
+        Output('edit-probe-alerts-breadcrumb', 'children'),
         Input({'type': 'edit-probe-btn', 'index': ALL}, 'n_clicks'),
         Input('edit-probe-cancel', 'n_clicks'),
         Input('edit-probe-save', 'n_clicks'),
@@ -286,14 +372,20 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
         State('edit-probe-max-input', 'value'),
         State('edit-probe-cal-input', 'value'),
         State('edit-probe-resolution-input', 'value'),
+        State('temp-unit-store', 'data'),
         prevent_initial_call=True
     )
     def toggle_edit_modal(edit_clicks, cancel_clicks, save_clicks, is_open,
                           stored_probe_id, name_value, interval_value,
-                          min_value, max_value, cal_value, resolution_value):
+                          min_value, max_value, cal_value, resolution_value,
+                          temp_unit):
         from dash import callback_context
+        # Config always stores Celsius; the modal displays/accepts the unit the
+        # dashboard is currently showing so users never convert by hand.
+        unit = temp_unit or 'celsius'
+        noup = (no_update,) * 12
         if not callback_context.triggered:
-            return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
+            return noup
 
         button_id = callback_context.triggered[0]['prop_id']
 
@@ -302,9 +394,9 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
             try:
                 triggered_val = callback_context.triggered[0].get('value', None)
                 if not triggered_val:
-                    return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
+                    return noup
             except Exception:
-                return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
+                return noup
 
             import json
             try:
@@ -335,13 +427,32 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                 current_res = str(clamp_resolution_bits(
                     probe_resolutions.get(probe_id, global_res), default=global_res))
 
-                return True, probe_id, probe_id, current_name, current_interval_sec, current_min, current_max, current_cal, current_res
+                # Display the stored Celsius values in the dashboard's active
+                # unit; note the offset is a DELTA (different F conversion).
+                disp_min = temp_c_to_unit(current_min, unit)
+                disp_max = temp_c_to_unit(current_max, unit)
+                disp_cal = delta_c_to_unit(current_cal, unit)
+                sym = _unit_symbol(unit)
+                thresholds_label = f"Alert Thresholds ({sym}):"
+                cal_label = f"Calibration Offset ({sym}):"
+
+                # Breadcrumb: where notifications live + the LIVE master-switch
+                # state, read from config at open so it is never stale.
+                alerts_on = bool((cfg.get('notifications', {}) or {}).get('enabled', False))
+                breadcrumb = ("Breaches always show on the dashboard; email/webhook "
+                              "notifications are configured in Settings → Alerts — "
+                              f"currently {'On' if alerts_on else 'Off'}.")
+
+                return (True, probe_id, probe_id, current_name, current_interval_sec,
+                        disp_min, disp_max, disp_cal, current_res,
+                        thresholds_label, cal_label, breadcrumb)
             except Exception:
-                return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
+                return noup
 
         # Cancel button clicked
         elif 'edit-probe-cancel' in button_id:
-            return False, None, '', '', no_update, no_update, no_update, no_update, no_update
+            return (False, None, '', '', no_update, no_update, no_update, no_update,
+                    no_update, no_update, no_update, no_update)
 
         # Save button clicked
         elif 'edit-probe-save' in button_id:
@@ -354,17 +465,18 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                     probe_names.pop(stored_probe_id, None)
                 cfg.update({'probe_names': probe_names})
 
-                # --- Save alert thresholds ---
+                # --- Save alert thresholds (entered in the display unit,
+                # stored in Celsius) ---
                 alert_thresholds = cfg.get('alert_thresholds', {})
                 probe_thresholds = {}
                 try:
                     if min_value not in (None, ''):
-                        probe_thresholds['min'] = float(min_value)
+                        probe_thresholds['min'] = temp_unit_to_c(float(min_value), unit)
                 except (TypeError, ValueError):
                     pass
                 try:
                     if max_value not in (None, ''):
-                        probe_thresholds['max'] = float(max_value)
+                        probe_thresholds['max'] = temp_unit_to_c(float(max_value), unit)
                 except (TypeError, ValueError):
                     pass
                 # Guard against an inverted range (min > max): threshold_breach
@@ -383,11 +495,13 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                     alert_thresholds.pop(stored_probe_id, None)
                 cfg.update({'alert_thresholds': alert_thresholds})
 
-                # --- Save per-probe calibration offset ---
+                # --- Save per-probe calibration offset (a DELTA: convert with
+                # the scale factor only — no +32 shift for Fahrenheit) ---
                 calibration_offsets = cfg.get('calibration_offsets', {})
                 try:
                     if cal_value not in (None, ''):
-                        calibration_offsets[stored_probe_id] = float(cal_value)
+                        calibration_offsets[stored_probe_id] = delta_unit_to_c(
+                            float(cal_value), unit)
                     else:
                         calibration_offsets.pop(stored_probe_id, None)
                 except (TypeError, ValueError):
@@ -481,9 +595,10 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                     except Exception as e:
                         log.warning('Provision-on-save failed: %s', e)
 
-            return False, None, '', '', no_update, no_update, no_update, no_update, no_update
+            return (False, None, '', '', no_update, no_update, no_update, no_update,
+                    no_update, no_update, no_update, no_update)
 
-        return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
+        return noup
 
     # --- Remove device: confirm, then delete readings + config + discovery ----
     @app.callback(
