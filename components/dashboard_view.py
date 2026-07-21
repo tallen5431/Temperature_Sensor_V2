@@ -171,7 +171,7 @@ GraphCard = dbc.Card(
 def _onboarding_card():
     return dbc.Alert(
         [
-            html.H5("👋 Waiting for your first reading…", className="alert-heading"),
+            html.H5("Waiting for your first reading…", className="alert-heading"),
             html.P("No data has arrived yet. To get a probe online:", className="mb-2"),
             html.Ol([
                 html.Li("Power your probe on the same Wi-Fi network as this hub."),
@@ -183,7 +183,7 @@ def _onboarding_card():
             html.P(["Just exploring? Load a day of sample readings to try everything out — "
                     "the dashboard, charts, export and per-probe views — no hardware needed."],
                    className="mb-2 small"),
-            dbc.Button("▶ Load demo data", id="demo-load-btn", color="info", size="sm"),
+            dbc.Button("Load demo data", id="demo-load-btn", color="info", size="sm"),
             html.P(["Or send a real test reading from a terminal: ",
                     html.Code("curl -X POST -H 'Content-Type: application/json' -d '{\"temperature_c\":22.3}' http://localhost:8088/api/ingest")],
                    className="mb-0 mt-2 small"),
@@ -195,7 +195,7 @@ def _onboarding_card():
 def _demo_alert():
     """Persistent reminder + one-click cleanup shown while demo data is loaded."""
     return dbc.Alert([
-        html.Span("🧪 Demo data is loaded — these are sample readings, not a real probe.",
+        html.Span("Demo data is loaded — these are sample readings, not a real probe.",
                   className="small"),
         dbc.Button("Clear demo data", id="demo-clear-btn", color="warning", outline=True,
                    size="sm", className="ms-3 flex-shrink-0"),
@@ -870,13 +870,13 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
                 cfgt = thresholds.get(pid, thresholds.get("default", {})) or {}
                 hi, lo = cfgt.get("max"), cfgt.get("min")
                 if hi is not None and t_c > hi:
-                    alerts.append(dbc.Alert([html.Strong(f"⚠️ {_friendly_name(cfg, pid)}: "),
+                    alerts.append(dbc.Alert([html.Strong(f"▲ {_friendly_name(cfg, pid)}: "),
                                   f"{_fmt(t_c, temp_unit)} (above threshold: {_fmt(hi, temp_unit)})"],
                                   color="danger", className="mb-2"))
                 elif lo is not None and t_c < lo:
                     # Low breaches read cool-blue ("info"), matching the LOW
                     # badge / gauge colouring — amber stays for cautions.
-                    alerts.append(dbc.Alert([html.Strong(f"❄️ {_friendly_name(cfg, pid)}: "),
+                    alerts.append(dbc.Alert([html.Strong(f"▼ {_friendly_name(cfg, pid)}: "),
                                   f"{_fmt(t_c, temp_unit)} (below threshold: {_fmt(lo, temp_unit)})"],
                                   color="info", className="mb-2"))
 
@@ -1138,7 +1138,7 @@ def register_dashboard_callbacks(app, finder, cfg, db):
             cards.append(dbc.Col(dbc.Card(dbc.CardBody([
                 html.H6(_friendly_name(cfg, row["probe_id"]), className="text-muted mb-1"),
                 html.Div([
-                    html.Span(f"💧 {float(hum):.0f}% RH", className="fw-bold me-3"),
+                    html.Span(f"{float(hum):.0f}% RH", className="fw-bold me-3"),
                     html.Span(f"VPD {vpd_txt}", className="fw-bold text-info"),
                 ]),
             ])), md=4, className="mb-2"))
