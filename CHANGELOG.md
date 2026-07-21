@@ -9,6 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.4] - 2026-07-21
+
+### Added
+
+- **Firmware v2.5.0 — adaptive "disturbance burst" for freezers / hard-to-reach
+  spots.** In deep-sleep mode the probe is asleep between wakes, so a brief event
+  (a freezer door opening) and the short connectivity window it opens could be
+  slept through. Now, when a wake reading jumps more than `BURST_DELTA_C` (1 °C
+  default) from the previous one — carried across sleep in RTC memory — the probe
+  treats it as a disturbance: it stays awake, keeps Wi-Fi up, samples every
+  second and flushes the offline buffer hard for ~20 s before returning to deep
+  sleep, so the event and any backlog reach the hub while they can. It also
+  retries the Wi-Fi association during the burst (a closed freezer is an RF box;
+  the door opening may be the first real chance to connect). This catches an
+  event only if a scheduled wake lands during it, so it helps most at
+  short/moderate intervals; true wake-on-temperature would need an analog sensor
+  + comparator on a wake pin (a hardware revision — the DS18B20 has no interrupt
+  output). Set `BURST_ON_DISTURBANCE false` to disable.
+
+### Changed
+
+- **Millisecond timestamps end-to-end (firmware v2.5.0 + hub).** Readings are now
+  stamped to millisecond precision (`2026-07-21T00:42:04.500Z`), which the hub
+  preserves through ingest, storage (a fractional epoch, backward-compatible with
+  existing integer rows), the CSV export's `timestamp_utc` column, and the JSON
+  API. A high-rate cadence (down to the firmware's 500 ms floor) stays
+  distinguishable instead of collapsing multiple readings onto one whole-second
+  stamp — as happened when logging a freezer door-open transient at 0.5 s. A
+  probe that only sends whole seconds is unchanged (no spurious `.000`). Covered
+  by new cases in `tests/test_storage.py` and `tests/test_db.py`.
+
 ## [2.4.3] - 2026-07-21
 
 ### Added

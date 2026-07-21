@@ -46,18 +46,23 @@ def _csv_safe(value) -> str:
     return s
 
 
-def iso_to_epoch(ts: str) -> int:
-    """Convert a local-naive ISO timestamp to a POSIX epoch (seconds).
+def iso_to_epoch(ts: str) -> float:
+    """Convert a local-naive ISO timestamp to a POSIX epoch (fractional seconds).
 
     Naive timestamps are interpreted as local machine time, matching how the
     rest of the app stores them.  Returns the current epoch if parsing fails so
     a malformed timestamp never blocks an insert.
+
+    The value is a float so sub-second timestamps (high-rate logging) keep their
+    precision. SQLite's flexible typing stores a whole-second epoch as an INTEGER
+    (lossless) and a fractional one as REAL in the same ``epoch`` column, so this
+    is backward-compatible with existing integer rows and the epoch index.
     """
     try:
         s = str(ts).strip().rstrip("Z")
-        return int(datetime.datetime.fromisoformat(s).timestamp())
+        return datetime.datetime.fromisoformat(s).timestamp()
     except Exception:
-        return int(time.time())
+        return time.time()
 
 
 class Database:
@@ -457,8 +462,12 @@ class Database:
         ):
             hum = "" if r["humidity_pct"] is None else f"{r['humidity_pct']:.2f}"
             vpd = "" if r["vpd_kpa"] is None else f"{r['vpd_kpa']:.3f}"
-            utc = datetime.datetime.fromtimestamp(
-                int(r["epoch"]), tz=datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            utc_dt = datetime.datetime.fromtimestamp(
+                float(r["epoch"]), tz=datetime.timezone.utc)
+            # Carry millisecond precision into the UTC column when the row has it
+            # (sub-second/high-rate logging), else keep the clean seconds format.
+            utc = (utc_dt.strftime("%Y-%m-%dT%H:%M:%S.") + f"{utc_dt.microsecond // 1000:03d}Z"
+                   if utc_dt.microsecond else utc_dt.strftime("%Y-%m-%dT%H:%M:%SZ"))
             writer.writerow([_csv_safe(r["ts"]), utc, f"{r['temperature_c']:.3f}",
                              f"{r['temperature_f']:.3f}", _csv_safe(r["probe_id"]), hum, vpd])
             n += 1

@@ -49,12 +49,28 @@ def test_utc_z_is_converted_to_local():
 def test_utc_offset_with_fractional_seconds_converted():
     # Regression: the old index-19 check skipped conversion when fractional
     # seconds pushed the offset past position 19, silently dropping the tz.
+    # The millisecond precision is now preserved (high-rate logging).
     got = _to_local_naive("2026-06-04T12:00:00.500+00:00")
     expected = (
         datetime.datetime(2026, 6, 4, 12, 0, 0, 500000, tzinfo=datetime.timezone.utc)
-        .astimezone().replace(tzinfo=None).isoformat(timespec="seconds")
+        .astimezone().replace(tzinfo=None).isoformat(timespec="milliseconds")
     )
     assert got == expected
+
+
+def test_subsecond_timestamp_preserved():
+    # High-rate logging (0.5 s while a freezer door is open) needs millisecond
+    # precision so two readings inside the same second stay distinguishable.
+    ts, _, _ = normalize_payload({"temperature_c": -22.5,
+                                  "timestamp": "2026-07-21T00:42:04.500Z"})
+    assert ts.endswith(".500")  # ms retained after the tz->local conversion
+
+
+def test_wholesecond_timestamp_has_no_spurious_millis():
+    # A probe that only sends whole seconds must not gain a ".000" suffix.
+    ts, _, _ = normalize_payload({"temperature_c": 20.0,
+                                  "timestamp": "2026-07-21T00:42:04Z"})
+    assert "." not in ts
 
 
 def test_explicit_offset_converted_to_local():

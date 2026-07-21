@@ -43,14 +43,27 @@ def _local_iso_now() -> str:
     return datetime.datetime.now().isoformat(timespec="seconds")
 
 
+def _iso_keep_subsec(dt: datetime.datetime) -> str:
+    """ISO 8601 string keeping millisecond precision when the value has any, else
+    whole seconds.
+
+    High-rate logging (e.g. a 0.5 s cadence while a freezer door is open) needs
+    sub-second timestamps so two readings within the same second stay
+    distinguishable. A probe that only sends whole seconds still gets a clean
+    second-resolution stamp with no spurious ``.000`` suffix, so nothing changes
+    for the common case.
+    """
+    return dt.isoformat(timespec="milliseconds" if dt.microsecond else "seconds")
+
+
 def _to_local_naive(ts_str: str) -> str:
     """Convert a timestamp string to local machine time as a naive ISO string.
 
     Timestamps carrying explicit timezone info (trailing ``Z`` for UTC, or a
     ``+HH:MM`` / ``-HH:MM`` offset, with or without fractional seconds) are
     converted to the local machine timezone before the offset is dropped.
-    Naive timestamps are assumed to already be local time and returned trimmed
-    to second precision.
+    Naive timestamps are assumed to already be local time. Millisecond precision
+    is preserved when present (see :func:`_iso_keep_subsec`).
     """
     ts_str = str(ts_str).strip()
     has_z = ts_str.endswith("Z")
@@ -66,15 +79,15 @@ def _to_local_naive(ts_str: str) -> str:
         try:
             aware = datetime.datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
             if aware.tzinfo is not None:
-                return aware.astimezone().replace(tzinfo=None).isoformat(timespec="seconds")
+                return _iso_keep_subsec(aware.astimezone().replace(tzinfo=None))
         except Exception:
             pass  # fall through and use as-is
 
-    # Already naive (or unparseable) — trim to seconds precision.
+    # Already naive (or unparseable) — keep sub-second precision when present.
     try:
-        return datetime.datetime.fromisoformat(ts_str.split("+")[0].rstrip("Z")).isoformat(timespec="seconds")
+        return _iso_keep_subsec(datetime.datetime.fromisoformat(ts_str.split("+")[0].rstrip("Z")))
     except Exception:
-        return ts_str[:19]
+        return ts_str[:23]
 
 
 def _clamp_future(ts: str) -> str:

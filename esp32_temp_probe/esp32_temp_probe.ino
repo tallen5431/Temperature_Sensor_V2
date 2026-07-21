@@ -1,4 +1,14 @@
 // ESP32 + DS18B20 + WiFiManager + mDNS + OTA + WebServer
+// v2.5.0 — (a) millisecond timestamps: readings are stamped to ms precision so a
+//           high-rate cadence (e.g. 0.5 s while a freezer door is open) stays
+//           distinguishable instead of collapsing onto one whole-second stamp.
+//           (b) disturbance burst: in deep-sleep mode a wake reading that jumps
+//           more than BURST_DELTA_C from the previous one (a freezer door
+//           opening, a compressor kick) makes the probe stay awake, keep Wi-Fi
+//           up, sample fast and flush the offline buffer hard for a short window
+//           before sleeping again — so a brief event and the connectivity window
+//           it opens aren't slept through. (True wake-on-temperature would need
+//           an analog sensor + comparator on a wake pin — a hardware revision.)
 // v1.6.0 — stable probe identity: the probe id is derived once (DS18B20 ROM,
 //           with retry, else the chip id) and persisted to NVS, so a later
 //           failed sensor read can no longer flip the identity and make the hub
@@ -65,7 +75,7 @@ inline void ledBlink(uint8_t n, uint16_t onMs = 60, uint16_t offMs = 120) {
 
 // ---------------- Identity --------------------------------------------------
 static const char* SENSOR_NAME = "Setpoint";
-static const char* FW_VERSION  = "2.4.1";
+static const char* FW_VERSION  = "2.5.0";
 
 // The setup SoftAP is intentionally OPEN (no password): it only exists during
 // first-time Wi-Fi setup and is torn down once the probe joins the home network,
@@ -93,6 +103,23 @@ static const char* FW_VERSION  = "2.4.1";
 static const uint32_t DEEP_SLEEP_MIN_MS   = 10000UL;  // 10 s
 static const uint32_t WEBSERVER_WINDOW_MS =  3000UL;  //  3 s
 static const uint32_t NTP_RESYNC_INTERVAL =    30UL;  // every 30 wakes
+
+// ---------------- Disturbance burst (freezer door / rapid change) -----------
+// In deep-sleep mode the probe is asleep between wakes, so a brief event (a
+// freezer door opening) and the short connectivity window it opens can be slept
+// through. When a wake reading differs from the previous one by more than
+// BURST_DELTA_C, the probe treats it as a disturbance: it stays awake, keeps
+// Wi-Fi up, samples every BURST_SAMPLE_MS and flushes the offline buffer hard
+// for BURST_WINDOW_MS before returning to deep sleep — so the event and any
+// backlog reach the hub while they can. This only CATCHES an event if a
+// scheduled wake lands during it, so it helps most at short/moderate intervals;
+// true wake-on-temperature needs an analog sensor + comparator on a wake pin
+// (a hardware revision — the DS18B20 has no interrupt output). Set to false to
+// disable and keep the plain fixed-interval deep-sleep behaviour.
+#define BURST_ON_DISTURBANCE  true
+static const float    BURST_DELTA_C   = 1.0f;     // °C change vs last wake that counts as a disturbance
+static const uint32_t BURST_WINDOW_MS = 20000UL;  // stay awake/flushing this long after one
+static const uint32_t BURST_SAMPLE_MS =  1000UL;  // sample cadence during the burst
 
 // ---------------- DS18B20 ---------------------------------------------------
 OneWire           oneWire(ONE_WIRE_BUS);
@@ -140,6 +167,7 @@ RTC_DATA_ATTR static uint32_t rtc_bootCount    = 0;    // wake counter
 RTC_DATA_ATTR static bool     rtc_timeValid    = false; // true once NTP has synced
 RTC_DATA_ATTR static int64_t  rtc_epochAtSleep = 0;    // unix epoch saved before sleep
 RTC_DATA_ATTR static uint32_t rtc_sleepMs      = 0;    // intended sleep duration
+RTC_DATA_ATTR static float    rtc_lastReadingC = -999.0f; // last temp (across sleep) for disturbance detection; -999 = unset
 
 // ---------------- State -----------------------------------------------------
 static bool          g_timeValid     = false;
@@ -172,13 +200,20 @@ void syncTime() {
   }
 }
 
-// Returns current UTC time as ISO 8601 string, or "" if time is unknown.
+// Returns current UTC time as an ISO 8601 string WITH milliseconds
+// ("2026-07-21T00:42:04.500Z"), or "" if time is unknown. Sub-second precision
+// keeps a high-rate cadence (down to the 500 ms floor) distinguishable instead
+// of collapsing multiple readings onto one whole-second stamp. Seconds and
+// milliseconds are taken from the same gettimeofday() call so they can't skew.
 String nowIso() {
   if (!g_timeValid) return "";
+  struct timeval tv;
+  if (gettimeofday(&tv, nullptr) != 0 || tv.tv_sec < 1000000000L) return "";
   struct tm ti;
-  if (!getLocalTime(&ti, 0)) return "";
-  char buf[25];
-  strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &ti);
+  gmtime_r(&tv.tv_sec, &ti);  // configTime(0,0,...) runs the clock in UTC
+  char buf[32];
+  size_t n = strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", &ti);
+  snprintf(buf + n, sizeof(buf) - n, ".%03ldZ", (long)(tv.tv_usec / 1000));
   return String(buf);
 }
 
@@ -626,6 +661,57 @@ String stableProbeId(const String& rom, const String& chip) {
 // Deep sleep
 // ============================================================================
 
+// Stay awake, keep Wi-Fi up, sample fast and flush the offline buffer for
+// BURST_WINDOW_MS, then return so the caller can deep-sleep. Called from the
+// deep-sleep path when a wake reading shows a rapid change (e.g. a freezer door
+// opened) so the event AND any buffered backlog reach the hub during the
+// connectivity window the disturbance opened. A closed freezer is an RF box, so
+// this also retries the Wi-Fi association: the door opening may be the first
+// real chance to connect.
+void runDisturbanceBurst() {
+  Serial.printf("[Burst] Disturbance detected — staying awake %lus to flush.\n",
+                (unsigned long)(BURST_WINDOW_MS / 1000UL));
+  ledBlink(1, 40, 0);
+  unsigned long burstEnd   = millis() + BURST_WINDOW_MS;
+  unsigned long lastSample = 0;
+
+  while (millis() < burstEnd) {
+    http.handleClient();
+
+    if (WiFi.status() != WL_CONNECTED) {
+      WiFi.begin();
+      unsigned long t0 = millis();
+      while (WiFi.status() != WL_CONNECTED && millis() - t0 < 4000UL) {
+        http.handleClient();
+        delay(50);
+      }
+      if (WiFi.status() == WL_CONNECTED) mdnsAdvertise();
+    }
+    if (WiFi.status() == WL_CONNECTED) bufferFlush();
+
+    if (millis() - lastSample >= BURST_SAMPLE_MS) {
+      lastSample = millis();
+      sensors.requestTemperatures();
+      delay(DS_CONV_MS + 5);
+      float tC = sensors.getTempCByIndex(0);
+      if (tC != DEVICE_DISCONNECTED_C) {
+        float  tF = DallasTemperature::toFahrenheit(tC);
+        String ts = nowIso();
+        g_lastC          = tC;
+        g_lastAtMs       = millis();
+        rtc_lastReadingC = tC;   // keep the across-sleep baseline current
+        if (WiFi.status() == WL_CONNECTED) {
+          if (!postWithTimestamp(ts, tC, tF, g_probeId)) bufferAppend(ts, tC, tF);
+        } else {
+          bufferAppend(ts, tC, tF);
+        }
+      }
+    }
+    delay(10);
+  }
+  Serial.println("[Burst] Window elapsed — returning to deep sleep.");
+}
+
 // Persist time, power down WiFi and mDNS, then deep-sleep for durationMs ms.
 // On wakeup the ESP32 runs setup() again from the top; the wakeup cause will
 // be ESP_SLEEP_WAKEUP_TIMER so setup() takes the fast-reconnect path.
@@ -902,6 +988,13 @@ void loop() {
     g_lastC    = tC;
     g_lastAtMs = now;
 
+    // Disturbance detection for the deep-sleep burst: compare this reading to the
+    // previous one carried across sleep in RTC memory. An abrupt change in either
+    // direction (freezer door open = rise, compressor kick = fall) counts.
+    bool disturbance = BURST_ON_DISTURBANCE && rtc_lastReadingC > -900.0f
+                       && fabsf(tC - rtc_lastReadingC) >= BURST_DELTA_C;
+    rtc_lastReadingC = tC;
+
     if (connected) {
       if (postWithTimestamp(ts, tC, tF, g_probeId)) {
         ledOn(); delay(20); ledOff();
@@ -919,10 +1012,15 @@ void loop() {
 
     // ── Deep sleep ────────────────────────────────────────────────────────
     if (g_deepSleepMode) {
-      // Keep the HTTP server live for WEBSERVER_WINDOW_MS so the hub's
-      // auto-provision request (and any browser visit) can reach us.
-      // Skip the window when WiFi is down — the server is unreachable anyway.
-      if (connected) {
+      // A disturbance (e.g. the freezer door just opened) means an event worth
+      // capturing AND a likely connectivity window — stay awake to flush it all
+      // before sleeping. Otherwise keep the HTTP server live for the usual short
+      // WEBSERVER_WINDOW_MS so the hub's auto-provision (and any browser) can
+      // reach us. Both are skipped when Wi-Fi is down and it's not a disturbance
+      // (the server is unreachable and there's no event to chase).
+      if (disturbance) {
+        runDisturbanceBurst();
+      } else if (connected) {
         unsigned long windowEnd = millis() + WEBSERVER_WINDOW_MS;
         while (millis() < windowEnd) {
           http.handleClient();
