@@ -6,7 +6,7 @@ sensor. Parts are in [BOM.md](BOM.md). Every pin number here is copied from
 too**, or the hardware and the flashed firmware will drift apart. The shipping
 firmware is the sketch `esp32_temp_probe/esp32_temp_probe.ino`.
 
-- Firmware: **v2.4.0**, protocol v1
+- Firmware: **v2.6.0**, protocol v1
 - MCU: ESP32-WROOM-32 / -32E
 - Sensor (only one supported): DS18B20 on **GPIO5**, 4.7 kΩ pull-up to **3V3**
 - Status LED: **GPIO2** (`LED_BUILTIN`, active-high; on-board LED on most dev boards)
@@ -14,7 +14,7 @@ firmware is the sketch `esp32_temp_probe/esp32_temp_probe.ino`.
   charging + flashing); the firmware deep-sleeps between readings for battery life
 - **Future / not in current firmware:** MAX31855 thermocouple (SPI) and SHT4x
   temp+humidity (I2C) — documented for future variants only, **not** built by
-  v2.4.0. Do not populate them on shipping units.
+  v2.6.0. Do not populate them on shipping units.
 
 ---
 
@@ -78,7 +78,7 @@ Runtime power comes from the **lithium cell + TP4056** board's 3V3 output; the
 
 ### Future/experimental sensor variants (NOT built by current firmware)
 
-These are reference wirings for possible future firmware only. The v2.4.0
+These are reference wirings for possible future firmware only. The v2.6.0
 firmware has no code path for them — do not wire them on shipping units.
 
 ```
@@ -111,7 +111,7 @@ graph LR
 ## 3. Step-by-step assembly
 
 1. **Bench-test the bare board first.** Plug the ESP32 into USB-C and flash the
-   Setpoint firmware (**v2.4.0**, via `arduino-cli`/Arduino IDE — see
+   Setpoint firmware (**v2.6.0**, via `arduino-cli`/Arduino IDE — see
    `firmware/README.md`). Confirm it boots and prints its `probe_id`
    (`Setpoint-<HEX6>`) and the `[label]` line over serial before you solder
    anything.
@@ -168,7 +168,7 @@ graph LR
    fast-reconnects without re-opening the portal.
 3. **Verify identity/sensor:** on the same network, GET
    `http://Setpoint-<HEX6>.local/whoami` →
-   `{id,name,mac,ds18b20_rom,fw_version,...}` (`fw_version` == `2.4.0`) and
+   `{id,name,mac,ds18b20_rom,fw_version,...}` (`fw_version` == `2.6.0`) and
    `http://Setpoint-<HEX6>.local/status` → `{...,last_c,...}`.
    - A plausible room temperature in `last_c` (roughly 15–30 °C) = DS18B20 wired
      correctly.

@@ -13,7 +13,7 @@ offline buffer, NTP time). The former PlatformIO project (`platformio.ini` +
 
 - **MCU:** ESP32-WROOM-32E
 - **Toolchain:** Arduino (Arduino IDE or `arduino-cli`) — **not** PlatformIO
-- **Firmware version:** 2.4.0 · **Protocol:** 1
+- **Firmware version:** 2.6.0 · **Protocol:** 1
 - **Sensor:** DS18B20 (1-Wire) — the **only** sensor in the current firmware
 - **Power:** rechargeable-lithium battery; deep-sleeps between readings for long
   battery life
