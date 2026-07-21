@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Firmware v2.5.0 — adaptive "disturbance burst" for freezers / hard-to-reach
+- **Firmware v2.5.1 — adaptive "disturbance burst" for freezers / hard-to-reach
   spots.** In deep-sleep mode the probe is asleep between wakes, so a brief event
   (a freezer door opening) and the short connectivity window it opens could be
   slept through. Now, when a wake reading jumps more than `BURST_DELTA_C` (1 °C
@@ -22,15 +22,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   second and flushes the offline buffer hard for ~20 s before returning to deep
   sleep, so the event and any backlog reach the hub while they can. It also
   retries the Wi-Fi association during the burst (a closed freezer is an RF box;
-  the door opening may be the first real chance to connect). This catches an
-  event only if a scheduled wake lands during it, so it helps most at
-  short/moderate intervals; true wake-on-temperature would need an analog sensor
-  + comparator on a wake pin (a hardware revision — the DS18B20 has no interrupt
-  output). Set `BURST_ON_DISTURBANCE false` to disable.
+  the door opening may be the first real chance to connect). Bounded by a
+  consecutive-burst cap so a door held open (or a slow thaw) can't hold the probe
+  awake and flatten the battery. This catches an event only if a scheduled wake
+  lands during it, so it helps most at short/moderate intervals; true
+  wake-on-temperature would need an analog sensor + comparator on a wake pin (a
+  hardware revision — the DS18B20 has no interrupt output). Set
+  `BURST_ON_DISTURBANCE false` to disable.
 
 ### Changed
 
-- **Millisecond timestamps end-to-end (firmware v2.5.0 + hub).** Readings are now
+- **Firmware v2.5.1 — battery & data-quality tuning.** (1) Per-wake Wi-Fi
+  reconnect budget cut from 15 s to 8 s with a **backoff**: after repeated
+  failures a probe that can't associate (deep in a freezer, hub down) only
+  attempts a connect every Nth wake — radio off on the others — instead of
+  burning up to 15 s of radio every wake; the single biggest drain in poor RF.
+  (2) The 3 s HTTP provisioning window is now served on the first few wakes and
+  then periodically, not on every deep-sleep wake. (3) DS18B20 resolution raised
+  **9-bit → 11-bit** (0.5 °C → 0.125 °C steps, ~375 ms conversion), resolving
+  gradual changes that previously quantised into visible stair-steps while still
+  fitting the 500 ms minimum interval (12-bit's 750 ms would not). This changes
+  the quantisation step, not the sensor's ±0.5 °C absolute accuracy. (4) A failed
+  (`DEVICE_DISCONNECTED_C`) sensor read is retried up to twice within the wake
+  before being treated as a fault, so a transient 1-Wire glitch no longer leaves
+  a gap in the log.
+- **Millisecond timestamps end-to-end (firmware v2.5.1 + hub).** Readings are now
   stamped to millisecond precision (`2026-07-21T00:42:04.500Z`), which the hub
   preserves through ingest, storage (a fractional epoch, backward-compatible with
   existing integer rows), the CSV export's `timestamp_utc` column, and the JSON

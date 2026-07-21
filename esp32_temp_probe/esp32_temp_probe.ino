@@ -1,4 +1,12 @@
 // ESP32 + DS18B20 + WiFiManager + mDNS + OTA + WebServer
+// v2.5.1 — battery: (a) per-wake Wi-Fi reconnect budget cut 15 s -> 8 s with a
+//           backoff — after repeated failures a probe that can't associate (deep
+//           in a freezer, hub down) only attempts a connect every Nth wake, radio
+//           off on the others, instead of burning 15 s every wake; (b) the 3 s
+//           HTTP provisioning window is served on the first few wakes and then
+//           periodically, not on every wake; (c) the disturbance burst is capped
+//           at BURST_MAX_CONSECUTIVE back-to-back fires so a repeatedly-opened
+//           door can't hold the probe awake and flatten the battery.
 // v2.5.0 — (a) millisecond timestamps: readings are stamped to ms precision so a
 //           high-rate cadence (e.g. 0.5 s while a freezer door is open) stays
 //           distinguishable instead of collapsing onto one whole-second stamp.
@@ -75,7 +83,7 @@ inline void ledBlink(uint8_t n, uint16_t onMs = 60, uint16_t offMs = 120) {
 
 // ---------------- Identity --------------------------------------------------
 static const char* SENSOR_NAME = "Setpoint";
-static const char* FW_VERSION  = "2.5.0";
+static const char* FW_VERSION  = "2.5.1";
 
 // The setup SoftAP is intentionally OPEN (no password): it only exists during
 // first-time Wi-Fi setup and is torn down once the probe joins the home network,
@@ -120,15 +128,49 @@ static const uint32_t NTP_RESYNC_INTERVAL =    30UL;  // every 30 wakes
 static const float    BURST_DELTA_C   = 1.0f;     // °C change vs last wake that counts as a disturbance
 static const uint32_t BURST_WINDOW_MS = 20000UL;  // stay awake/flushing this long after one
 static const uint32_t BURST_SAMPLE_MS =  1000UL;  // sample cadence during the burst
+// Battery guard: cap back-to-back bursts so a repeatedly-opened door (or a slow
+// thaw drifting past the threshold every wake) can't hold the probe awake and
+// flatten the battery. After this many bursts in a row the burst is suppressed
+// until a settled (non-disturbed) wake re-arms it — normal fixed-interval
+// logging continues throughout; only the aggressive stay-awake flush is paused.
+static const uint32_t BURST_MAX_CONSECUTIVE = 3;
+
+// ---------------- Wake-time / radio budget (battery) ------------------------
+// A freezer is an RF box, so a probe that can't associate must not hold its
+// radio on for the old 15 s every wake. The per-wake reconnect budget is 8 s,
+// and after WIFI_FAIL_BACKOFF_AFTER consecutive failures the probe only ATTEMPTS
+// a connect every WIFI_FAIL_BACKOFF_EVERY-th wake (radio stays off on the
+// others; readings are still taken and buffered). A disturbance burst always
+// retries regardless — that's when connectivity is most likely to have returned.
+static const uint32_t WIFI_CONNECT_MS         = 8000UL;
+static const uint32_t WIFI_FAIL_BACKOFF_AFTER = 3;
+static const uint32_t WIFI_FAIL_BACKOFF_EVERY = 4;
+
+// The hub's auto-provisioner only needs to reach the probe occasionally, so the
+// 3 s HTTP window isn't held on every deep-sleep wake: it's served for the first
+// WEBSERVER_WARMUP_WAKES (initial provisioning) and then every
+// WEBSERVER_WINDOW_EVERY-th wake, reclaiming awake-time on all the others.
+static const uint32_t WEBSERVER_WARMUP_WAKES = 5;
+static const uint32_t WEBSERVER_WINDOW_EVERY = 6;
 
 // ---------------- DS18B20 ---------------------------------------------------
 OneWire           oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
 
-// 9-bit resolution → ~94 ms conversion. setWaitForConversion(false) means
-// requestTemperatures() returns instantly and the loop never blocks.
-static const uint8_t  DS_RESOLUTION_BITS = 9;
-static const uint16_t DS_CONV_MS         = 94;
+// 11-bit resolution → 0.125 °C steps, ~375 ms conversion. This is 4x finer than
+// 9-bit (which quantised gradual changes into visible 0.5 °C stair-steps) while
+// STILL fitting the 500 ms minimum interval — 12-bit's 750 ms conversion would
+// exceed it and silently cap the fastest sample rate. Resolution changes the
+// quantisation step, not the sensor's ±0.5 °C absolute accuracy (worse below
+// -10 °C); use the per-probe calibration offset for absolute correction.
+// setWaitForConversion(false) means requestTemperatures() returns instantly and
+// the loop never blocks; DS_CONV_MS is how long Phase 2 waits before reading.
+static const uint8_t  DS_RESOLUTION_BITS = 11;
+static const uint16_t DS_CONV_MS         = 375;
+// Retry a failed (DEVICE_DISCONNECTED_C) read this many times within the wake
+// before treating it as a real fault, so a transient 1-Wire glitch (marginal
+// pull-up, long lead, EMI) doesn't punch a gap in the log.
+static const uint8_t  DS_READ_RETRIES    = 2;
 
 // ---------------- Config (NVS) ----------------------------------------------
 Preferences prefs;   // namespace: "tscfg"
@@ -167,7 +209,9 @@ RTC_DATA_ATTR static uint32_t rtc_bootCount    = 0;    // wake counter
 RTC_DATA_ATTR static bool     rtc_timeValid    = false; // true once NTP has synced
 RTC_DATA_ATTR static int64_t  rtc_epochAtSleep = 0;    // unix epoch saved before sleep
 RTC_DATA_ATTR static uint32_t rtc_sleepMs      = 0;    // intended sleep duration
-RTC_DATA_ATTR static float    rtc_lastReadingC = -999.0f; // last temp (across sleep) for disturbance detection; -999 = unset
+RTC_DATA_ATTR static float    rtc_lastReadingC   = -999.0f; // last temp (across sleep) for disturbance detection; -999 = unset
+RTC_DATA_ATTR static uint32_t rtc_burstStreak    = 0;       // consecutive wakes that fired a burst (cap guard)
+RTC_DATA_ATTR static uint32_t rtc_wifiFailStreak = 0;       // consecutive deep-sleep reconnect failures (backoff)
 
 // ---------------- State -----------------------------------------------------
 static bool          g_timeValid     = false;
@@ -685,7 +729,7 @@ void runDisturbanceBurst() {
         http.handleClient();
         delay(50);
       }
-      if (WiFi.status() == WL_CONNECTED) mdnsAdvertise();
+      if (WiFi.status() == WL_CONNECTED) { rtc_wifiFailStreak = 0; mdnsAdvertise(); }
     }
     if (WiFi.status() == WL_CONNECTED) bufferFlush();
 
@@ -792,19 +836,35 @@ void setup() {
     // Fast reconnect path: skip the WiFiManager portal.  WiFiManager saves
     // credentials into the ESP32 WiFi NVS so WiFi.begin() (no args) reconnects
     // to the same network as before.
-    WiFi.mode(WIFI_STA);
-    WiFi.begin();
-    Serial.print("[WiFi] Reconnecting (deep-sleep wake)...");
-    uint32_t t0 = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - t0 < 15000UL) {
-      delay(100);
-    }
-    if (WiFi.status() == WL_CONNECTED) {
-      Serial.printf(" OK (%lu ms)  IP: %s\n",
-                    millis() - t0, WiFi.localIP().toString().c_str());
-      g_wasConnected = true;
+    //
+    // Backoff: a probe that keeps failing to associate (deep in a freezer, hub
+    // down) must not power its radio for a full connect attempt every single
+    // wake. Once the failure streak passes WIFI_FAIL_BACKOFF_AFTER, only attempt
+    // a connect every WIFI_FAIL_BACKOFF_EVERY-th wake — the rest read+buffer with
+    // the radio off. (A disturbance burst in loop() still forces a reconnect
+    // regardless, since a door-open is exactly when the network may return.)
+    bool skipConnect = (rtc_wifiFailStreak >= WIFI_FAIL_BACKOFF_AFTER) &&
+                       (rtc_bootCount % WIFI_FAIL_BACKOFF_EVERY != 0);
+    if (skipConnect) {
+      Serial.printf("[WiFi] Backoff (%u consecutive fails) — radio stays off this wake.\n",
+                    rtc_wifiFailStreak);
     } else {
-      Serial.println(" FAILED — reading will be buffered.");
+      WiFi.mode(WIFI_STA);
+      WiFi.begin();
+      Serial.print("[WiFi] Reconnecting (deep-sleep wake)...");
+      uint32_t t0 = millis();
+      while (WiFi.status() != WL_CONNECTED && millis() - t0 < WIFI_CONNECT_MS) {
+        delay(100);
+      }
+      if (WiFi.status() == WL_CONNECTED) {
+        Serial.printf(" OK (%lu ms)  IP: %s\n",
+                      millis() - t0, WiFi.localIP().toString().c_str());
+        g_wasConnected = true;
+        rtc_wifiFailStreak = 0;
+      } else {
+        rtc_wifiFailStreak++;
+        Serial.printf(" FAILED (streak %u) — reading will be buffered.\n", rtc_wifiFailStreak);
+      }
     }
   } else {
     // Cold boot: full WiFiManager flow (opens portal if no saved network)
@@ -900,6 +960,14 @@ void setup() {
                 g_deepSleepMode ? "deep-sleep" : "always-on", cfg_interval);
 }
 
+// True when the deep-sleep HTTP window should be served this wake: always for the
+// first few wakes (so the hub can auto-provision a freshly-appeared probe), then
+// only periodically — reclaiming ~3 s of awake-time on every other wake.
+bool webserverWindowDue() {
+  return rtc_bootCount <= WEBSERVER_WARMUP_WAKES
+      || (rtc_bootCount % WEBSERVER_WINDOW_EVERY == 0);
+}
+
 // ============================================================================
 void loop() {
   http.handleClient();
@@ -966,6 +1034,16 @@ void loop() {
     g_convPending = false;
     float tC = sensors.getTempCByIndex(0);
 
+    // Retry a bad read a couple of times before declaring a fault: a transient
+    // 1-Wire glitch reads as DEVICE_DISCONNECTED_C, and dropping the whole
+    // reading over one blip leaves a gap in the log. Only the error path blocks
+    // (the normal successful read never enters this loop).
+    for (uint8_t attempt = 0; tC == DEVICE_DISCONNECTED_C && attempt < DS_READ_RETRIES; attempt++) {
+      sensors.requestTemperatures();
+      delay(DS_CONV_MS + 5);
+      tC = sensors.getTempCByIndex(0);
+    }
+
     if (tC == DEVICE_DISCONNECTED_C) {
       Serial.println("[Temp] Sensor disconnected — reinitialising bus...");
       sensors.begin();
@@ -1014,17 +1092,29 @@ void loop() {
     if (g_deepSleepMode) {
       // A disturbance (e.g. the freezer door just opened) means an event worth
       // capturing AND a likely connectivity window — stay awake to flush it all
-      // before sleeping. Otherwise keep the HTTP server live for the usual short
-      // WEBSERVER_WINDOW_MS so the hub's auto-provision (and any browser) can
-      // reach us. Both are skipped when Wi-Fi is down and it's not a disturbance
-      // (the server is unreachable and there's no event to chase).
-      if (disturbance) {
+      // before sleeping. But cap consecutive bursts (battery guard): once the
+      // streak hits BURST_MAX_CONSECUTIVE the burst is suppressed until a settled
+      // wake re-arms it, so a door held open (or a slow thaw) can't keep the
+      // probe awake indefinitely. Otherwise keep the HTTP server live for the
+      // short provisioning window — but only when it's due (first wakes + every
+      // Nth), not on every wake, reclaiming that awake-time the rest of the time.
+      bool doBurst = disturbance && rtc_burstStreak < BURST_MAX_CONSECUTIVE;
+      if (doBurst) {
+        rtc_burstStreak++;
         runDisturbanceBurst();
-      } else if (connected) {
-        unsigned long windowEnd = millis() + WEBSERVER_WINDOW_MS;
-        while (millis() < windowEnd) {
-          http.handleClient();
-          delay(5);
+      } else {
+        if (disturbance) {
+          Serial.printf("[Burst] Suppressed — %u consecutive bursts hit the cap (battery guard).\n",
+                        rtc_burstStreak);
+        } else {
+          rtc_burstStreak = 0;   // a settled wake re-arms the burst
+        }
+        if (connected && webserverWindowDue()) {
+          unsigned long windowEnd = millis() + WEBSERVER_WINDOW_MS;
+          while (millis() < windowEnd) {
+            http.handleClient();
+            delay(5);
+          }
         }
       }
 
