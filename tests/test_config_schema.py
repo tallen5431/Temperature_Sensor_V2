@@ -130,3 +130,15 @@ def test_input_is_not_mutated():
     normalize_config(raw)
     assert raw["interval_sec"] == "5"   # original untouched (deep-copied)
     assert raw["probe_names"] == "bad"
+
+
+def test_resolution_bits_clamped_and_probe_resolutions_dict():
+    # resolution_bits is bounded to 9..12; probe_resolutions must be an object.
+    cfg, _ = normalize_config({"resolution_bits": 20, "probe_resolutions": {"A": 12}})
+    assert cfg["resolution_bits"] == 12          # capped to max
+    assert cfg["probe_resolutions"] == {"A": 12}
+    cfg2, _ = normalize_config({"resolution_bits": 5})
+    assert cfg2["resolution_bits"] == 9          # floored to min
+    cfg3, warns = normalize_config({"probe_resolutions": "notadict"})
+    assert cfg3["probe_resolutions"] == {}       # reset, with a warning
+    assert any("probe_resolutions" in w for w in warns)

@@ -1,4 +1,9 @@
 // ESP32 + DS18B20 + WiFiManager + mDNS + OTA + WebServer
+// v2.6.0 — provisionable sensor resolution: the DS18B20 resolution (9..12 bit,
+//           0.5..0.0625 °C) is now set per-probe from the hub's Devices page,
+//           delivered via /provision, persisted to NVS, and applied live. The
+//           conversion-wait tracks the resolution automatically (see g_convMs /
+//           applyResolution). Reported in /whoami and /status as resolution_bits.
 // v2.5.1 — battery: (a) per-wake Wi-Fi reconnect budget cut 15 s -> 8 s with a
 //           backoff — after repeated failures a probe that can't associate (deep
 //           in a freezer, hub down) only attempts a connect every Nth wake, radio
@@ -83,7 +88,7 @@ inline void ledBlink(uint8_t n, uint16_t onMs = 60, uint16_t offMs = 120) {
 
 // ---------------- Identity --------------------------------------------------
 static const char* SENSOR_NAME = "Setpoint";
-static const char* FW_VERSION  = "2.5.1";
+static const char* FW_VERSION  = "2.6.0";
 
 // The setup SoftAP is intentionally OPEN (no password): it only exists during
 // first-time Wi-Fi setup and is torn down once the probe joins the home network,
@@ -164,9 +169,10 @@ DallasTemperature sensors(&oneWire);
 // quantisation step, not the sensor's ±0.5 °C absolute accuracy (worse below
 // -10 °C); use the per-probe calibration offset for absolute correction.
 // setWaitForConversion(false) means requestTemperatures() returns instantly and
-// the loop never blocks; DS_CONV_MS is how long Phase 2 waits before reading.
-static const uint8_t  DS_RESOLUTION_BITS = 11;
-static const uint16_t DS_CONV_MS         = 375;
+// the loop never blocks; g_convMs (set by applyResolution) is how long Phase 2
+// waits before reading. 11-bit is the DEFAULT; the resolution is provisionable
+// per-probe (9..12) from the hub's Devices page and persisted to NVS.
+static const uint8_t  DS_RESOLUTION_DEFAULT_BITS = 11;
 // Retry a failed (DEVICE_DISCONNECTED_C) read this many times within the wake
 // before treating it as a real fault, so a transient 1-Wire glitch (marginal
 // pull-up, long lead, EMI) doesn't punch a gap in the log.
@@ -177,6 +183,7 @@ Preferences prefs;   // namespace: "tscfg"
 String   cfg_server_url = "";
 String   cfg_token      = "";
 uint32_t cfg_interval   = 5000;   // ms between readings
+uint8_t  cfg_res_bits   = DS_RESOLUTION_DEFAULT_BITS;  // DS18B20 resolution (9..12), provisionable
 
 // ---------------- WiFiManager parameters ------------------------------------
 WiFiManager wm;
@@ -224,6 +231,7 @@ static bool          g_wasConnected  = false;
 static unsigned long g_lastFlushAt   = 0;
 static unsigned long g_wakeStart     = 0;   // millis() at top of setup()
 static bool          g_deepSleepMode = false;
+static uint16_t      g_convMs        = 375;  // DS18B20 conversion wait; tracks cfg_res_bits (applyResolution)
 
 // ============================================================================
 // Time helpers
@@ -269,6 +277,7 @@ void loadConfig() {
   cfg_server_url = prefs.getString("server_url", cfg_server_url);
   cfg_token      = prefs.getString("token",      cfg_token);
   cfg_interval   = prefs.getUInt  ("interval",   cfg_interval);
+  cfg_res_bits   = prefs.getUChar ("res_bits",   cfg_res_bits);
   prefs.end();
 }
 
@@ -277,7 +286,24 @@ void saveConfig() {
   prefs.putString("server_url", cfg_server_url);
   prefs.putString("token",      cfg_token);
   prefs.putUInt  ("interval",   cfg_interval);
+  prefs.putUChar ("res_bits",   cfg_res_bits);
   prefs.end();
+}
+
+// DS18B20 conversion time doubles per resolution bit: 12b≈750, 11≈375, 10≈188,
+// 9≈94 ms. applyResolution() sets the sensor AND the matching Phase-2 wait in one
+// place so they can never drift apart (a too-short wait reads a stale value).
+static uint16_t convMsFor(uint8_t bits) {
+  if (bits < 9)  bits = 9;
+  if (bits > 12) bits = 12;
+  return (uint16_t)(750UL >> (12 - bits));
+}
+void applyResolution(uint8_t bits) {
+  if (bits < 9)  bits = 9;
+  if (bits > 12) bits = 12;
+  cfg_res_bits = bits;
+  sensors.setResolution(bits);
+  g_convMs = convMsFor(bits);
 }
 
 uint32_t loadBufPos() {
@@ -532,6 +558,7 @@ void handleWhoAmI() {
   doc["ds18b20_rom"] = g_romHex;
   doc["fw_version"]  = FW_VERSION;
   doc["interval_ms"] = cfg_interval;
+  doc["resolution_bits"] = cfg_res_bits;
   doc["server_url"]  = cfg_server_url;
   doc["time_valid"]  = g_timeValid;
   sendJSON(200, doc);
@@ -541,6 +568,7 @@ void handleStatus() {
   StaticJsonDocument<384> doc;
   doc["id"]          = g_probeId;
   doc["interval_ms"] = cfg_interval;
+  doc["resolution_bits"] = cfg_res_bits;
   doc["server_url"]  = cfg_server_url;
   doc["time_valid"]  = g_timeValid;
   if (!isnan(g_lastC)) {
@@ -583,6 +611,8 @@ void handleProvision() {
   String   url      = doc["server_url"] | "";
   String   tok      = doc["token"]      | "";
   uint32_t interval = (uint32_t)(doc["interval_ms"] | cfg_interval);
+  // resolution_bits is optional — a hub that doesn't send it leaves ours as-is.
+  uint8_t  resBits  = (uint8_t)(doc["resolution_bits"] | cfg_res_bits);
 
   if (url.length() == 0) {
     StaticJsonDocument<64> e; e["ok"] = false; e["error"] = "server_url required";
@@ -592,12 +622,17 @@ void handleProvision() {
   cfg_server_url = url;
   cfg_token      = tok;
   cfg_interval   = interval < 500 ? 500 : interval;
+  if (resBits < 9)  resBits = 9;
+  if (resBits > 12) resBits = 12;
+  cfg_res_bits   = resBits;
   saveConfig();
+  applyResolution(cfg_res_bits);   // apply the new resolution live
 
-  StaticJsonDocument<128> out;
+  StaticJsonDocument<160> out;
   out["ok"]          = true;
   out["server_url"]  = cfg_server_url;
   out["interval_ms"] = cfg_interval;
+  out["resolution_bits"] = cfg_res_bits;
   sendJSON(200, out);
 }
 
@@ -736,7 +771,7 @@ void runDisturbanceBurst() {
     if (millis() - lastSample >= BURST_SAMPLE_MS) {
       lastSample = millis();
       sensors.requestTemperatures();
-      delay(DS_CONV_MS + 5);
+      delay(g_convMs + 5);
       float tC = sensors.getTempCByIndex(0);
       if (tC != DEVICE_DISCONNECTED_C) {
         float  tF = DallasTemperature::toFahrenheit(tC);
@@ -799,9 +834,10 @@ void setup() {
 
   // DS18B20: 9-bit, non-blocking
   sensors.begin();
-  sensors.setResolution(DS_RESOLUTION_BITS);
+  applyResolution(cfg_res_bits);   // sets sensor resolution + matching g_convMs
   sensors.setWaitForConversion(false);
-  Serial.printf("DS18B20 sensors found: %d\n", sensors.getDeviceCount());
+  Serial.printf("DS18B20 sensors found: %d (res %u-bit)\n",
+                sensors.getDeviceCount(), cfg_res_bits);
 
   // Cache identity strings.  The probe id is derived once and persisted, so it
   // stays stable across reboots even if a later DS18B20 ROM read fails.
@@ -1030,7 +1066,7 @@ void loop() {
   }
 
   // ── Phase 2: read result once the conversion window has elapsed ───────────
-  if (g_convPending && (now - g_convReqAt >= DS_CONV_MS)) {
+  if (g_convPending && (now - g_convReqAt >= g_convMs)) {
     g_convPending = false;
     float tC = sensors.getTempCByIndex(0);
 
@@ -1040,14 +1076,14 @@ void loop() {
     // (the normal successful read never enters this loop).
     for (uint8_t attempt = 0; tC == DEVICE_DISCONNECTED_C && attempt < DS_READ_RETRIES; attempt++) {
       sensors.requestTemperatures();
-      delay(DS_CONV_MS + 5);
+      delay(g_convMs + 5);
       tC = sensors.getTempCByIndex(0);
     }
 
     if (tC == DEVICE_DISCONNECTED_C) {
       Serial.println("[Temp] Sensor disconnected — reinitialising bus...");
       sensors.begin();
-      sensors.setResolution(DS_RESOLUTION_BITS);
+      sensors.setResolution(cfg_res_bits);
       sensors.setWaitForConversion(false);
       ledBlink(2, 60, 160);
 

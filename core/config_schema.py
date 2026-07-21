@@ -54,9 +54,11 @@ _NUMBERS = [
     ("alert_freshness_sec", 600, 1, True),
     ("offline_after_sec", 300, 1, True),
     ("alert_hysteresis_c", 0.5, 0, False),
+    ("resolution_bits", 11, 9, True),
 ]
 _BOOLS = [("pull_enabled", True), ("auto_provision", True)]
-_DICTS = ["probe_names", "alert_thresholds", "calibration_offsets", "probe_intervals"]
+_DICTS = ["probe_names", "alert_thresholds", "calibration_offsets", "probe_intervals",
+          "probe_resolutions"]
 
 _NOTIF_BOOLS = [("enabled", False), ("notify_recovery", True), ("offline_alerts", True)]
 _EMAIL_BOOLS = [("enabled", False), ("use_tls", True)]
@@ -100,6 +102,16 @@ def normalize_config(raw: Any) -> Tuple[Dict[str, Any], Warnings]:
 
     for key, default, minimum, integer in _NUMBERS:
         _fix_number(cfg, key, default, minimum, integer, warns)
+
+    # resolution_bits also has an UPPER bound (DS18B20 supports 9..12 bit); the
+    # _NUMBERS pass only enforces the 9 floor.
+    if "resolution_bits" in cfg:
+        try:
+            if int(cfg["resolution_bits"]) > 12:
+                warns.append(f"resolution_bits={cfg['resolution_bits']!r} > 12; using 12")
+                cfg["resolution_bits"] = 12
+        except (TypeError, ValueError):
+            pass
 
     for key, default in _BOOLS:
         _fix_bool(cfg, key, default, warns)

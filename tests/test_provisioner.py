@@ -37,7 +37,7 @@ def test_force_provisions_matching_probe_once_to_deliver_token(monkeypatch):
                         lambda h, p, timeout=3.0: {"server_url": "http://hub/api/ingest",
                                                    "interval_ms": 5000})
     monkeypatch.setattr(prov_mod, "provision_probe",
-                        lambda h, p, base, token="", interval_ms=5000, timeout=3.0:
+                        lambda h, p, base, token="", interval_ms=5000, resolution_bits=None, timeout=3.0:
                         (calls.append((h, token)) or True))
 
     disc = _FakeDiscovery({"A": {"ip": "192.168.1.9", "host": "192.168.1.9",

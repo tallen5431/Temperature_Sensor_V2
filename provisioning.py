@@ -5,6 +5,20 @@ from typing import Optional
 
 log = logging.getLogger("hub.provisioning")
 
+# DS18B20 resolution is provisionable per probe: 9..12 bits (0.5 .. 0.0625 °C).
+# 11 is the default (0.125 °C, ~375 ms conversion — 4x finer than 9-bit while
+# still fitting the 500 ms minimum interval, which 12-bit's 750 ms would not).
+RES_BITS_MIN, RES_BITS_MAX, RES_BITS_DEFAULT = 9, 12, 11
+
+
+def clamp_resolution_bits(value, default: int = RES_BITS_DEFAULT) -> int:
+    """Coerce a DS18B20 resolution to a valid integer in the 9..12-bit range."""
+    try:
+        n = int(float(value))
+    except (TypeError, ValueError):
+        return int(default)
+    return max(RES_BITS_MIN, min(RES_BITS_MAX, n))
+
 
 def resolve_host(host: str, timeout: float = 3.0) -> Optional[str]:
     """Resolve a hostname to an IPv4 string with a HARD timeout, or None.
@@ -53,8 +67,14 @@ def get_probe_status(base_host: str, port: int, timeout: float = 3.0) -> Optiona
 
 
 def provision_probe(base_host: str, port: int, server_base: str, token: str = "",
-                    interval_ms: int = 5000, timeout: float = 3.0) -> bool:
+                    interval_ms: int = 5000, resolution_bits=None,
+                    timeout: float = 3.0) -> bool:
     """POST the hub's ingest URL + token + interval to a probe's /provision.
+
+    ``resolution_bits`` (9..12), when given, sets the probe's DS18B20 resolution;
+    it's omitted from the payload when None so older callers/firmware are
+    unaffected (an old probe ignores unknown fields; a hub that doesn't manage
+    resolution simply doesn't send it).
 
     Resolves the target to an IP with a bounded timeout and requests by IP, so a
     probe that can't be resolved fails fast rather than hanging the caller.
@@ -68,6 +88,8 @@ def provision_probe(base_host: str, port: int, server_base: str, token: str = ""
         "token": token or "",
         "interval_ms": int(interval_ms),
     }
+    if resolution_bits is not None:
+        body["resolution_bits"] = clamp_resolution_bits(resolution_bits)
     try:
         r = requests.post(f"http://{ip}:{port}/provision", json=body, timeout=timeout)
         if r.ok:

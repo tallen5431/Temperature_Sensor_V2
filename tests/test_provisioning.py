@@ -33,3 +33,41 @@ def test_probe_helpers_fail_fast_on_unresolvable(monkeypatch):
     monkeypatch.setattr(provisioning, "resolve_host", lambda *a, **k: None)
     assert get_probe_status("nope.local", 80) is None
     assert provision_probe("nope.local", 80, "http://hub") is False
+
+
+def test_clamp_resolution_bits():
+    from provisioning import clamp_resolution_bits
+    assert clamp_resolution_bits(11) == 11
+    assert clamp_resolution_bits(9) == 9 and clamp_resolution_bits(12) == 12
+    assert clamp_resolution_bits(20) == 12   # over max -> clamped
+    assert clamp_resolution_bits(3) == 9     # under min -> clamped
+    assert clamp_resolution_bits("10") == 10
+    assert clamp_resolution_bits(None) == 11         # default
+    assert clamp_resolution_bits("junk", default=10) == 10
+
+
+class _OkResp:
+    ok = True
+    status_code = 200
+
+
+def test_provision_probe_includes_resolution(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(provisioning, "resolve_host", lambda *a, **k: "10.0.0.9")
+    monkeypatch.setattr(provisioning.requests, "post",
+                        lambda url, json=None, timeout=None: (captured.update(body=json) or _OkResp()))
+    assert provision_probe("p.local", 80, "http://hub", interval_ms=5000, resolution_bits=12) is True
+    assert captured["body"]["resolution_bits"] == 12
+    assert captured["body"]["interval_ms"] == 5000
+    # out-of-range is clamped into the payload
+    provision_probe("p.local", 80, "http://hub", resolution_bits=99)
+    assert captured["body"]["resolution_bits"] == 12
+
+
+def test_provision_probe_omits_resolution_when_none(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(provisioning, "resolve_host", lambda *a, **k: "10.0.0.9")
+    monkeypatch.setattr(provisioning.requests, "post",
+                        lambda url, json=None, timeout=None: (captured.update(body=json) or _OkResp()))
+    provision_probe("p.local", 80, "http://hub")  # no resolution_bits arg
+    assert "resolution_bits" not in captured["body"]  # backward compatible

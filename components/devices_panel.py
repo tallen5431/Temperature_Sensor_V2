@@ -35,6 +35,23 @@ DevicesLayout = html.Div([
                 ),
                 html.Small("How often the probe sends a reading (minimum 0.5 s)", className='text-muted'),
                 html.Hr(),
+                html.Label("Sensor Resolution:", className='fw-bold mb-2 mt-1 d-block'),
+                dbc.Select(
+                    id='edit-probe-resolution-input',
+                    options=[
+                        {'label': '9-bit — 0.5 °C steps (fastest, ~94 ms)', 'value': '9'},
+                        {'label': '10-bit — 0.25 °C steps (~188 ms)', 'value': '10'},
+                        {'label': '11-bit — 0.125 °C steps (default, ~375 ms)', 'value': '11'},
+                        {'label': '12-bit — 0.0625 °C steps (finest, ~750 ms)', 'value': '12'},
+                    ],
+                    value='11',
+                    className='mb-1',
+                ),
+                html.Small("Higher resolution resolves finer detail but converts slower. "
+                           "12-bit (750 ms) exceeds a 0.5 s interval and caps the max sample "
+                           "rate. Changes the step size, not absolute accuracy (~±0.5 °C).",
+                           className='text-muted'),
+                html.Hr(),
                 html.Label("Alert Thresholds (°C):", className='fw-bold mb-2 mt-1 d-block'),
                 dbc.Row([
                     dbc.Col([
@@ -257,6 +274,7 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
         Output('edit-probe-min-input', 'value'),
         Output('edit-probe-max-input', 'value'),
         Output('edit-probe-cal-input', 'value'),
+        Output('edit-probe-resolution-input', 'value'),
         Input({'type': 'edit-probe-btn', 'index': ALL}, 'n_clicks'),
         Input('edit-probe-cancel', 'n_clicks'),
         Input('edit-probe-save', 'n_clicks'),
@@ -267,14 +285,15 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
         State('edit-probe-min-input', 'value'),
         State('edit-probe-max-input', 'value'),
         State('edit-probe-cal-input', 'value'),
+        State('edit-probe-resolution-input', 'value'),
         prevent_initial_call=True
     )
     def toggle_edit_modal(edit_clicks, cancel_clicks, save_clicks, is_open,
                           stored_probe_id, name_value, interval_value,
-                          min_value, max_value, cal_value):
+                          min_value, max_value, cal_value, resolution_value):
         from dash import callback_context
         if not callback_context.triggered:
-            return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
+            return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
 
         button_id = callback_context.triggered[0]['prop_id']
 
@@ -283,9 +302,9 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
             try:
                 triggered_val = callback_context.triggered[0].get('value', None)
                 if not triggered_val:
-                    return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
+                    return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
             except Exception:
-                return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
+                return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
 
             import json
             try:
@@ -309,13 +328,20 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                 # Per-probe calibration offset
                 current_cal = (cfg.get('calibration_offsets', {}) or {}).get(probe_id, None)
 
-                return True, probe_id, probe_id, current_name, current_interval_sec, current_min, current_max, current_cal
+                # Per-probe DS18B20 resolution (Select value is a string), else global default
+                from provisioning import clamp_resolution_bits
+                probe_resolutions = cfg.get('probe_resolutions', {})
+                global_res = cfg.get('resolution_bits', 11)
+                current_res = str(clamp_resolution_bits(
+                    probe_resolutions.get(probe_id, global_res), default=global_res))
+
+                return True, probe_id, probe_id, current_name, current_interval_sec, current_min, current_max, current_cal, current_res
             except Exception:
-                return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
+                return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
 
         # Cancel button clicked
         elif 'edit-probe-cancel' in button_id:
-            return False, None, '', '', no_update, no_update, no_update, no_update
+            return False, None, '', '', no_update, no_update, no_update, no_update, no_update
 
         # Save button clicked
         elif 'edit-probe-save' in button_id:
@@ -401,10 +427,28 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                 if interval_changed:
                     log.info('Saved interval for %s: %s s', stored_probe_id, new_interval_sec)
 
-                # --- Push new interval to the probe immediately (best-effort) ---
-                # Only when the interval actually changed — a name/threshold-only
-                # edit must not trigger an HTTP re-provision round-trip.
-                if interval_changed and public_base_func is not None:
+                # --- Save per-probe DS18B20 resolution (only when it differs from
+                # the global default), mirroring the interval logic so a
+                # name/threshold-only edit never writes a spurious override. ---
+                from provisioning import clamp_resolution_bits
+                global_res = int(cfg.get('resolution_bits', 11) or 11)
+                probe_resolutions = cfg.get('probe_resolutions', {})
+                prev_res_bits = clamp_resolution_bits(
+                    probe_resolutions.get(stored_probe_id, global_res), default=global_res)
+                new_res_bits = clamp_resolution_bits(resolution_value, default=global_res)
+                if new_res_bits == global_res:
+                    probe_resolutions.pop(stored_probe_id, None)  # inherit global
+                else:
+                    probe_resolutions[stored_probe_id] = new_res_bits
+                cfg.update({'probe_resolutions': probe_resolutions})
+                resolution_changed = new_res_bits != prev_res_bits
+                if resolution_changed:
+                    log.info('Saved resolution for %s: %s-bit', stored_probe_id, new_res_bits)
+
+                # --- Push new interval/resolution to the probe immediately (best-effort) ---
+                # Only when the interval OR resolution actually changed — a
+                # name/threshold-only edit must not trigger an HTTP re-provision.
+                if (interval_changed or resolution_changed) and public_base_func is not None:
                     try:
                         from provisioning import provision_probe
                         probes = (finder.list_probes() or {}).values()
@@ -425,19 +469,21 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                                 ok = provision_probe(
                                     host.rstrip('.'), port, base,
                                     token=token or '',
-                                    interval_ms=int(new_interval_sec * 1000)
+                                    interval_ms=int(new_interval_sec * 1000),
+                                    resolution_bits=new_res_bits,
                                 )
                                 if ok:
-                                    log.info('Provisioned %s with interval=%s s', stored_probe_id, new_interval_sec)
+                                    log.info('Provisioned %s with interval=%s s, res=%s-bit',
+                                             stored_probe_id, new_interval_sec, new_res_bits)
                                 else:
                                     log.info('Could not reach %s — interval will apply on next auto-provision cycle', stored_probe_id)
                                 break
                     except Exception as e:
                         log.warning('Provision-on-save failed: %s', e)
 
-            return False, None, '', '', no_update, no_update, no_update, no_update
+            return False, None, '', '', no_update, no_update, no_update, no_update, no_update
 
-        return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
+        return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
 
     # --- Remove device: confirm, then delete readings + config + discovery ----
     @app.callback(
@@ -484,7 +530,8 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
         try:
             deleted = db.delete_probe(probe_id) if db is not None else 0
             # Drop this probe's entry from every per-probe config dict.
-            for key in ('probe_names', 'probe_intervals', 'alert_thresholds', 'calibration_offsets'):
+            for key in ('probe_names', 'probe_intervals', 'alert_thresholds',
+                        'calibration_offsets', 'probe_resolutions'):
                 d = cfg.get(key, {}) or {}
                 if probe_id in d:
                     d.pop(probe_id, None)

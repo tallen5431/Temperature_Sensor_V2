@@ -2,7 +2,7 @@ from __future__ import annotations
 import logging
 import threading, time, socket
 from typing import Callable, Optional, Any
-from provisioning import provision_probe, get_probe_status
+from provisioning import provision_probe, get_probe_status, clamp_resolution_bits
 
 log = logging.getLogger("hub.provisioner")
 
@@ -118,6 +118,7 @@ class AutoProvisioner(threading.Thread):
 
                         # Per-probe interval override from config, falling back to global default
                         interval_ms = self.interval_ms
+                        resolution_bits = None
                         if self.cfg is not None and probe_id:
                             try:
                                 interval_value = (self.cfg.get("probe_intervals") or {}).get(probe_id)
@@ -125,6 +126,13 @@ class AutoProvisioner(threading.Thread):
                                     interval_ms = int(float(interval_value) * 1000)
                             except Exception:
                                 pass
+                            # Per-probe DS18B20 resolution override, else the global default.
+                            try:
+                                global_res = self.cfg.get("resolution_bits", 11)
+                                res_value = (self.cfg.get("probe_resolutions") or {}).get(probe_id, global_res)
+                                resolution_bits = clamp_resolution_bits(res_value)
+                            except Exception:
+                                resolution_bits = None
 
                         host = (host or "").rstrip(".")
                         if host:
@@ -139,9 +147,15 @@ class AutoProvisioner(threading.Thread):
                             if key in self._provisioned:
                                 try:
                                     status = get_probe_status(host, port)
+                                    # resolution_bits may be absent on older firmware
+                                    # — treat absent as a match so it doesn't force a
+                                    # re-provision every cycle.
+                                    res_ok = status.get("resolution_bits") in (None, resolution_bits) \
+                                        if status else False
                                     if (status and
                                             status.get("server_url") == target_url and
-                                            status.get("interval_ms") == interval_ms):
+                                            status.get("interval_ms") == interval_ms and
+                                            res_ok):
                                         continue  # already configured correctly
                                 except Exception:
                                     pass  # can't check — fall through and provision
@@ -153,6 +167,7 @@ class AutoProvisioner(threading.Thread):
                                     base,
                                     token=self.token,
                                     interval_ms=interval_ms,
+                                    resolution_bits=resolution_bits,
                                 ):
                                     self._provisioned.add(key)
                             except Exception as e:

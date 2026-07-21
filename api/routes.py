@@ -378,6 +378,8 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
         except (ValueError, TypeError):
             return jsonify(ok=False, error="invalid port"), 400
         interval_ms = int(data.get("interval_ms") or data.get("interval") or 5000)
+        # Optional per-probe DS18B20 resolution (9..12); omitted -> probe keeps its own.
+        res_bits = data.get("resolution_bits")
         tok = (data.get("token") or TOKEN or "").strip()
         base = public_base().rstrip("/")
 
@@ -400,7 +402,8 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
         failed: List[str] = []
         for h, prt in targets:
             try:
-                if provision_probe(h, prt, base, token=tok, interval_ms=interval_ms):
+                if provision_probe(h, prt, base, token=tok, interval_ms=interval_ms,
+                                   resolution_bits=res_bits):
                     succeeded.append(f"{h}:{prt}")
                 else:
                     failed.append(f"{h}:{prt}")

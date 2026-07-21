@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.5] - 2026-07-21
+
+### Added
+
+- **Per-probe sensor resolution, set from the dashboard (firmware v2.6.0 + hub).**
+  The Devices → ✏️ Edit modal now has a **Sensor Resolution** dropdown (9–12 bit;
+  0.5 °C → 0.0625 °C steps). Like the per-probe interval, it's stored as an
+  override (`probe_resolutions` in config, falling back to a global
+  `resolution_bits` default of 11), pushed to the probe via `/provision`, and
+  persisted to the probe's NVS. The firmware applies it live and keeps the
+  conversion-wait in step, and echoes `resolution_bits` in `/whoami` and
+  `/status` so the auto-provisioner only re-pushes when it actually differs.
+  `provision_probe(... resolution_bits=...)`, `POST /api/provision`, and the
+  auto-provisioner all carry the field; it's omitted when unset, so old
+  firmware/callers are unaffected. Higher resolution resolves finer detail (the
+  0.5 °C stair-steps seen in a freezer door-open capture); it does not change the
+  sensor's ±0.5 °C absolute accuracy. Covered by new cases in
+  `tests/test_provisioning.py` and `tests/test_config_schema.py`.
+
 ## [2.4.4] - 2026-07-21
 
 ### Added

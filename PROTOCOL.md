@@ -102,9 +102,16 @@ interval. Persisted to NVS so it survives reboots.
 {
   "server_url": "http://192.168.1.50:8080/api/ingest",
   "token": "s3cr3t-device-token",
-  "interval_ms": 5000
+  "interval_ms": 5000,
+  "resolution_bits": 11
 }
 ```
+
+- `resolution_bits` is **optional** (DS18B20 resolution, `9`..`12`; 9=0.5 °C/~94 ms,
+  10=0.25 °C, 11=0.125 °C/~375 ms default, 12=0.0625 °C/~750 ms). Omitting it leaves
+  the probe's current resolution unchanged, so a hub that doesn't manage it (or an
+  older one) is unaffected; an older probe simply ignores the unknown field. Note
+  that 12-bit's 750 ms conversion exceeds a 500 ms interval and caps the sample rate.
 
 **Response** `200 OK`
 
@@ -112,12 +119,13 @@ interval. Persisted to NVS so it survives reboots.
 { "id": "Setpoint-9A3F2C", "name": "Garage Fridge", "fw": "2.0.0", "accepted": true }
 ```
 
-The probe persists `server_url`, `token`, and `interval_ms` to NVS and begins posting
-(§5).
+The probe persists `server_url`, `token`, `interval_ms`, and `resolution_bits` to NVS
+and begins posting (§5). It echoes `resolution_bits` in `/whoami` and `/status` so the
+hub can confirm the applied value.
 
 > **Hub implementation note.** Setpoint's built-in auto-provisioner and the
-> `POST /api/provision` endpoint push exactly `{server_url, token, interval_ms}` to
-> the probe's `/provision` (trying the probe IP first, then its `.local` hostname).
+> `POST /api/provision` endpoint push `{server_url, token, interval_ms, resolution_bits}`
+> to the probe's `/provision` (trying the probe IP first, then its `.local` hostname).
 > The `X-Provision-Secret` is a per-unit secret held by the operator; supply it via
 > the provisioning caller for units that enforce it.
 
