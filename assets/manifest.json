@@ -1,0 +1,16 @@
+{
+  "name": "Setpoint",
+  "short_name": "Setpoint",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b131b",
+  "theme_color": "#0b131b",
+  "icons": [
+    {
+      "src": "/assets/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

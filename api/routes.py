@@ -11,6 +11,11 @@ from flask import Blueprint, jsonify, request
 from provisioning import provision_probe, resolve_host
 from core.diagnostics import build_diagnostics
 from core.storage import normalize_payload, extract_humidity, compute_vpd, sanitize_probe_id
+try:  # battery telemetry helper — may be absent on an older core.storage build
+    from core.storage import extract_battery
+except ImportError:
+    def extract_battery(payload):
+        return None
 from core.status import reporting_probe_ids
 from core.version import HUB_VERSION, PRODUCT_NAME
 from core.applog import HEALTH, get_logger
@@ -64,6 +69,7 @@ def _reading_row(r) -> Dict[str, Any]:
         "temperature_f": _num(g("temperature_f")),
         "humidity_pct": _num(g("humidity_pct")),
         "vpd_kpa": _num(g("vpd_kpa")),
+        "battery_pct": _num(g("battery_pct")),
     }
 
 
@@ -455,7 +461,11 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
                 leaf_offset = 0.0
             vpd = compute_vpd(t_c, humidity, leaf_offset)
 
-        db.append(ts, t_c, t_f, probe_id=probe_id, humidity=humidity, vpd=vpd)
+        # Optional battery level from mains-free probes; missing/invalid -> NULL.
+        battery = extract_battery(data)
+
+        db.append(ts, t_c, t_f, probe_id=probe_id, humidity=humidity, vpd=vpd,
+                  battery=battery)
         HEALTH.record_write()
 
         if probe_id:

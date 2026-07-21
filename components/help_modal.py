@@ -27,15 +27,15 @@ def _help_body():
             ]),
 
             _section("2 · Name & calibrate", [
-                html.P([html.B("Devices → ✏️ Edit"), " lets you give a probe a friendly name "
+                html.P([html.B("Devices → Edit"), " lets you give a probe a friendly name "
                         "(e.g. “Walk-in Fridge”), set a read interval, and enter a ",
                         html.B("Calibration Offset"), " if it reads slightly high or low. The offset is "
                         "applied to every reading automatically."], className="mb-1"),
             ]),
 
             _section("3 · Alerts & notifications", [
-                html.P([html.B("Devices → ✏️ Edit"), " sets a min/max threshold per probe. ",
-                        html.B("Settings → Notifications"), " turns on email and/or webhook (Slack, Discord, "
+                html.P([html.B("Devices → Edit"), " sets a min/max threshold per probe. ",
+                        html.B("Settings → Alerts"), " turns on email and/or webhook (Slack, Discord, "
                         "Zapier, SMS relays). Alerts run on the hub, so they fire even with no browser open — "
                         "and you’re told when a probe goes ", html.B("offline"), " too."], className="mb-1"),
                 html.Small("Use “Send test” to confirm your settings before you rely on them.",
@@ -58,9 +58,10 @@ def _help_body():
                              " for history. Point any script or dashboard at it."]),
                     html.Li([html.B("Prometheus / Grafana"), " — scrape ",
                              html.Code("/metrics"), " (on by default) for live per-probe values."]),
-                    html.Li([html.B("Home Assistant / MQTT"), " — enable the ",
-                             html.Code("mqtt"), " block in config.json and each probe is "
-                             "published (with auto-discovery) the moment it reports."]),
+                    html.Li([html.B("Home Assistant / MQTT"), " — turn on ",
+                             html.B("Publish to MQTT"), " in ", html.B("Settings → Integrations"),
+                             " and each probe is published (with auto-discovery) the "
+                             "moment it reports."]),
                 ], className="mb-1"),
                 html.Small("These are read-only and run on the LAN; no cloud account needed.",
                            className="text-muted"),
@@ -73,11 +74,18 @@ def _help_body():
                     html.Li("No probes at all? A firewall may block mDNS (UDP 5353). Readings still work if the "
                             "probe can reach the hub directly."),
                     html.Li("Times look wrong? The hub stores readings in the PC’s local timezone."),
+                    html.Li(["Probe stale or offline? Check power/battery first, then Wi-Fi. "
+                             "Battery probes back-fill their buffered readings when they "
+                             "reconnect, so no data is lost."]),
+                    html.Li(["Probe joined the wrong Wi-Fi? Unplug the probe for 10 seconds "
+                             "and plug it back in — the ", html.B("Setpoint-XXXXXX"),
+                             " setup network reappears within ~30 seconds so you can pick "
+                             "the right one."]),
                 ], className="mb-1"),
             ]),
 
             html.Hr(),
-            html.A("📘 Full documentation", href=DOCS_URL, target="_blank"),
+            html.A("Full documentation", href=DOCS_URL, target="_blank"),
     ]
 
 

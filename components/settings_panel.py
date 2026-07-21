@@ -11,6 +11,7 @@ from dash import Input, Output, State, html, dcc, no_update
 
 from core.notifications import Notifier
 from core.alerts import format_event
+from core.mqtt_publish import MQTT
 
 
 def _section_title(text):
@@ -72,6 +73,21 @@ NotificationSettings = dbc.Card(dbc.CardBody([
         ], md=6),
     ], className="g-2 mt-1"),
 
+    dbc.Row([
+        dbc.Col([
+            html.Small("Rate alert (°C rise)", className="text-muted d-block"),
+            dbc.Input(id="notif-rate-alert", type="number", min=0, step=0.5, value=0),
+            html.Small("0 = off — catches a failing freezer early.",
+                       className="text-muted"),
+        ], md=6),
+        dbc.Col([
+            html.Small("within (minutes)", className="text-muted d-block"),
+            dbc.Input(id="notif-rate-window", type="number", min=1, step=1, value=10),
+            html.Small("Alert when a probe rises this many degrees inside the window.",
+                       className="text-muted"),
+        ], md=6),
+    ], className="g-2 mt-1"),
+
     # --- Where to send alerts ------------------------------------------------
     _section_title("Where to send alerts"),
     dbc.Switch(id="notif-email-enabled", label="Email", value=False),
@@ -97,6 +113,20 @@ NotificationSettings = dbc.Card(dbc.CardBody([
                      dbc.Input(id="email-from", placeholder="alerts@example.com")], md=6),
             dbc.Col([html.Small("To (comma-separated)", className="text-muted"),
                      dbc.Input(id="email-to", placeholder="me@example.com, ops@example.com")], md=6),
+        ], className="g-2 mt-1"),
+        dbc.Row([
+            dbc.Col([
+                dbc.Switch(id="daily-summary-enabled",
+                           label="Send a daily summary email", value=False,
+                           className="mt-2"),
+                html.Small("One email a day with each probe's min/max/average.",
+                           className="text-muted"),
+            ], md=6),
+            dbc.Col([
+                html.Small("Send at (hour, 0–23)", className="text-muted d-block"),
+                dbc.Input(id="daily-summary-hour", type="number", min=0, max=23,
+                          step=1, value=8),
+            ], md=6),
         ], className="g-2 mt-1"),
     ]), className="mt-2 mb-1"), id="email-collapse", is_open=False),
 
@@ -147,7 +177,43 @@ DataManagement = dbc.Card(dbc.CardBody([
 ]), className="mb-3")
 
 
-SettingsPanel = html.Div([NotificationSettings, DataManagement])
+IntegrationsCard = dbc.Card(dbc.CardBody([
+    html.H5("Integrations", className="card-title"),
+    html.P("Publish every reading to an MQTT broker with Home Assistant "
+           "auto-discovery — each probe appears there as a sensor automatically.",
+           className="text-muted small"),
+
+    dbc.Switch(id="mqtt-enabled", label="Publish to MQTT (Home Assistant)", value=False),
+    dbc.Collapse(dbc.Card(dbc.CardBody([
+        dbc.Row([
+            dbc.Col([html.Small("Broker host", className="text-muted"),
+                     dbc.Input(id="mqtt-host", placeholder="homeassistant.local")], md=8),
+            dbc.Col([html.Small("Port", className="text-muted"),
+                     dbc.Input(id="mqtt-port", type="number", value=1883)], md=4),
+        ], className="g-2"),
+        dbc.Row([
+            dbc.Col([html.Small("Username", className="text-muted"),
+                     dbc.Input(id="mqtt-user", placeholder="(optional)")], md=6),
+            dbc.Col([html.Small("Password", className="text-muted"),
+                     dbc.Input(id="mqtt-pass", type="password", placeholder="(unchanged)"),
+                     html.Small("Leave blank to keep the saved password.",
+                                className="text-muted")], md=6),
+        ], className="g-2 mt-1"),
+        dbc.Row([
+            dbc.Col([html.Small("Base topic", className="text-muted"),
+                     dbc.Input(id="mqtt-base-topic", placeholder="setpoint")], md=6),
+            dbc.Col([dbc.Switch(id="mqtt-discovery",
+                                label="Home Assistant auto-discovery",
+                                value=True, className="mt-4")], md=6),
+        ], className="g-2 mt-1"),
+    ]), className="mt-2 mb-1"), id="mqtt-collapse", is_open=False),
+
+    dbc.Button("Save", id="mqtt-save", color="primary", className="mt-3"),
+    html.Div(id="mqtt-status", className="mt-2"),
+]), className="mb-3")
+
+
+SettingsPanel = html.Div([NotificationSettings, IntegrationsCard, DataManagement])
 
 
 def _ok(msg):
@@ -160,7 +226,8 @@ def _err(msg):
 
 def build_notifications_config(enabled, cooldown_min, recovery, email_enabled, host, port,
                                tls, user, sender, to, webhook_enabled, url, password,
-                               offline_alerts=True, existing_password=""):
+                               offline_alerts=True, existing_password="",
+                               daily_summary_enabled=False, daily_summary_hour=8):
     """Turn raw Settings form values into a notifications config dict.
 
     Pure and module-level so it can be unit-tested.  A blank password means
@@ -174,6 +241,10 @@ def build_notifications_config(enabled, cooldown_min, recovery, email_enabled, h
         port = int(port)
     except (TypeError, ValueError):
         port = 587
+    try:
+        summary_hour = min(23, max(0, int(float(daily_summary_hour))))
+    except (TypeError, ValueError):
+        summary_hour = 8
     return {
         "enabled": bool(enabled),
         "cooldown_sec": cooldown_sec,
@@ -190,7 +261,33 @@ def build_notifications_config(enabled, cooldown_min, recovery, email_enabled, h
             "to": (to or "").strip(),
         },
         "webhook": {"enabled": bool(webhook_enabled), "url": (url or "").strip()},
+        "daily_summary": {"enabled": bool(daily_summary_enabled), "hour": summary_hour},
     }
+
+
+def build_mqtt_config(enabled, host, port, username, password, base_topic, discovery,
+                      existing=None):
+    """Turn raw Integrations form values into the ``mqtt`` config block.
+
+    Pure and module-level so it can be unit-tested.  A blank password keeps the
+    saved one, and keys the form does not expose (e.g. ``discovery_prefix``)
+    are carried over from the existing block untouched.
+    """
+    out = dict(existing or {})
+    try:
+        port = int(port)
+    except (TypeError, ValueError):
+        port = 1883
+    out.update({
+        "enabled": bool(enabled),
+        "host": (host or "").strip(),
+        "port": port,
+        "username": (username or "").strip(),
+        "password": password if password else out.get("password", ""),
+        "base_topic": (base_topic or "").strip() or "setpoint",
+        "discovery_enabled": bool(discovery),
+    })
+    return out
 
 
 def register_settings_callbacks(app, cfg):
@@ -210,12 +307,29 @@ def register_settings_callbacks(app, cfg):
         Output("retention-days", "value"),
         Output("notif-offline-enabled", "value"),
         Output("offline-after-min", "value"),
+        Output("notif-rate-alert", "value"),
+        Output("notif-rate-window", "value"),
+        Output("daily-summary-enabled", "value"),
+        Output("daily-summary-hour", "value"),
         Input("settings-loaded", "n_intervals"),
     )
     def _load(_n):
         n = cfg.get("notifications", {}) or {}
         email = n.get("email", {}) or {}
         webhook = n.get("webhook", {}) or {}
+        summary = n.get("daily_summary", {}) or {}
+        try:
+            rate_alert = max(0.0, float(cfg.get("rate_alert_c", 0.0) or 0.0))
+        except (TypeError, ValueError):
+            rate_alert = 0.0
+        try:
+            rate_window = max(1, int(cfg.get("rate_window_min", 10) or 10))
+        except (TypeError, ValueError):
+            rate_window = 10
+        try:
+            summary_hour = min(23, max(0, int(summary.get("hour", 8))))
+        except (TypeError, ValueError):
+            summary_hour = 8
         return (
             bool(n.get("enabled", False)),
             int(n.get("cooldown_sec", 1800) or 1800) // 60,
@@ -232,6 +346,10 @@ def register_settings_callbacks(app, cfg):
             int(cfg.get("retention_days", 0) or 0),
             bool(n.get("offline_alerts", True)),
             max(1, int(cfg.get("offline_after_sec", 300) or 300) // 60),
+            rate_alert,
+            rate_window,
+            bool(summary.get("enabled", False)),
+            summary_hour,
         )
 
     @app.callback(
@@ -258,6 +376,71 @@ def register_settings_callbacks(app, cfg):
     )
     def _toggle_webhook(enabled):
         return bool(enabled)
+
+    # --- Integrations (MQTT) --------------------------------------------------
+    @app.callback(
+        Output("mqtt-enabled", "value"),
+        Output("mqtt-host", "value"),
+        Output("mqtt-port", "value"),
+        Output("mqtt-user", "value"),
+        Output("mqtt-base-topic", "value"),
+        Output("mqtt-discovery", "value"),
+        Input("settings-loaded", "n_intervals"),
+    )
+    def _load_mqtt(_n):
+        m = cfg.get("mqtt", {}) or {}
+        return (
+            bool(m.get("enabled", False)),
+            m.get("host", ""),
+            int(m.get("port", 1883) or 1883),
+            m.get("username", ""),
+            m.get("base_topic", "setpoint"),
+            bool(m.get("discovery_enabled", True)),
+        )
+
+    @app.callback(
+        Output("mqtt-collapse", "is_open"),
+        Input("mqtt-enabled", "value"),
+    )
+    def _toggle_mqtt(enabled):
+        return bool(enabled)
+
+    @app.callback(
+        Output("mqtt-status", "children"),
+        Input("mqtt-save", "n_clicks"),
+        State("mqtt-enabled", "value"),
+        State("mqtt-host", "value"),
+        State("mqtt-port", "value"),
+        State("mqtt-user", "value"),
+        State("mqtt-pass", "value"),
+        State("mqtt-base-topic", "value"),
+        State("mqtt-discovery", "value"),
+        prevent_initial_call=True,
+    )
+    def _save_mqtt(_n, enabled, host, port, user, password, base_topic, discovery):
+        try:
+            existing = cfg.get("mqtt", {}) or {}
+            cfg.update({"mqtt": build_mqtt_config(
+                enabled, host, port, user, password, base_topic, discovery,
+                existing=existing)})
+        except Exception as e:  # noqa: BLE001
+            return _err(f"Could not save: {e}")
+        # Restart the publisher so the new settings take effect without a hub
+        # restart, then report the LIVE connection state — a saved-but-
+        # unreachable broker must not look like a working integration.
+        try:
+            MQTT.stop()
+            MQTT.start(cfg)
+        except Exception as e:  # noqa: BLE001
+            return _err(f"Saved, but restarting the MQTT publisher failed: {e}")
+        if not enabled:
+            return _ok("MQTT settings saved — publishing is off.")
+        if MQTT.is_ready():
+            return _ok("MQTT settings saved — connected to the broker and publishing.")
+        return dbc.Alert(
+            "Saved, but MQTT is not publishing yet — check the broker host, port "
+            "and credentials, and that paho-mqtt is installed (details in the hub log).",
+            color="warning", dismissable=True, className="mb-0")
 
     # Dim + disable the whole alert-config block while the master switch is off,
     # with an inline note, so the form never looks live when it isn't.
@@ -311,17 +494,22 @@ def register_settings_callbacks(app, cfg):
         State("webhook-url", "value"),
         State("email-pass", "value"),
         State("notif-hysteresis", "value"),
+        State("notif-rate-alert", "value"),
+        State("notif-rate-window", "value"),
+        State("daily-summary-enabled", "value"),
+        State("daily-summary-hour", "value"),
         prevent_initial_call=True,
     )
     def _save(_n, enabled, cooldown_min, recovery, offline_enabled, offline_after_min,
               email_enabled, host, port, tls, user, sender, to, webhook_enabled, url, password,
-              hysteresis):
+              hysteresis, rate_alert, rate_window, summary_enabled, summary_hour):
         try:
             existing = ((cfg.get("notifications", {}) or {}).get("email", {}) or {}).get("password", "")
             notif = build_notifications_config(
                 enabled, cooldown_min, recovery, email_enabled, host, port, tls, user,
                 sender, to, webhook_enabled, url, password,
-                offline_alerts=offline_enabled, existing_password=existing)
+                offline_alerts=offline_enabled, existing_password=existing,
+                daily_summary_enabled=summary_enabled, daily_summary_hour=summary_hour)
             updates = {"notifications": notif}
             try:
                 updates["offline_after_sec"] = max(60, int(float(offline_after_min)) * 60)
@@ -329,6 +517,14 @@ def register_settings_callbacks(app, cfg):
                 pass
             try:
                 updates["alert_hysteresis_c"] = max(0.0, float(hysteresis))
+            except (TypeError, ValueError):
+                pass
+            try:
+                updates["rate_alert_c"] = max(0.0, float(rate_alert))
+            except (TypeError, ValueError):
+                pass
+            try:
+                updates["rate_window_min"] = max(1, int(float(rate_window)))
             except (TypeError, ValueError):
                 pass
             cfg.update(updates)

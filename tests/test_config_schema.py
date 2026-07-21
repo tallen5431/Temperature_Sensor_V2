@@ -132,6 +132,42 @@ def test_input_is_not_mutated():
     assert raw["probe_names"] == "bad"
 
 
+def test_rate_alert_keys_coerced():
+    clean, _ = normalize_config({"rate_alert_c": "2.5", "rate_window_min": "15"})
+    assert clean["rate_alert_c"] == 2.5
+    assert clean["rate_window_min"] == 15 and isinstance(clean["rate_window_min"], int)
+    # Floors: a negative rate is meaningless (0 = disabled), the window is >= 1.
+    clean2, warns = normalize_config({"rate_alert_c": -3, "rate_window_min": 0})
+    assert clean2["rate_alert_c"] == 0
+    assert clean2["rate_window_min"] == 1
+    assert len(warns) == 2
+    clean3, warns3 = normalize_config({"rate_alert_c": "fast"})
+    assert clean3["rate_alert_c"] == 0.0        # unparseable -> default (disabled)
+    assert any("rate_alert_c" in w for w in warns3)
+
+
+def test_daily_summary_subtree_coerced():
+    clean, _ = normalize_config(
+        {"notifications": {"daily_summary": {"enabled": "yes", "hour": "9"}}})
+    ds = clean["notifications"]["daily_summary"]
+    assert ds["enabled"] is True
+    assert ds["hour"] == 9 and isinstance(ds["hour"], int)
+
+
+def test_daily_summary_hour_out_of_range():
+    clean, warns = normalize_config({"notifications": {"daily_summary": {"hour": 99}}})
+    assert clean["notifications"]["daily_summary"]["hour"] == 8
+    assert any("daily_summary.hour" in w for w in warns)
+    clean2, _ = normalize_config({"notifications": {"daily_summary": {"hour": -3}}})
+    assert clean2["notifications"]["daily_summary"]["hour"] == 0  # floored at midnight
+
+
+def test_daily_summary_non_dict_reset():
+    clean, warns = normalize_config({"notifications": {"daily_summary": "nope"}})
+    assert clean["notifications"]["daily_summary"] == {}
+    assert any("daily_summary" in w for w in warns)
+
+
 def test_resolution_bits_clamped_and_probe_resolutions_dict():
     # resolution_bits is bounded to 9..12; probe_resolutions must be an object.
     cfg, _ = normalize_config({"resolution_bits": 20, "probe_resolutions": {"A": 12}})

@@ -3,7 +3,7 @@ import datetime
 
 import pytest
 
-from core.storage import _to_local_naive, compute_vpd, normalize_payload
+from core.storage import _to_local_naive, compute_vpd, extract_battery, normalize_payload
 
 
 def test_celsius_only_computes_fahrenheit():
@@ -122,6 +122,48 @@ def test_out_of_range_temperature_rejected(bad):
 def test_in_band_temperature_accepted(ok):
     _, c, _ = normalize_payload({"temperature_c": ok})
     assert c == ok
+
+
+def test_extract_battery_pct_passthrough():
+    # A probe reporting a percentage directly is used as-is (0..100 inclusive).
+    assert extract_battery({"battery_pct": 87}) == 87.0
+    assert extract_battery({"battery_pct": 0}) == 0.0
+    assert extract_battery({"battery_pct": 100}) == 100.0
+    assert extract_battery({"battery_pct": "42.5"}) == 42.5
+
+
+def test_extract_battery_pct_out_of_band_rejected():
+    assert extract_battery({"battery_pct": 100.1}) is None
+    assert extract_battery({"battery_pct": -1}) is None
+
+
+def test_extract_battery_volts_mapped_linearly():
+    # Single-cell LiPo mapping: 3.0 V -> 0 %, 4.2 V -> 100 %, midpoint -> 50 %.
+    assert extract_battery({"battery_v": 3.0}) == pytest.approx(0.0)
+    assert extract_battery({"battery_v": 4.2}) == pytest.approx(100.0)
+    assert extract_battery({"battery_v": 3.6}) == pytest.approx(50.0)
+
+
+def test_extract_battery_volts_clamped_inside_plausible_band():
+    # A freshly charged cell can read slightly above 4.2 V and a deeply drained
+    # one below 3.0 V; within the plausible cell band those clamp to 100/0.
+    assert extract_battery({"battery_v": 4.35}) == 100.0
+    assert extract_battery({"battery_v": 2.8}) == 0.0
+
+
+@pytest.mark.parametrize("payload", [
+    {},                            # no battery keys at all (mains-powered probe)
+    {"battery_pct": None},
+    {"battery_pct": ""},
+    {"battery_pct": "junk"},
+    {"battery_pct": "nan"},
+    {"battery_v": "inf"},
+    {"battery_v": "junk"},
+    {"battery_v": 12.0},           # not a single-cell voltage -> junk, not "full"
+    {"battery_v": 0.0},            # dead-short reading -> junk, not "empty"
+])
+def test_extract_battery_junk_returns_none(payload):
+    assert extract_battery(payload) is None
 
 
 def test_compute_vpd_typical_and_extreme():

@@ -7,7 +7,7 @@ the failed step. This checklist is driven by
 sketch with `arduino-cli`, captures the unit's identity from the boot `[label]`
 serial line, and prints the exact label + a matching QC list to tick on the bench.
 
-- Firmware: **v2.6.0**, protocol v1. Identity rules and pin map are defined in
+- Firmware: **v2.7.0**, protocol v1. Identity rules and pin map are defined in
   [`firmware/src/protocol.h`](../firmware/src/protocol.h) (single source of truth);
   the shipping firmware is the sketch
   [`esp32_temp_probe/esp32_temp_probe.ino`](../esp32_temp_probe/esp32_temp_probe.ino).
@@ -63,7 +63,7 @@ tick each item below as the operator confirms it.
       across a power-cycle — it must **not** change between boots.
 - [ ] **2.3** `GET http://<probe-ip>/whoami` (or `Setpoint-<HEX6>.local`)
       returns `{id,name,mac,ds18b20_rom,fw_version,...}` with `id` == the printed
-      `probe_id` and `fw_version` == **`2.6.0`**.
+      `probe_id` and `fw_version` == **`2.7.0`**.
 - [ ] **2.4** **Uniqueness:** the `probe_id` is not already present in the batch
       serial log CSV. (A collision means a duplicate DS18B20 ROM or MAC-fallback
       chip — quarantine both if it ever happens.)
@@ -111,7 +111,7 @@ tick each item below as the operator confirms it.
 - [ ] **7.1** Note on the serial log that this firmware ships **open
       plug-and-play**: `POST /provision` is accepted on the trusted LAN with **no**
       `X-Provision-Secret` gate (a per-unit provision secret is a future option,
-      not implemented in v2.6.0). The setup network itself is an **open** per-unit
+      not implemented in v2.7.0). The setup network itself is an **open** per-unit
       SoftAP (step 3.2), present only during first-time setup.
 
 ### 8. Label + record

@@ -60,6 +60,18 @@ def build_diagnostics(cfg, db, finder, public_base: str, version: str,
         probes = []
     timeout = _int(cfg.get("probe_online_timeout_sec", 60), 60)
 
+    # Probes freshly REPORTING to the database — matches the dashboard's
+    # "Connected Probes". Computed once, then overlaid on each per-probe row
+    # below (mirroring the /api/probes overlay), so a deep-sleep probe that
+    # keeps posting reads online even when mDNS last saw it minutes ago, and a
+    # non-mDNS-visible probe still counts — this figure can never disagree with
+    # the dashboard/footer, which use the same interval-aware helper.
+    try:
+        reporting_ids = reporting_probe_ids(cfg, db, now=now)
+        reporting = len(reporting_ids)
+    except Exception:
+        reporting_ids, reporting = set(), None
+
     probe_list: List[Dict[str, Any]] = []
     online = 0
     for p in probes:
@@ -68,23 +80,10 @@ def build_diagnostics(cfg, db, finder, public_base: str, version: str,
         pid = props.get("id") or get("probe_id") or get("name")
         last = get("last_seen")
         age = round(now - float(last), 1) if isinstance(last, (int, float)) else None
-        is_online = age is not None and age <= timeout
+        is_online = (age is not None and age <= timeout) or (pid in reporting_ids)
         online += 1 if is_online else 0
         probe_list.append({"name": get("name"), "probe_id": pid, "ip": get("ip"),
                            "age_sec": age, "online": is_online})
-
-    # Probes freshly REPORTING to the database — matches the dashboard's
-    # "Connected Probes". A deep-sleep (or otherwise non-mDNS-visible) probe that
-    # keeps posting still counts here even though it never appears in the mDNS
-    # discovery list above, so this figure agrees with the dashboard/footer.
-    reporting = None
-    try:
-        # Judge each probe against its OWN interval-aware freshness window via the
-        # shared helper the dashboard/API/metrics also use — so "reporting" here
-        # can never disagree with the dashboard's "Connected Probes".
-        reporting = len(reporting_probe_ids(cfg, db, now=now))
-    except Exception:
-        reporting = None
 
     try:
         readings = db.count()

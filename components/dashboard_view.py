@@ -12,6 +12,14 @@ from core.status import (probe_fresh_window as _probe_fresh_window,
                          reporting_probe_ids, ONLINE_TIMEOUT_SEC)
 from core.demo import has_demo_data, load_demo_data, clear_demo_data
 
+# Held-breach registry: the AlertMonitor's hysteresis can hold a probe "in
+# breach" after its raw reading is back inside the limit. The probe cards read
+# it so a held probe shows amber "recovering" instead of green OK.
+try:
+    from core.alerts import HELD
+except ImportError:  # registry ships with core.alerts — degrade to plain OK
+    HELD = None
+
 log = logging.getLogger("hub.dashboard")
 
 # Maps the UI time-range selector to a rolling window in seconds (None = all).
@@ -37,7 +45,7 @@ GaugeCard = dbc.Card(
     dbc.CardBody([
         html.H5(
             ["Current Temperature",
-             html.Span(" 🟢 LIVE", id="live-badge", className="ms-2 text-success small fw-bold")],
+             html.Span("LIVE", id="live-badge", className="ms-2 text-success small fw-bold")],
             className="card-title",
         ),
         dcc.Graph(id="temp-gauge", style={"height": "230px"},
@@ -52,15 +60,15 @@ GaugeCard = dbc.Card(
 MetricsRow = dbc.Row([
     dbc.Col(dbc.Card(dbc.CardBody([
         html.H6("Connected Probes", className="text-muted mb-1"),
-        html.H2(id="metric-probes", className="fw-bold mb-0"),
+        html.H2(id="metric-probes", className="fw-bold mb-0 kpi-value"),
     ]), className="h-100"), xs=6, lg=3),
     dbc.Col(dbc.Card(dbc.CardBody([
         html.H6("Last Update", className="text-muted mb-1"),
-        html.H2(id="metric-lastupdate", className="fw-bold mb-0", style={"fontSize": "1.5rem"}),
+        html.H2(id="metric-lastupdate", className="fw-bold mb-0 kpi-value"),
     ]), className="h-100"), xs=6, lg=3),
     dbc.Col(dbc.Card(dbc.CardBody([
         html.H6("Logging Status", className="text-muted mb-1"),
-        html.H2(id="metric-logging", className="fw-bold text-success mb-0"),
+        html.H2(id="metric-logging", className="fw-bold text-success mb-0 kpi-value"),
     ]), className="h-100"), xs=6, lg=3),
     dbc.Col(dbc.Card(dbc.CardBody([
         html.H6("Unit", className="text-muted mb-1"),
@@ -102,6 +110,13 @@ ProbeStatsRow = html.Div(id="probe-stats-row", className="mb-3")
 # --- Alerts Row ---
 AlertsRow = html.Div(id="alerts-container", className="mb-3")
 
+# Recent alert-lifecycle events (breaches, recoveries, offline/online, rate) —
+# rendered from the events log on its own 30 s interval so the log never rides
+# the 5 s temperature refresh. Stays empty (invisible) until an event exists.
+# The interval lives in DashboardLayout, NOT inside this div: the callback
+# replaces the div's children, which would destroy a nested interval.
+EventsRow = html.Div(id="events-row", className="mb-3")
+
 # Per-probe status cards — one per probe that has reported, with its current
 # temperature and an at-a-glance OK / HIGH / LOW / stale state. Populated by an
 # independent callback (keyed off ingest, so deep-sleep probes still show).
@@ -116,17 +131,17 @@ EnvironmentRow = html.Div(id="env-row", className="mb-3")
 GraphCard = dbc.Card(
     dbc.CardBody([
         dbc.Row([
-            dbc.Col(html.H5("Temperature History"), width="auto"),
+            dbc.Col(html.H5("Temperature History", className="card-title"), width="auto"),
             dbc.Col(
                 dbc.Select(
                     id="time-range-selector",
                     options=[
-                        {"label": "🕐 Last Hour", "value": "1h"},
-                        {"label": "🕕 Last 6 Hours", "value": "6h"},
-                        {"label": "📅 Last 24 Hours", "value": "24h"},
-                        {"label": "📆 Last Week", "value": "7d"},
-                        {"label": "📊 Last Month", "value": "30d"},
-                        {"label": "🌍 All Time", "value": "all"},
+                        {"label": "Last Hour", "value": "1h"},
+                        {"label": "Last 6 Hours", "value": "6h"},
+                        {"label": "Last 24 Hours", "value": "24h"},
+                        {"label": "Last Week", "value": "7d"},
+                        {"label": "Last Month", "value": "30d"},
+                        {"label": "All Time", "value": "all"},
                     ],
                     value="24h", size="sm", className="w-auto",
                 ),
@@ -141,9 +156,9 @@ GraphCard = dbc.Card(
                                                "zoomIn2d", "zoomOut2d", "toggleSpikelines"]},
         ),
         html.Div([
-            dbc.Button("⤓ Export…", id="export-open", color="secondary", outline=True,
+            dbc.Button("Export…", id="export-open", color="secondary", outline=True,
                        size="sm", className="mt-2 me-2"),
-            dbc.Button("📥 Download CSV", id="download-btn", color="secondary", size="sm",
+            dbc.Button("Download CSV", id="download-btn", color="secondary", size="sm",
                        className="mt-2", external_link=True, href="/download/temperature_log.csv"),
         ], className="text-end"),
         html.Small(id="heartbeat", className="text-muted mt-2 d-block"),
@@ -156,7 +171,7 @@ GraphCard = dbc.Card(
 def _onboarding_card():
     return dbc.Alert(
         [
-            html.H5("👋 Waiting for your first reading…", className="alert-heading"),
+            html.H5("Waiting for your first reading…", className="alert-heading"),
             html.P("No data has arrived yet. To get a probe online:", className="mb-2"),
             html.Ol([
                 html.Li("Power your probe on the same Wi-Fi network as this hub."),
@@ -168,7 +183,7 @@ def _onboarding_card():
             html.P(["Just exploring? Load a day of sample readings to try everything out — "
                     "the dashboard, charts, export and per-probe views — no hardware needed."],
                    className="mb-2 small"),
-            dbc.Button("▶ Load demo data", id="demo-load-btn", color="info", size="sm"),
+            dbc.Button("Load demo data", id="demo-load-btn", color="info", size="sm"),
             html.P(["Or send a real test reading from a terminal: ",
                     html.Code("curl -X POST -H 'Content-Type: application/json' -d '{\"temperature_c\":22.3}' http://localhost:8088/api/ingest")],
                    className="mb-0 mt-2 small"),
@@ -180,7 +195,7 @@ def _onboarding_card():
 def _demo_alert():
     """Persistent reminder + one-click cleanup shown while demo data is loaded."""
     return dbc.Alert([
-        html.Span("🧪 Demo data is loaded — these are sample readings, not a real probe.",
+        html.Span("Demo data is loaded — these are sample readings, not a real probe.",
                   className="small"),
         dbc.Button("Clear demo data", id="demo-clear-btn", color="warning", outline=True,
                    size="sm", className="ms-3 flex-shrink-0"),
@@ -195,7 +210,7 @@ def _demo_alert():
 FocusBar = dbc.Row([
     dbc.Col(
         dbc.InputGroup([
-            dbc.InputGroupText("🔍 Viewing"),
+            dbc.InputGroupText("Viewing"),
             dbc.Select(id="focus-probe-selector", value="all",
                        options=[{"label": "All probes (overview)", "value": "all"}]),
         ], size="sm"),
@@ -207,7 +222,7 @@ FocusBar = dbc.Row([
     # clocks/logs without digging into Settings.
     dbc.Col(
         dbc.InputGroup([
-            dbc.InputGroupText("🕐 Clock"),
+            dbc.InputGroupText("Clock"),
             dbc.ButtonGroup([
                 dbc.Button("24h", id="clock-24h", size="sm", color="secondary", outline=False),
                 dbc.Button("12h", id="clock-12h", size="sm", color="secondary", outline=True),
@@ -243,7 +258,7 @@ ExportModal = dbc.Modal([
     ]),
     dbc.ModalFooter([
         dbc.Button("Cancel", id="export-cancel", color="secondary", className="me-2"),
-        dbc.Button("⬇ Download CSV", id="export-download", color="primary",
+        dbc.Button("Download CSV", id="export-download", color="primary",
                    external_link=True, href="/download/temperature_log.csv"),
     ]),
 ], id="export-modal", is_open=False)
@@ -253,12 +268,18 @@ ExportModal = dbc.Modal([
 DashboardLayout = html.Div([
     dcc.Store(id="temp-unit-store", storage_type="local", data="celsius"),
     dcc.Store(id="clock-format-store", storage_type="local", data="24h"),
+    # Per-client render signature for the main refresh callback: when a 5 s tick
+    # arrives and nothing it would draw has changed, the callback answers
+    # no_update instead of re-rendering both figures (see update_dashboard).
+    dcc.Store(id="dash-render-sig"),
+    dcc.Interval(id="events-refresh", interval=30000, n_intervals=0),
     html.Div(id="dashboard-onboarding"),
     html.Div(id="demo-banner"),
     ExportModal,
     FocusBar,
     MetricsRow,
     AlertsRow,
+    EventsRow,
     ProbesRow,
     StatsRow,
     ProbeStatsRow,
@@ -417,10 +438,132 @@ def _make_gauge(name, t_c, lo, hi, temp_unit, suffix):
                "steps": steps, "borderwidth": 0},
         domain={"x": [0, 1], "y": [0, 1]},
     ))
-    fig.update_layout(margin=dict(t=40, b=10, l=20, r=20), height=250,
+    fig.update_layout(margin=dict(t=40, b=10, l=20, r=20), height=230,
                       paper_bgcolor="rgba(0,0,0,0)",
                       font=dict(color="#e9f1f7", family=FONT_STACK))
     return fig
+
+
+def _render_sig(latest, time_range, temp_unit, focus_probe, clock_format, now=None):
+    """Cheap change signature for the main dashboard refresh.
+
+    Combines everything the big callback's output depends on: the newest
+    reading's timestamp (new data), the view selectors (range/unit/focus/clock)
+    and a 15 s wall-clock bucket. The bucket keeps time-relative output ("12 s
+    ago", staleness cut-offs) moving even when no new reading arrives, bounding
+    how long a gated dashboard can display an outdated relative age.
+    """
+    ts = (latest or {}).get("timestamp")
+    bucket = int((now if now is not None else time.time()) // 15)
+    return f"{ts}|{time_range}|{temp_unit}|{focus_probe}|{clock_format}|{bucket}"
+
+
+# Badge colour per event kind: breaches read as alerts (high hot-red, low
+# cool-blue), offline/rate as cautions, recovery/online as good news.
+_EVENT_COLORS = {"high": "danger", "low": "info", "offline": "warning",
+                 "rate": "warning", "recovery": "success", "online": "success"}
+
+
+def build_events(db, cfg, temp_unit, limit=8, window_seconds=86400):
+    """Compact "Recent events" rows from the alert-lifecycle event log.
+
+    Returns ``[]`` when there is nothing to show (the section stays invisible),
+    else a heading plus one row per event — "HIGH · Freezer · -14.8 °C
+    (limit -15.0) · 14:32" — newest first, temperatures in the display unit.
+    Kept Dash-callback-free so tests can call it directly.
+    """
+    temp_unit = temp_unit or "celsius"
+    try:
+        events = db.list_events(limit=limit, window_seconds=window_seconds)
+    except Exception:
+        return []  # events log unavailable — hide the section rather than break
+    if not events:
+        return []
+    rows = []
+    for ev in events:
+        kind = str(ev.get("kind", "")).strip().lower()
+        bits = [_friendly_name(cfg, ev.get("probe_id"))]
+        t_c, lim = ev.get("temperature_c"), ev.get("limit_c")
+        if t_c is not None:
+            txt = _fmt(t_c, temp_unit)
+            if lim is not None:
+                txt += f" (limit {_convert(lim, temp_unit):.1f})"
+            bits.append(txt)
+        bits.append(_fmt_clock(ev.get("timestamp")))
+        rows.append(html.Div([
+            dbc.Badge(kind.upper(), color=_EVENT_COLORS.get(kind, "secondary"),
+                      className="me-2 flex-shrink-0"),
+            html.Small(" · ".join(bits), className="text-muted"),
+        ], className="d-flex align-items-center mb-1"))
+    return html.Div([
+        html.H6("Recent events", className="text-muted mb-2"),
+        html.Div(rows),
+    ])
+
+
+def build_probe_cards(db, cfg, temp_unit, focus_probe="all"):
+    """One status card per probe: current temperature + OK/HIGH/LOW/stale.
+
+    In focus mode only the selected probe's card is shown. A probe whose raw
+    reading is back inside the limits but which the alert monitor's hysteresis
+    still holds in breach shows amber "recovering" instead of green OK, so the
+    card agrees with the (held) alert banner. Kept Dash-callback-free so tests
+    can call it directly.
+    """
+    temp_unit = temp_unit or "celsius"
+    focus = focus_probe if (focus_probe and focus_probe != "all") else None
+    try:
+        latest = db.latest_per_probe(window_seconds=PROBE_PRESENCE_WINDOW)
+    except Exception:
+        return []
+    if latest is None or latest.empty:
+        return []
+    thresholds = cfg.get("alert_thresholds", {}) or {}
+    now = datetime.datetime.now()
+    cards = []
+    for _, row in latest.iterrows():
+        pid = row["probe_id"]
+        if not str(pid).strip():
+            continue
+        if focus is not None and pid != focus:
+            continue
+        t_c = row["temperature_c"]
+        age = None
+        try:
+            dt = datetime.datetime.fromisoformat(str(row["timestamp"]).rstrip("Z"))
+            age = (now - dt).total_seconds()
+        except Exception:
+            pass
+        thr = thresholds.get(pid, thresholds.get("default", {})) or {}
+        breach = threshold_breach(t_c, thr.get("min"), thr.get("max"))
+        if age is not None and age > _probe_fresh_window(cfg, pid):
+            color, badge = "secondary", "● stale"
+        elif breach == "high":
+            color, badge = "danger", "▲ HIGH"
+        elif breach == "low":
+            color, badge = "info", "▼ LOW"
+        elif HELD is not None and HELD.get(pid) in ("high", "low"):
+            # Back inside the limit but still held by the monitor's hysteresis
+            # deadband — not yet a clean OK.
+            color, badge = "warning", "● recovering"
+        else:
+            color, badge = "success", "● OK"
+        body = [
+            html.Div([
+                html.Span(_friendly_name(cfg, pid), className="fw-bold text-truncate"),
+                dbc.Badge(badge, color=color, className="ms-2 flex-shrink-0"),
+            ], className="d-flex justify-content-between align-items-center"),
+            html.H3(_fmt(t_c, temp_unit), className=f"fw-bold text-{color} my-1"),
+            html.Small(_age_text(age), className="text-muted"),
+        ]
+        batt = row.get("battery_pct")
+        if batt is not None and not pd.isna(batt):
+            batt_cls = "text-warning" if float(batt) < 20 else "text-muted"
+            body.append(html.Small(f"Batt {float(batt):.0f}%",
+                                   className=f"d-block {batt_cls}"))
+        cards.append(dbc.Col(dbc.Card(dbc.CardBody(body), className="h-100"),
+                             xl=3, md=4, sm=6, className="mb-2"))
+    return dbc.Row(cards, className="g-3")
 
 
 def build_probe_stats(db, cfg, time_range, temp_unit):
@@ -464,11 +607,16 @@ def build_probe_stats(db, cfg, time_range, temp_unit):
     ])
 
 
-def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", clock_format="24h"):
+def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", clock_format="24h",
+                    latest=None):
     """Pure(ish) computation behind the dashboard refresh callback.
 
     Returns the 14-tuple the Dash callback emits.  Kept free of Dash specifics
     (only reads ``db``/``cfg``/``finder``) so it can be unit-tested directly.
+
+    ``latest`` lets the callback wrapper pass in the newest-reading row it
+    already fetched for its render signature, avoiding a second ``db.latest()``
+    per tick; when ``None`` (direct/test callers) it is fetched here.
 
     ``focus_probe`` selects a single probe for the gauge, graph and statistics
     (drill-in). ``"all"`` (or a probe with no data) keeps the multi-probe
@@ -490,7 +638,8 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
     focus_ts = None  # the focused probe's OWN latest timestamp (for "Last Update")
 
     try:
-        latest = db.latest()
+        if latest is None:
+            latest = db.latest()
         if not latest:
             raise ValueError("no data")
 
@@ -520,6 +669,17 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
                 thr = thresholds.get(focus_pid, thresholds.get("default", {})) or {}
                 focus_lo, focus_hi = thr.get("min"), thr.get("max")
 
+        # One latest-per-probe scan over the window, shared by the worst-breach
+        # gauge picker and the alerts loop below (each previously ran its own
+        # identical query on every tick). None on failure or when neither
+        # consumer needs it (focused view with no thresholds configured).
+        latest_each = None
+        if focus is None or thresholds:
+            try:
+                latest_each = db.latest_per_probe(window_seconds=window)
+            except Exception:
+                latest_each = None
+
         if focus is None:
             # --- Overview: the probe that needs attention (worst active breach),
             # else the latest reading overall — shown with its own threshold zones.
@@ -530,7 +690,7 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
             try:
                 best = None  # (severity, pid, t_c, lo, hi)
                 now_dt = datetime.datetime.now()
-                for _, r in db.latest_per_probe(window).iterrows():
+                for _, r in (latest_each.iterrows() if latest_each is not None else ()):
                     pid = r["probe_id"]
                     age = _row_age_seconds(r, now_dt)
                     if age is not None and age > _probe_fresh_window(cfg, pid):
@@ -550,11 +710,20 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
                             focus_lo, focus_hi, temp_unit, suffix)
 
         # --- Windowed series for the graph (filtered to the focused probe) ---
-        df = db.window_df(window_seconds=window)
-        if focus is not None and not df.empty:
-            df = df[df["probe_id"] == focus]
+        # Stats first: in the overview their COUNT covers the whole window, so
+        # a provably-empty window skips window_df entirely — including the
+        # duplicate COUNT it runs internally to size its downsampling stride.
+        # (Focus mode can't reuse the count: its stats are probe-filtered but
+        # window_df's scan is not.)
         stats = db.window_stats(window_seconds=window, probe_id=focus)
         filtered_points = stats["count"]
+        if focus is None and time_range != "all" and not filtered_points:
+            df = pd.DataFrame(columns=["timestamp", "temperature_c",
+                                       "temperature_f", "probe_id"])
+        else:
+            df = db.window_df(window_seconds=window)
+        if focus is not None and not df.empty:
+            df = df[df["probe_id"] == focus]
         # "all" renders the same figure for filtered and total, so skip the extra
         # full-table COUNT(*) scan on every 5s tick in that view.
         total_points = filtered_points if time_range == "all" else db.count()
@@ -585,6 +754,32 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
             y_all = df["temperature_c"].apply(lambda x: _convert(x, temp_unit))
             pad = (y_all.max() - y_all.min()) * 0.1 if y_all.max() > y_all.min() else 5
             y_range = [y_all.min() - pad, y_all.max() + pad]
+
+            # --- Threshold bands: drawn only when exactly ONE probe's series
+            # is plotted (focus mode, or an overview that has a single probe),
+            # because then its min/max limits apply to the whole chart. Each
+            # limit gets a dashed line plus a faint wash over the out-of-band
+            # region. A multi-probe overlay skips this — several probes'
+            # differing limits would just be chart noise.
+            if len(probe_ids) == 1:
+                band_pid = focus if focus is not None else probe_ids[0]
+                bthr = thresholds.get(band_pid, thresholds.get("default", {})) or {}
+                lo_u = _convert(bthr["min"], temp_unit) if bthr.get("min") is not None else None
+                hi_u = _convert(bthr["max"], temp_unit) if bthr.get("max") is not None else None
+                # Widen the y-range so both limits stay visible even while the
+                # data sits comfortably inside the band.
+                if hi_u is not None:
+                    y_range[1] = max(y_range[1], hi_u + pad)
+                    fig.add_hrect(y0=hi_u, y1=y_range[1], line_width=0, layer="below",
+                                  fillcolor="rgba(240,90,84,0.07)")
+                    fig.add_hline(y=hi_u, line_dash="dash", line_width=1,
+                                  line_color="#f05a54", opacity=0.5)
+                if lo_u is not None:
+                    y_range[0] = min(y_range[0], lo_u - pad)
+                    fig.add_hrect(y0=y_range[0], y1=lo_u, line_width=0, layer="below",
+                                  fillcolor="rgba(56,182,217,0.07)")
+                    fig.add_hline(y=lo_u, line_dash="dash", line_width=1,
+                                  line_color="#38b6d9", opacity=0.5)
         else:
             multi = False
             y_range = None
@@ -664,10 +859,8 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
         # window — its per-probe card already reads "● stale" and Connected Probes
         # drops it, so the banner has to agree.
         alerts = []
-        thresholds = cfg.get("alert_thresholds", {})
-        if thresholds:
+        if thresholds and latest_each is not None:
             now_dt = datetime.datetime.now()
-            latest_each = db.latest_per_probe(window_seconds=window)
             for _, row in latest_each.iterrows():
                 pid = row["probe_id"]
                 t_c = row["temperature_c"]
@@ -677,13 +870,15 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
                 cfgt = thresholds.get(pid, thresholds.get("default", {})) or {}
                 hi, lo = cfgt.get("max"), cfgt.get("min")
                 if hi is not None and t_c > hi:
-                    alerts.append(dbc.Alert([html.Strong(f"⚠️ {_friendly_name(cfg, pid)}: "),
+                    alerts.append(dbc.Alert([html.Strong(f"▲ {_friendly_name(cfg, pid)}: "),
                                   f"{_fmt(t_c, temp_unit)} (above threshold: {_fmt(hi, temp_unit)})"],
                                   color="danger", className="mb-2"))
                 elif lo is not None and t_c < lo:
-                    alerts.append(dbc.Alert([html.Strong(f"❄️ {_friendly_name(cfg, pid)}: "),
+                    # Low breaches read cool-blue ("info"), matching the LOW
+                    # badge / gauge colouring — amber stays for cautions.
+                    alerts.append(dbc.Alert([html.Strong(f"▼ {_friendly_name(cfg, pid)}: "),
                                   f"{_fmt(t_c, temp_unit)} (below threshold: {_fmt(lo, temp_unit)})"],
-                                  color="warning", className="mb-2"))
+                                  color="info", className="mb-2"))
 
         # --- Heartbeat + human-friendly "Last Update" ---
         # In focus mode, base "Last Update"/heartbeat on the FOCUSED probe's own
@@ -900,51 +1095,9 @@ def register_dashboard_callbacks(app, finder, cfg, db):
         Input("focus-probe-selector", "value"),
     )
     def _update_probe_cards(_n, temp_unit, focus_probe):
-        """One status card per probe: current temperature + OK/HIGH/LOW/stale.
-        In focus mode only the selected probe's card is shown."""
-        temp_unit = temp_unit or "celsius"
-        focus = focus_probe if (focus_probe and focus_probe != "all") else None
-        try:
-            latest = db.latest_per_probe(window_seconds=PROBE_PRESENCE_WINDOW)
-        except Exception:
-            return []
-        if latest is None or latest.empty:
-            return []
-        thresholds = cfg.get("alert_thresholds", {}) or {}
-        now = datetime.datetime.now()
-        cards = []
-        for _, row in latest.iterrows():
-            pid = row["probe_id"]
-            if not str(pid).strip():
-                continue
-            if focus is not None and pid != focus:
-                continue
-            t_c = row["temperature_c"]
-            age = None
-            try:
-                dt = datetime.datetime.fromisoformat(str(row["timestamp"]).rstrip("Z"))
-                age = (now - dt).total_seconds()
-            except Exception:
-                pass
-            thr = thresholds.get(pid, thresholds.get("default", {})) or {}
-            breach = threshold_breach(t_c, thr.get("min"), thr.get("max"))
-            if age is not None and age > _probe_fresh_window(cfg, pid):
-                color, badge = "secondary", "● stale"
-            elif breach == "high":
-                color, badge = "danger", "▲ HIGH"
-            elif breach == "low":
-                color, badge = "info", "▼ LOW"
-            else:
-                color, badge = "success", "● OK"
-            cards.append(dbc.Col(dbc.Card(dbc.CardBody([
-                html.Div([
-                    html.Span(_friendly_name(cfg, pid), className="fw-bold text-truncate"),
-                    dbc.Badge(badge, color=color, className="ms-2 flex-shrink-0"),
-                ], className="d-flex justify-content-between align-items-center"),
-                html.H3(_fmt(t_c, temp_unit), className=f"fw-bold text-{color} my-1"),
-                html.Small(_age_text(age), className="text-muted"),
-            ]), className="h-100"), xl=3, md=4, sm=6, className="mb-2"))
-        return dbc.Row(cards, className="g-3")
+        # Logic lives in build_probe_cards (module level) so tests can call it
+        # directly — e.g. with the HELD registry stubbed.
+        return build_probe_cards(db, cfg, temp_unit, focus_probe)
 
     @app.callback(
         Output("probe-stats-row", "children"),
@@ -985,11 +1138,21 @@ def register_dashboard_callbacks(app, finder, cfg, db):
             cards.append(dbc.Col(dbc.Card(dbc.CardBody([
                 html.H6(_friendly_name(cfg, row["probe_id"]), className="text-muted mb-1"),
                 html.Div([
-                    html.Span(f"💧 {float(hum):.0f}% RH", className="fw-bold me-3"),
+                    html.Span(f"{float(hum):.0f}% RH", className="fw-bold me-3"),
                     html.Span(f"VPD {vpd_txt}", className="fw-bold text-info"),
                 ]),
             ])), md=4, className="mb-2"))
         return dbc.Row(cards, className="g-3") if cards else []
+
+    @app.callback(
+        Output("events-row", "children"),
+        Input("events-refresh", "n_intervals"),
+        State("temp-unit-store", "data"),
+    )
+    def _update_events(_n, temp_unit):
+        """Recent alert-lifecycle events, refreshed on their own 30 s interval.
+        Renders nothing (invisible section) while the event log is empty."""
+        return build_events(db, cfg, temp_unit)
 
     @app.callback(
         Output("temp-gauge", "figure"),
@@ -1007,18 +1170,37 @@ def register_dashboard_callbacks(app, finder, cfg, db):
         Output("stat-avg-info", "children"),
         Output("alerts-container", "children"),
         Output("metric-logging", "className"),
+        Output("dash-render-sig", "data"),
         Input("dash-refresh", "n_intervals"),
         Input("time-range-selector", "value"),
         Input("temp-unit-store", "data"),
         Input("focus-probe-selector", "value"),
         Input("clock-format-store", "data"),
+        State("dash-render-sig", "data"),
     )
-    def update_dashboard(_n, time_range, temp_unit, focus_probe, clock_format):
-        out = build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe, clock_format)
+    def update_dashboard(_n, time_range, temp_unit, focus_probe, clock_format, prev_sig):
+        from dash import callback_context
+        # Tick gating: a 5 s interval tick that would redraw exactly what the
+        # client already shows (no new reading, same view selectors, same 15 s
+        # staleness bucket) answers no_update across the board — the browser
+        # skips two Plotly redraws and the server skips the window scans. Any
+        # user-driven trigger (range/unit/focus/clock) always renders.
+        try:
+            latest = db.latest()  # cheap LIMIT 1, shared with build_dashboard
+        except Exception:
+            latest = None
+        sig = _render_sig(latest, time_range, temp_unit, focus_probe, clock_format)
+        trigger = (callback_context.triggered[0]["prop_id"].split(".")[0]
+                   if callback_context.triggered else "")
+        if trigger == "dash-refresh" and prev_sig == sig:
+            return (no_update,) * 16
+        out = build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe,
+                              clock_format, latest=latest)
         # Colour the Logging KPI by state (its value is out[4]): green when ON,
         # amber when OFF — so "OFF" no longer renders in success-green.
-        logging_class = "fw-bold mb-0 " + ("text-success" if out[4] == "ON" else "text-warning")
-        return (*out, logging_class)
+        logging_class = "fw-bold mb-0 kpi-value " + ("text-success" if out[4] == "ON"
+                                                     else "text-warning")
+        return (*out, logging_class, sig)
 
     @app.callback(
         Output("focus-probe-selector", "options"),

@@ -97,13 +97,15 @@ class Database:
                     temperature_f REAL    NOT NULL,
                     probe_id      TEXT    NOT NULL DEFAULT '',
                     humidity_pct  REAL,
-                    vpd_kpa       REAL
+                    vpd_kpa       REAL,
+                    battery_pct   REAL
                 )
                 """
             )
-            # Forward-migrate a pre-humidity database: ADD COLUMN is a no-op error
-            # if the column already exists, so guard each one independently.
-            for col in ("humidity_pct", "vpd_kpa"):
+            # Forward-migrate a pre-humidity/pre-battery database: ADD COLUMN is a
+            # no-op error if the column already exists, so guard each one
+            # independently.
+            for col in ("humidity_pct", "vpd_kpa", "battery_pct"):
                 try:
                     conn.execute(f"ALTER TABLE readings ADD COLUMN {col} REAL")
                 except sqlite3.OperationalError:
@@ -112,22 +114,73 @@ class Database:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_readings_probe_epoch ON readings(probe_id, epoch)"
             )
+            # Alert-lifecycle event log (threshold breach/recovery, probe
+            # offline/online, rate-of-change) — powers the dashboard's recent
+            # events feed without re-deriving history from raw readings.
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS events (
+                    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ts            TEXT    NOT NULL,
+                    epoch         INTEGER NOT NULL,
+                    kind          TEXT    NOT NULL,
+                    probe_id      TEXT    NOT NULL DEFAULT '',
+                    temperature_c REAL,
+                    limit_c       REAL
+                )
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_events_epoch ON events(epoch)")
             conn.commit()
 
     # -- writes ----------------------------------------------------------------
     def append(self, ts: str, t_c: float, t_f: float, probe_id: str = "",
-               humidity: float | None = None, vpd: float | None = None) -> None:
+               humidity: float | None = None, vpd: float | None = None,
+               battery: float | None = None) -> None:
         epoch = iso_to_epoch(ts)
         conn = self._conn()
         with self._write_lock:
             conn.execute(
                 "INSERT INTO readings (ts, epoch, temperature_c, temperature_f, probe_id, "
-                "humidity_pct, vpd_kpa) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "humidity_pct, vpd_kpa, battery_pct) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (str(ts), epoch, float(t_c), float(t_f), probe_id or "",
                  (float(humidity) if humidity is not None else None),
-                 (float(vpd) if vpd is not None else None)),
+                 (float(vpd) if vpd is not None else None),
+                 (float(battery) if battery is not None else None)),
             )
             conn.commit()
+
+    def record_event(self, kind: str, probe_id: str, temperature_c=None,
+                     limit=None, ts=None) -> None:
+        """Append one alert-lifecycle event to the events log.
+
+        ``kind`` is one of ``'high' 'low' 'recovery' 'offline' 'online' 'rate'``;
+        ``ts`` defaults to the current local time.  Best-effort by design: the
+        alert cycle that emits an event must never be broken by an unrecordable
+        one, so bad numeric fields are coerced to NULL, a blank kind is skipped,
+        and any storage error is swallowed rather than raised to the caller.
+        """
+        def _f(v):
+            try:
+                return float(v) if v is not None else None
+            except (TypeError, ValueError):
+                return None
+        try:
+            kind = str(kind or "").strip()
+            if not kind:
+                return  # nothing meaningful to record
+            ts = str(ts) if ts else datetime.datetime.now().isoformat(timespec="seconds")
+            conn = self._conn()
+            with self._write_lock:
+                conn.execute(
+                    "INSERT INTO events (ts, epoch, kind, probe_id, temperature_c, limit_c) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (ts, int(iso_to_epoch(ts)), kind, str(probe_id or ""),
+                     _f(temperature_c), _f(limit)),
+                )
+                conn.commit()
+        except Exception:
+            pass  # an event is telemetry — never worth failing the caller over
 
     def bulk_insert(self, rows) -> int:
         """Insert many ``(ts, t_c, t_f, probe_id)`` tuples in one transaction.
@@ -159,6 +212,24 @@ class Database:
         first row, so this is O(1) — unlike ``count()`` (a full scan) it is cheap
         to call on every dashboard tick just to test emptiness."""
         row = self._conn().execute("SELECT EXISTS(SELECT 1 FROM readings) AS e").fetchone()
+        return bool(row and row["e"])
+
+    def has_probe_prefix(self, prefix: str) -> bool:
+        """True if any reading's ``probe_id`` starts with ``prefix``.
+
+        The GLOB prefix pattern rewrites to a range seek on
+        ``idx_readings_probe_epoch`` (verified via EXPLAIN QUERY PLAN in the
+        tests), so answering "is demo data loaded?" on every settings render is
+        O(log N) instead of scanning/grouping the whole readings table the way
+        ``last_reading_epoch_per_probe`` does.  ``prefix`` is expected to be a
+        plain probe-id token (no GLOB metacharacters).
+        """
+        if not prefix:
+            return self.has_any()
+        row = self._conn().execute(
+            "SELECT EXISTS(SELECT 1 FROM readings WHERE probe_id GLOB ?) AS e",
+            (str(prefix) + "*",),
+        ).fetchone()
         return bool(row and row["e"])
 
     def latest(self) -> Optional[dict]:
@@ -308,26 +379,34 @@ class Database:
 
         Ties on ``epoch`` (two readings in the same second) are broken by
         insertion ``id`` so "latest" is always the most recently stored row.
+
+        Implemented as per-probe index seeks on ``idx_readings_probe_epoch``:
+        the distinct probe ids come straight off the index, then each probe's
+        newest row is one backward ``ORDER BY epoch DESC LIMIT 1`` seek (``id``
+        is the rowid, so the index order breaks epoch ties for free).  That is
+        O(probes x log N) per call, replacing a ROW_NUMBER() window scan that
+        touched every row in the window on every dashboard tick.
         """
         conn = self._conn()
         cutoff = self._cutoff(window_seconds)
         where = "WHERE epoch >= ?" if cutoff is not None else ""
         params: tuple = (cutoff,) if cutoff is not None else ()
-        rows = conn.execute(
-            f"SELECT timestamp, temperature_c, temperature_f, probe_id, humidity_pct, vpd_kpa FROM ("
-            f"  SELECT ts AS timestamp, temperature_c, temperature_f, probe_id, humidity_pct, vpd_kpa, "
-            f"         ROW_NUMBER() OVER (PARTITION BY probe_id ORDER BY epoch DESC, id DESC) AS rn"
-            f"  FROM readings {where}"
-            f") WHERE rn = 1",
-            params,
-        ).fetchall()
-        return pd.DataFrame(
-            [{"timestamp": r["timestamp"], "temperature_c": r["temperature_c"],
-              "temperature_f": r["temperature_f"], "probe_id": r["probe_id"],
-              "humidity_pct": r["humidity_pct"], "vpd_kpa": r["vpd_kpa"]} for r in rows],
-            columns=["timestamp", "temperature_c", "temperature_f", "probe_id",
-                     "humidity_pct", "vpd_kpa"],
-        )
+        pids = [r["probe_id"] for r in conn.execute(
+            f"SELECT DISTINCT probe_id FROM readings {where}", params).fetchall()]
+        cols = ["timestamp", "temperature_c", "temperature_f", "probe_id",
+                "humidity_pct", "vpd_kpa", "battery_pct"]
+        epoch_clause = " AND epoch >= ?" if cutoff is not None else ""
+        out = []
+        for pid in pids:
+            row = conn.execute(
+                f"SELECT ts AS timestamp, temperature_c, temperature_f, probe_id, "
+                f"humidity_pct, vpd_kpa, battery_pct FROM readings "
+                f"WHERE probe_id = ?{epoch_clause} ORDER BY epoch DESC, id DESC LIMIT 1",
+                (pid,) + params,
+            ).fetchone()
+            if row is not None:
+                out.append({k: row[k] for k in cols})
+        return pd.DataFrame(out, columns=cols)
 
     def fetch_readings(self, window_seconds: Optional[int] = None,
                        probe_id: Optional[str] = None,
@@ -364,13 +443,35 @@ class Database:
         cap = max(1, min(cap, 50000))
         rows = conn.execute(
             f"SELECT ts AS timestamp, temperature_c, temperature_f, probe_id, "
-            f"humidity_pct, vpd_kpa FROM readings {where} "
+            f"humidity_pct, vpd_kpa, battery_pct FROM readings {where} "
             f"ORDER BY epoch DESC, id DESC LIMIT ?",
             tuple(params_list) + (cap,),
         ).fetchall()
         out = [dict(r) for r in rows]
         out.reverse()  # oldest-first for charting/time-series consumers
         return out
+
+    def list_events(self, limit: int = 50, window_seconds: Optional[int] = None) -> list:
+        """Most recent alert-lifecycle events as dict rows, newest first.
+
+        Row keys: ``timestamp, epoch, kind, probe_id, temperature_c, limit_c``.
+        ``window_seconds`` bounds the log to a rolling window (index-backed via
+        ``idx_events_epoch``); ``limit`` caps the payload for the UI/API.
+        """
+        conn = self._conn()
+        cutoff = self._cutoff(window_seconds)
+        where = "WHERE epoch >= ?" if cutoff is not None else ""
+        params: tuple = (cutoff,) if cutoff is not None else ()
+        try:
+            cap = max(1, int(limit))
+        except (TypeError, ValueError):
+            cap = 50
+        rows = conn.execute(
+            f"SELECT ts AS timestamp, epoch, kind, probe_id, temperature_c, limit_c "
+            f"FROM events {where} ORDER BY epoch DESC, id DESC LIMIT ?",
+            params + (cap,),
+        ).fetchall()
+        return [dict(r) for r in rows]
 
     # -- maintenance -----------------------------------------------------------
     def purge_older_than(self, days: int) -> int:

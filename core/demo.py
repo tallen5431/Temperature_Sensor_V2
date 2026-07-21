@@ -20,6 +20,12 @@ _DEMO_PROBES = {
 def has_demo_data(db) -> bool:
     """True if any demo probe currently has readings in the store."""
     try:
+        # O(log N) index probe — this runs on every settings render, so it must
+        # not scan/group the whole readings table just to answer yes/no.
+        return bool(db.has_probe_prefix(DEMO_PREFIX))
+    except Exception:
+        pass  # older Database without the helper — fall back to the full scan
+    try:
         return any(str(pid).startswith(DEMO_PREFIX)
                    for pid in db.last_reading_epoch_per_probe().keys())
     except Exception:

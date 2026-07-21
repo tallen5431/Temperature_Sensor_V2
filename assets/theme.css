@@ -6,6 +6,9 @@
    ========================================================================== */
 
 :root {
+  /* Dark native widgets (dropdowns, scrollbars, date pickers) to match the UI. */
+  color-scheme: dark;
+
   --brand:        #17b3cc;   /* teal accent */
   --brand-strong: #3fcbe0;
   --brand-deep:   #0e94ab;
@@ -19,7 +22,7 @@
 
   --text:      #e9f1f7;
   --text-soft: #9db0be;
-  --text-faint:#6e8393;
+  --text-faint:#8299ab;
 
   --ok:    #2fbf71;
   --warn:  #efb02e;
@@ -129,6 +132,8 @@ body {
   font-variant-numeric: tabular-nums;
 }
 .card-body .small, .card-body small { color: var(--text-faint); }
+/* KPI numbers scale down gracefully on narrow screens instead of wrapping. */
+.kpi-value { font-size: clamp(1.35rem, 2.2vw, 1.75rem); }
 
 /* Semantic value colours (replaces the base theme's off-brand rainbow). */
 .text-success { color: var(--ok) !important; }
@@ -174,10 +179,26 @@ body {
   font-family: var(--mono); font-weight: 600; letter-spacing: .03em;
   border-radius: 999px; padding: .32em .62em;
 }
-.badge.bg-success, .badge.bg-secondary, .badge.bg-danger, .badge.bg-warning {
-  background: var(--brand-wash) !important;
-}
+/* Per-state tinted washes: the chip keeps its semantic hue (text) on a quiet
+   translucent wash of the same colour, instead of one flat teal for every state.
+   .bg-info is covered too — the CYBORG base would otherwise render it magenta. */
+.badge.bg-secondary { background: var(--brand-wash) !important; }
+.badge.bg-success { background: rgba(47, 191, 113, .16) !important; color: var(--ok) !important; }
+.badge.bg-danger  { background: rgba(240, 90, 84, .16) !important; color: var(--bad) !important; }
+.badge.bg-warning { background: rgba(239, 176, 46, .16) !important; color: var(--warn) !important; }
+.badge.bg-info    { background: rgba(56, 182, 217, .16) !important; color: var(--cool) !important; }
 #live-badge { font-family: var(--mono); letter-spacing: .08em; }
+#live-badge::before {
+  content: ""; display: inline-block;
+  width: .5em; height: .5em; border-radius: 50%;
+  background: var(--ok); margin-right: .35em;
+  animation: live-pulse 2s infinite;
+}
+@keyframes live-pulse {
+  0%   { opacity: 1; }
+  50%  { opacity: .35; }
+  100% { opacity: 1; }
+}
 
 /* ---- the "Viewing" focus selector row ----------------------------------- */
 #time-range-selector, #focus-probe-selector { min-width: 160px; }
@@ -193,8 +214,9 @@ body {
 
 /* ---- alerts / onboarding ------------------------------------------------- */
 .alert { border-radius: 12px; border-color: var(--border); }
+/* Cool-blue informational panel (onboarding, "low temperature" alerts). */
 .alert-info {
-  background: var(--brand-wash); border-color: rgba(23,179,204,.30); color: var(--text);
+  background: rgba(56, 182, 217, .12); border-color: rgba(56, 182, 217, .35); color: var(--text);
 }
 .alert-heading { color: var(--text); font-weight: 700; }
 
@@ -213,15 +235,6 @@ hr { border-color: var(--border); opacity: 1; }
 a { color: var(--brand); }
 a:hover { color: var(--brand-strong); }
 code { color: var(--brand-strong); background: var(--brand-wash); padding: .06rem .3rem; border-radius: 5px; }
-
-/* Demo-mode notice: a subtle amber info bar with a left accent, rather than a
-   loud solid-orange block that dominates the otherwise dark, refined dashboard. */
-.demo-banner {
-  background-color: rgba(241, 196, 15, 0.12) !important;
-  border: 1px solid rgba(241, 196, 15, 0.30) !important;
-  border-left: 4px solid #f1c40f !important;
-  color: #e7edf5 !important;
-}
 
 @media (max-width: 768px) {
   .gauge-card, .graph-card { min-height: 320px; }

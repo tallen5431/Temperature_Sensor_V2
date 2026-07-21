@@ -55,3 +55,23 @@ def test_start_disabled_by_config_does_nothing():
     pub = MqttPublisher()
     pub.start(_FakeCfg({"mqtt": {"enabled": False}}))
     pub.publish_reading("Setpoint-1", 20.0, "x")  # still a no-op, no crash
+    assert pub.is_ready() is False
+
+
+class _FakeClient:
+    def loop_stop(self):
+        pass
+
+    def disconnect(self):
+        pass
+
+
+def test_is_ready_reflects_connection_state():
+    pub = MqttPublisher()
+    assert pub.is_ready() is False        # never started
+    with pub._lock:                        # simulate a successful start()
+        pub._client = _FakeClient()
+        pub._enabled = True
+    assert pub.is_ready() is True
+    pub.stop()
+    assert pub.is_ready() is False        # stop() tears the connection down

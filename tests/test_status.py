@@ -1,6 +1,8 @@
 """Tests for live hub-status derivation (core.status.hub_status) and the
 footer text/colour mapping (components.layout_main.footer_status_display)."""
-from core.status import hub_status
+import time
+
+from core.status import REPORTING_LOOKBACK_SEC, hub_status, reporting_probe_ids
 from components.layout_main import footer_status_display
 
 
@@ -68,3 +70,24 @@ def test_handles_object_style_probes():
             self.last_seen = ls
     s = hub_status([P(990)], online_timeout=60, total_readings=1, now=1000)
     assert s["state"] == "online" and s["online"] == 1
+
+
+def test_reporting_probe_ids_bounds_the_probe_scan():
+    # The per-probe GROUP BY behind reporting_probe_ids is bounded to a 7-day
+    # window: probes silent longer than any possible fresh window can't affect
+    # the answer, and the query cost must track recent rows, not all history.
+    class _Db:
+        def __init__(self, now):
+            self.window = "unset"
+            self._now = now
+
+        def last_reading_epoch_per_probe(self, window_seconds=None):
+            self.window = window_seconds
+            return {"fresh": self._now - 10, "stale": self._now - 86400}
+
+    now = time.time()
+    db = _Db(now)
+    out = reporting_probe_ids({}, db, now=now)
+    assert db.window == REPORTING_LOOKBACK_SEC == 7 * 86400
+    # fresh probe within its window is reporting; a day-silent probe is not
+    assert out == {"fresh"}

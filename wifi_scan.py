@@ -103,8 +103,13 @@ class SSIDWatcher:
     def stop(self) -> None:
         self._stop.set()
 
+    def matched(self) -> List[str]:
+        # The concrete SSIDs that matched — the exact target or any SSID that
+        # begins with it, so a per-probe SoftAP like "Setpoint-9A3F2C" is
+        # detected from the brand prefix "Setpoint". Sorted so the UI can tell
+        # the user WHICH network to join.
+        return sorted(s for s in self.latest
+                      if s == self.target or s.startswith(self.target))
+
     def seen(self) -> bool:
-        # Match either an exact SSID or any SSID that begins with the target,
-        # so a per-probe SoftAP like "Setpoint-9A3F2C" is detected from the
-        # brand prefix "Setpoint".
-        return any(s == self.target or s.startswith(self.target) for s in self.latest)
+        return bool(self.matched())

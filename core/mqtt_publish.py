@@ -100,6 +100,11 @@ class MqttPublisher:
         except Exception as e:
             log.warning("Could not connect to MQTT broker: %s", e)
 
+    def is_ready(self) -> bool:
+        """True when a broker connection is up and readings will be published."""
+        with self._lock:
+            return bool(self._enabled and self._client is not None)
+
     def publish_reading(self, probe_id: str, temp_c: float, friendly_name: str = "",
                         humidity: float | None = None, vpd: float | None = None) -> None:
         with self._lock:

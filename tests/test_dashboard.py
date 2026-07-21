@@ -1,7 +1,9 @@
 """Tests for the dashboard computation (components.dashboard_view.build_dashboard)."""
 import datetime
 
-from components.dashboard_view import build_dashboard, build_probe_stats
+import components.dashboard_view as dashboard_view
+from components.dashboard_view import (build_dashboard, build_events,
+                                       build_probe_cards, build_probe_stats)
 from core.config import Config
 from core.db import Database
 
@@ -227,6 +229,166 @@ def test_focus_mode_unknown_probe_falls_back(tmp_path):
     _seed(db)  # two probes A/B
     out = build_dashboard(db, cfg, FakeFinder(), "24h", "celsius", "does-not-exist")
     assert len(out[1].data) == 2  # overview graph with both probes
+
+
+def _line_shapes(fig):
+    return [s for s in (fig.layout.shapes or ()) if s.type == "line"]
+
+
+def _rect_shapes(fig):
+    return [s for s in (fig.layout.shapes or ()) if s.type == "rect"]
+
+
+def test_focus_mode_draws_threshold_bands(tmp_path):
+    # Focus mode plots exactly one probe, so its min/max limits are drawn on the
+    # history figure: a dashed hline per limit plus a wash beyond it.
+    db = Database(tmp_path / "d.db")
+    cfg = Config(tmp_path / "c.json")
+    cfg.update({"alert_thresholds": {"A": {"min": -20.0, "max": -15.0}}})
+    now = datetime.datetime.now()
+    for t in (-18.0, -17.5, -17.0):
+        db.append(_iso(now), t, 0.0, "A")
+    db.append(_iso(now), 22.0, 71.6, "B")
+    fig = build_dashboard(db, cfg, FakeFinder(), "24h", "celsius", "A")[1]
+    lines, rects = _line_shapes(fig), _rect_shapes(fig)
+    assert len(lines) == 2 and len(rects) == 2
+    ys = sorted(s.y0 for s in lines)
+    assert ys == [-20.0, -15.0]  # limit lines sit at the configured thresholds
+    # y-range widened so both bands are visible beyond the data.
+    y_range = fig.layout.yaxis.range
+    assert y_range[0] < -20.0 and y_range[1] > -15.0
+
+
+def test_focus_mode_threshold_bands_use_current_unit(tmp_path):
+    db = Database(tmp_path / "d.db")
+    cfg = Config(tmp_path / "c.json")
+    cfg.update({"alert_thresholds": {"A": {"max": 30.0}}})
+    db.append(_iso(datetime.datetime.now()), 25.0, 77.0, "A")
+    fig = build_dashboard(db, cfg, FakeFinder(), "24h", "fahrenheit", "A")[1]
+    lines = _line_shapes(fig)
+    assert len(lines) == 1
+    assert abs(lines[0].y0 - 86.0) < 0.01  # 30 C limit drawn at 86 F
+
+
+def test_focus_mode_no_thresholds_no_bands(tmp_path):
+    db = Database(tmp_path / "d.db")
+    cfg = Config(tmp_path / "c.json")
+    db.append(_iso(datetime.datetime.now()), 21.0, 69.8, "A")
+    fig = build_dashboard(db, cfg, FakeFinder(), "24h", "celsius", "A")[1]
+    assert _line_shapes(fig) == [] and _rect_shapes(fig) == []
+
+
+def test_single_probe_overview_draws_bands_multi_does_not(tmp_path):
+    # An overview with ONE probe still gets its bands; once a second probe's
+    # series is overlaid the bands are skipped (whose limits would they be?).
+    db = Database(tmp_path / "d.db")
+    cfg = Config(tmp_path / "c.json")
+    cfg.update({"alert_thresholds": {"default": {"min": 2.0, "max": 8.0}}})
+    now = datetime.datetime.now()
+    db.append(_iso(now), 5.0, 41.0, "A")
+    fig = build_dashboard(db, cfg, FakeFinder(), "24h", "celsius", "all")[1]
+    assert len(_line_shapes(fig)) == 2
+    db.append(_iso(now), 6.0, 42.8, "B")
+    fig = build_dashboard(db, cfg, FakeFinder(), "24h", "celsius", "all")[1]
+    assert _line_shapes(fig) == [] and _rect_shapes(fig) == []
+
+
+def test_build_events_empty_returns_empty_list(tmp_path):
+    db = Database(tmp_path / "d.db")
+    cfg = Config(tmp_path / "c.json")
+    assert build_events(db, cfg, "celsius") == []
+
+
+def test_build_events_renders_compact_rows(tmp_path):
+    db = Database(tmp_path / "d.db")
+    cfg = Config(tmp_path / "c.json")
+    cfg.update({"probe_names": {"F": "Freezer"}})
+    db.record_event("high", "F", temperature_c=-14.8, limit=-15.0)
+    db.record_event("recovery", "F", temperature_c=-15.4)
+    out = build_events(db, cfg, "celsius")
+    text = str(out)
+    assert "Recent events" in text
+    assert "HIGH" in text and "RECOVERY" in text
+    assert "Freezer" in text
+    assert "-14.8 °C" in text and "limit -15.0" in text
+
+
+def test_build_events_converts_temperature_unit(tmp_path):
+    db = Database(tmp_path / "d.db")
+    cfg = Config(tmp_path / "c.json")
+    db.record_event("high", "F", temperature_c=30.0, limit=25.0)
+    text = str(build_events(db, cfg, "fahrenheit"))
+    assert "86.0 °F" in text and "limit 77.0" in text
+
+
+def test_build_events_caps_at_limit(tmp_path):
+    db = Database(tmp_path / "d.db")
+    cfg = Config(tmp_path / "c.json")
+    for i in range(12):
+        db.record_event("high", "F", temperature_c=30.0 + i, limit=25.0)
+    out = build_events(db, cfg, "celsius", limit=8)
+    rows = out.children[1].children
+    assert len(rows) == 8
+
+
+class _HeldStub:
+    def __init__(self, states=None):
+        self._s = states or {}
+
+    def get(self, pid):
+        return self._s.get(pid)
+
+
+def test_probe_card_recovering_when_held(tmp_path, monkeypatch):
+    # Reading back inside the limit but still HELD by the alert monitor's
+    # hysteresis -> the card shows amber "recovering", not green OK.
+    db = Database(tmp_path / "d.db")
+    cfg = Config(tmp_path / "c.json")
+    cfg.update({"alert_thresholds": {"A": {"max": 30.0}}})
+    db.append(_iso(datetime.datetime.now()), 29.5, 85.1, "A")  # inside the limit
+    monkeypatch.setattr(dashboard_view, "HELD", _HeldStub({"A": "high"}))
+    text = str(build_probe_cards(db, cfg, "celsius"))
+    assert "recovering" in text and "warning" in text
+    assert "● OK" not in text
+
+
+def test_probe_card_ok_when_not_held(tmp_path, monkeypatch):
+    db = Database(tmp_path / "d.db")
+    cfg = Config(tmp_path / "c.json")
+    cfg.update({"alert_thresholds": {"A": {"max": 30.0}}})
+    db.append(_iso(datetime.datetime.now()), 29.5, 85.1, "A")
+    monkeypatch.setattr(dashboard_view, "HELD", _HeldStub())
+    text = str(build_probe_cards(db, cfg, "celsius"))
+    assert "● OK" in text and "recovering" not in text
+
+
+def test_probe_card_breach_outranks_held(tmp_path, monkeypatch):
+    # A live breach must still show HIGH even while the registry holds it.
+    db = Database(tmp_path / "d.db")
+    cfg = Config(tmp_path / "c.json")
+    cfg.update({"alert_thresholds": {"A": {"max": 30.0}}})
+    db.append(_iso(datetime.datetime.now()), 31.0, 87.8, "A")
+    monkeypatch.setattr(dashboard_view, "HELD", _HeldStub({"A": "high"}))
+    text = str(build_probe_cards(db, cfg, "celsius"))
+    assert "HIGH" in text and "recovering" not in text
+
+
+def test_probe_card_shows_battery_when_present(tmp_path):
+    db = Database(tmp_path / "d.db")
+    cfg = Config(tmp_path / "c.json")
+    db.append(_iso(datetime.datetime.now()), 21.0, 69.8, "A", battery=87.0)
+    db.append(_iso(datetime.datetime.now()), 22.0, 71.6, "B")  # no battery field
+    text = str(build_probe_cards(db, cfg, "celsius"))
+    assert "Batt 87%" in text
+    assert text.count("Batt") == 1  # probe without battery gets no line
+
+
+def test_probe_card_battery_low_is_warning(tmp_path):
+    db = Database(tmp_path / "d.db")
+    cfg = Config(tmp_path / "c.json")
+    db.append(_iso(datetime.datetime.now()), 21.0, 69.8, "A", battery=15.0)
+    text = str(build_probe_cards(db, cfg, "celsius"))
+    assert "Batt 15%" in text and "text-warning" in text
 
 
 def test_focus_stays_on_probe_with_no_in_range_data(tmp_path):
