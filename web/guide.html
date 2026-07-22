@@ -109,11 +109,11 @@
 <li>Protected or unprotected cell both work (module has protection). Insert the cell with the switch <strong>OFF</strong>.</li>
 </ol>
 <h2>Step 4 — Power check</h2>
-<p>Switch <strong>OFF</strong> → plug the <strong>SuperMini USB-C</strong> → switch <strong>ON</strong>. The SuperMini's onboard LED should light. If anything gets warm, unplug and re-check Step 1 for bridges.</p>
+<p>With the switch <strong>OFF</strong>, plug in the <strong>SuperMini USB-C</strong>: the onboard LED should light — USB powers the board directly, the switch only gates the battery. Then unplug USB and flip the switch <strong>ON</strong>: the LED should light again, now running from the cell. If anything gets warm either way, unplug and re-check Step 1 for bridges.</p>
 <h2>Step 5 — Flash the firmware (browser)</h2>
 <ol>
 <li>Open the <strong><a href="https://setpoint.datumlaboratories.com/flash/">Setpoint web flasher</a></strong> in <strong>Chrome/Edge/Opera</strong>.</li>
-<li>Plug the <strong>SuperMini's USB-C</strong> into your computer (switch ON).</li>
+<li>Plug the <strong>SuperMini's USB-C</strong> into your computer with the power <strong>switch OFF</strong>. USB powers the board on its own for flashing; keeping the switch off stops USB power from back-feeding the cell through the TP4056.</li>
 <li>Click <strong>Install/Connect</strong>, choose the port, flash. The C3 flashes natively over USB — no adapter.</li>
 </ol>
 <blockquote>
@@ -145,7 +145,11 @@
 <tbody>
 <tr>
 <td>No LED on USB</td>
-<td>Switch off · bridge · charge-only cable — use a data cable · wrong USB-C port (use the SuperMini's)</td>
+<td>Bridge · charge-only cable — use a data cable · wrong USB-C port (use the SuperMini's)</td>
+</tr>
+<tr>
+<td>No LED on battery (USB works)</td>
+<td>Power switch is <strong>OFF</strong> · cell flat or reversed — recheck B+/B− polarity</td>
 </tr>
 <tr>
 <td>Warm/hot</td>

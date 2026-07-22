@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **DIY-kit flashing instructions had the power switch backwards.** The web
+  flasher page and the DIY build guide told buyers to flash with the power
+  switch ON. On the kit the switch only gates the battery→ESP32-C3 path, so the
+  SuperMini's own USB-C powers the board for flashing regardless of the switch —
+  and leaving it ON lets USB power back-feed the cell through the TP4056. The
+  flashing steps now say **switch OFF**, the power-check step explains USB powers
+  the board directly, and the troubleshooting table no longer blames a "No LED on
+  USB" symptom on the switch (it can't cut USB power) — with a new
+  battery-specific row where an off switch is the real cause.
+
 ## [2.6.1] - 2026-07-22
 
 ### Fixed
