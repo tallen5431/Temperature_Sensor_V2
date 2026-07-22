@@ -9,3 +9,6 @@ waitress~=3.0
 # `mqtt` config block is enabled); imported lazily so a missing install only
 # disables that one feature.
 paho-mqtt~=2.1
+# Optional native .xlsx export (the CSV exports need no extra packages);
+# imported lazily so a missing install only disables the .xlsx download.
+openpyxl~=3.1

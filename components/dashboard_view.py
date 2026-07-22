@@ -239,10 +239,16 @@ try:
 except Exception:
     _TZ_NAME = "local time"
 
-# Export dialog: pick a probe and an optional absolute date range, then download.
+# Export dialog: pick a format, a probe and an optional absolute date range.
 ExportModal = dbc.Modal([
-    dbc.ModalHeader(dbc.ModalTitle("Export data (CSV)")),
+    dbc.ModalHeader(dbc.ModalTitle("Export data")),
     dbc.ModalBody([
+        html.Small("Format", className="text-muted d-block"),
+        dbc.Select(id="export-format", value="excel", className="mb-3", options=[
+            {"label": "Excel-friendly CSV (recommended)", "value": "excel"},
+            {"label": "Excel workbook (.xlsx)", "value": "xlsx"},
+            {"label": "Raw CSV (ISO timestamps)", "value": "raw"},
+        ]),
         html.Small("Probe", className="text-muted d-block"),
         dbc.Select(id="export-probe", value="all",
                    options=[{"label": "All probes", "value": "all"}], className="mb-3"),
@@ -252,14 +258,15 @@ ExportModal = dbc.Modal([
             dbc.Col([html.Small("To", className="text-muted d-block"),
                      dbc.Input(id="export-to", type="date")], md=6),
         ], className="g-2"),
+        html.Small(id="export-format-hint", className="text-muted d-block mt-2"),
         html.Small(f"Leave dates blank to export everything. Dates are in the hub's "
-                   f"local time ({_TZ_NAME}); the CSV also includes a UTC column.",
-                   className="text-muted d-block mt-2"),
+                   f"local time ({_TZ_NAME}).",
+                   className="text-muted d-block mt-1"),
     ]),
     dbc.ModalFooter([
         dbc.Button("Cancel", id="export-cancel", color="secondary", className="me-2"),
-        dbc.Button("Download CSV", id="export-download", color="primary",
-                   external_link=True, href="/download/temperature_log.csv"),
+        dbc.Button("Download", id="export-download", color="primary",
+                   external_link=True, href="/download/temperature_log.csv?format=excel"),
     ]),
 ], id="export-modal", is_open=False)
 
@@ -1073,20 +1080,34 @@ def register_dashboard_callbacks(app, finder, cfg, db):
 
     @app.callback(
         Output("export-download", "href"),
+        Output("export-download", "children"),
+        Output("export-format-hint", "children"),
+        Input("export-format", "value"),
         Input("export-probe", "value"),
         Input("export-from", "value"),
         Input("export-to", "value"),
     )
-    def _export_href(probe, date_from, date_to):
+    def _export_href(fmt, probe, date_from, date_to):
         from urllib.parse import quote
-        params = []
+        fmt = fmt if fmt in ("excel", "xlsx", "raw") else "excel"
+        params = ["format=" + fmt]
         if probe and probe != "all":
             params.append("probe=" + quote(str(probe)))
         if date_from:
             params.append("from=" + quote(str(date_from)))
         if date_to:
             params.append("to=" + quote(str(date_to)))
-        return "/download/temperature_log.csv" + (("?" + "&".join(params)) if params else "")
+        href = "/download/temperature_log.csv?" + "&".join(params)
+        label = "Download .xlsx" if fmt == "xlsx" else "Download CSV"
+        hints = {
+            "excel": "Date and time in separate columns with the probe's friendly "
+                     "name — opens ready to sort, filter and chart in Excel.",
+            "xlsx":  "A native Excel workbook: typed date/time/number cells, a "
+                     "frozen header row and filter dropdowns.",
+            "raw":   "Full ISO-8601 timestamps and every column — the archival "
+                     "system-of-record format for scripts and re-import.",
+        }
+        return href, label, hints[fmt]
 
     @app.callback(
         Output("probes-row", "children"),

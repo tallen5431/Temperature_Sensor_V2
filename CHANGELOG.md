@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-07-22
+
+### Added
+
+- **Spreadsheet-friendly data exports.** The dashboard's Export dialog now
+  offers three formats instead of one raw CSV, so the exported file is ready to
+  work with for people who expect an Excel-style document:
+  - **Excel-friendly CSV** (the new default): `date` and `time` are split into
+    separate columns in the hub's local wall clock — so Excel/Sheets parse each
+    as a real date/time value and sort, filter and pivot natively, instead of
+    importing an ISO `...T...`-with-milliseconds string as inert text. The
+    probe's friendly name is shown alongside its raw id, the unused
+    `humidity_pct`/`vpd_kpa` columns are dropped, and the file is written
+    UTF-8-with-BOM so Excel opens degree signs and accented names correctly.
+    The exact machine-independent `timestamp_utc` is still included.
+  - **Excel workbook (`.xlsx`)**: a native workbook with true date/time/number
+    cells, a frozen header row and filter dropdowns — double-click and it's
+    already typed and ready. Streams via openpyxl's write-only mode so a long
+    log doesn't buffer in memory, and refuses (with a clear message to narrow
+    the range) rather than silently truncate past Excel's ~1,048,576-row limit.
+  - **Raw CSV**: the previous canonical/system-of-record format (full ISO-8601
+    timestamps, every column) is unchanged and still available for scripts and
+    re-import. Existing `/download/temperature_log.csv` links keep working — the
+    format is selected with a new optional `?format=excel|xlsx|raw` parameter
+    (default `raw`), so nothing that bookmarked the old URL changes.
+- **openpyxl** added as an optional dependency (imported lazily; a missing
+  install only disables the `.xlsx` download — both CSV exports need no extra
+  packages).
+
 ## [2.5.0] - 2026-07-21
 
 The "better product" release: everything from a full six-lens review of the

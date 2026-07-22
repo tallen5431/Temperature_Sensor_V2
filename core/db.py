@@ -33,6 +33,9 @@ import pandas as pd
 _SELECT_COLS = "ts AS timestamp, temperature_c, temperature_f, probe_id"
 
 
+_FORMULA_LEAD = ("=", "+", "-", "@", "\t", "\r")
+
+
 def _csv_safe(value) -> str:
     """Neutralise spreadsheet formula injection in an exported CSV cell.
 
@@ -41,9 +44,37 @@ def _csv_safe(value) -> str:
     text. Applied to the free-form string columns of the export.
     """
     s = "" if value is None else str(value)
-    if s and s[0] in ("=", "+", "-", "@", "\t", "\r"):
+    if s and s[0] in _FORMULA_LEAD:
         return "'" + s
     return s
+
+
+def _xlsx_safe(value) -> str:
+    """Neutralise formula injection for a string written into an .xlsx cell.
+
+    openpyxl treats a string that starts with ``=`` as a formula; the same
+    single-quote guard used for CSV forces it to be stored as literal text. Only
+    the rare free-form string that begins with a formula character is altered.
+    """
+    s = "" if value is None else str(value)
+    if s and s[0] in _FORMULA_LEAD:
+        return "'" + s
+    return s
+
+
+class ExportTooLargeForXlsx(Exception):
+    """Raised when a requested .xlsx export would exceed Excel's row limit.
+
+    Carries the actual and maximum row counts so the caller can tell the user to
+    narrow the date range (or use the CSV export, which has no such limit).
+    """
+
+    def __init__(self, rows: int, max_rows: int):
+        self.rows = rows
+        self.max_rows = max_rows
+        super().__init__(
+            f"{rows:,} rows exceeds Excel's limit of {max_rows:,}; "
+            f"narrow the date range or use a CSV export.")
 
 
 def iso_to_epoch(ts: str) -> float:
@@ -527,19 +558,17 @@ class Database:
             dest.close()
 
     # -- export ----------------------------------------------------------------
-    def export_csv(self, file_obj, window_seconds: Optional[int] = None,
-                   probe_id: Optional[str] = None,
-                   start_epoch: Optional[int] = None,
-                   end_epoch: Optional[int] = None) -> int:
-        """Write readings to a file-like object as CSV. Returns the row count.
+    # Excel refuses to open a worksheet with more than 1,048,576 rows (including
+    # the header); the friendly .xlsx export guards against this instead of
+    # producing a file Excel silently truncates or rejects.
+    XLSX_MAX_ROWS = 1_048_576
+
+    def _export_where(self, window_seconds, probe_id, start_epoch, end_epoch):
+        """Build the shared ``WHERE`` clause + params for every export variant.
 
         Filters (all AND-ed, any may be omitted): a rolling ``window_seconds``, a
         single ``probe_id``, and an absolute ``start_epoch``/``end_epoch`` range.
-        Every row carries both the stored local ``timestamp`` and an unambiguous
-        ``timestamp_utc`` derived from the row's epoch, so exported data stays
-        correct across machines and daylight-saving changes.
         """
-        conn = self._conn()
         clauses, params_list = [], []
         cutoff = self._cutoff(window_seconds)
         if cutoff is not None:
@@ -551,7 +580,47 @@ class Database:
         if probe_id:
             clauses.append("probe_id = ?"); params_list.append(probe_id)
         where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
-        params: tuple = tuple(params_list)
+        return where, tuple(params_list)
+
+    @staticmethod
+    def _utc_string(epoch) -> str:
+        """Format a row's epoch as an unambiguous ISO-8601 UTC string.
+
+        Carries millisecond precision when the row has it (sub-second/high-rate
+        logging), else keeps the clean seconds format.
+        """
+        utc_dt = datetime.datetime.fromtimestamp(float(epoch), tz=datetime.timezone.utc)
+        if utc_dt.microsecond:
+            return utc_dt.strftime("%Y-%m-%dT%H:%M:%S.") + f"{utc_dt.microsecond // 1000:03d}Z"
+        return utc_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    @staticmethod
+    def _local_date_time(ts, epoch):
+        """Split a row into ``(date, time)`` objects in the hub's local wall clock.
+
+        Prefers the stored local ISO ``ts`` (what the probe/hub recorded); falls
+        back to the epoch in local time if ``ts`` is malformed. Seconds
+        resolution — sub-second precision is preserved in the UTC column.
+        """
+        try:
+            dt = datetime.datetime.fromisoformat(str(ts).replace("Z", ""))
+        except (ValueError, TypeError):
+            dt = datetime.datetime.fromtimestamp(float(epoch))
+        return dt.date(), dt.time().replace(microsecond=0)
+
+    def export_csv(self, file_obj, window_seconds: Optional[int] = None,
+                   probe_id: Optional[str] = None,
+                   start_epoch: Optional[int] = None,
+                   end_epoch: Optional[int] = None) -> int:
+        """Write readings to a file-like object as CSV. Returns the row count.
+
+        This is the canonical/system-of-record export: ISO-8601 timestamps and
+        every column, unchanged. Every row carries both the stored local
+        ``timestamp`` and an unambiguous ``timestamp_utc`` derived from the row's
+        epoch, so exported data stays correct across machines and DST changes.
+        """
+        conn = self._conn()
+        where, params = self._export_where(window_seconds, probe_id, start_epoch, end_epoch)
         writer = _csv.writer(file_obj)
         writer.writerow(["timestamp", "timestamp_utc", "temperature_c", "temperature_f",
                          "probe_id", "humidity_pct", "vpd_kpa"])
@@ -563,15 +632,133 @@ class Database:
         ):
             hum = "" if r["humidity_pct"] is None else f"{r['humidity_pct']:.2f}"
             vpd = "" if r["vpd_kpa"] is None else f"{r['vpd_kpa']:.3f}"
-            utc_dt = datetime.datetime.fromtimestamp(
-                float(r["epoch"]), tz=datetime.timezone.utc)
-            # Carry millisecond precision into the UTC column when the row has it
-            # (sub-second/high-rate logging), else keep the clean seconds format.
-            utc = (utc_dt.strftime("%Y-%m-%dT%H:%M:%S.") + f"{utc_dt.microsecond // 1000:03d}Z"
-                   if utc_dt.microsecond else utc_dt.strftime("%Y-%m-%dT%H:%M:%SZ"))
-            writer.writerow([_csv_safe(r["ts"]), utc, f"{r['temperature_c']:.3f}",
-                             f"{r['temperature_f']:.3f}", _csv_safe(r["probe_id"]), hum, vpd])
+            writer.writerow([_csv_safe(r["ts"]), self._utc_string(r["epoch"]),
+                             f"{r['temperature_c']:.3f}", f"{r['temperature_f']:.3f}",
+                             _csv_safe(r["probe_id"]), hum, vpd])
             n += 1
+        return n
+
+    # Column headers shared by the two Excel-friendly variants (CSV + .xlsx).
+    _FRIENDLY_HEADERS = ["date", "time", "probe", "temperature_c", "temperature_f",
+                         "probe_id", "timestamp_utc"]
+
+    def export_friendly_csv(self, file_obj, name_map: Optional[dict] = None,
+                            window_seconds: Optional[int] = None,
+                            probe_id: Optional[str] = None,
+                            start_epoch: Optional[int] = None,
+                            end_epoch: Optional[int] = None) -> int:
+        """Write an Excel-friendly CSV. Returns the row count.
+
+        Same filters as :meth:`export_csv`, but reshaped for people who open the
+        file directly in a spreadsheet:
+
+        * ``date`` and ``time`` are split into separate columns (local wall
+          clock) so Excel/Sheets parse each as a real date/time value and sort,
+          filter and pivot natively — an ISO ``...T...``-with-milliseconds string
+          is imported as text and won't.
+        * ``probe`` shows the friendly name set in the dashboard (``name_map``),
+          with the raw ``probe_id`` kept alongside for disambiguation.
+        * the unused ``humidity_pct``/``vpd_kpa`` columns are dropped as noise.
+        * ``timestamp_utc`` is retained (full precision) so the exact,
+          machine-independent instant is never lost.
+        """
+        names = name_map or {}
+        conn = self._conn()
+        where, params = self._export_where(window_seconds, probe_id, start_epoch, end_epoch)
+        writer = _csv.writer(file_obj)
+        writer.writerow(self._FRIENDLY_HEADERS)
+        n = 0
+        for r in conn.execute(
+            f"SELECT ts, epoch, temperature_c, temperature_f, probe_id "
+            f"FROM readings {where} ORDER BY epoch ASC",
+            params,
+        ):
+            d, t = self._local_date_time(r["ts"], r["epoch"])
+            pid = r["probe_id"] or ""
+            friendly = names.get(pid, pid) if isinstance(names, dict) else pid
+            writer.writerow([d.isoformat(), t.isoformat(), _csv_safe(friendly),
+                             f"{r['temperature_c']:.3f}", f"{r['temperature_f']:.3f}",
+                             _csv_safe(pid), self._utc_string(r["epoch"])])
+            n += 1
+        return n
+
+    def count_readings(self, window_seconds: Optional[int] = None,
+                       probe_id: Optional[str] = None,
+                       start_epoch: Optional[int] = None,
+                       end_epoch: Optional[int] = None) -> int:
+        """Count readings matching the export filters (used for the .xlsx guard)."""
+        conn = self._conn()
+        where, params = self._export_where(window_seconds, probe_id, start_epoch, end_epoch)
+        row = conn.execute(f"SELECT COUNT(*) AS n FROM readings {where}", params).fetchone()
+        return int(row["n"]) if row else 0
+
+    def export_xlsx(self, file_obj, name_map: Optional[dict] = None,
+                    window_seconds: Optional[int] = None,
+                    probe_id: Optional[str] = None,
+                    start_epoch: Optional[int] = None,
+                    end_epoch: Optional[int] = None) -> int:
+        """Write a native .xlsx workbook. Returns the row count.
+
+        Same reshaped columns as :meth:`export_friendly_csv`, but as a real Excel
+        file so ``date``/``time`` are true date/time cells and the temperatures
+        are real numbers — the user double-clicks and everything is already
+        typed, sorted, filterable (auto-filter) with a frozen header row.
+
+        Streams via openpyxl's ``write_only`` mode so a long log doesn't buffer
+        in memory. Raises :class:`ExportTooLargeForXlsx` when the result would
+        exceed Excel's row limit (the caller should offer CSV instead), and
+        ``ImportError`` if openpyxl isn't installed.
+        """
+        from openpyxl import Workbook  # lazy: optional dependency
+        from openpyxl.cell import WriteOnlyCell
+        from openpyxl.styles import Font
+        from openpyxl.utils import get_column_letter
+
+        names = name_map or {}
+        total = self.count_readings(window_seconds, probe_id, start_epoch, end_epoch)
+        if total > self.XLSX_MAX_ROWS - 1:  # -1 leaves room for the header row
+            raise ExportTooLargeForXlsx(total, self.XLSX_MAX_ROWS - 1)
+
+        wb = Workbook(write_only=True)
+        ws = wb.create_sheet("Readings")
+        ws.freeze_panes = "A2"  # keep the header visible while scrolling
+        widths = [12, 11, 22, 15, 15, 20, 26]
+        for i, w in enumerate(widths, start=1):
+            ws.column_dimensions[get_column_letter(i)].width = w
+        # Filter dropdowns over the whole populated table (header + data rows).
+        ws.auto_filter.ref = f"A1:{get_column_letter(len(self._FRIENDLY_HEADERS))}{total + 1}"
+
+        bold = Font(bold=True)
+        header = []
+        for label in self._FRIENDLY_HEADERS:
+            c = WriteOnlyCell(ws, value=label)
+            c.font = bold
+            header.append(c)
+        ws.append(header)
+
+        conn = self._conn()
+        where, params = self._export_where(window_seconds, probe_id, start_epoch, end_epoch)
+        n = 0
+        for r in conn.execute(
+            f"SELECT ts, epoch, temperature_c, temperature_f, probe_id "
+            f"FROM readings {where} ORDER BY epoch ASC",
+            params,
+        ):
+            d, t = self._local_date_time(r["ts"], r["epoch"])
+            pid = r["probe_id"] or ""
+            friendly = names.get(pid, pid) if isinstance(names, dict) else pid
+            date_cell = WriteOnlyCell(ws, value=d)
+            date_cell.number_format = "yyyy-mm-dd"
+            time_cell = WriteOnlyCell(ws, value=t)
+            time_cell.number_format = "hh:mm:ss"
+            c_cell = WriteOnlyCell(ws, value=round(float(r["temperature_c"]), 3))
+            c_cell.number_format = "0.000"
+            f_cell = WriteOnlyCell(ws, value=round(float(r["temperature_f"]), 3))
+            f_cell.number_format = "0.000"
+            ws.append([date_cell, time_cell, _xlsx_safe(friendly),
+                       c_cell, f_cell, _xlsx_safe(pid), self._utc_string(r["epoch"])])
+            n += 1
+        wb.save(file_obj)
         return n
 
 
