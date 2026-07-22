@@ -100,6 +100,56 @@ Notes on pricing:
 
 ---
 
+## DIY kit COGS & margin (buyer-assembled, board-only)
+
+This is the **actual DIY kit** as it currently ships — distinct from the *assembled* pricing above.
+The buyer solders the rev-1 carrier PCB + modules and **flashes it themselves** in the browser
+([`DIY_KIT.md`](DIY_KIT.md)). It's **board-only** (no enclosure), the **18650 cell is not included**
+(lithium carrier rules; the buyer sources a good cell), and the **DS18B20 ships with the JST-PH
+pre-terminated** so there's no crimping. Costs are at ~10-qty buying and drop further in 50s–100s.
+
+### Per-kit cost
+
+| Part | ~Cost (qty 10) |
+|---|---|
+| Carrier PCB (custom) | 1.75 |
+| ESP32-C3 SuperMini | 3.00 |
+| DS18B20 waterproof probe, JST-PH pre-terminated | 3.75 |
+| 4.7 kΩ pull-up resistor | 0.02 |
+| TP4056 charge/protect module | 0.60 |
+| SPDT slide switch | 0.35 |
+| 18650 holder | 0.60 |
+| Header pins (2 rows + spares) | 0.15 |
+| JST-PH board connector | 0.20 |
+| **Parts subtotal** | **~$10.42** |
+| Anti-static bag + parts baggies | 0.50 |
+| Printed quick-start card + serial/QR label | 0.65 |
+| Mailer / packaging | 0.75 |
+| **Landed COGS (excl. postage & fees)** | **~$12.32** |
+
+> **Not in the kit:** the 18650 cell (ship *cell-not-included* — carrier rules on loose lithium;
+> the buyer uses a reputable protected or flat-top cell), an **enclosure** (open-board kit), and a
+> **USB-C cable** (buyers already have one).
+
+### Margin at a few price points
+
+Assumes **~8% all-in marketplace fees** (5% Tindie + ~3% payment processing — confirm current Tindie
+payout terms), a **4% returns/defect allowance**, and **buyer-paid shipping** (subtract ~$5 if you
+offer free domestic shipping). *After labor* books ~8 min/kit of bagging + probe test + labeling at
+~$24/hr (≈$3.20); a solo maker may not cash-count that.
+
+| Price | Fees (8%) | COGS | Returns (4%) | **Contribution** | (after labor) |
+|---|---|---|---|---|---|
+| **$39** | −3.12 | −12.32 | −1.56 | **$22.00 (56%)** | $18.80 (48%) |
+| **$44** | −3.52 | −12.32 | −1.76 | **$26.40 (60%)** | $23.20 (53%) |
+| **$49** | −3.92 | −12.32 | −1.96 | **$30.80 (63%)** | $27.60 (56%) |
+
+**Suggested: list around $44.** It clears ~60% contribution before labor, anchors well under the
+~$65 assembled unit (and a $149 Temp Stick), and leaves headroom to offer "free domestic shipping"
+without dropping below ~50%. Confirm against your real first-batch invoices before locking the price.
+
+---
+
 ## Power, waterproofing & food-safe notes
 
 - **Battery (Portable version only):** use a single protected lithium cell with the TP4056
