@@ -131,8 +131,11 @@ pre-terminated** so there's no crimping. Costs are at ~10-qty buying and drop fu
 > Bundle a **guaranteed data cable**, not a charge-only one — a charge-only cable is the #1 cause of
 > "the flasher can't see my board," so the whole point of including it is to kill that support ticket.
 
-> **Not in the kit:** the 18650 cell (ship *cell-not-included* — carrier rules on loose lithium;
-> the buyer uses a reputable protected or flat-top cell) and an **enclosure** (open-board kit).
+> **Not in the kit:** the 18650 cell and an **enclosure** (open-board kit). Ship *cell-not-included*
+> (carrier rules + liability on loose lithium) but tell the buyer **exactly** what to add so the kit
+> still feels complete: **one reputable 18650, ~2500–3500 mAh, flat-top or protected** (the TP4056
+> provides protection either way) from a name brand — and **warn against "9900 mAh"-type
+> counterfeits**. This "buy this one cell" line belongs on the quick-start card and in the listing.
 
 ### Margin at a few price points
 

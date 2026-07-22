@@ -89,8 +89,9 @@ so your readings never leave the building and your alerts keep working even when
   4.7 kΩ pull-up, **TP4056** charge/protect board, on/off switch, 18650 holder, and headers
 - **USB-C data cable** (for flashing & charging — a real data cable, not charge-only)
 - Printed **quick-start card** with the browser-flash QR + link to the full user manual + setup QR
-- **Not included:** the **18650 cell** (lithium shipping rules — use any reputable protected/flat-top cell)
-  and an **enclosure** (open-board kit)
+- **Just add a battery:** one reputable **18650** — ~2500–3500 mAh, flat-top or protected (the TP4056
+  handles protection); avoid "ultra-high-mAh" counterfeits. Not included (lithium shipping rules), and
+  it's the *only* part you supply. (Also no enclosure — this is an open-board kit.)
 
 **Assembled & Tested:** the same build, pre-built, pre-flashed, and QC'd — just add Wi-Fi.
 
@@ -100,6 +101,7 @@ so your readings never leave the building and your alerts keep working even when
 - **Needs internet/an account?** No — LAN only. Internet is only used if you want email alerts to leave your network.
 - **Accuracy?** ±0.5 °C typical, uncalibrated — great for "is my rack within range and trending safe." Not a certified/NIST/medical instrument.
 - **Wi-Fi?** 2.4 GHz only. Setup is on-device (join the probe's temporary network, pick yours) — no phone app.
+- **Battery?** Runs on one **18650** (not included — lithium shipping rules). Add any reputable ~2500–3500 mAh flat-top or protected cell; the on-board TP4056 recharges it over USB-C. Or run it always-on from USB with no cell at all.
 - **Power loss?** Local alerts keep firing during a *WAN* outage, but nothing survives a full power loss — put your router/hub on a UPS if that's your risk.
 - **Open firmware?** Yes — read it, build it, reflash it. You're never locked in.
 ```
