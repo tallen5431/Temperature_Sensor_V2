@@ -121,15 +121,18 @@ pre-terminated** so there's no crimping. Costs are at ~10-qty buying and drop fu
 | 18650 holder | 0.60 |
 | Header pins (2 rows + spares) | 0.15 |
 | JST-PH board connector | 0.20 |
-| **Parts subtotal** | **~$10.42** |
+| USB-C **data** cable (USB-C→USB-A) | 1.75 |
+| **Parts subtotal** | **~$12.17** |
 | Anti-static bag + parts baggies | 0.50 |
 | Printed quick-start card + serial/QR label | 0.65 |
 | Mailer / packaging | 0.75 |
-| **Landed COGS (excl. postage & fees)** | **~$12.32** |
+| **Landed COGS (excl. postage & fees)** | **~$14.07** |
+
+> Bundle a **guaranteed data cable**, not a charge-only one — a charge-only cable is the #1 cause of
+> "the flasher can't see my board," so the whole point of including it is to kill that support ticket.
 
 > **Not in the kit:** the 18650 cell (ship *cell-not-included* — carrier rules on loose lithium;
-> the buyer uses a reputable protected or flat-top cell), an **enclosure** (open-board kit), and a
-> **USB-C cable** (buyers already have one).
+> the buyer uses a reputable protected or flat-top cell) and an **enclosure** (open-board kit).
 
 ### Margin at a few price points
 
@@ -140,13 +143,14 @@ offer free domestic shipping). *After labor* books ~8 min/kit of bagging + probe
 
 | Price | Fees (8%) | COGS | Returns (4%) | **Contribution** | (after labor) |
 |---|---|---|---|---|---|
-| **$39** | −3.12 | −12.32 | −1.56 | **$22.00 (56%)** | $18.80 (48%) |
-| **$44** | −3.52 | −12.32 | −1.76 | **$26.40 (60%)** | $23.20 (53%) |
-| **$49** | −3.92 | −12.32 | −1.96 | **$30.80 (63%)** | $27.60 (56%) |
+| **$39** | −3.12 | −14.07 | −1.56 | **$20.25 (52%)** | $17.05 (44%) |
+| **$44** | −3.52 | −14.07 | −1.76 | **$24.65 (56%)** | $21.45 (49%) |
+| **$49** | −3.92 | −14.07 | −1.96 | **$29.05 (59%)** | $25.85 (53%) |
 
-**Suggested: list around $44.** It clears ~60% contribution before labor, anchors well under the
-~$65 assembled unit (and a $149 Temp Stick), and leaves headroom to offer "free domestic shipping"
-without dropping below ~50%. Confirm against your real first-batch invoices before locking the price.
+**Suggested: launch at $39, raise to $44–49 with traction.** Even with the bundled data cable, $39
+still clears ~52% contribution before labor — and a low intro price buys the first few reviews that
+make every later sale easier (a new Tindie listing lives or dies on social proof). Raise once you
+have reviews. Confirm against your real first-batch invoices before locking the price.
 
 ---
 

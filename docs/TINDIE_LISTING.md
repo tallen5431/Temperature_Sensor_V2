@@ -31,13 +31,13 @@ Wi-Fi temp sensor that reports to a free app on YOUR own PC — no cloud, no acc
 
 ## 4. Price & options
 
-The **hub software is free**; the probe is the paid item. The DIY kit's landed cost is **~$12**
-(see the *DIY kit COGS* table in [`BOM.md`](BOM.md)); listing around **$44** clears ~60% contribution
-before labor while anchoring under the assembled unit. Suggested starting points:
+The **hub software is free**; the probe is the paid item. The DIY kit's landed cost is **~$14**
+(with the bundled data cable — see the *DIY kit COGS* table in [`BOM.md`](BOM.md)). **Launch at $39**
+to seed your first reviews, then raise toward $44–49 once you have traction. Suggested starting points:
 
 | Option (Tindie "product option") | What it is | Suggested price |
 |---|---|---|
-| **DIY Kit** | Bag of parts + card/QR to the browser-flash page; buyer solders & flashes | **~$44** |
+| **DIY Kit** | Bag of parts + cable + card/QR to the browser-flash page; buyer solders & flashes | **$39 launch** (→ $44–49) |
 | **Assembled & Tested** | Pre-built, pre-flashed, QC'd unit (needs FCC SDoC — see below) | **~$69** |
 | **4-Probe Pack (Assembled)** | Four units for a whole rack/closet | **~$189** |
 
@@ -87,9 +87,10 @@ so your readings never leave the building and your alerts keep working even when
 **DIY Kit (you solder + flash it):**
 - Carrier PCB + **ESP32-C3 SuperMini**, waterproof **DS18B20 probe (JST-PH pre-terminated — no crimping)**,
   4.7 kΩ pull-up, **TP4056** charge/protect board, on/off switch, 18650 holder, and headers
+- **USB-C data cable** (for flashing & charging — a real data cable, not charge-only)
 - Printed **quick-start card** with the browser-flash QR + link to the full user manual + setup QR
-- **Not included:** the **18650 cell** (lithium shipping rules — use any reputable protected/flat-top cell),
-  an **enclosure** (open-board kit), and a **USB-C cable** (you likely have one)
+- **Not included:** the **18650 cell** (lithium shipping rules — use any reputable protected/flat-top cell)
+  and an **enclosure** (open-board kit)
 
 **Assembled & Tested:** the same build, pre-built, pre-flashed, and QC'd — just add Wi-Fi.
 
