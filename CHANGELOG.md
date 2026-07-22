@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.6.1] - 2026-07-22
+
+### Fixed
+
+- **Temperature History zoom reset on every refresh.** The earlier `uirevision`
+  fix preserved a user's zoom on the time (x) axis, but the temperature (y) axis
+  still snapped back to the default on each 5-second auto-refresh — so a
+  box-zoom, which pans both axes, appeared to reset. The cause was an explicit
+  `yaxis.range` recomputed from the window's live min/max on every tick: Plotly
+  treats a *changed* programmatic range as an override and discards the user's
+  zoom even while `uirevision` is unchanged. The auto-fit range is now carried
+  by an invisible anchor trace that feeds Plotly's autorange instead of pinning
+  the axis, so the default (un-zoomed) view still tracks the data while a zoom
+  now persists across refreshes until you change the time range, unit, or focus
+  (or double-click to reset).
+
 ## [2.6.0] - 2026-07-22
 
 ### Added

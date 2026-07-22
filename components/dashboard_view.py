@@ -787,6 +787,22 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
                                   fillcolor="rgba(56,182,217,0.07)")
                     fig.add_hline(y=lo_u, line_dash="dash", line_width=1,
                                   line_color="#38b6d9", opacity=0.5)
+
+            # Carry the computed y-fit (data padding + threshold bands) into the
+            # axis through an invisible, hover-skipped anchor trace instead of an
+            # explicit yaxis.range. An explicit range is re-sent on every 5 s
+            # refresh and its value drifts with the data's min/max; Plotly treats
+            # a *changed* programmatic range as an override and discards the
+            # user's y-zoom (uirevision preserves a user edit only while the
+            # figure's own specified value is unchanged). Feeding the range via
+            # autorange-eligible trace data instead keeps the default view
+            # auto-fitting while letting uirevision hold the zoom across refreshes.
+            if y_range is not None:
+                fig.add_trace(go.Scatter(
+                    x=[df["_dt"].min(), df["_dt"].max()],
+                    y=[y_range[0], y_range[1]], mode="markers",
+                    marker=dict(opacity=0), hoverinfo="skip", showlegend=False,
+                ))
         else:
             multi = False
             y_range = None
@@ -817,8 +833,10 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
             font=dict(family=FONT_STACK, color="#9db0be", size=12),
             xaxis={**_axis, **xaxis_kwargs, "title": "Time"},
-            yaxis={**_axis, **(dict(range=y_range) if y_range else {}),
-                   "title": "Temp " + _unit_symbol(temp_unit)},
+            # No explicit range: autorange (fed by the anchor trace above) fits
+            # the data + bands by default, and uirevision keeps the user's zoom
+            # across refreshes because the axis spec no longer changes each tick.
+            yaxis={**_axis, "title": "Temp " + _unit_symbol(temp_unit)},
             hovermode="x unified", showlegend=multi,
             # Preserve the user's zoom/pan across the 5s auto-refresh: while
             # uirevision is unchanged Plotly keeps the interacted view instead of

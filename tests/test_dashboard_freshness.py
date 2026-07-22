@@ -85,6 +85,33 @@ def test_graph_uirevision_preserves_zoom_but_resets_on_view_change(tmp_path):
     assert rev("24h", "fahrenheit") != base       # unit change -> view resets
 
 
+def test_graph_yaxis_not_pinned_so_zoom_survives_data_drift(tmp_path):
+    """Regression: the y-axis must NOT carry an explicit range that Plotly
+    re-applies on every 5 s refresh.
+
+    uirevision alone kept the x-zoom but not the y-zoom, because the y-axis
+    pinned an explicit ``range`` recomputed from the window's min/max each tick.
+    Plotly treats a *changed* programmatic range as an override and discards the
+    user's y-zoom even while uirevision is unchanged, so a box-zoom snapped back
+    on refresh. The fit is now carried by an invisible anchor trace: the axis
+    spec stays identical across refreshes (so zoom is preserved) while the anchor
+    still tracks new data (so the un-zoomed default view keeps auto-fitting)."""
+    db = Database(tmp_path / "d.db")
+    cfg = Config(tmp_path / "c.json")
+    now = datetime.datetime.now()
+    db.append(_iso(now - datetime.timedelta(minutes=2)), 20.0, 68.0, "A")
+
+    fig1 = build_dashboard(db, cfg, _FakeFinder(), "24h", "celsius")[1]
+    db.append(_iso(now), 40.0, 104.0, "A")  # a hotter reading arrives on refresh
+    fig2 = build_dashboard(db, cfg, _FakeFinder(), "24h", "celsius")[1]
+
+    # The layout spec Plotly diffs across the refresh is stable -> user zoom held.
+    assert fig1.layout.yaxis.range is None and fig2.layout.yaxis.range is None
+    assert fig1.layout.uirevision == fig2.layout.uirevision
+    # ...yet the anchor tracked the widened envelope, so the default view refits.
+    assert max(fig2.data[-1].y) > max(fig1.data[-1].y)
+
+
 def test_graph_renders_mixed_second_and_millisecond_timestamps(tmp_path):
     """A probe whose window mixes pre-flash whole-second and post-flash
     millisecond timestamps must render EVERY point on the graph.
