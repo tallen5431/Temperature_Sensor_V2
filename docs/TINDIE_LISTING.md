@@ -108,8 +108,28 @@ so your readings never leave the building and your alerts keep working even when
 
 ## 6. Shipping
 
-- Set a **shipping profile**: ship-from country, destinations (start **domestic-only** to keep it
-  simple, add international later), and a flat rate per option (the 4-pack weighs more).
+The kit is small and light — PCBs, probe, holder, cable in a padded mailer, **~8 oz (0.5 lb)
+packed**. Tindie only lets you set a *flat* rate per carrier (no zone pricing), so pick a service
+sized to that parcel and set the rate to cover the far-zone case.
+
+**Recommended shipping rate (DIY Kit):**
+
+| Field | Value | Why |
+|---|---|---|
+| **Shipping Company** | **USPS Ground Advantage** | Cheapest *tracked* option for a small parcel under ~1 lb (replaced First-Class Package); 2–5 days. Priority Mail and UPS/FedEx Ground are overkill for 8 oz. If not in the dropdown, pick generic **USPS** and name the rate "USPS Ground Advantage." |
+| **Base rate** | **$6.00** | One order, first unit. An 8 oz Ground Advantage parcel runs ~$5–7 depending on zone; $6 covers most zones near break-even (this is *not* a profit center). |
+| **Additional-item (addon) rate** | **$2.00** | A 2nd kit ships in the same box, so it adds a little weight, not another full base rate. |
+| **Ships to** | **United States (domestic-only)** | Skips customs forms and — critically — the international **lithium-cell** air-shipping restrictions if you bundle an 18650. Add international later once you've done a few US orders. |
+| **Includes Tracking Code** | ☑ **checked** | Ground Advantage includes tracking free; buyers expect it and it protects you in "never arrived" disputes. |
+| **Assign to** | **Setpoint DIY Kit** | Attaches the rate to the listing. The 4-pack, if listed, weighs more — give it its own rate. |
+
+> **Before finalizing, weigh the actual packed kit** (kit + mailer + cable + battery if bundled) on
+> a kitchen scale. Under 8 oz → $6 is comfortable. Over ~12 oz → bump base to $7. A hair over 1 lb →
+> re-check the Ground Advantage 1 lb price (~$7–8) and match it.
+>
+> **Alternative — "free shipping":** set base rate to **$0** and raise the price to ~$44. Free
+> shipping converts better; for a launch either approach is fine.
+
 - Set a realistic **handling time** (e.g. 3–5 business days for a hand-built batch).
 
 ## 7. Photos (upload in this order — first image is the thumbnail)
@@ -138,6 +158,8 @@ so your readings never leave the building and your alerts keep working even when
       and dashboard (`11-dashboard`) are ready. Enough to launch; add the extras from §7 over time.
 - [ ] **Support link** set in Tindie's field (use `support@datumlaboratories.com`). Store name = **Datum Labs**.
 - [x] **Prices** set from real costs — **$39 launch** (`docs/BOM.md` DIY-kit COGS ≈ $14 landed).
+- [x] **Shipping rate** decided — **USPS Ground Advantage, $6 base / $2 addon, domestic-only, tracking
+      on**, assigned to the DIY Kit (see §6). Weigh the packed kit to confirm the flat rate.
 - [ ] **Inventory count** from your first batch.
 - [ ] **Payout set up** — Tindie revamped payouts in mid-2026; confirm the current method at signup.
 - [ ] **Exclusivity:** a product active on Tindie **can't be listed elsewhere on the web** at the same
