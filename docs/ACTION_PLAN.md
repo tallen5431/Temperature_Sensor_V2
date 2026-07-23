@@ -61,7 +61,7 @@ Full playbook: **[docs/DIY_KIT.md](DIY_KIT.md)**. Wall-clock to first sale worki
 **Before the boxes arrive (do in parallel, no boards needed):**
 - [ ] Order non-board parts for a **batch of 10 kits** now (DS18B20 probes + TP4056s are slow from overseas). See BOM in [docs/BOM.md](BOM.md).
 - [ ] Set up the flashing PC: `arduino-cli` + ESP32 core + `WiFiManager ArduinoJson OneWire DallasTemperature` + `pyserial esptool`. (`pyserial` lets `firmware/factory_flash.py` auto-capture the label line.)
-- [ ] Stand up a bench hub (`Start.sh`, dashboard `http://localhost:8080`) + a test 2.4 GHz Wi-Fi network.
+- [ ] Stand up a bench hub (`Start.sh`, dashboard `http://localhost:8088`) + a test 2.4 GHz Wi-Fi network.
 - [ ] Start the batch serial-log CSV (header from [docs/LABEL_TEMPLATE.md](LABEL_TEMPLATE.md)) — one row per board = traceability + support lookup.
 - [ ] Build + host the browser-flash page: `./flash/build_merged_bin.sh` → host `flash/` over HTTPS on GitHub Pages. **Don't print the flash QR anywhere until you've flashed a real board from it.**
 

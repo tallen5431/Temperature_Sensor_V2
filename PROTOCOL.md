@@ -18,7 +18,7 @@ LAN-only (probe ⇄ hub, same subnet). There is no outbound telemetry and no acc
 
 | Term | Meaning |
 |------|---------|
-| **Hub** | Setpoint — Python/Flask+Dash app served by waitress on TCP **8080**. |
+| **Hub** | Setpoint — Python/Flask+Dash app served by waitress on TCP **8088**. |
 | **Probe** | Setpoint — ESP32 firmware, HTTP server on TCP **80**. |
 | **`proto`** | Integer protocol version. This document defines `proto = 1`. |
 | **Device token** | One shared secret per hub. Authenticates mutating hub endpoints **and** is provisioned onto probes, which echo it back as `X-Token`. |
@@ -100,7 +100,7 @@ interval. Persisted to NVS so it survives reboots.
 
 ```json
 {
-  "server_url": "http://192.168.1.50:8080/api/ingest",
+  "server_url": "http://192.168.1.50:8088/api/ingest",
   "token": "s3cr3t-device-token",
   "interval_ms": 5000,
   "resolution_bits": 11
@@ -146,7 +146,7 @@ hub can confirm the applied value.
   "uptime_s": 43120,
   "last_post_ok": true,
   "last_post_code": 200,
-  "server_url": "http://192.168.1.50:8080/api/ingest",
+  "server_url": "http://192.168.1.50:8088/api/ingest",
   "temperature_c": 4.2,
   "sensor_ok": true
 }

@@ -25,7 +25,7 @@ Most questions are answered in the **[User Manual](docs/USER_MANUAL.md)** and th
 project **README**. Common topics:
 
 - **Starting the hub** — `Start.bat` (Windows) or `./Start.sh` (Linux); the
-  dashboard opens at `http://localhost:8080`.
+  dashboard opens at `http://localhost:8088`.
 - **A probe won't appear** — confirm it is powered and joined to your Wi-Fi via
   its setup portal (the open `Setpoint-<HEX6>` Wi-Fi network at
   `http://192.168.4.1`), and allow the hub through your firewall on **Private**
@@ -57,12 +57,12 @@ lets us reproduce the problem fast.
 - **What happened** vs. **what you expected**, and how often it happens.
 - **Steps to reproduce** — exactly what you did leading up to it.
 - **Version info:** hub software version and protocol (from
-  `http://localhost:8080/api/health`), and probe firmware version (`fw`, shown in
+  `http://localhost:8088/api/health`), and probe firmware version (`fw`, shown in
   the probe's `/whoami` or `/status`).
 - **Your setup:** OS (Windows/Linux) and version, number of probes, sensor type
   (DS18B20 or MAX31855).
 - **Probe ID(s)** involved, for example `Setpoint-9A3F2C`.
-- **Health snapshot:** the JSON from `http://localhost:8080/api/health`
+- **Health snapshot:** the JSON from `http://localhost:8088/api/health`
   (`rows_written`, `ingest_rejected`, `write_failures`, `last_write_age_sec`,
   `healthy`) — this tells us a lot at a glance.
 - **Probe status:** the JSON from the probe's `/status` endpoint.

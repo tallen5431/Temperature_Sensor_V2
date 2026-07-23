@@ -11,7 +11,7 @@ The canonical, shipping firmware is the Arduino sketch
 offline buffer, NTP time). The former PlatformIO project (`platformio.ini` +
 `src/main.cpp`) has been removed; only the sketch is built now.
 
-- **MCU:** ESP32-WROOM-32E
+- **MCU:** ESP32-C3 (SuperMini — the rev-1 board)
 - **Toolchain:** Arduino (Arduino IDE or `arduino-cli`) — **not** PlatformIO
 - **Firmware version:** 2.7.0 · **Protocol:** 1
 - **Sensor:** DS18B20 (1-Wire) — the **only** sensor in the current firmware
@@ -176,7 +176,7 @@ setup, not by a custom endpoint.
 ## Ingest (probe → hub)
 
 Every `interval_ms` the probe reads the DS18B20 and POSTs to the provisioned
-`server_url` (the hub's ingest endpoint, e.g. `http://<hub>:8080/api/ingest`):
+`server_url` (the hub's ingest endpoint, e.g. `http://<hub>:8088/api/ingest`):
 
 ```
 POST /api/ingest

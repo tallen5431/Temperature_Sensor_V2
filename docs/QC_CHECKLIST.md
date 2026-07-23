@@ -35,7 +35,7 @@ You need this available before running units:
 - [ ] A cup of **stirred ice-water slush** (crushed ice + a little water) for the 0 °C accuracy
       check in step 5.3.
 - [ ] A **bench Setpoint** running on the LAN (`Start.sh` / `Start.bat`,
-      dashboard at `http://localhost:8080`). Note its LAN URL and device token —
+      dashboard at `http://localhost:8088`). Note its LAN URL and device token —
       you will confirm one live ingest into it.
 - [ ] A phone or laptop that can see 2.4 GHz Wi-Fi (to verify the SoftAP).
 - [ ] A test 2.4 GHz Wi-Fi network the probe can join (SSID + password).
@@ -105,7 +105,7 @@ tick each item below as the operator confirms it.
       `timestamp,temperature_c,temperature_f,probe_id,humidity_pct,vpd_kpa` —
       `humidity_pct`/`vpd_kpa` are blank for a DS18B20 probe).
 - [ ] **6.3** The unit appears in the bench hub's probe list
-      (`GET /api/probes`) / on the dashboard at `http://localhost:8080`.
+      (`GET /api/probes`) / on the dashboard at `http://localhost:8088`.
 
 ### 7. Provision security (informational)
 - [ ] **7.1** Note on the serial log that this firmware ships **open

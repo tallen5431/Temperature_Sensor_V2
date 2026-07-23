@@ -69,7 +69,7 @@ docker compose up -d
 
 ## 4. Prove it (do this before you leave the install)
 
-- [ ] **Reboot the hub PC.** Within ~2 minutes the dashboard is back at `http://localhost:8080` and
+- [ ] **Reboot the hub PC.** Within ~2 minutes the dashboard is back at `http://localhost:8088` and
       probes reappear on their own — **no one had to open anything.**
 - [ ] **Pull a probe's power** and confirm the **silent-sensor / offline alert** fires (this is the
       demo that sells it — "a dark freezer never passes as OK").

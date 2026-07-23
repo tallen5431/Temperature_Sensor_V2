@@ -15,7 +15,7 @@ account, and no telemetry. Your temperature readings stay on your own PC.**
 Setpoint is a local-first temperature-monitoring appliance. It runs as a small
 app on your own Windows or Linux computer. Wireless Setpoint sensors on your
 own network send their readings to it, and you view everything in your web
-browser at `http://localhost:8080`. Nothing is hosted by us, and there is
+browser at `http://localhost:8088`. Nothing is hosted by us, and there is
 nothing to sign up for.
 
 ## What we collect: nothing
@@ -52,7 +52,7 @@ copy anywhere.
   LAN. The hub and probes only ever talk to each other on your own network.
 - **A private device token** is generated on first run and shared only with your
   own probes so that no other device can push fake readings to your hub.
-- **The dashboard** is served locally at `http://localhost:8080`. If you allow
+- **The dashboard** is served locally at `http://localhost:8088`. If you allow
   it through your firewall on a Private network, other PCs on your own network
   can view it — that is your choice, not a default upload to the internet.
 
