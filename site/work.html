@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🛠️</text></svg>">
+<title>Work with Datum Labs — Embedded, Vision &amp; 3D Printing</title>
+<meta name="description" content="Datum Labs takes on custom embedded hardware and firmware, embedded computer-vision / AR-VR builds (NVIDIA Jetson), and small-run 3D printing. Setpoint is one shipped example — tell me what you need.">
+<link rel="canonical" href="https://datumlaboratories.com/work">
+<meta property="og:title" content="Work with Datum Labs">
+<meta property="og:description" content="Custom embedded hardware & firmware, embedded computer vision / AR-VR (Jetson), and small-run 3D printing.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://datumlaboratories.com/work">
+<meta property="og:site_name" content="Datum Labs">
+<meta property="og:image" content="https://datumlaboratories.com/og-image.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://datumlaboratories.com/og-image.jpg">
+<style>
+  :root {
+    --paper:#F5F6F4; --surface:#FFFFFF; --raised:#FBFCFA; --ink:#12181C; --slate:#59636B;
+    --faint:#8A939A; --line:#DEE2DE; --line-strong:#C9CFCA; --signal:#0E94AB;
+    --signal-soft:#E2F1F4; --warn:#C7860F; --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --font-mono:ui-monospace,"SF Mono","Cascadia Code","Roboto Mono",Menlo,Consolas,monospace;
+    --maxw:1140px; --radius:4px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:#0B131B; --surface:#131F2B; --raised:#18242F; --ink:#E9F1F7; --slate:#9DB0BE;
+      --faint:#6E8393; --line:#22323F; --line-strong:#2F4454; --signal:#17B3CC;
+      --signal-soft:rgba(23,179,204,.14); --warn:#EFB02E;
+    }
+  }
+  :root[data-theme="light"] {
+    --paper:#F5F6F4; --surface:#FFFFFF; --raised:#FBFCFA; --ink:#12181C; --slate:#59636B;
+    --faint:#8A939A; --line:#DEE2DE; --line-strong:#C9CFCA; --signal:#0E94AB; --signal-soft:#E2F1F4; --warn:#C7860F;
+  }
+  :root[data-theme="dark"] {
+    --paper:#0B131B; --surface:#131F2B; --raised:#18242F; --ink:#E9F1F7; --slate:#9DB0BE;
+    --faint:#6E8393; --line:#22323F; --line-strong:#2F4454; --signal:#17B3CC; --signal-soft:rgba(23,179,204,.14); --warn:#EFB02E;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--paper); color:var(--ink); font-family:var(--font-sans); font-size:17px; line-height:1.6; -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:var(--maxw); margin:0 auto; padding:0 28px; }
+  a { color:inherit; }
+  h1,h2,h3 { text-wrap:balance; letter-spacing:-0.02em; line-height:1.1; margin:0; }
+  .eyebrow { font-family:var(--font-mono); font-size:12px; letter-spacing:0.16em; text-transform:uppercase; color:var(--signal); margin:0 0 18px; display:flex; align-items:center; gap:10px; }
+  .eyebrow::before { content:""; width:22px; height:1px; background:var(--signal); display:inline-block; }
+
+  header.bar { position:sticky; top:0; z-index:50; background:color-mix(in srgb, var(--paper) 88%, transparent); backdrop-filter:saturate(1.2) blur(8px); border-bottom:1px solid var(--line); }
+  .bar-inner { display:flex; align-items:center; justify-content:space-between; height:62px; }
+  .brand { display:flex; align-items:baseline; gap:10px; font-weight:700; letter-spacing:-0.02em; text-decoration:none; color:inherit; }
+  .brand .mk { font-size:19px; }
+  .brand .by { font-family:var(--font-mono); font-size:11px; letter-spacing:0.08em; color:var(--faint); text-transform:uppercase; }
+  nav.top { display:flex; gap:26px; align-items:center; }
+  nav.top a { font-family:var(--font-mono); font-size:13px; letter-spacing:0.02em; text-decoration:none; color:var(--slate); }
+  nav.top a:hover, nav.top a.active { color:var(--ink); }
+  @media (max-width:720px){ nav.top a.hide-sm { display:none; } }
+
+  .btn { display:inline-flex; align-items:center; gap:8px; font-family:var(--font-mono); font-size:13px; letter-spacing:0.02em; padding:11px 18px; border-radius:var(--radius); text-decoration:none; border:1px solid var(--ink); background:var(--ink); color:var(--paper); cursor:pointer; transition:transform .12s ease, opacity .12s ease; }
+  .btn:hover { transform:translateY(-1px); }
+  .btn:focus-visible { outline:2px solid var(--signal); outline-offset:2px; }
+  .btn.ghost { background:transparent; color:var(--ink); border-color:var(--line-strong); }
+  .btn.signal { background:var(--signal); border-color:var(--signal); color:#04222A; }
+  .btn[disabled] { opacity:.55; cursor:default; transform:none; }
+
+  .hero { padding:74px 0 56px; }
+  .hero h1 { font-size:clamp(34px,5vw,56px); font-weight:760; }
+  .hero .lede { font-size:19px; color:var(--slate); margin:22px 0 30px; max-width:34em; }
+  .cta-row { display:flex; gap:12px; flex-wrap:wrap; }
+
+  section { padding:64px 0; border-top:1px solid var(--line); }
+  .sec-head { max-width:42em; margin-bottom:40px; }
+  .sec-head h2 { font-size:clamp(26px,3.4vw,36px); font-weight:720; }
+  .sec-head p { color:var(--slate); margin:14px 0 0; font-size:18px; }
+
+  .svc { display:grid; grid-template-columns:repeat(3,1fr); gap:22px; }
+  @media (max-width:820px){ .svc { grid-template-columns:1fr; } }
+  .card { background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:28px 26px; display:flex; flex-direction:column; }
+  .card .k { font-family:var(--font-mono); font-size:11px; letter-spacing:0.12em; text-transform:uppercase; color:var(--signal); margin-bottom:12px; }
+  .card h3 { font-size:20px; font-weight:700; margin-bottom:10px; }
+  .card p { margin:0 0 16px; color:var(--slate); font-size:15px; }
+  .card ul { list-style:none; padding:0; margin:0 0 18px; display:flex; flex-direction:column; gap:9px; }
+  .card li { font-size:14.5px; color:var(--ink); padding-left:20px; position:relative; }
+  .card li::before { content:"→"; position:absolute; left:0; color:var(--signal); font-family:var(--font-mono); }
+  .card .proof { margin-top:auto; font-family:var(--font-mono); font-size:12.5px; color:var(--slate); }
+  .card .proof a { color:var(--signal); text-decoration:none; }
+  .card .proof a:hover { text-decoration:underline; }
+
+  .steps { display:grid; grid-template-columns:repeat(3,1fr); gap:26px; }
+  @media (max-width:760px){ .steps { grid-template-columns:1fr; } }
+  .step { background:var(--raised); border:1px solid var(--line); border-radius:8px; padding:24px; }
+  .step .n { font-family:var(--font-mono); font-size:13px; color:var(--paper); background:var(--ink); width:30px; height:30px; display:flex; align-items:center; justify-content:center; border-radius:50%; margin-bottom:16px; }
+  .step h3 { font-size:18px; font-weight:650; margin-bottom:8px; }
+  .step p { margin:0; color:var(--slate); font-size:15px; }
+
+  .contact { display:grid; grid-template-columns:1fr; gap:14px; max-width:560px; }
+  .contact .row { display:flex; gap:14px; }
+  @media (max-width:520px){ .contact .row { flex-direction:column; } }
+  .contact label { font-family:var(--font-mono); font-size:11.5px; letter-spacing:0.06em; text-transform:uppercase; color:var(--slate); display:block; margin-bottom:6px; }
+  .contact input, .contact select, .contact textarea {
+    width:100%; font-family:var(--font-sans); font-size:15px; padding:12px 14px;
+    border-radius:var(--radius); border:1px solid var(--line-strong); background:var(--surface); color:var(--ink);
+  }
+  .contact textarea { min-height:130px; resize:vertical; }
+  .contact input::placeholder, .contact textarea::placeholder { color:var(--faint); }
+  .contact input:focus-visible, .contact select:focus-visible, .contact textarea:focus-visible { outline:2px solid var(--signal); outline-offset:1px; }
+  .contact .field { flex:1; }
+  .note { font-family:var(--font-mono); font-size:12px; color:var(--slate); margin:4px 0 0; min-height:1.2em; }
+
+  footer { padding:46px 0; border-top:1px solid var(--line); }
+  .foot-inner { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:18px; }
+  .fmk { font-weight:700; letter-spacing:-0.02em; }
+  .fmk span { font-family:var(--font-mono); font-size:11px; color:var(--faint); text-transform:uppercase; letter-spacing:0.08em; display:block; font-weight:400; margin-top:2px; }
+  .foot-links { display:flex; gap:22px; font-family:var(--font-mono); font-size:12.5px; }
+  .foot-links a { color:var(--slate); text-decoration:none; }
+  .foot-links a:hover { color:var(--ink); }
+  .fineprint { font-family:var(--font-mono); font-size:11px; color:var(--faint); margin-top:20px; max-width:60em; line-height:1.7; }
+</style>
+</head>
+<body>
+
+<!--
+  Datum Labs "Work" page. Tune to taste:
+  - Swap the GitHub links for the specific repos (e.g. the Jetson vision repo).
+  - Add project photos/screenshots to the service cards when you have them.
+  - The contact form POSTs to /api/contact (functions/api/contact.js), which
+    reuses the WAITLIST KV binding + WAITLIST_TOKEN — no extra Cloudflare setup.
+    Read inquiries at /api/contact?token=YOUR_TOKEN.
+-->
+
+<header class="bar">
+  <div class="wrap bar-inner">
+    <a class="brand" href="/"><span class="mk">Datum Labs</span><span class="by">Setpoint &amp; custom builds</span></a>
+    <nav class="top">
+      <a href="/" class="hide-sm">Setpoint</a>
+      <a href="/work" class="active">Work</a>
+      <a href="#contact" class="btn ghost" style="padding:8px 14px;">Contact</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero" style="border-top:none;">
+    <div class="wrap">
+      <p class="eyebrow">Datum Labs · Work</p>
+      <h1>Custom embedded hardware, vision, and builds.</h1>
+      <p class="lede">I design and build embedded systems end to end — firmware, custom PCBs, and the software around them. <a href="/" style="color:var(--signal);text-decoration:none;">Setpoint</a> is one shipped example: a no-cloud Wi-Fi sensor with open firmware, a self-hosted dashboard, and a browser flasher. If you have something to build, tell me about it.</p>
+      <div class="cta-row">
+        <a href="#contact" class="btn signal">Start a project</a>
+        <a href="/" class="btn ghost">See Setpoint →</a>
+      </div>
+    </div>
+  </section>
+
+  <section id="services">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow">What I can help with</p>
+        <h2>Three things I do well.</h2>
+        <p>From a napkin sketch to a small production run — pick the closest fit and we'll scope the rest together.</p>
+      </div>
+      <div class="svc">
+
+        <div class="card">
+          <div class="k">Embedded &amp; IoT</div>
+          <h3>Hardware &amp; firmware development</h3>
+          <p>Sensor and connected-device work, from prototype to small-batch — the same stack behind Setpoint.</p>
+          <ul>
+            <li>ESP32 / low-power firmware</li>
+            <li>Custom carrier PCBs &amp; bring-up</li>
+            <li>Wi-Fi / MQTT / Home Assistant / Prometheus</li>
+            <li>Self-hosted dashboards &amp; data pipelines</li>
+          </ul>
+          <p class="proof">Proof: <a href="/">Setpoint</a> — firmware, PCB, hub app &amp; web, all shipped.</p>
+        </div>
+
+        <div class="card">
+          <div class="k">Vision &amp; AR/VR</div>
+          <h3>Embedded computer vision</h3>
+          <p>Real-time camera vision on edge hardware, including low-light / night vision and head-mounted displays — genuinely uncommon work.</p>
+          <ul>
+            <li>NVIDIA Jetson vision pipelines</li>
+            <li>Low-light / night-vision imaging</li>
+            <li>Head-mounted / wearable displays</li>
+            <li>Real-time video &amp; sensor fusion</li>
+          </ul>
+          <p class="proof">Proof: a self-contained head-mounted night-vision rig — live camera vision to a headset display, on Jetson. <a href="https://github.com/tallen5431" target="_blank" rel="noopener">Code on GitHub →</a></p>
+        </div>
+
+        <div class="card">
+          <div class="k">Fabrication</div>
+          <h3>Small-run 3D printing</h3>
+          <p>One-offs and short runs on a two-printer setup — functional parts, enclosures, brackets, and prototype iterations.</p>
+          <ul>
+            <li>Functional / prototype parts</li>
+            <li>Enclosures &amp; mounts</li>
+            <li>Short production runs</li>
+            <li>Print-from-your-file or design help</li>
+          </ul>
+          <p class="proof">Send an STL or a sketch — I'll quote it.</p>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <section id="how">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow">How it works</p>
+        <h2>Simple to start.</h2>
+      </div>
+      <div class="steps">
+        <div class="step"><div class="n">1</div><h3>Tell me what you need</h3><p>A paragraph is plenty. What it should do, roughly when, and any constraints (budget, size, quantity).</p></div>
+        <div class="step"><div class="n">2</div><h3>We scope it</h3><p>I'll come back with an approach, a rough timeline, and a price — fixed-scope or hourly, whichever fits.</p></div>
+        <div class="step"><div class="n">3</div><h3>I build &amp; hand off</h3><p>You get the hardware, the firmware/code, and the files — documented so you're never locked in.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="contact">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow">Contact</p>
+        <h2>Start a project.</h2>
+        <p>Tell me a bit about it and I'll get back to you. Prefer email? <a href="mailto:support@datumlaboratories.com?subject=Project%20inquiry" style="color:var(--signal);text-decoration:none;">support@datumlaboratories.com</a>.</p>
+      </div>
+      <form class="contact" id="contactForm" novalidate>
+        <div class="row">
+          <div class="field">
+            <label for="cName">Name</label>
+            <input type="text" id="cName" name="name" placeholder="Your name" autocomplete="name">
+          </div>
+          <div class="field">
+            <label for="cEmail">Email</label>
+            <input type="email" id="cEmail" name="email" placeholder="you@example.com" autocomplete="email" required>
+          </div>
+        </div>
+        <div class="field">
+          <label for="cService">What kind of work</label>
+          <select id="cService" name="service">
+            <option value="Embedded / IoT">Embedded &amp; IoT — hardware / firmware</option>
+            <option value="Vision / AR-VR">Embedded vision / AR-VR</option>
+            <option value="3D printing">3D printing</option>
+            <option value="Something else">Something else</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="cMessage">Project details</label>
+          <textarea id="cMessage" name="message" placeholder="What are you trying to build? Rough scope, timeline, quantity…" required></textarea>
+        </div>
+        <div>
+          <button type="submit" class="btn signal">Send inquiry</button>
+        </div>
+        <p class="note" id="cNote">I read every message. No newsletter, no sharing your details.</p>
+      </form>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-inner">
+      <div class="fmk">Datum Labs<span>Setpoint &amp; custom builds</span></div>
+      <div class="foot-links">
+        <a href="/">Setpoint</a>
+        <a href="/work">Work</a>
+        <a href="#contact">Contact</a>
+        <a href="https://github.com/tallen5431" target="_blank" rel="noopener">GitHub</a>
+      </div>
+    </div>
+    <p class="fineprint">Datum Labs — embedded hardware, firmware, and computer-vision builds. Setpoint is not a certified medical, food-safety, or life-safety device. © 2026 Datum Labs.</p>
+  </div>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+  var form = document.getElementById("contactForm");
+  var note = document.getElementById("cNote");
+  if (!form) return;
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var email = document.getElementById("cEmail").value.trim();
+    var message = document.getElementById("cMessage").value.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      note.textContent = "That email doesn't look right — check and try again.";
+      note.style.color = "var(--signal)"; return;
+    }
+    if (message.length < 2) {
+      note.textContent = "Add a line about what you're building.";
+      note.style.color = "var(--signal)"; return;
+    }
+    var btn = form.querySelector("button[type=submit]");
+    btn.disabled = true;
+    note.textContent = "Sending…";
+    note.style.color = "var(--signal)";
+    fetch("/api/contact", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: document.getElementById("cName").value.trim(),
+        email: email,
+        service: document.getElementById("cService").value,
+        message: message
+      })
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; });
+    }).then(function (body) {
+      if (body && body.ok) {
+        note.textContent = "Thanks — got it. I'll be in touch soon.";
+        form.reset();
+      } else {
+        note.textContent = "That didn't send — try again, or email support@datumlaboratories.com.";
+      }
+      note.style.color = "var(--signal)";
+    }).catch(function () {
+      note.textContent = "Network hiccup — try again in a moment.";
+      note.style.color = "var(--signal)";
+    }).then(function () {
+      btn.disabled = false;
+    });
+  });
+})();
+</script>
+
+</body>
+</html>
