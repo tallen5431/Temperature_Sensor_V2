@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Illustrated DIY-kit assembly guide.** `docs/ASSEMBLY.md` is rewritten from the
+  stale ESP32-WROOM/GPIO2 hand-wired build into a photo-illustrated, start-to-finish
+  guide for the actual **C3 SuperMini carrier kit** (solder → flash → Wi-Fi → live
+  dashboard), with the real-build gotchas baked in (switch-OFF flashing, BOOT/RST
+  download mode, JST notch orientation, pre-power meter checks, cell spec). Photos
+  are referenced from `docs/images/assembly/` with a commit-checklist manifest.
 - **Flashing troubleshooting for a blank C3/S3 that keeps re-connecting.** The web
   flasher page and the DIY build guide now document the download-mode fix — **hold
   BOOT, tap RST, release BOOT** — for a new board whose USB port drops / keeps
