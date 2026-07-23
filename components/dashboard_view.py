@@ -518,28 +518,23 @@ def build_events(db, cfg, temp_unit, limit=8, window_seconds=86400):
     """
     temp_unit = temp_unit or "celsius"
     try:
-        # Pull a wider slice than we display so connectivity can be coalesced;
-        # the rendered feed is still capped at `limit` rows.
-        events = db.list_events(limit=max(limit * 8, 64), window_seconds=window_seconds)
+        # Fetch alerts and connectivity in SEPARATE, kind-filtered queries. A
+        # flapping probe can emit hundreds of online/offline rows; if we pulled
+        # one combined slice, that churn could evict a genuine breach from the
+        # fetch window *before* we ever coalesced it (the newest N rows would all
+        # be connectivity). Querying alerts on their own guarantees the newest
+        # `limit` of them are always fetched; connectivity gets a wider slice
+        # that we then collapse to one row per probe below.
+        alerts = db.list_events(limit=limit, window_seconds=window_seconds,
+                                exclude_kinds=_CONNECTIVITY_KINDS)
+        conn_events = db.list_events(limit=max(limit * 8, 64), window_seconds=window_seconds,
+                                     kinds=_CONNECTIVITY_KINDS)
     except Exception:
         return []  # events log unavailable — hide the section rather than break
-    if not events:
+    if not alerts and not conn_events:
         return []
 
-    # `list_events` is newest-first, so the first connectivity row seen for a
-    # probe is its current state; count offline transitions to gauge flapping.
-    alerts, conn = [], {}
-    for ev in events:
-        kind = str(ev.get("kind", "")).strip().lower()
-        if kind in _CONNECTIVITY_KINDS:
-            pid = ev.get("probe_id") or ""
-            g = conn.setdefault(pid, {"latest": ev, "state": kind, "drops": 0})
-            if kind == "offline":
-                g["drops"] += 1
-        else:
-            alerts.append(ev)
-
-    entries = []  # (epoch, html.Div) — alerts and connectivity merged, then sorted
+    entries = []  # (epoch, html.Div) — alerts and coalesced connectivity, then sorted
     for ev in alerts:
         kind = str(ev.get("kind", "")).strip().lower()
         bits = [_friendly_name(cfg, ev.get("probe_id"))]
@@ -552,6 +547,18 @@ def build_events(db, cfg, temp_unit, limit=8, window_seconds=86400):
         bits.append(_relative_time(ev.get("epoch")))
         entries.append((ev.get("epoch") or 0, _event_row(kind, bits)))
 
+    # `conn_events` is newest-first, so the first row seen for a probe is its
+    # current state; count offline transitions in the window to gauge flapping.
+    conn: dict = {}
+    for ev in conn_events:
+        kind = str(ev.get("kind", "")).strip().lower()
+        if kind not in _CONNECTIVITY_KINDS:
+            continue
+        pid = ev.get("probe_id") or ""
+        g = conn.setdefault(pid, {"latest": ev, "state": kind, "drops": 0})
+        if kind == "offline":
+            g["drops"] += 1
+
     for pid, g in conn.items():
         ev = g["latest"]
         bits = [_friendly_name(cfg, pid)]
@@ -562,6 +569,8 @@ def build_events(db, cfg, temp_unit, limit=8, window_seconds=86400):
 
     entries.sort(key=lambda e: e[0], reverse=True)
     rows = [div for _, div in entries[:limit]]
+    if not rows:
+        return []
     return html.Div([
         html.H6("Recent events", className="text-muted mb-2"),
         html.Div(rows),

@@ -24,7 +24,7 @@ import sqlite3
 import threading
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Iterable, Optional
 
 import pandas as pd
 
@@ -482,17 +482,36 @@ class Database:
         out.reverse()  # oldest-first for charting/time-series consumers
         return out
 
-    def list_events(self, limit: int = 50, window_seconds: Optional[int] = None) -> list:
+    def list_events(self, limit: int = 50, window_seconds: Optional[int] = None,
+                    kinds: Optional[Iterable[str]] = None,
+                    exclude_kinds: Optional[Iterable[str]] = None) -> list:
         """Most recent alert-lifecycle events as dict rows, newest first.
 
         Row keys: ``timestamp, epoch, kind, probe_id, temperature_c, limit_c``.
         ``window_seconds`` bounds the log to a rolling window (index-backed via
         ``idx_events_epoch``); ``limit`` caps the payload for the UI/API.
+        ``kinds`` restricts the result to those event kinds (whitelist);
+        ``exclude_kinds`` drops them (blacklist). Filtering by kind *in SQL* —
+        before the ``LIMIT`` — is what lets a caller pull, say, the newest N
+        *alerts* without a flapping probe's online/offline churn evicting them
+        from the fetch window.
         """
         conn = self._conn()
         cutoff = self._cutoff(window_seconds)
-        where = "WHERE epoch >= ?" if cutoff is not None else ""
-        params: tuple = (cutoff,) if cutoff is not None else ()
+        clauses: list = []
+        params: list = []
+        if cutoff is not None:
+            clauses.append("epoch >= ?")
+            params.append(cutoff)
+        kind_list = [str(k) for k in kinds] if kinds else None
+        if kind_list:
+            clauses.append(f"kind IN ({','.join('?' * len(kind_list))})")
+            params.extend(kind_list)
+        drop_list = [str(k) for k in exclude_kinds] if exclude_kinds else None
+        if drop_list:
+            clauses.append(f"kind NOT IN ({','.join('?' * len(drop_list))})")
+            params.extend(drop_list)
+        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
         try:
             cap = max(1, int(limit))
         except (TypeError, ValueError):
@@ -500,7 +519,7 @@ class Database:
         rows = conn.execute(
             f"SELECT ts AS timestamp, epoch, kind, probe_id, temperature_c, limit_c "
             f"FROM events {where} ORDER BY epoch DESC, id DESC LIMIT ?",
-            params + (cap,),
+            tuple(params) + (cap,),
         ).fetchall()
         return [dict(r) for r in rows]
 
