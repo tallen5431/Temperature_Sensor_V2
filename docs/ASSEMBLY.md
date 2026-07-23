@@ -163,6 +163,54 @@ Pinch the probe tip — the reading should rise. Set a high/low alert and you're
 
 Only the **stainless probe tip** is immersible — keep the board and cell dry.
 
+---
+
+## For the maker — kit packing & shipping
+
+*Seller-facing fulfillment SOP. Buyers can skip this — it's here so every batch
+packs identically without re-deriving it.* Per-unit materials ≈ **$8.98**
+(Jul 2026 batch of 50; line items in [BOM.md](BOM.md)).
+
+### Pack each kit
+
+1. **Antistatic bag (8×12 cm)** → the two active boards: **ESP32-C3 SuperMini +
+   TP4056**. Only the semiconductors need ESD protection.
+2. **Small poly bag (~2×3 in)** → the losable passives: **4.7 kΩ resistor +
+   slide switch + header pins + spare JST**. One bag stops them scattering in the
+   box — the #1 "a part is missing" ticket. (The resistor is passive; it does
+   *not* need an antistatic bag.)
+3. **DS18B20 probe** — coil the 1 m lead and secure with a twist tie so it can't
+   tangle around the other parts.
+4. **Carrier PCB + 18650 holder** — loose is fine (big, robust).
+5. **USB-C cable** — coiled.
+6. Nest it all in the **PE foam pouch**, lay a **1/16" foam sheet** on top to fill
+   the void (stops rattle, protects the probe tip and header pins), and set the
+   **quick-start card on top of the foam** so it's the first thing the buyer sees.
+7. Close the **7×5×2 in box**.
+
+**No cell in the box.** The kit is cell-not-included (loose-lithium shipping
+rules). If a listing ever bundles an 18650, that cell ships **separately with its
+terminals taped** — never loose against the boards or header pins (dead-short and
+fire risk).
+
+### Weight & postage
+
+- **Final packed weight ≈ 5 oz (~0.35 lb)** — box + foam + parts + cable + card,
+  no cell. Put **0.4 lb** in Tindie's weight field (informational under a flat
+  rate; the headroom is free). Re-weigh a finished kit to confirm it's under 8 oz.
+- **Carrier: USPS Ground Advantage** — flat **$6 first item / $2 each
+  additional**, domestic-only, tracking on. **Buy the label online** (Tindie's
+  label tool or Pirate Ship) for *commercial* pricing (~$4.50–6 at this
+  weight/zone, vs. ~$1–1.50 more at the counter).
+- The **7×5×2 in box carries no size penalty** — Ground Advantage prices by weight
+  only until a package tops 1 ft³ (this box is ~4% of that).
+
+### Pack checklist — count before sealing
+
+Carrier PCB · ESP32-C3 SuperMini · TP4056 · DS18B20 probe · 4.7 kΩ resistor ·
+slide switch · header pins · JST connector · 18650 holder · USB-C cable ·
+quick-start card.
+
 <!--
 IMAGE MANIFEST: the photos above are not committed yet. Save each build photo to
 docs/images/assembly/ under the filename referenced in the ![](...) tags. The

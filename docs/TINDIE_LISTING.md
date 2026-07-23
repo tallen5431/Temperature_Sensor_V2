@@ -123,9 +123,10 @@ sized to that parcel and set the rate to cover the far-zone case.
 | **Includes Tracking Code** | ☑ **checked** | Ground Advantage includes tracking free; buyers expect it and it protects you in "never arrived" disputes. |
 | **Assign to** | **Setpoint DIY Kit** | Attaches the rate to the listing. The 4-pack, if listed, weighs more — give it its own rate. |
 
-> **Before finalizing, weigh the actual packed kit** (kit + mailer + cable + battery if bundled) on
-> a kitchen scale. Under 8 oz → $6 is comfortable. Over ~12 oz → bump base to $7. A hair over 1 lb →
-> re-check the Ground Advantage 1 lb price (~$7–8) and match it.
+> **Measured: ~5 oz / ~0.35 lb packed** (7×5×2 box + foam + parts + cable + card, no cell) — well
+> under 8 oz, so **$6 holds**. Put **0.4 lb** in Tindie's weight field (informational under a flat
+> rate). Buy the label online (Tindie/Pirate Ship) for commercial Ground Advantage (~$4.50–6). See the
+> full packing SOP in [`ASSEMBLY.md`](ASSEMBLY.md#for-the-maker--kit-packing--shipping).
 >
 > **Alternative — "free shipping":** set base rate to **$0** and raise the price to ~$44. Free
 > shipping converts better; for a launch either approach is fine.
