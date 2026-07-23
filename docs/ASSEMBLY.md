@@ -52,27 +52,28 @@ then solder from the back. The pads tie into large copper pours that wick heat, 
   flash, and insertion force on too few joints can fatigue them).
 - A good joint is a **shiny cone**. Reflow any dull, balled-up ones.
 
-## Step 2 — Solder the TP4056
+## Step 2 — Solder the switch, 4.7 kΩ resistor, and DS18B20 connector
 
-![Solder the TP4056 charge board, kept level with tweezers underneath](images/assembly/02-tp4056-solder.jpg)
+![Switch, 4.7k resistor, and DS18B20 connector soldered — the trace side is now complete](images/assembly/02-switch-resistor-probe.jpg)
 
-Seat the TP4056 on its two pads. **Tip:** rest a pair of tweezers under the far edge
-so the board sits **level with the ESP module** while you tack the first pin, then
-solder the rest. Keep its USB-C facing the same edge as the ESP's.
-
-## Step 3 — Fit the switch, 4.7 kΩ resistor, and DS18B20
-
-![Fit the switch and 4.7k resistor; plug the probe in with the JST notch toward the board edge](images/assembly/03-switch-resistor-probe.jpg)
+Finish **all the flat, trace-side soldering** before you add the TP4056 module:
 
 - **4.7 kΩ resistor** into the `4.7k Ohm` position (it's the DS18B20 pull-up).
 - **Slide switch** into the `Switch` pads.
-- **DS18B20 probe** into the JST connector — **notch facing the board edge**
-  (see close-up) so DATA / GND / VCC land on the correct pins.
+- **DS18B20 JST connector** into the `DS18B20` pads, **notch facing the board edge**
+  so that when the probe plugs in, DATA / GND / VCC land on the correct pins.
 
-![Close-up: the JST connector notch faces the edge of the board](images/assembly/03b-jst-notch.jpg)
-
-> Getting this notch backwards is the classic silent failure (reads **−127**). If in
+> Getting that notch backwards is the classic silent failure (reads **−127**). If in
 > doubt, meter the probe's DATA wire to **GPIO5** before trusting it.
+
+## Step 3 — Solder the TP4056
+
+![The TP4056 mounted and soldered alongside the ESP module](images/assembly/03-tp4056-solder.jpg)
+
+With the trace side done, mount the TP4056 on its two pads. **Tip:** rest a pair of
+tweezers under the far edge so the board sits **level with the ESP module** while you
+tack the first pin, then solder the rest. Keep its USB port facing the same edge as
+the ESP's.
 
 ## Step 4 — Wire the 18650 holder
 
