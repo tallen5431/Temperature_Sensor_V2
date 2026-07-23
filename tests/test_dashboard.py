@@ -341,6 +341,71 @@ def test_build_events_caps_at_limit(tmp_path):
     assert len(rows) == 8
 
 
+def test_build_events_coalesces_connectivity_flaps(tmp_path):
+    # A probe flapping online/offline collapses to ONE summary row, not many.
+    db = Database(tmp_path / "d.db")
+    cfg = Config(tmp_path / "c.json")
+    cfg.update({"probe_names": {"R": "Refrigerator"}})
+    now = datetime.datetime.now()
+    for i in range(4):  # 4 offline/online pairs = 8 raw connectivity events
+        db.record_event("offline", "R", ts=_iso(now - datetime.timedelta(minutes=40 - i * 8)))
+        db.record_event("online", "R", ts=_iso(now - datetime.timedelta(minutes=39 - i * 8)))
+    out = build_events(db, cfg, "celsius")
+    rows = out.children[1].children
+    assert len(rows) == 1                       # coalesced, not 8
+    text = str(out)
+    assert "Refrigerator" in text and "flapping (4" in text
+
+
+def test_build_events_alert_survives_connectivity_noise(tmp_path):
+    # Heavy connectivity churn must not bury a real threshold alert.
+    db = Database(tmp_path / "d.db")
+    cfg = Config(tmp_path / "c.json")
+    now = datetime.datetime.now()
+    db.record_event("high", "F", temperature_c=-14.8, limit=-15.0,
+                    ts=_iso(now - datetime.timedelta(minutes=5)))
+    for i in range(10):  # 20 connectivity events from one probe
+        db.record_event("offline", "R", ts=_iso(now - datetime.timedelta(minutes=30 - i)))
+        db.record_event("online", "R", ts=_iso(now - datetime.timedelta(minutes=30 - i, seconds=-30)))
+    out = build_events(db, cfg, "celsius", limit=8)
+    rows = out.children[1].children
+    assert len(rows) == 2                        # 1 alert + 1 coalesced connectivity
+    text = str(out)
+    assert "HIGH" in text and "-14.8 °C" in text  # the alert is still shown
+    assert "flapping (10" in text
+
+
+def test_build_events_alert_survives_connectivity_flood_beyond_fetch_window(tmp_path):
+    # Regression for the fetch-window eviction bug: a flapping probe emitting FAR
+    # more connectivity events than a single fetch would hold must NOT evict a
+    # genuine alert. With limit=8 the old combined query capped at 64 raw rows,
+    # so ~90 online/offline events newer than the alert dropped the breach from
+    # the feed entirely. Alerts are now fetched in their own kind-filtered query.
+    db = Database(tmp_path / "d.db")
+    cfg = Config(tmp_path / "c.json")
+    now = datetime.datetime.now()
+    db.record_event("high", "F", temperature_c=-14.8, limit=-15.0,
+                    ts=_iso(now - datetime.timedelta(hours=3)))
+    for i in range(45):  # 90 connectivity events, all NEWER than the alert
+        db.record_event("offline", "R", ts=_iso(now - datetime.timedelta(minutes=90 - i)))
+        db.record_event("online", "R", ts=_iso(now - datetime.timedelta(minutes=90 - i, seconds=-30)))
+    out = build_events(db, cfg, "celsius", limit=8)
+    rows = out.children[1].children
+    assert len(rows) == 2                          # 1 alert + 1 coalesced connectivity
+    text = str(out)
+    assert "HIGH" in text and "-14.8 °C" in text   # breach NOT evicted by the flood
+
+
+def test_relative_time_buckets():
+    from components.dashboard_view import _relative_time
+    now = 1_000_000
+    assert _relative_time(now - 10, now=now) == "just now"
+    assert _relative_time(now - 120, now=now) == "2m ago"
+    assert _relative_time(now - 7200, now=now) == "2h ago"
+    assert _relative_time(now - 172800, now=now) == "2d ago"
+    assert _relative_time("bad", now=now) == ""
+
+
 class _HeldStub:
     def __init__(self, states=None):
         self._s = states or {}

@@ -1,10 +1,10 @@
 # Tindie Listing — Setpoint (ready to paste)
 
-> _**Maker note (delete before publishing):** this maps the copy in [`LISTING.md`](LISTING.md) onto
-> Tindie's actual listing fields so you can paste section-by-section. The brand is set — product
-> **Setpoint**, store/company **Datum Labs**. Set your real **price**, **photos**, and **support
-> link** first. See the "Before you publish" checklist at the
-> bottom — the two blockers are **photos of a real unit** and (for the assembled option) **FCC**._
+> _**Maker note (delete before publishing):** Tindie field-by-field copy for the **DIY Kit launch**.
+> Brand — product **Setpoint**, store **Datum Labs**. Photos are ready (hero + kit flat-lay +
+> dashboard, §7), and the **DIY kit needs no FCC**, so this can go live now: set the **$39** price,
+> a **shipping** profile, and your **support link**, then publish. The Assembled option is drafted
+> here too, but it needs an **FCC SDoC** first — add it later._
 
 Tindie listing fields, in order:
 
@@ -31,8 +31,9 @@ Wi-Fi temp sensor that reports to a free app on YOUR own PC — no cloud, no acc
 
 ## 4. Price & options
 
-The **hub software is free**; the probe is the paid item. The DIY kit's landed cost is **~$14**
-(with the bundled data cable — see the *DIY kit COGS* table in [`BOM.md`](BOM.md)). **Launch at $39**
+The **hub software is free**; the probe is the paid item. The DIY kit's landed cost is **≈ $10**
+(true ~$10.03; $8.98 tracked — with the bundled data cable, see the *DIY kit COGS* table in
+[`BOM.md`](BOM.md)). **Launch at $39**
 to seed your first reviews, then raise toward $44–49 once you have traction. Suggested starting points:
 
 | Option (Tindie "product option") | What it is | Suggested price |
@@ -79,8 +80,8 @@ so your readings never leave the building and your alerts keep working even when
 | Integrations | Prometheus, MQTT + Home Assistant, CSV, email/webhook alerts |
 | Firmware | Open source; on-device Wi-Fi setup |
 
-> **Needs an always-on computer** (PC, mini-PC, NAS, or home server) on the same network to run the
-> free hub. If you don't already leave a machine on 24/7, this isn't the right pick.
+⚠️ **Needs an always-on computer** (PC, mini-PC, NAS, or home server) on the same network to run the
+free hub. If you don't already leave a machine on 24/7, this isn't the right pick.
 
 ### What's in the box
 
@@ -108,33 +109,59 @@ so your readings never leave the building and your alerts keep working even when
 
 ## 6. Shipping
 
-- Set a **shipping profile**: ship-from country, destinations (start **domestic-only** to keep it
-  simple, add international later), and a flat rate per option (the 4-pack weighs more).
+The kit is small and light — PCBs, probe, holder, cable in a 7×5×2 in box, **~5 oz (~0.35 lb)
+packed**. Tindie only lets you set a *flat* rate per carrier (no zone pricing), so pick a service
+sized to that parcel and set the rate to cover the far-zone case.
+
+**Recommended shipping rate (DIY Kit):**
+
+| Field | Value | Why |
+|---|---|---|
+| **Shipping Company** | **USPS Ground Advantage** | Cheapest *tracked* option for a small parcel under ~1 lb (replaced First-Class Package); 2–5 days. Priority Mail and UPS/FedEx Ground are overkill for 8 oz. If not in the dropdown, pick generic **USPS** and name the rate "USPS Ground Advantage." |
+| **Base rate** | **$6.00** | One order, first unit. An 8 oz Ground Advantage parcel runs ~$5–7 depending on zone; $6 covers most zones near break-even (this is *not* a profit center). |
+| **Additional-item (addon) rate** | **$2.00** | A 2nd kit ships in the same box, so it adds a little weight, not another full base rate. |
+| **Ships to** | **United States (domestic-only)** | Skips customs forms and — critically — the international **lithium-cell** air-shipping restrictions if you bundle an 18650. Add international later once you've done a few US orders. |
+| **Includes Tracking Code** | ☑ **checked** | Ground Advantage includes tracking free; buyers expect it and it protects you in "never arrived" disputes. |
+| **Assign to** | **Setpoint DIY Kit** | Attaches the rate to the listing. The 4-pack, if listed, weighs more — give it its own rate. |
+
+> **Measured: ~5 oz / ~0.35 lb packed** (7×5×2 box + foam + parts + cable + card, no cell) — well
+> under 8 oz, so **$6 holds**. Put **0.4 lb** in Tindie's weight field (informational under a flat
+> rate). Buy the label online (Tindie/Pirate Ship) for commercial Ground Advantage (~$4.50–6). See the
+> full packing SOP in [`ASSEMBLY.md`](ASSEMBLY.md#for-the-maker--kit-packing--shipping).
+>
+> **Alternative — "free shipping":** set base rate to **$0** and raise the price to ~$44. Free
+> shipping converts better; for a launch either approach is fine.
+
 - Set a realistic **handling time** (e.g. 3–5 business days for a hand-built batch).
 
 ## 7. Photos (upload in this order — first image is the thumbnail)
 
-1. **Hero** — unit on a clean dark surface, probe lead coiled.
-2. **In context** — probe tip inside an open server rack, unit velcro'd to a rail.
-3. **Dashboard screenshot** — live web dashboard with a chart + gauge.
-4. **Integration screenshot** — the probe in **Grafana** or Home Assistant.
-5. **Scale shot** — unit in hand.
-6. **Macro** — the stainless waterproof probe tip.
-7. **Multi-probe** — 3–4 units (sells the 4-pack).
-8. **What's-in-the-box flat-lay** — unit, cable, quick-start card, label/QR.
-9. **Label close-up** — serial ID + setup QR (signals traceability).
+**Ready now** — from `docs/images/assembly/`:
+1. **Hero / thumbnail** — `08-finished-unit.jpg` (probe + board + 18650). *Optional upgrade: reshoot on a dark surface for more pop.*
+2. **What's-in-the-kit flat-lay** — `12-kit-contents.jpg`. Lay the USB-C cable in when it arrives, then re-shoot.
+3. **Dashboard screenshot** — `11-dashboard.jpg` (live chart).
 
-> A short **setup GIF/video** (join probe Wi-Fi → pick network → it appears on the dashboard) converts
-> well if Tindie's media supports it.
+**Add before/after launch** (worth shooting, not blockers):
+4. **In context** — probe tip in a fridge / rack, unit alongside.
+5. **Scale shot** — unit in hand.
+6. **Macro** — the stainless probe tip.
+7. **Label close-up** — serial ID + setup QR (signals traceability).
+8. **Multi-probe** — 3–4 units (only if you list a multi-pack).
+
+> **Three good photos (hero + flat-lay + dashboard) is enough to launch** — add the rest as you go.
+> A short setup GIF (join probe Wi-Fi → pick network → it appears on the dashboard) converts well if
+> Tindie's media supports it.
 
 ---
 
 ## Before you publish — checklist
 
-- [ ] **Real photos of a real unit** — Tindie listings live or die on photos. This requires a
-      **hand-built + QC'd unit** (`docs/QC_CHECKLIST.md`), the same batch step that's your #1 to-do.
-- [ ] **Support link** swapped in (replace `example.com/support`). Brand is **Setpoint, by Datum Labs** — Tindie store name = **Datum Labs**.
-- [ ] **Prices** set from your real costs (`docs/BOM.md`).
+- [x] **Real photos of a real unit** — hero (`08-finished-unit`), kit flat-lay (`12-kit-contents`),
+      and dashboard (`11-dashboard`) are ready. Enough to launch; add the extras from §7 over time.
+- [ ] **Support link** set in Tindie's field (use `support@datumlaboratories.com`). Store name = **Datum Labs**.
+- [x] **Prices** set from real costs — **$39 launch** (`docs/BOM.md` DIY-kit COGS ≈ $10 landed).
+- [x] **Shipping rate** decided — **USPS Ground Advantage, $6 base / $2 addon, domestic-only, tracking
+      on**, assigned to the DIY Kit (see §6). Weigh the packed kit to confirm the flat rate.
 - [ ] **Inventory count** from your first batch.
 - [ ] **Payout set up** — Tindie revamped payouts in mid-2026; confirm the current method at signup.
 - [ ] **Exclusivity:** a product active on Tindie **can't be listed elsewhere on the web** at the same
