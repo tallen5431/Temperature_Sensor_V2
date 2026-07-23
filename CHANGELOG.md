@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Flashing troubleshooting for a blank C3/S3 that keeps re-connecting.** The web
+  flasher page and the DIY build guide now document the download-mode fix — **hold
+  BOOT, tap RST, release BOOT** — for a new board whose USB port drops / keeps
+  re-enumerating instead of holding a stable connection for flashing.
+
 ### Fixed
 
 - **DIY-kit flashing instructions had the power switch backwards.** The web
