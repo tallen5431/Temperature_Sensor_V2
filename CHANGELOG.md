@@ -37,6 +37,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   USB" symptom on the switch (it can't cut USB power) — with a new
   battery-specific row where an off switch is the real cause.
 
+### Changed
+
+- **De-noised the dashboard's "Recent events" feed.** Connectivity churn
+  (online/offline) is now **coalesced per probe** into a single row that reports
+  the probe's current state and, when it has dropped more than once, a
+  "flapping (N×)" count — so a probe on a weak link (Wi-Fi from inside a metal
+  fridge, say) no longer buries the alerts that matter under a wall of
+  online/offline entries. Threshold and rate events (high/low/recovery/rate)
+  still render individually, newest first, and every row now carries a
+  relative timestamp ("just now", "22m ago", "3h ago", "2d ago") instead of a
+  bare wall-clock time, so at a glance you see *how recent* an event is rather
+  than having to read a timestamp.
+
 ## [2.6.1] - 2026-07-22
 
 ### Fixed

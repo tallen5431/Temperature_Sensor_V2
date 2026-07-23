@@ -471,23 +471,76 @@ _EVENT_COLORS = {"high": "danger", "low": "info", "offline": "warning",
                  "rate": "warning", "recovery": "success", "online": "success"}
 
 
-def build_events(db, cfg, temp_unit, limit=8, window_seconds=86400):
-    """Compact "Recent events" rows from the alert-lifecycle event log.
+# Connectivity churn (online/offline) is coalesced per probe so a probe on a
+# weak link doesn't bury the alerts that matter; everything else shows per event.
+_CONNECTIVITY_KINDS = {"online", "offline"}
 
-    Returns ``[]`` when there is nothing to show (the section stays invisible),
-    else a heading plus one row per event — "HIGH · Freezer · -14.8 °C
-    (limit -15.0) · 14:32" — newest first, temperatures in the display unit.
-    Kept Dash-callback-free so tests can call it directly.
+
+def _relative_time(epoch, now=None):
+    """Friendly age of an event: 'just now', '22m ago', '3h ago', '2d ago'.
+
+    Returns '' when the epoch can't be read, so one bad row degrades quietly.
+    ``now`` is injectable for deterministic tests.
+    """
+    try:
+        now = time.time() if now is None else now
+        d = int(now - float(epoch))
+    except (TypeError, ValueError):
+        return ""
+    d = max(0, d)
+    if d < 60:
+        return "just now"
+    if d < 3600:
+        return f"{d // 60}m ago"
+    if d < 86400:
+        return f"{d // 3600}h ago"
+    return f"{d // 86400}d ago"
+
+
+def _event_row(badge_kind, bits):
+    return html.Div([
+        dbc.Badge(badge_kind.upper(), color=_EVENT_COLORS.get(badge_kind, "secondary"),
+                  className="me-2 flex-shrink-0"),
+        html.Small(" · ".join(b for b in bits if b), className="text-muted"),
+    ], className="d-flex align-items-center mb-1")
+
+
+def build_events(db, cfg, temp_unit, limit=8, window_seconds=86400):
+    """Compact "Recent events" feed from the alert-lifecycle event log.
+
+    Threshold/rate events (high/low/recovery/rate) render individually, newest
+    first — "HIGH · Freezer · -14.8 °C (limit -15.0) · 4h ago". Connectivity
+    churn (online/offline) is **coalesced per probe** into a single row that
+    reports the probe's current state plus a "flapping (N×)" count, so a probe
+    dropping on a weak link (e.g. Wi-Fi from inside a metal fridge) shows one row
+    instead of burying the real alerts under a wall of online/offline entries.
+    Returns ``[]`` when there's nothing to show. Dash-callback-free for tests.
     """
     temp_unit = temp_unit or "celsius"
     try:
-        events = db.list_events(limit=limit, window_seconds=window_seconds)
+        # Pull a wider slice than we display so connectivity can be coalesced;
+        # the rendered feed is still capped at `limit` rows.
+        events = db.list_events(limit=max(limit * 8, 64), window_seconds=window_seconds)
     except Exception:
         return []  # events log unavailable — hide the section rather than break
     if not events:
         return []
-    rows = []
+
+    # `list_events` is newest-first, so the first connectivity row seen for a
+    # probe is its current state; count offline transitions to gauge flapping.
+    alerts, conn = [], {}
     for ev in events:
+        kind = str(ev.get("kind", "")).strip().lower()
+        if kind in _CONNECTIVITY_KINDS:
+            pid = ev.get("probe_id") or ""
+            g = conn.setdefault(pid, {"latest": ev, "state": kind, "drops": 0})
+            if kind == "offline":
+                g["drops"] += 1
+        else:
+            alerts.append(ev)
+
+    entries = []  # (epoch, html.Div) — alerts and connectivity merged, then sorted
+    for ev in alerts:
         kind = str(ev.get("kind", "")).strip().lower()
         bits = [_friendly_name(cfg, ev.get("probe_id"))]
         t_c, lim = ev.get("temperature_c"), ev.get("limit_c")
@@ -496,12 +549,19 @@ def build_events(db, cfg, temp_unit, limit=8, window_seconds=86400):
             if lim is not None:
                 txt += f" (limit {_convert(lim, temp_unit):.1f})"
             bits.append(txt)
-        bits.append(_fmt_clock(ev.get("timestamp")))
-        rows.append(html.Div([
-            dbc.Badge(kind.upper(), color=_EVENT_COLORS.get(kind, "secondary"),
-                      className="me-2 flex-shrink-0"),
-            html.Small(" · ".join(bits), className="text-muted"),
-        ], className="d-flex align-items-center mb-1"))
+        bits.append(_relative_time(ev.get("epoch")))
+        entries.append((ev.get("epoch") or 0, _event_row(kind, bits)))
+
+    for pid, g in conn.items():
+        ev = g["latest"]
+        bits = [_friendly_name(cfg, pid)]
+        if g["drops"] > 1:
+            bits.append(f"flapping ({g['drops']}×)")
+        bits.append(_relative_time(ev.get("epoch")))
+        entries.append((ev.get("epoch") or 0, _event_row(g["state"], bits)))
+
+    entries.sort(key=lambda e: e[0], reverse=True)
+    rows = [div for _, div in entries[:limit]]
     return html.Div([
         html.H6("Recent events", className="text-muted mb-2"),
         html.Div(rows),
