@@ -140,15 +140,19 @@
     <p class="eyebrow">Firmware installer</p>
     <h1>Flash your Setpoint</h1>
     <p class="sub">Put the latest firmware on an ESP32-C3 straight from your browser — no
-      Arduino IDE, no toolchain, no account. <span class="ver">firmware v2.4.1</span></p>
+      Arduino IDE, no toolchain, no account. <span class="ver">firmware v2.7.0</span></p>
 
     <p class="need"><b>You'll need:</b> desktop <b>Chrome, Edge, or Opera</b> · an ESP32-C3
       board on a <b>USB-C data cable</b> (not charge-only).</p>
 
     <ol>
-      <li>Plug the board into a USB port on this computer (power switch <strong>ON</strong>).</li>
-      <li>Click <strong>Flash Setpoint</strong> and pick the board's serial port. If none
-        appears, try another cable (many are charge-only) or hold <strong>BOOT</strong> while connecting.</li>
+      <li>Plug the board into a USB port on this computer. If your board has a battery power
+        switch, set it <strong>OFF</strong> first — USB powers the board for flashing, and an
+        off switch keeps that USB power from back-feeding the cell.</li>
+      <li>Click <strong>Flash Setpoint</strong> and pick the board's serial port. No port, or the
+        board keeps <strong>connecting and disconnecting</strong>? Force download mode:
+        <strong>hold BOOT, tap RST, release BOOT</strong> — then pick the port. (Also make sure it's
+        a <strong>data</strong> cable, not charge-only.)</li>
       <li>When it finishes, follow the <a href="../guide.html">setup guide</a>:
         join the <code>Setpoint-XXXXXX</code> Wi-Fi and point it at your dashboard.</li>
     </ol>

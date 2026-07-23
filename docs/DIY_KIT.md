@@ -19,16 +19,28 @@ firmware."** Kill both and the kit sells itself. Everything below is aimed at th
 
 ---
 
-## Kill fear #1 — flashing. **Pre-flash every board before it ships.**
+## Kill fear #1 — flashing. **Make browser-flashing one click.**
 
-Flashing is **not** assembly, so pre-flashing the ESP32-C3 is FCC-safe *and* it's the single biggest
-friction remover. Ship each board already running the firmware, so the buyer **never opens a
-toolchain**. Their whole "software" step becomes: power on → join the `Setpoint-XXXXXX` Wi-Fi →
-open the dashboard. That's your product's magic moment (auto-provision + onboarding already handle it).
+The buyer flashes the board themselves — and that's a *feature*, not a chore, because the
+[browser-flash page](../flash/) (ESP Web Tools) turns it into: plug in the SuperMini's USB-C →
+click **Flash** in Chrome/Edge → done. The ESP32-C3 flashes natively over USB, so there's **no
+Arduino, no drivers, no toolchain, no account**. Their whole "software" step becomes: flash →
+power on → join the `Setpoint-XXXXXX` Wi-Fi → open the dashboard. That's your product's magic
+moment (auto-provision + onboarding already handle the rest).
 
-- Belt-and-suspenders: **also** print the QR to your **browser-flash page** (ESP Web Tools) on the
-  card, so if they ever need to re-flash, it's one click from Chrome — no Arduino, no drivers hunt.
-- Put the firmware **version + probe serial** on the board's label so support is traceable.
+Shipping un-flashed means every buyer gets the **latest** firmware and it's **one less step per
+kit for you**. Make it foolproof:
+
+- **Print the flash-page QR big on the quick-start card** — it's step 1, not a footnote.
+- Pre-answer the only two things that make flashing fail: a **USB-C _data_ cable** (not
+  charge-only) and a **Web Serial browser** (Chrome/Edge/Opera — not Safari/Firefox).
+- Tell them to **flash with the power switch OFF** — USB powers the board on its own, and an off
+  switch keeps USB power from back-feeding the cell through the TP4056.
+- Put the **probe serial** on the board's label so support stays traceable.
+
+> Want to hand buyers a board that's already alive on first power-up? You *can* still pre-flash in
+> a batch — it's FCC-safe (flashing isn't assembly) — but with the one-click web flasher it's
+> **optional**, and skipping it keeps firmware fresh and your per-kit labor at zero.
 
 ## Kill fear #2 — soldering. **Offer a no-iron path.**
 
@@ -50,7 +62,7 @@ don't solder" buyer — for a few minutes of header soldering you do in a batch.
 
 ## What's in the bag (make it feel complete and premium)
 
-- ✅ Rev-1 carrier PCB (**pre-flashed** SuperMini seated or bagged with it).
+- ✅ Rev-1 carrier PCB + SuperMini (the buyer **flashes it in-browser** — one click, no toolchain).
 - ✅ DS18B20 waterproof probe (1 m).
 - ✅ 4.7 kΩ pull-up resistor (**pre-bent to pitch**) + headers / screw terminal.
 - ✅ TP4056 charger + 18650 holder. **State clearly whether the 18650 cell is included** — shipping
@@ -113,12 +125,14 @@ don't solder" buyer — for a few minutes of header soldering you do in a batch.
 - **Channel:** Tindie (maker audience, kits explicitly welcome, ~5% fee, <48 h approval). Keep your
   own site for the free software + waitlist, not a competing listing (Tindie is web-exclusive per SKU).
 - **Handling time:** set an honest 3–5 business days for hand-bagged batches.
-- **Test every probe before bagging** — power the pre-flashed board, confirm it reads a sane room
-  temperature (not −127/blank). A dead DS18B20 is the most likely bad part and a guaranteed return;
-  catching it at the bench costs seconds.
+- **Test the DS18B20 probes before bagging** — plug each into a bench rig and confirm a sane room
+  reading (not −127/blank). A dead DS18B20 is the most likely bad part and a guaranteed return, and
+  it's a loose part you *can* test even though the board ships un-flashed. (There's no finished unit
+  for **you** to power up — the buyer assembles and flashes it, so their first flash + power-on is
+  the functional test, which your foolproof card walks them through.)
 - **Track each kit's probe serial** in your batch log (`docs/LABEL_TEMPLATE.md` style) so a support
   request maps to a known unit.
-- **Returns/support:** the pre-flash + foolproof card + honest specs are your best defense against both.
+- **Returns/support:** the one-click browser flash + foolproof card + honest specs are your best defense against both.
 
 ---
 
@@ -127,8 +141,8 @@ don't solder" buyer — for a few minutes of header soldering you do in a batch.
 - **$0 assembly labor, $0 FCC gate, near-$0 capital** — the cheapest way to get real paying customers.
 - **It validates the same demand** as the assembled unit, so what you learn transfers directly to the
   rev-2 assembled SKU.
-- **Your software makes the payoff instant** — pre-flashed + auto-provision means the buyer's first
-  experience is "it just showed up on my dashboard," which is exactly what earns a review.
+- **Your software makes the payoff instant** — one-click browser flash + auto-provision means the
+  buyer's first experience is "it just showed up on my dashboard," which is exactly what earns a review.
 
-**Start here, pre-flash everything, offer the no-solder tier, and let the browser-flash page + your
-onboarding do the selling.**
+**Start here, make the browser flash one click, offer the no-solder tier, and let the flash page +
+your onboarding do the selling.**

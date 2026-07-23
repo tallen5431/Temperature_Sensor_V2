@@ -22,6 +22,7 @@ on:
       - "esp32_temp_probe/**"
       - "flash/**"
       - "web/**"
+      - "docs/images/assembly/**"
       - ".github/workflows/deploy-flasher.yml"
   workflow_dispatch:
 
@@ -59,8 +60,10 @@ jobs:
 
       - name: Assemble Pages site (hub at root, flasher at /flash/)
         run: |
-          mkdir -p _site/flash
+          mkdir -p _site/flash _site/img/assembly
           cp web/*.html _site/
+          # Build-guide photos referenced by guide.html as img/assembly/*.jpg
+          cp docs/images/assembly/*.jpg _site/img/assembly/
           cp flash/index.html \
              flash/manifest.json \
              flash/setpoint-esp32c3.merged.bin \

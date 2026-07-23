@@ -100,6 +100,63 @@ Notes on pricing:
 
 ---
 
+## DIY kit COGS & margin (buyer-assembled, board-only)
+
+This is the **actual DIY kit** as it currently ships — distinct from the *assembled* pricing above.
+The buyer solders the rev-1 carrier PCB + modules and **flashes it themselves** in the browser
+([`DIY_KIT.md`](DIY_KIT.md)). It's **board-only** (no enclosure), the **18650 cell is not included**
+(lithium carrier rules; the buyer sources a good cell), and the **DS18B20 ships with the JST-PH
+pre-terminated** so there's no crimping. Costs are at ~10-qty buying and drop further in 50s–100s.
+
+### Per-kit cost
+
+| Part | ~Cost (qty 10) |
+|---|---|
+| Carrier PCB (custom) | 1.75 |
+| ESP32-C3 SuperMini | 3.00 |
+| DS18B20 waterproof probe, JST-PH pre-terminated | 3.75 |
+| 4.7 kΩ pull-up resistor | 0.02 |
+| TP4056 charge/protect module | 0.60 |
+| SPDT slide switch | 0.35 |
+| 18650 holder | 0.60 |
+| Header pins (2 rows + spares) | 0.15 |
+| JST-PH board connector | 0.20 |
+| USB-C **data** cable (USB-C→USB-A) | 1.75 |
+| **Parts subtotal** | **~$12.17** |
+| Anti-static bag + parts baggies | 0.50 |
+| Printed quick-start card + serial/QR label | 0.65 |
+| Mailer / packaging | 0.75 |
+| **Landed COGS (excl. postage & fees)** | **~$14.07** |
+
+> Bundle a **guaranteed data cable**, not a charge-only one — a charge-only cable is the #1 cause of
+> "the flasher can't see my board," so the whole point of including it is to kill that support ticket.
+
+> **Not in the kit:** the 18650 cell and an **enclosure** (open-board kit). Ship *cell-not-included*
+> (carrier rules + liability on loose lithium) but tell the buyer **exactly** what to add so the kit
+> still feels complete: **one reputable 18650, ~2500–3500 mAh, flat-top or protected** (the TP4056
+> provides protection either way) from a name brand — and **warn against "9900 mAh"-type
+> counterfeits**. This "buy this one cell" line belongs on the quick-start card and in the listing.
+
+### Margin at a few price points
+
+Assumes **~8% all-in marketplace fees** (5% Tindie + ~3% payment processing — confirm current Tindie
+payout terms), a **4% returns/defect allowance**, and **buyer-paid shipping** (subtract ~$5 if you
+offer free domestic shipping). *After labor* books ~8 min/kit of bagging + probe test + labeling at
+~$24/hr (≈$3.20); a solo maker may not cash-count that.
+
+| Price | Fees (8%) | COGS | Returns (4%) | **Contribution** | (after labor) |
+|---|---|---|---|---|---|
+| **$39** | −3.12 | −14.07 | −1.56 | **$20.25 (52%)** | $17.05 (44%) |
+| **$44** | −3.52 | −14.07 | −1.76 | **$24.65 (56%)** | $21.45 (49%) |
+| **$49** | −3.92 | −14.07 | −1.96 | **$29.05 (59%)** | $25.85 (53%) |
+
+**Suggested: launch at $39, raise to $44–49 with traction.** Even with the bundled data cable, $39
+still clears ~52% contribution before labor — and a low intro price buys the first few reviews that
+make every later sale easier (a new Tindie listing lives or dies on social proof). Raise once you
+have reviews. Confirm against your real first-batch invoices before locking the price.
+
+---
+
 ## Power, waterproofing & food-safe notes
 
 - **Battery (Portable version only):** use a single protected lithium cell with the TP4056

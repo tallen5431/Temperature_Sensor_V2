@@ -1,6 +1,6 @@
 """Single source of truth for hub version and product metadata."""
 
-HUB_VERSION = "2.5.0"
+HUB_VERSION = "2.6.1"
 PRODUCT_NAME = "Setpoint"
 DOCS_URL = "https://github.com/tallen5431/temperature_sensor_v2#readme"
 

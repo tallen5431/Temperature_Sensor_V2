@@ -20,6 +20,12 @@ def _iso(dt):
     return dt.replace(microsecond=0).isoformat()
 
 
+def _series(fig):
+    """The visible probe line traces, excluding the invisible y-fit anchor trace
+    (mode='markers') the graph adds to drive autorange without pinning a range."""
+    return [t for t in fig.data if getattr(t, "mode", None) == "lines"]
+
+
 def _seed(db, n_per_probe=3):
     now = datetime.datetime.now()
     for probe in ("TempProbe-A", "TempProbe-B"):
@@ -44,7 +50,7 @@ def test_build_dashboard_with_data(tmp_path):
     out = build_dashboard(db, cfg, FakeFinder(), "24h", "celsius")
     gauge, fig, probes, lastupd, logging_status, hb, range_info = out[:7]
     # Two probes -> two traces, legend shown
-    assert len(fig.data) == 2
+    assert len(_series(fig)) == 2
     assert fig.layout.showlegend is True
     assert "data points" in range_info
     assert logging_status == "ON"
@@ -124,7 +130,7 @@ def test_build_dashboard_friendly_name_used(tmp_path):
     _seed(db)
     out = build_dashboard(db, cfg, FakeFinder(), "24h", "celsius")
     fig = out[1]
-    names = {tr.name for tr in fig.data}
+    names = {tr.name for tr in _series(fig)}
     assert names == {"Kitchen", "Garage"}
 
 
@@ -205,7 +211,7 @@ def test_focus_mode_filters_to_one_probe(tmp_path):
         db.append(_iso(now), t, 0.0, "B")
 
     allm = build_dashboard(db, cfg, FakeFinder(), "24h", "celsius", "all")
-    assert len(allm[1].data) == 2          # graph overlays both probes
+    assert len(_series(allm[1])) == 2      # graph overlays both probes
     # The overview no longer headlines a blended cross-probe average (a freezer
     # + a room averaged together is meaningless); it points to the per-probe
     # breakdown instead. Global Min/Max stay as the coldest/hottest anywhere.
@@ -216,7 +222,7 @@ def test_focus_mode_filters_to_one_probe(tmp_path):
 
     foc = build_dashboard(db, cfg, FakeFinder(), "24h", "celsius", "A")
     assert len(foc[0].data) == 1           # gauge shows one probe
-    assert len(foc[1].data) == 1           # graph shows only that probe's trace
+    assert len(_series(foc[1])) == 1       # graph shows only that probe's trace
     assert foc[7] == "-20.0 °C"            # stat-min is the focused probe's own
     assert foc[9] == "-16.0 °C"            # stat-max is the focused probe's own
     assert "Freezer" in foc[6]             # range info names the focused probe
@@ -228,7 +234,7 @@ def test_focus_mode_unknown_probe_falls_back(tmp_path):
     cfg = Config(tmp_path / "c.json")
     _seed(db)  # two probes A/B
     out = build_dashboard(db, cfg, FakeFinder(), "24h", "celsius", "does-not-exist")
-    assert len(out[1].data) == 2  # overview graph with both probes
+    assert len(_series(out[1])) == 2  # overview graph with both probes
 
 
 def _line_shapes(fig):
@@ -254,9 +260,13 @@ def test_focus_mode_draws_threshold_bands(tmp_path):
     assert len(lines) == 2 and len(rects) == 2
     ys = sorted(s.y0 for s in lines)
     assert ys == [-20.0, -15.0]  # limit lines sit at the configured thresholds
-    # y-range widened so both bands are visible beyond the data.
-    y_range = fig.layout.yaxis.range
-    assert y_range[0] < -20.0 and y_range[1] > -15.0
+    # The y-fit is carried by an invisible anchor trace (not an explicit
+    # yaxis.range, which would fight uirevision on refresh — see
+    # test_graph_uirevision_preserves_zoom_but_resets_on_view_change). No range
+    # is pinned, and the anchor spans beyond both bands so autorange shows them.
+    assert fig.layout.yaxis.range is None
+    anchor = fig.data[-1]
+    assert min(anchor.y) < -20.0 and max(anchor.y) > -15.0
 
 
 def test_focus_mode_threshold_bands_use_current_unit(tmp_path):

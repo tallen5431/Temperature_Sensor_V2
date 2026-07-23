@@ -43,13 +43,15 @@ def _help_body():
             ]),
 
             _section("4 · Your data", [
-                html.P([html.B("Download CSV"), " on the Dashboard exports the selected time range. ",
+                html.P([html.B("Export…"), " on the Dashboard downloads a probe and date range as an ",
+                        html.B("Excel-friendly CSV"), " (split date/time columns and friendly names), a "
+                        "native ", html.B(".xlsx"), " workbook, or the ", html.B("raw CSV"), ". ",
                         html.B("Settings → Data Management"), " sets how long to keep readings and offers a "
                         "one-click database ", html.B("backup"), "."], className="mb-1"),
             ]),
 
             _section("5 · Connect it to other tools (advanced)", [
-                html.P(["Beyond the ", html.B("Download CSV"), " button, the hub can feed your "
+                html.P(["Beyond the ", html.B("Export…"), " dialog, the hub can feed your "
                         "data to other software live:"], className="mb-1"),
                 html.Ul([
                     html.Li([html.B("Live JSON API"), " — ",

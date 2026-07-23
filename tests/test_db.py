@@ -247,6 +247,138 @@ def test_export_csv_filters(db):
     assert rows(end_epoch=start - 1) == 1  # only the 3-days-ago row
 
 
+def test_export_friendly_csv_shape(db):
+    db.append("2026-07-21T22:45:36.267", -18.5, -1.3, "Setpoint-000079", humidity=55.0)
+    buf = io.StringIO()
+    n = db.export_friendly_csv(buf, name_map={"Setpoint-000079": "Chest Freezer"})
+    assert n == 1
+    lines = buf.getvalue().splitlines()
+    assert lines[0] == "date,time,probe,temperature_c,temperature_f,probe_id,timestamp_utc"
+    cols = lines[1].split(",")
+    # date and time are split into separate, spreadsheet-parseable columns
+    assert cols[0] == "2026-07-21"
+    assert cols[1] == "22:45:36"
+    # friendly name is used, raw id kept alongside, humidity/vpd dropped entirely
+    assert cols[2] == "Chest Freezer"
+    assert cols[5] == "Setpoint-000079"
+    assert len(cols) == 7
+    assert "humidity" not in lines[0] and "vpd" not in lines[0]
+    # full-precision UTC instant is retained
+    assert cols[6] == "2026-07-21T22:45:36.267Z"
+
+
+def test_export_friendly_csv_falls_back_to_raw_id_when_unnamed(db):
+    db.append("2026-07-21T09:00:00", 4.0, 39.2, "probeZ")
+    buf = io.StringIO()
+    db.export_friendly_csv(buf, name_map={})  # no friendly name configured
+    assert buf.getvalue().splitlines()[1].split(",")[2] == "probeZ"
+
+
+def test_export_friendly_csv_formula_injection_guard(db):
+    # A malicious friendly name / id starting with a formula char is neutralised.
+    db.append("2026-07-21T09:00:00", 4.0, 39.2, "probeZ")
+    buf = io.StringIO()
+    db.export_friendly_csv(buf, name_map={"probeZ": "=cmd|calc"})
+    cell = buf.getvalue().splitlines()[1].split(",")[2]
+    assert cell.startswith("'=")  # single-quote guard makes Excel treat it as text
+
+
+def test_export_friendly_csv_filters(db):
+    now = datetime.datetime.now()
+    old = now - datetime.timedelta(days=3)
+    db.append(_iso(old), 10.0, 50.0, "A")
+    db.append(_iso(now), 20.0, 68.0, "A")
+    db.append(_iso(now), 4.0, 39.2, "B")
+
+    def rows(**kw):
+        buf = io.StringIO()
+        return db.export_friendly_csv(buf, **kw)
+
+    assert rows() == 3
+    assert rows(probe_id="A") == 2
+    start = int(now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
+    assert rows(start_epoch=start) == 2
+    assert rows(probe_id="A", start_epoch=start) == 1
+
+
+def test_count_readings_matches_filters(db):
+    now = datetime.datetime.now()
+    db.append(_iso(now - datetime.timedelta(days=3)), 10.0, 50.0, "A")
+    db.append(_iso(now), 20.0, 68.0, "A")
+    db.append(_iso(now), 4.0, 39.2, "B")
+    assert db.count_readings() == 3
+    assert db.count_readings(probe_id="A") == 2
+    start = int(now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
+    assert db.count_readings(start_epoch=start) == 2
+
+
+def test_export_xlsx_typed_cells(db):
+    pytest.importorskip("openpyxl")
+    from openpyxl import load_workbook
+
+    db.append("2026-07-21T22:45:36.500", -18.5, -1.3, "Setpoint-000079")
+    dest = str(db.path) + ".xlsx"
+    with open(dest, "wb") as f:
+        n = db.export_xlsx(f, name_map={"Setpoint-000079": "Chest Freezer"})
+    assert n == 1
+
+    ws = load_workbook(dest).active
+    # header is present, frozen, and an auto-filter spans the populated table
+    header = [c.value for c in next(ws.iter_rows(max_row=1))]
+    assert header == ["date", "time", "probe", "temperature_c",
+                      "temperature_f", "probe_id", "timestamp_utc"]
+    assert ws.freeze_panes == "A2"
+    assert ws.auto_filter.ref == "A1:G2"
+
+    row = list(ws.iter_rows(min_row=2, max_row=2))[0]
+    date_c, time_c, probe_c, tc, tf, pid, utc = row
+    # date/time are real date/time cells, temperatures are real numbers
+    assert date_c.data_type == "d" and time_c.data_type == "d"
+    assert tc.data_type == "n" and tc.value == -18.5
+    assert tf.data_type == "n"
+    assert probe_c.value == "Chest Freezer"
+    assert pid.value == "Setpoint-000079"
+    assert utc.value == "2026-07-21T22:45:36.500Z"
+
+
+def test_export_xlsx_injection_guard(db):
+    pytest.importorskip("openpyxl")
+    from openpyxl import load_workbook
+
+    db.append("2026-07-21T09:00:00", 4.0, 39.2, "probeZ")
+    dest = str(db.path) + ".guard.xlsx"
+    with open(dest, "wb") as f:
+        db.export_xlsx(f, name_map={"probeZ": "=HYPERLINK(1)"})
+    ws = load_workbook(dest).active
+    probe_cell = list(ws.iter_rows(min_row=2, max_row=2))[0][2]
+    # stored as literal text, never as a formula
+    assert probe_cell.data_type == "s"
+    assert str(probe_cell.value).startswith("'=")
+
+
+def test_export_xlsx_row_limit_guard(db):
+    from core.db import ExportTooLargeForXlsx
+
+    now = datetime.datetime.now()
+    for i in range(5):
+        db.append(_iso(now - datetime.timedelta(seconds=i)), float(i), 0.0, "p")
+    db.XLSX_MAX_ROWS = 4  # tiny limit: 5 rows > 4 - 1
+    with pytest.raises(ExportTooLargeForXlsx) as exc:
+        with open(str(db.path) + ".big.xlsx", "wb") as f:
+            db.export_xlsx(f)
+    assert exc.value.rows == 5
+
+
+def test_export_csv_canonical_unchanged_by_friendly_addition(db):
+    # The system-of-record CSV must keep its exact 7-column ISO shape.
+    db.append("2026-07-21T22:45:36.267", -18.5, -1.3, "A", humidity=55.0)
+    buf = io.StringIO()
+    db.export_csv(buf)
+    head = buf.getvalue().splitlines()[0]
+    assert head == ("timestamp,timestamp_utc,temperature_c,temperature_f,"
+                    "probe_id,humidity_pct,vpd_kpa")
+
+
 def test_iso_to_epoch_roundtrip():
     now = datetime.datetime.now().replace(microsecond=0)
     epoch = iso_to_epoch(now.isoformat())

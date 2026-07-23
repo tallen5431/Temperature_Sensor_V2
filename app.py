@@ -13,7 +13,7 @@ from dash import Dash, Input, Output
 from flask import Flask, Response, request
 
 from core.config import Config
-from core.db import Database, migrate_csv_if_present
+from core.db import Database, migrate_csv_if_present, ExportTooLargeForXlsx
 from core.logging_setup import configure_logging
 from core.mdns_advert import MdnsAdvert
 from core.metrics import LATEST, render_prometheus
@@ -271,24 +271,73 @@ def _parse_date_epoch(s, end_of_day=False):
 
 @server.route("/download/temperature_log.csv")
 def download_csv():
-    """Stream the log as CSV. Optional filters: ?window=24h, ?probe=<id>, and an
-    absolute ?from=YYYY-MM-DD&to=YYYY-MM-DD range (inclusive, hub-local dates)."""
+    """Stream the log for download. Optional filters: ?window=24h, ?probe=<id>,
+    and an absolute ?from=YYYY-MM-DD&to=YYYY-MM-DD range (inclusive, hub-local
+    dates).
+
+    ``?format=`` selects the shape:
+      * ``raw`` (default) — canonical/system-of-record CSV, ISO-8601 timestamps,
+        every column. Unchanged; existing links keep working.
+      * ``excel`` — spreadsheet-friendly CSV: ``date`` and ``time`` split into
+        separate columns, the probe's friendly name alongside its id, unused
+        humidity/VPD dropped, written UTF-8-with-BOM so Excel opens it cleanly.
+      * ``xlsx`` — a native Excel workbook (typed date/time/number cells, frozen
+        header, auto-filter).
+    """
     args = request.args
+    fmt = (args.get("format") or "raw").strip().lower()
     window = WINDOW_SECONDS.get((args.get("window") or "all").strip())
     probe = (args.get("probe") or "").strip() or None
     start_epoch = _parse_date_epoch(args.get("from"), end_of_day=False)
     end_epoch = _parse_date_epoch(args.get("to"), end_of_day=True)
-    fname = "temperature_log.csv"
-    if probe:
-        fname = "temperature_" + re.sub(r"[^A-Za-z0-9_.-]", "_", probe) + ".csv"
+    names = cfg.get("probe_names", {}) or {}
+    slug = re.sub(r"[^A-Za-z0-9_.-]", "_", probe) if probe else None
+
     # Write to a temp file and stream it (like /download/backup.db) rather than
     # buffering the whole export in memory — a hub that has logged for months can
-    # have a multi-hundred-MB CSV that would otherwise OOM the process.
+    # produce a multi-hundred-MB export that would otherwise OOM the process.
+    if fmt == "xlsx":
+        fname = (f"temperature_{slug}.xlsx" if slug else "temperature_export.xlsx")
+        fd, tmp_path = tempfile.mkstemp(suffix=".xlsx")
+        try:
+            with os.fdopen(fd, "wb") as f:
+                db.export_xlsx(f, name_map=names, window_seconds=window, probe_id=probe,
+                               start_epoch=start_epoch, end_epoch=end_epoch)
+        except ExportTooLargeForXlsx as e:
+            _safe_unlink(tmp_path)
+            return str(e), 400
+        except ImportError:
+            _safe_unlink(tmp_path)
+            return ("Excel (.xlsx) export needs the optional 'openpyxl' package "
+                    "(pip install openpyxl). Use a CSV export instead."), 501
+        except Exception:
+            log.exception("XLSX export failed")
+            _safe_unlink(tmp_path)
+            return "Export failed", 500
+        AUDIT.record("data.export", detail=fname, actor=request.remote_addr or "?")
+        return Response(
+            _stream_file_then_delete(tmp_path),
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={fname}"},
+        )
+
+    if fmt == "excel":
+        fname = (f"temperature_{slug}_excel.csv" if slug else "temperature_export.csv")
+        encoding = "utf-8-sig"  # BOM so Excel auto-detects UTF-8 (° and accents)
+    else:
+        fmt = "raw"
+        fname = (f"temperature_{slug}.csv" if slug else "temperature_log.csv")
+        encoding = "utf-8"
     fd, tmp_path = tempfile.mkstemp(suffix=".csv")
     try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
-            db.export_csv(f, window_seconds=window, probe_id=probe,
-                          start_epoch=start_epoch, end_epoch=end_epoch)
+        with os.fdopen(fd, "w", encoding=encoding, newline="") as f:
+            if fmt == "excel":
+                db.export_friendly_csv(f, name_map=names, window_seconds=window,
+                                       probe_id=probe, start_epoch=start_epoch,
+                                       end_epoch=end_epoch)
+            else:
+                db.export_csv(f, window_seconds=window, probe_id=probe,
+                              start_epoch=start_epoch, end_epoch=end_epoch)
     except Exception:
         log.exception("CSV export failed")
         _safe_unlink(tmp_path)

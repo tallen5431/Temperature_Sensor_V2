@@ -31,12 +31,13 @@ Wi-Fi temp sensor that reports to a free app on YOUR own PC — no cloud, no acc
 
 ## 4. Price & options
 
-The **hub software is free**; the probe is the paid item. Set the price you can sustain (your BOM is
-~$22/unit, ~$16–18 at qty 10+ — target ~50–55% gross margin). Suggested starting points:
+The **hub software is free**; the probe is the paid item. The DIY kit's landed cost is **~$14**
+(with the bundled data cable — see the *DIY kit COGS* table in [`BOM.md`](BOM.md)). **Launch at $39**
+to seed your first reviews, then raise toward $44–49 once you have traction. Suggested starting points:
 
 | Option (Tindie "product option") | What it is | Suggested price |
 |---|---|---|
-| **DIY Kit** | Bag of parts + label/QR to the browser-flash page; buyer assembles & flashes | **~$39** |
+| **DIY Kit** | Bag of parts + cable + card/QR to the browser-flash page; buyer solders & flashes | **$39 launch** (→ $44–49) |
 | **Assembled & Tested** | Pre-built, pre-flashed, QC'd unit (needs FCC SDoC — see below) | **~$69** |
 | **4-Probe Pack (Assembled)** | Four units for a whole rack/closet | **~$189** |
 
@@ -57,7 +58,9 @@ so your readings never leave the building and your alerts keep working even when
 - 🏠 **Your data stays on-prem.** Readings live in a local SQLite database on your machine, exportable
   to CSV anytime. No account, no telemetry, nothing phoning home.
 - 🧩 **Drops into the stack you already run:** Prometheus `/metrics`, Home Assistant + MQTT
-  auto-discovery, Docker/headless on a NAS, one-click CSV export.
+  auto-discovery, Docker/headless on a NAS, one-click CSV / Excel export.
+- 🖥️ **Flash it from your browser.** No Arduino, no drivers, no toolchain — plug in USB-C, click once
+  on the web flasher (Chrome/Edge), and it's running the latest firmware. (Assembled units arrive pre-flashed.)
 - 🌡️ **One hub, many probes.** Add probes and they self-discover on your LAN — pay for sensors, not a
   per-sensor gateway.
 - 🛎️ **Alerts that reach you.** Per-probe high/low thresholds → email or webhook, evaluated on the hub
@@ -69,9 +72,9 @@ so your readings never leave the building and your alerts keep working even when
 | Sensor | Maxim **DS18B20**, waterproof stainless probe (1 m lead) |
 | Accuracy | **±0.5 °C typical, uncalibrated** (add a per-probe offset in the app). Resolution 0.0625 °C is *not* accuracy. |
 | Connectivity | **2.4 GHz** Wi-Fi (no 5 GHz) |
-| Power | USB 5 V, always-on (a battery/deep-sleep build is available on request) |
+| Power | **Portable:** rechargeable 18650 via TP4056 charge/protect, deep-sleeps between reads (**cell not included**). **Fixed:** USB 5 V always-on, no battery. |
 | Probes per hub | Dozens — one hub covers a whole rack/site |
-| Data | Local SQLite on your PC, one-click CSV export |
+| Data | Local SQLite on your PC, one-click CSV / Excel export |
 | Hub software | **Free.** Windows 10/11 or Linux; runs headless / in Docker |
 | Integrations | Prometheus, MQTT + Home Assistant, CSV, email/webhook alerts |
 | Firmware | Open source; on-device Wi-Fi setup |
@@ -80,17 +83,25 @@ so your readings never leave the building and your alerts keep working even when
 > free hub. If you don't already leave a machine on 24/7, this isn't the right pick.
 
 ### What's in the box
-- 1× Setpoint (ESP32 + waterproof DS18B20 in an enclosure) — *DIY Kit ships as parts to assemble*
-- 1× USB cable
-- Quick-start card + link to the full user manual
-- Unit label: serial ID, **open** setup Wi-Fi name (no password), setup QR
 
-*(The hub app is a free download — no disc, no account.)*
+**DIY Kit (you solder + flash it):**
+- Carrier PCB + **ESP32-C3 SuperMini**, waterproof **DS18B20 probe (JST-PH pre-terminated — no crimping)**,
+  4.7 kΩ pull-up, **TP4056** charge/protect board, on/off switch, 18650 holder, and headers
+- **USB-C data cable** (for flashing & charging — a real data cable, not charge-only)
+- Printed **quick-start card** with the browser-flash QR + link to the full user manual + setup QR
+- **Just add a battery:** one reputable **18650** — ~2500–3500 mAh, flat-top or protected (the TP4056
+  handles protection); avoid "ultra-high-mAh" counterfeits. Not included (lithium shipping rules), and
+  it's the *only* part you supply. (Also no enclosure — this is an open-board kit.)
+
+**Assembled & Tested:** the same build, pre-built, pre-flashed, and QC'd — just add Wi-Fi.
+
+*(The hub app is a free download — no account, and nothing to install on the probe beyond the one-click flash.)*
 
 ### FAQ
 - **Needs internet/an account?** No — LAN only. Internet is only used if you want email alerts to leave your network.
 - **Accuracy?** ±0.5 °C typical, uncalibrated — great for "is my rack within range and trending safe." Not a certified/NIST/medical instrument.
 - **Wi-Fi?** 2.4 GHz only. Setup is on-device (join the probe's temporary network, pick yours) — no phone app.
+- **Battery?** Runs on one **18650** (not included — lithium shipping rules). Add any reputable ~2500–3500 mAh flat-top or protected cell; the on-board TP4056 recharges it over USB-C. Or run it always-on from USB with no cell at all.
 - **Power loss?** Local alerts keep firing during a *WAN* outage, but nothing survives a full power loss — put your router/hub on a UPS if that's your risk.
 - **Open firmware?** Yes — read it, build it, reflash it. You're never locked in.
 ```

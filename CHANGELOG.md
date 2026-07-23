@@ -9,6 +9,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Illustrated DIY-kit assembly guide.** `docs/ASSEMBLY.md` is rewritten from the
+  stale ESP32-WROOM/GPIO2 hand-wired build into a photo-illustrated, start-to-finish
+  guide for the actual **C3 SuperMini carrier kit** (solder → flash → Wi-Fi → live
+  dashboard), with the real-build gotchas baked in (switch-OFF flashing, BOOT/RST
+  download mode, JST notch orientation, pre-power meter checks, cell spec). Photos
+  are referenced from `docs/images/assembly/` with a commit-checklist manifest.
+- **Flashing troubleshooting for a blank C3/S3 that keeps re-connecting.** The web
+  flasher page and the DIY build guide now document the download-mode fix — **hold
+  BOOT, tap RST, release BOOT** — for a new board whose USB port drops / keeps
+  re-enumerating instead of holding a stable connection for flashing.
+
+### Fixed
+
+- **Stale firmware version on the flasher page and build guide.** The web flasher
+  and `web/guide.html` displayed "firmware v2.4.1" while the shipping firmware (and
+  `flash/manifest.json`) is **2.7.0**. Both display strings now read 2.7.0.
+- **DIY-kit flashing instructions had the power switch backwards.** The web
+  flasher page and the DIY build guide told buyers to flash with the power
+  switch ON. On the kit the switch only gates the battery→ESP32-C3 path, so the
+  SuperMini's own USB-C powers the board for flashing regardless of the switch —
+  and leaving it ON lets USB power back-feed the cell through the TP4056. The
+  flashing steps now say **switch OFF**, the power-check step explains USB powers
+  the board directly, and the troubleshooting table no longer blames a "No LED on
+  USB" symptom on the switch (it can't cut USB power) — with a new
+  battery-specific row where an off switch is the real cause.
+
+## [2.6.1] - 2026-07-22
+
+### Fixed
+
+- **Temperature History zoom reset on every refresh.** The earlier `uirevision`
+  fix preserved a user's zoom on the time (x) axis, but the temperature (y) axis
+  still snapped back to the default on each 5-second auto-refresh — so a
+  box-zoom, which pans both axes, appeared to reset. The cause was an explicit
+  `yaxis.range` recomputed from the window's live min/max on every tick: Plotly
+  treats a *changed* programmatic range as an override and discards the user's
+  zoom even while `uirevision` is unchanged. The auto-fit range is now carried
+  by an invisible anchor trace that feeds Plotly's autorange instead of pinning
+  the axis, so the default (un-zoomed) view still tracks the data while a zoom
+  now persists across refreshes until you change the time range, unit, or focus
+  (or double-click to reset).
+
+## [2.6.0] - 2026-07-22
+
+### Added
+
+- **Spreadsheet-friendly data exports.** The dashboard's Export dialog now
+  offers three formats instead of one raw CSV, so the exported file is ready to
+  work with for people who expect an Excel-style document:
+  - **Excel-friendly CSV** (the new default): `date` and `time` are split into
+    separate columns in the hub's local wall clock — so Excel/Sheets parse each
+    as a real date/time value and sort, filter and pivot natively, instead of
+    importing an ISO `...T...`-with-milliseconds string as inert text. The
+    probe's friendly name is shown alongside its raw id, the unused
+    `humidity_pct`/`vpd_kpa` columns are dropped, and the file is written
+    UTF-8-with-BOM so Excel opens degree signs and accented names correctly.
+    The exact machine-independent `timestamp_utc` is still included.
+  - **Excel workbook (`.xlsx`)**: a native workbook with true date/time/number
+    cells, a frozen header row and filter dropdowns — double-click and it's
+    already typed and ready. Streams via openpyxl's write-only mode so a long
+    log doesn't buffer in memory, and refuses (with a clear message to narrow
+    the range) rather than silently truncate past Excel's ~1,048,576-row limit.
+  - **Raw CSV**: the previous canonical/system-of-record format (full ISO-8601
+    timestamps, every column) is unchanged and still available for scripts and
+    re-import. Existing `/download/temperature_log.csv` links keep working — the
+    format is selected with a new optional `?format=excel|xlsx|raw` parameter
+    (default `raw`), so nothing that bookmarked the old URL changes.
+- **openpyxl** added as an optional dependency (imported lazily; a missing
+  install only disables the `.xlsx` download — both CSV exports need no extra
+  packages).
+
 ## [2.5.0] - 2026-07-21
 
 The "better product" release: everything from a full six-lens review of the
