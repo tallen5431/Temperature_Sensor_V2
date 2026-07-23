@@ -655,17 +655,44 @@
     setInterval(tick, 900);
   }
 
-  // waitlist (front-end only — wire to your store/email provider)
+  // waitlist -> POST /api/waitlist (Cloudflare Pages Function; functions/api/waitlist.js)
   var form = document.getElementById("wlForm");
   var note = document.getElementById("wlNote");
   form.addEventListener("submit", function (e) {
     e.preventDefault();
     var email = document.getElementById("wlEmail").value.trim();
     var ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-    if (!ok) { note.textContent = "That email doesn't look right — check and try again."; note.style.color = "var(--signal)"; return; }
-    note.textContent = "You're on the list. We'll be in touch before units ship.";
+    if (!ok) {
+      note.textContent = "That email doesn't look right — check and try again.";
+      note.style.color = "var(--signal)";
+      return;
+    }
+    var btn = form.querySelector("button");
+    btn.disabled = true;
+    note.textContent = "Adding you…";
     note.style.color = "var(--signal)";
-    form.reset();
+    fetch("/api/waitlist", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: email })
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; });
+    }).then(function (body) {
+      if (body && body.ok) {
+        note.textContent = body.duplicate
+          ? "You're already on the list — we'll be in touch."
+          : "You're on the list. We'll be in touch before units ship.";
+        form.reset();
+      } else {
+        note.textContent = "That didn't go through — give it another try in a moment.";
+      }
+      note.style.color = "var(--signal)";
+    }).catch(function () {
+      note.textContent = "Network hiccup — please try again in a moment.";
+      note.style.color = "var(--signal)";
+    }).then(function () {
+      btn.disabled = false;
+    });
   });
 })();
 </script>
