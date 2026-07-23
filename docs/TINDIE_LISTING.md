@@ -31,8 +31,9 @@ Wi-Fi temp sensor that reports to a free app on YOUR own PC — no cloud, no acc
 
 ## 4. Price & options
 
-The **hub software is free**; the probe is the paid item. The DIY kit's landed cost is **~$14**
-(with the bundled data cable — see the *DIY kit COGS* table in [`BOM.md`](BOM.md)). **Launch at $39**
+The **hub software is free**; the probe is the paid item. The DIY kit's landed cost is **≈ $10**
+(true ~$10.03; $8.98 tracked — with the bundled data cable, see the *DIY kit COGS* table in
+[`BOM.md`](BOM.md)). **Launch at $39**
 to seed your first reviews, then raise toward $44–49 once you have traction. Suggested starting points:
 
 | Option (Tindie "product option") | What it is | Suggested price |
@@ -108,7 +109,7 @@ free hub. If you don't already leave a machine on 24/7, this isn't the right pic
 
 ## 6. Shipping
 
-The kit is small and light — PCBs, probe, holder, cable in a padded mailer, **~8 oz (0.5 lb)
+The kit is small and light — PCBs, probe, holder, cable in a 7×5×2 in box, **~5 oz (~0.35 lb)
 packed**. Tindie only lets you set a *flat* rate per carrier (no zone pricing), so pick a service
 sized to that parcel and set the rate to cover the far-zone case.
 
@@ -158,7 +159,7 @@ sized to that parcel and set the rate to cover the far-zone case.
 - [x] **Real photos of a real unit** — hero (`08-finished-unit`), kit flat-lay (`12-kit-contents`),
       and dashboard (`11-dashboard`) are ready. Enough to launch; add the extras from §7 over time.
 - [ ] **Support link** set in Tindie's field (use `support@datumlaboratories.com`). Store name = **Datum Labs**.
-- [x] **Prices** set from real costs — **$39 launch** (`docs/BOM.md` DIY-kit COGS ≈ $14 landed).
+- [x] **Prices** set from real costs — **$39 launch** (`docs/BOM.md` DIY-kit COGS ≈ $10 landed).
 - [x] **Shipping rate** decided — **USPS Ground Advantage, $6 base / $2 addon, domestic-only, tracking
       on**, assigned to the DIY Kit (see §6). Weigh the packed kit to confirm the flat rate.
 - [ ] **Inventory count** from your first batch.

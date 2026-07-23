@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/tallen5431/temperature_sensor_v2/actions/workflows/ci.yml/badge.svg)](https://github.com/tallen5431/temperature_sensor_v2/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue)
-![Hub](https://img.shields.io/badge/hub-v2.5.0-brightgreen)
+![Hub](https://img.shields.io/badge/hub-v2.6.2-brightgreen)
 ![Firmware](https://img.shields.io/badge/firmware-v2.7.0-brightgreen)
 
 **Local-first temperature (and humidity) monitoring for your fridge, freezer, fermentation, server closet, or greenhouse — with no cloud, no account, and no telemetry.**

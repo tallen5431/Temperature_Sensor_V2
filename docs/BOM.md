@@ -110,9 +110,13 @@ pre-terminated** so there's no crimping. Costs are at ~10-qty buying and drop fu
 
 ### Per-kit cost — actual (Jul 2026 batch of 50)
 
-Real line items from the **first production batch** (50 kits, **$238.66** in
-materials → **$8.98/unit** as tracked). Costs came in well under the original ~$14
-estimate — mostly the probe and cable coming in cheaper at volume. Rows marked ⚠
+Real per-unit line items for the **first production run** (targeting ~50 kits). The
+initial **bulk materials purchase was $238.66** — component *packs* (20-pack cables,
+100-pack resistors/foam, 50-pack boxes, a 10-pack of probes, etc.) that stock well
+beyond the first 50 units on most lines, so that figure is **not** a 50-kit total.
+The **per-unit tracked cost is $8.98** (each part's unit price × its qty-per-kit,
+summed in the table). Costs came in well under the original ~$14 estimate — mostly
+the probe and cable cheaper at volume. Rows marked ⚠
 are kit parts **not yet in the batch tracker** (see the reconcile note below); the
 values shown for them are estimates carried over from the earlier BOM.
 

@@ -2,7 +2,7 @@
 
 Developer reference for the Setpoint hub application. For the buyer-facing overview see the [root README](../README.md); for the wire protocol see [PROTOCOL.md](../PROTOCOL.md); for the probe firmware see [firmware/](../firmware/).
 
-- **Product:** Setpoint, version **2.4.0**, protocol **v1**.
+- **Product:** Setpoint, version **2.6.2**, protocol **v1** (the hub version is defined in `core/version.py` — that file is the single source of truth).
 - **Stack:** Python, Flask + [Dash](https://dash.plotly.com/) UI, served by [waitress](https://pypi.org/project/waitress/) on port **8088**.
 - **Positioning:** local-first, no-cloud temperature-monitoring appliance. Readings stay on the customer's PC.
 
@@ -85,7 +85,7 @@ Setpoint ──POST /api/ingest {temperature_c, probe_id, timestamp}──▶ Hu
 | `core/applog.py` | `get_logger` + the `HEALTH` counters surfaced on `/api/health` and `/metrics`. |
 | `core/logging_setup.py` | Rotating-file + console logging configuration. |
 | `core/mdns_advert.py` | `MdnsAdvert` — advertises the hub over mDNS. |
-| `core/version.py` | `HUB_VERSION`/`__version__` (2.4.0), `PRODUCT_NAME`, `PROTOCOL_VERSION` (1). |
+| `core/version.py` | `HUB_VERSION`/`__version__` (2.6.2), `PRODUCT_NAME`, `PROTOCOL_VERSION` (1). |
 | `components/layout_main.py` | Builds the Dash layout, page routing, callback registration. |
 | `components/*.py` | Dashboard UI pieces (dashboard, devices, settings, diagnostics, help, probe-setup wizard). |
 | `config.example.json` | Shipped default config; copied to `config.json` on first run. |
@@ -119,7 +119,7 @@ Returns:
 ```json
 {
   "ok": true,
-  "version": "2.4.0",
+  "version": "2.6.2",
   "protocol": 1,
   "probes": 2,
   "base": "http://192.168.1.50:8088",

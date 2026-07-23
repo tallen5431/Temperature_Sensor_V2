@@ -168,8 +168,9 @@ Only the **stainless probe tip** is immersible — keep the board and cell dry.
 ## For the maker — kit packing & shipping
 
 *Seller-facing fulfillment SOP. Buyers can skip this — it's here so every batch
-packs identically without re-deriving it.* Per-unit materials ≈ **$8.98**
-(Jul 2026 batch of 50; line items in [BOM.md](BOM.md)).
+packs identically without re-deriving it.* Per-unit materials ≈ **$10.03** landed
+(the batch tracker shows $8.98/unit, but that omits four kit parts — switch, 18650
+holder, header pins, JST connector; line items and reconcile note in [BOM.md](BOM.md)).
 
 ### Pack each kit
 
