@@ -2,12 +2,12 @@
 
 [![CI](https://github.com/tallen5431/temperature_sensor_v2/actions/workflows/ci.yml/badge.svg)](https://github.com/tallen5431/temperature_sensor_v2/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue)
-![Hub](https://img.shields.io/badge/hub-v2.5.0-brightgreen)
+![Hub](https://img.shields.io/badge/hub-v2.6.2-brightgreen)
 ![Firmware](https://img.shields.io/badge/firmware-v2.7.0-brightgreen)
 
 **Local-first temperature (and humidity) monitoring for your fridge, freezer, fermentation, server closet, or greenhouse — with no cloud, no account, and no telemetry.**
 
-Setpoint is a small appliance app that runs on your own Windows or Linux PC (or a NAS / Docker host). Wireless **Setpoint** sensors send their readings to it over your home or office network, and you watch everything live in your web browser. Data is stored in a local **SQLite** database on your machine and never leaves it — there is nothing to sign up for and nothing phoning home. Designed for **end users**: plug in the hub PC, power a probe, and data starts flowing with no manual setup.
+Setpoint is a small appliance app that runs on your own Windows or Linux PC (or a NAS / Docker host). Wireless **Setpoint** sensors send their readings to it over your home or office network, and you watch everything live in your web browser. Data is stored in a local **SQLite** database on your machine and never leaves it — there is nothing to sign up for and nothing phoning home. Designed for **end users**: flash a probe from your browser in one click, plug in the hub PC, power the probe, and readings start flowing with no manual setup — add more probes any time and they self-discover on your LAN.
 
 ---
 
@@ -15,6 +15,8 @@ Setpoint is a small appliance app that runs on your own Windows or Linux PC (or 
 
 - **Your data stays yours.** Readings are kept in a local SQLite database (WAL mode) on your PC and are exportable to CSV — or as a full database snapshot — at any time. No cloud service, no account, no tracking.
 - **Plug and play.** Power a Setpoint on your Wi-Fi and it shows up automatically — the hub discovers it over mDNS and provisions it for you.
+- **Flash it from your browser.** Bring a bare ESP32-C3 online in one click from Chrome, Edge, or Opera — no Arduino IDE, no drivers, no toolchain, no account. See [`flash/`](flash/).
+- **One hub, many probes.** Add probes and they self-discover on your LAN — a single hub handles them all, so you pay for sensors, not a gateway per sensor.
 - **Live dashboard.** A clean web page shows current temperature (plus humidity and VPD on grow probes), charts, and rolling statistics for every probe.
 - **Export anytime.** One click downloads a spreadsheet-ready CSV, or a consistent SQLite snapshot for backup.
 - **Calibrate & alert.** Trim each probe against a reference (ice bath) and get server-side notifications when a temperature drifts out of range — including when a probe goes silent.
@@ -194,7 +196,7 @@ Setpoint drops into an existing self-hosted stack:
 
 ```bash
 # Ingest a test reading (no probe needed)
-curl -X POST -H 'Content-Type: application/json' -d '{"temperature_c":22.3}' http://localhost:8088/api/ingest"
+curl -X POST -H 'Content-Type: application/json' -d '{"temperature_c":22.3}' http://localhost:8088/api/ingest
 # → {"ok": true}
 ```
 
