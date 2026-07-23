@@ -1,10 +1,10 @@
 # Tindie Listing — Setpoint (ready to paste)
 
-> _**Maker note (delete before publishing):** this maps the copy in [`LISTING.md`](LISTING.md) onto
-> Tindie's actual listing fields so you can paste section-by-section. The brand is set — product
-> **Setpoint**, store/company **Datum Labs**. Set your real **price**, **photos**, and **support
-> link** first. See the "Before you publish" checklist at the
-> bottom — the two blockers are **photos of a real unit** and (for the assembled option) **FCC**._
+> _**Maker note (delete before publishing):** Tindie field-by-field copy for the **DIY Kit launch**.
+> Brand — product **Setpoint**, store **Datum Labs**. Photos are ready (hero + kit flat-lay +
+> dashboard, §7), and the **DIY kit needs no FCC**, so this can go live now: set the **$39** price,
+> a **shipping** profile, and your **support link**, then publish. The Assembled option is drafted
+> here too, but it needs an **FCC SDoC** first — add it later._
 
 Tindie listing fields, in order:
 
@@ -114,27 +114,30 @@ so your readings never leave the building and your alerts keep working even when
 
 ## 7. Photos (upload in this order — first image is the thumbnail)
 
-1. **Hero** — unit on a clean dark surface, probe lead coiled.
-2. **In context** — probe tip inside an open server rack, unit velcro'd to a rail.
-3. **Dashboard screenshot** — live web dashboard with a chart + gauge.
-4. **Integration screenshot** — the probe in **Grafana** or Home Assistant.
-5. **Scale shot** — unit in hand.
-6. **Macro** — the stainless waterproof probe tip.
-7. **Multi-probe** — 3–4 units (sells the 4-pack).
-8. **What's-in-the-box flat-lay** — unit, cable, quick-start card, label/QR.
-9. **Label close-up** — serial ID + setup QR (signals traceability).
+**Ready now** — from `docs/images/assembly/`:
+1. **Hero / thumbnail** — `08-finished-unit.jpg` (probe + board + 18650). *Optional upgrade: reshoot on a dark surface for more pop.*
+2. **What's-in-the-kit flat-lay** — `12-kit-contents.jpg`. Lay the USB-C cable in when it arrives, then re-shoot.
+3. **Dashboard screenshot** — `11-dashboard.jpg` (live chart).
 
-> A short **setup GIF/video** (join probe Wi-Fi → pick network → it appears on the dashboard) converts
-> well if Tindie's media supports it.
+**Add before/after launch** (worth shooting, not blockers):
+4. **In context** — probe tip in a fridge / rack, unit alongside.
+5. **Scale shot** — unit in hand.
+6. **Macro** — the stainless probe tip.
+7. **Label close-up** — serial ID + setup QR (signals traceability).
+8. **Multi-probe** — 3–4 units (only if you list a multi-pack).
+
+> **Three good photos (hero + flat-lay + dashboard) is enough to launch** — add the rest as you go.
+> A short setup GIF (join probe Wi-Fi → pick network → it appears on the dashboard) converts well if
+> Tindie's media supports it.
 
 ---
 
 ## Before you publish — checklist
 
-- [ ] **Real photos of a real unit** — Tindie listings live or die on photos. This requires a
-      **hand-built + QC'd unit** (`docs/QC_CHECKLIST.md`), the same batch step that's your #1 to-do.
-- [ ] **Support link** swapped in (replace `example.com/support`). Brand is **Setpoint, by Datum Labs** — Tindie store name = **Datum Labs**.
-- [ ] **Prices** set from your real costs (`docs/BOM.md`).
+- [x] **Real photos of a real unit** — hero (`08-finished-unit`), kit flat-lay (`12-kit-contents`),
+      and dashboard (`11-dashboard`) are ready. Enough to launch; add the extras from §7 over time.
+- [ ] **Support link** set in Tindie's field (use `support@datumlaboratories.com`). Store name = **Datum Labs**.
+- [x] **Prices** set from real costs — **$39 launch** (`docs/BOM.md` DIY-kit COGS ≈ $14 landed).
 - [ ] **Inventory count** from your first batch.
 - [ ] **Payout set up** — Tindie revamped payouts in mid-2026; confirm the current method at signup.
 - [ ] **Exclusivity:** a product active on Tindie **can't be listed elsewhere on the web** at the same
