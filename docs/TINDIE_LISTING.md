@@ -79,8 +79,8 @@ so your readings never leave the building and your alerts keep working even when
 | Integrations | Prometheus, MQTT + Home Assistant, CSV, email/webhook alerts |
 | Firmware | Open source; on-device Wi-Fi setup |
 
-> **Needs an always-on computer** (PC, mini-PC, NAS, or home server) on the same network to run the
-> free hub. If you don't already leave a machine on 24/7, this isn't the right pick.
+⚠️ **Needs an always-on computer** (PC, mini-PC, NAS, or home server) on the same network to run the
+free hub. If you don't already leave a machine on 24/7, this isn't the right pick.
 
 ### What's in the box
 
