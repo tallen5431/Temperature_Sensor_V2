@@ -35,11 +35,16 @@
   hr{border:none;border-top:1px solid var(--border);margin:2rem 0;}
   ol,ul{padding-left:1.4rem;} li{margin:.35rem 0;}
   a:focus-visible,.top a:focus-visible{outline:2px solid var(--brand);outline-offset:2px;border-radius:3px;}
+  figure.shot{margin:1.2rem 0;}
+  figure.shot img{width:100%;max-width:560px;display:block;border-radius:10px;border:1px solid var(--border);}
+  figure.shot figcaption{font-size:.82rem;color:var(--faint);margin-top:.4rem;font-family:var(--mono);}
+  figure.hero img{max-width:100%;}
 </style></head><body>
 <div class="top"><div class="in"><span class="mk">Setpoint</span><span class="by">by Datum Labs</span>
   <a href="./">&larr; Back to Start</a></div></div>
 <main><h1>Setpoint DIY Kit — Build Guide (Module Carrier)</h1>
 <p><em>For the module-based carrier board: an </em><em>ESP32-C3 SuperMini</em><em>, a </em><em>TP4056 charging module (with protection)</em><em>, a slide switch, and a DS18B20 probe, soldered onto the carrier. All through-hole / module soldering — no fine-pitch SMD. Budget ~30 min.</em></p>
+<figure class="shot hero"><img src="img/assembly/08-finished-unit.jpg" alt="Finished Setpoint unit: probe, carrier board, and 18650" loading="lazy"><figcaption>The finished build — probe, carrier, and 18650.</figcaption></figure>
 <hr />
 <h2>What's in your kit</h2>
 <table>
@@ -84,6 +89,7 @@
 </tr>
 </tbody>
 </table>
+<figure class="shot"><img src="img/assembly/12-kit-contents.jpg" alt="Kit contents laid out" loading="lazy"><figcaption>Everything in the kit (the bundled USB-C data cable isn't pictured here).</figcaption></figure>
 <p><strong>You supply:</strong> an 18650 cell. <strong>Protected <em>or</em> unprotected is fine here</strong> — the TP4056 module provides protection. (This is the one product where your unprotected cells are OK.)</p>
 <h2>Tools</h2>
 <p>Soldering iron + solder · flush cutters · <strong>USB-C data cable</strong> (not charge-only) · Chrome / Edge / Opera on desktop · multimeter (for the battery polarity check).</p>
@@ -97,17 +103,22 @@
 <li><strong>SPDT slide switch</strong> — seat flat, solder the 3 pins.</li>
 </ol>
 <p>Trim leads flush. Check for solder bridges on the header rows.</p>
+<figure class="shot"><img src="img/assembly/01-esp32c3-solder.jpg" alt="ESP32-C3 header pins soldered to the carrier" loading="lazy"><figcaption>ESP32-C3 pins soldered (trace side).</figcaption></figure>
+<figure class="shot"><img src="img/assembly/03-tp4056-solder.jpg" alt="TP4056 module soldered onto the carrier" loading="lazy"><figcaption>TP4056 mounted level with the ESP — tweezers under the far edge help keep it flat.</figcaption></figure>
 <blockquote>
 <p><strong>Two USB-C ports:</strong> the <strong>SuperMini's</strong> port is for <em>flashing &amp; data</em>; the <strong>TP4056's</strong> is for <em>charging only</em>. Don't mix them up in Step 5.</p>
 </blockquote>
 <h2>Step 2 — Wire the probe</h2>
 <p>Connect the DS18B20's three wires at the <strong>DS18B20</strong> pads: <strong>VCC / DATA / GND</strong> (follow the silk). The 4.7 kΩ pull-up you just soldered handles the DATA line.</p>
+<figure class="shot"><img src="img/assembly/02-switch-resistor-probe.jpg" alt="Switch, resistor, and DS18B20 connector soldered on the trace side" loading="lazy"><figcaption>Trace side complete — switch, 4.7k, and the DS18B20 connector. Orient the JST notch toward the board edge.</figcaption></figure>
 <h2>Step 3 — Wire the battery ⚠️</h2>
 <ol>
 <li>Connect the 18650 holder to the carrier's <strong>battery pads</strong> (to the TP4056 module's <strong>B+ / B−</strong>).</li>
 <li><strong>Confirm polarity with a multimeter</strong> — holder <strong>red (+) → B+</strong>, <strong>black (−) → B−</strong>. Reversed polarity can damage the module/board.</li>
 <li>Protected or unprotected cell both work (module has protection). Insert the cell with the switch <strong>OFF</strong>.</li>
 </ol>
+<figure class="shot"><img src="img/assembly/04-battery-wires.jpg" alt="18650 holder wires passed through the board to the TP4056" loading="lazy"><figcaption>Pass the holder leads through the back first, then solder red→B+, black→B−.</figcaption></figure>
+<figure class="shot"><img src="img/assembly/05-complete-module.jpg" alt="The completed module with the holder wired" loading="lazy"><figcaption>All soldering done — module complete.</figcaption></figure>
 <h2>Step 4 — Power check</h2>
 <p>With the switch <strong>OFF</strong>, plug in the <strong>SuperMini USB-C</strong>: the onboard LED should light — USB powers the board directly, the switch only gates the battery. Then unplug USB and flip the switch <strong>ON</strong>: the LED should light again, now running from the cell. If anything gets warm either way, unplug and re-check Step 1 for bridges.</p>
 <h2>Step 5 — Flash the firmware (browser)</h2>
@@ -116,13 +127,18 @@
 <li>Plug the <strong>SuperMini's USB-C</strong> into your computer with the power <strong>switch OFF</strong>. USB powers the board on its own for flashing; keeping the switch off stops USB power from back-feeding the cell through the TP4056.</li>
 <li>Click <strong>Install/Connect</strong>, choose the port, flash. The C3 flashes natively over USB — no adapter.</li>
 </ol>
+<figure class="shot"><img src="img/assembly/06-flash-port-picker.jpg" alt="Browser serial port picker showing USB JTAG/serial debug unit" loading="lazy"><figcaption>Pick "USB JTAG/serial debug unit." If it keeps disconnecting: hold BOOT, tap RST, release BOOT.</figcaption></figure>
+<figure class="shot"><img src="img/assembly/07-flash-complete.jpg" alt="Installation complete dialog" loading="lazy"><figcaption>Installation complete.</figcaption></figure>
 <blockquote>
 <p>✅ <strong>Firmware just works:</strong> the stock v2.7.0 image already targets this board — DS18B20 on <strong>GPIO5</strong>, status LED on the SuperMini's <strong>GPIO8</strong> (auto-selected for the ESP32-C3 target). One image fits both the kit and the finished product; no special build needed.</p>
 </blockquote>
 <h2>Step 6 — Join Wi-Fi</h2>
 <p>On first boot the board opens its <strong>setup portal</strong>. Connect to it, pick your <strong>2.4 GHz</strong> network, save. It reconnects on its own afterward.</p>
+<figure class="shot"><img src="img/assembly/09-wifimanager.jpg" alt="WiFiManager setup page at 192.168.4.1" loading="lazy"><figcaption>The setup portal (if it doesn't pop up, browse to 192.168.4.1) then Configure WiFi.</figcaption></figure>
 <h2>Step 7 — Verify</h2>
 <p>Open your <strong><a href="https://github.com/tallen5431/Temperature_Sensor_V2/releases">Setpoint dashboard</a></strong> — the probe should appear and report temperature. Pinch the tip; the reading should rise. Set a threshold and confirm the alert fires.</p>
+<figure class="shot"><img src="img/assembly/10-blue-led-tx.jpg" alt="Blue LED flashing on data upload" loading="lazy"><figcaption>The blue LED flashes on each successful upload.</figcaption></figure>
+<figure class="shot"><img src="img/assembly/11-dashboard.jpg" alt="Live temperature data on the dashboard" loading="lazy"><figcaption>Live data on the dashboard — you're done.</figcaption></figure>
 <blockquote>
 <p>🛡️ <strong>First launch — a security prompt is normal.</strong> The dashboard installer isn't code-signed yet, so on <strong>Windows</strong> you may see <em>"Windows protected your PC"</em> — click <strong>More info → Run anyway</strong>. On <strong>macOS</strong> you may see <em>"can't be opened because Apple cannot check it"</em> — <strong>right-click the app → Open → Open</strong> (once). This is expected and safe; it just means we haven't purchased a signing certificate yet. <a href="https://github.com/tallen5431/Temperature_Sensor_V2/blob/main/docs/INSTALL.md">Full install steps →</a></p>
 </blockquote>
