@@ -14,9 +14,12 @@ about **30 minutes** with a soldering iron.
 
 ## What's in the kit
 
+![Kit contents laid out](images/assembly/12-kit-contents.jpg)
+
 Carrier PCB · **ESP32-C3 SuperMini** · waterproof **DS18B20 probe** (JST-PH
 pre-terminated) · **4.7 kΩ** pull-up resistor · **TP4056** charge/protect board ·
-slide switch · **18650 holder** · header pins · JST connector · **USB-C data cable**.
+slide switch · **18650 holder** · header pins · JST connector · **USB-C data cable**
+(not pictured above).
 
 **You add:**
 - **One 18650 cell** — a reputable **flat-top or protected** 18650, ~2500–3500 mAh

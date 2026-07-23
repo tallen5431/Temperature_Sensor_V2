@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Stale firmware version on the flasher page and build guide.** The web flasher
+  and `web/guide.html` displayed "firmware v2.4.1" while the shipping firmware (and
+  `flash/manifest.json`) is **2.7.0**. Both display strings now read 2.7.0.
 - **DIY-kit flashing instructions had the power switch backwards.** The web
   flasher page and the DIY build guide told buyers to flash with the power
   switch ON. On the kit the switch only gates the battery→ESP32-C3 path, so the

@@ -5,6 +5,7 @@ guide is fully illustrated.** ✅
 
 | File | Step | Shows |
 |---|---|---|
+| `12-kit-contents.jpg` | intro | Kit-contents flat-lay (USB-C cable not pictured) — also a listing candidate |
 | `01-esp32c3-solder.jpg` | 1 | ESP32-C3 header pins soldered (trace side) |
 | `02-switch-resistor-probe.jpg` | 2 | Switch + 4.7 kΩ + DS18B20 connector soldered — trace side complete |
 | `03-tp4056-solder.jpg` | 3 | TP4056 mounted and soldered on top |
