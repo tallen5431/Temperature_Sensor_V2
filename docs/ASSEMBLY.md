@@ -83,6 +83,11 @@ Pass the holder's leads **through the back of the board** first (built-in strain
 relief), then solder **red → B+** and **black → B−** on the TP4056. Double-check
 polarity with the meter before the cell ever goes in.
 
+![The completed module — all soldering done and the battery holder wired](images/assembly/05-complete-module.jpg)
+
+That's all the soldering finished. Before you add the cell, run the quick meter
+checks below.
+
 ## Step 5 — Verify before you power it (meter checks)
 
 Do these with the cell **not yet installed** — this is your last easy-to-reach
