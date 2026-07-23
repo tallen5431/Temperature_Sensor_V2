@@ -108,25 +108,43 @@ The buyer solders the rev-1 carrier PCB + modules and **flashes it themselves** 
 (lithium carrier rules; the buyer sources a good cell), and the **DS18B20 ships with the JST-PH
 pre-terminated** so there's no crimping. Costs are at ~10-qty buying and drop further in 50s–100s.
 
-### Per-kit cost
+### Per-kit cost — actual (Jul 2026 batch of 50)
 
-| Part | ~Cost (qty 10) |
-|---|---|
-| Carrier PCB (custom) | 1.75 |
-| ESP32-C3 SuperMini | 3.00 |
-| DS18B20 waterproof probe, JST-PH pre-terminated | 3.75 |
-| 4.7 kΩ pull-up resistor | 0.02 |
-| TP4056 charge/protect module | 0.60 |
-| SPDT slide switch | 0.35 |
-| 18650 holder | 0.60 |
-| Header pins (2 rows + spares) | 0.15 |
-| JST-PH board connector | 0.20 |
-| USB-C **data** cable (USB-C→USB-A) | 1.75 |
-| **Parts subtotal** | **~$12.17** |
-| Anti-static bag + parts baggies | 0.50 |
-| Printed quick-start card + serial/QR label | 0.65 |
-| Mailer / packaging | 0.75 |
-| **Landed COGS (excl. postage & fees)** | **~$14.07** |
+Real line items from the **first production batch** (50 kits, **$238.66** in
+materials → **$8.98/unit** as tracked). Costs came in well under the original ~$14
+estimate — mostly the probe and cable coming in cheaper at volume. Rows marked ⚠
+are kit parts **not yet in the batch tracker** (see the reconcile note below); the
+values shown for them are estimates carried over from the earlier BOM.
+
+| Part | Supplier | Cost/unit |
+|---|---|---|
+| Carrier PCB (custom) | PCBWay | 1.52 |
+| ESP32-C3 SuperMini | Amazon | 2.97 |
+| DS18B20 waterproof probe, JST-PH pre-terminated | hiBCTR | 1.84 |
+| 4.7 kΩ pull-up resistor | Chanzon | 0.06 |
+| TP4056 charge/protect module | AEDIKO | 0.45 |
+| USB-C **data** cable (6", USB-C→USB-A) | Smays | 0.65 |
+| ⚠ SPDT slide switch | *not tracked* | ~0.20 |
+| ⚠ 18650 holder | *not tracked* | ~0.55 |
+| ⚠ Header pins (2 rows) | *not tracked* | ~0.12 |
+| ⚠ JST-PH board connector | *not tracked* | ~0.18 |
+| **Parts subtotal** | | **~$8.54** |
+| Foam cushioning sheet ×2 | — | 0.22 |
+| 7×5×2 in shipping box | BIOBROWN | 0.58 |
+| Anti-static bag (8×12 cm) | Daarcin | 0.10 |
+| Small parts bag (2×3 in) | joybest | 0.01 |
+| Quick-start card (printed) | — | 0.58 |
+| **Landed COGS (excl. postage & fees)** | | **~$10.03** |
+
+> ⚠️ **Reconcile before batch #2 — four kit parts aren't in the tracker yet.**
+> The batch cost tool captures 11 items at **$8.98/unit**, but a finished kit also
+> contains the **SPDT slide switch**, **18650 holder**, **header pins**, and the
+> **board-side JST-PH connector** (all visible in the assembled kit, none listed).
+> Adding them (~$1.05/unit) puts the **true landed materials cost at ≈ $10/unit**.
+> Add these four lines to the batch tool so COGS is accurate — the tracked $8.98 is
+> an *undercount*, not the real floor. Postage is buyer-paid ($6 flat USPS Ground
+> Advantage; commercial label ~$4.50–6 — see the packing SOP in
+> [`ASSEMBLY.md`](ASSEMBLY.md#for-the-maker--kit-packing--shipping)).
 
 > Bundle a **guaranteed data cable**, not a charge-only one — a charge-only cable is the #1 cause of
 > "the flasher can't see my board," so the whole point of including it is to kill that support ticket.
@@ -146,12 +164,16 @@ offer free domestic shipping). *After labor* books ~8 min/kit of bagging + probe
 
 | Price | Fees (8%) | COGS | Returns (4%) | **Contribution** | (after labor) |
 |---|---|---|---|---|---|
-| **$39** | −3.12 | −14.07 | −1.56 | **$20.25 (52%)** | $17.05 (44%) |
-| **$44** | −3.52 | −14.07 | −1.76 | **$24.65 (56%)** | $21.45 (49%) |
-| **$49** | −3.92 | −14.07 | −1.96 | **$29.05 (59%)** | $25.85 (53%) |
+| **$39** | −3.12 | −10.03 | −1.56 | **$24.29 (62%)** | $21.09 (54%) |
+| **$44** | −3.52 | −10.03 | −1.76 | **$28.69 (65%)** | $25.49 (58%) |
+| **$49** | −3.92 | −10.03 | −1.96 | **$33.09 (68%)** | $29.89 (61%) |
+
+> COGS here is the **~$10.03 true landed cost** (real batch materials + the four
+> not-yet-tracked parts), not the tracked $8.98 — margins would look ~2 points
+> rosier on the undercount, so this table stays conservative.
 
 **Suggested: launch at $39, raise to $44–49 with traction.** Even with the bundled data cable, $39
-still clears ~52% contribution before labor — and a low intro price buys the first few reviews that
+still clears ~62% contribution before labor — and a low intro price buys the first few reviews that
 make every later sale easier (a new Tindie listing lives or dies on social proof). Raise once you
 have reviews. Confirm against your real first-batch invoices before locking the price.
 
