@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://datumlaboratories.com/sitemap.xml
