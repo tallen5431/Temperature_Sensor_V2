@@ -260,6 +260,17 @@
   .use { font-family: var(--font-mono); font-size: 13px; letter-spacing: 0.02em; color: var(--slate); border: 1px solid var(--line-strong); border-radius: 100px; padding: 9px 16px; }
   .use b { color: var(--ink); }
 
+  /* ---------- faq ---------- */
+  .faq { display: grid; gap: 10px; max-width: 760px; }
+  .faq details { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+  .faq summary { list-style: none; cursor: pointer; padding: 16px 18px; font-weight: 600; font-size: 16px; display: flex; justify-content: space-between; align-items: center; gap: 14px; }
+  .faq summary::-webkit-details-marker { display: none; }
+  .faq summary::after { content: "+"; font-family: var(--font-mono); color: var(--signal); font-size: 20px; line-height: 1; }
+  .faq details[open] summary::after { content: "\2013"; }
+  .faq summary:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; border-radius: 8px; }
+  .faq details > p { margin: 0; padding: 0 18px 18px; color: var(--slate); font-size: 15px; line-height: 1.6; }
+  .faq details > p a { color: var(--signal); text-decoration: none; }
+
   /* ---------- waitlist ---------- */
   .waitlist { background: var(--ink); color: var(--paper); border-radius: 14px; padding: 54px 44px; text-align: center; }
   :root[data-theme="dark"] .waitlist, .waitlist { --line: rgba(255,255,255,0.14); }
@@ -542,6 +553,56 @@
     </div>
   </section>
 
+  <!-- FAQ -->
+  <section id="faq">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow">FAQ</p>
+        <h2>Before you buy.</h2>
+      </div>
+      <div class="faq">
+        <details>
+          <summary>Do I need a cloud account or a subscription?</summary>
+          <p>No. Setpoint reports to a free app on your own machine over your local network — no account, no telemetry, nothing phoning home. The internet is only touched if you choose to let email alerts leave your network.</p>
+        </details>
+        <details>
+          <summary>What computer do I need to run it?</summary>
+          <p>Any always-on Windows or Linux machine you already keep on — a mini-PC, NAS, home server, or a Raspberry Pi. That local box is what stores your history and fires your alerts without a cloud. If you don't already leave a machine running, Setpoint isn't the right fit.</p>
+        </details>
+        <details>
+          <summary>How accurate is it?</summary>
+          <p>±0.5&nbsp;°C typical, uncalibrated (you can add a per-probe offset in the app). Great for "is my rack, fridge, or freezer in range and trending safe" — it is not a certified, NIST-traceable, or medical instrument.</p>
+        </details>
+        <details>
+          <summary>Wi-Fi and setup?</summary>
+          <p>2.4&nbsp;GHz only (no 5&nbsp;GHz). Setup happens on the device in your browser — join the probe's temporary network, pick yours, done. No phone app to install.</p>
+        </details>
+        <details>
+          <summary>What about the battery?</summary>
+          <p>The portable build runs on one 18650 cell (not included — lithium shipping rules) and recharges over USB-C. Or run it always-on from USB with no cell at all. The DIY kit is cell-not-included; add any reputable protected or flat-top 18650.</p>
+        </details>
+        <details>
+          <summary>Is the firmware open?</summary>
+          <p>Yes — read it, build it, and reflash it from your browser any time. You're never locked into a vendor or a server that can be switched off.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      { "@type": "Question", "name": "Do I need a cloud account or a subscription?", "acceptedAnswer": { "@type": "Answer", "text": "No. Setpoint reports to a free app on your own machine over your local network — no account, no telemetry, nothing phoning home. The internet is only touched if you choose to let email alerts leave your network." } },
+      { "@type": "Question", "name": "What computer do I need to run it?", "acceptedAnswer": { "@type": "Answer", "text": "Any always-on Windows or Linux machine you already keep on — a mini-PC, NAS, home server, or a Raspberry Pi. That local box is what stores your history and fires your alerts without a cloud. If you don't already leave a machine running, Setpoint isn't the right fit." } },
+      { "@type": "Question", "name": "How accurate is it?", "acceptedAnswer": { "@type": "Answer", "text": "Plus or minus 0.5 °C typical, uncalibrated (you can add a per-probe offset in the app). Great for whether your rack, fridge, or freezer is in range and trending safe — it is not a certified, NIST-traceable, or medical instrument." } },
+      { "@type": "Question", "name": "Wi-Fi and setup?", "acceptedAnswer": { "@type": "Answer", "text": "2.4 GHz only (no 5 GHz). Setup happens on the device in your browser — join the probe's temporary network, pick yours, done. No phone app to install." } },
+      { "@type": "Question", "name": "What about the battery?", "acceptedAnswer": { "@type": "Answer", "text": "The portable build runs on one 18650 cell (not included — lithium shipping rules) and recharges over USB-C. Or run it always-on from USB with no cell at all. The DIY kit is cell-not-included; add any reputable protected or flat-top 18650." } },
+      { "@type": "Question", "name": "Is the firmware open?", "acceptedAnswer": { "@type": "Answer", "text": "Yes — read it, build it, and reflash it from your browser any time. You're never locked into a vendor or a server that can be switched off." } }
+    ]
+  }
+  </script>
+
   <!-- RESERVE / WAITLIST -->
   <section id="reserve" style="padding:74px 0;">
     <div class="wrap">
@@ -566,6 +627,7 @@
         <a href="#how">How it works</a>
         <a href="#specs">Specs</a>
         <a href="#versions">Versions</a>
+        <a href="#faq">FAQ</a>
         <a href="/services">Services</a>
         <a href="#reserve">Reserve</a>
       </div>
