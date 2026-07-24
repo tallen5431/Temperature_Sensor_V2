@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌡️</text></svg>">
+<title>Page not found — Datum Labs</title>
+<meta name="robots" content="noindex" />
+<style>
+  :root {
+    --paper:#F5F6F4; --ink:#12181C; --slate:#59636B; --faint:#8A939A; --line-strong:#C9CFCA;
+    --signal:#0E94AB; --radius:4px;
+    --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --font-mono:ui-monospace,"SF Mono","Cascadia Code","Roboto Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --paper:#0B131B; --ink:#E9F1F7; --slate:#9DB0BE; --faint:#6E8393; --line-strong:#2F4454; --signal:#17B3CC; }
+  }
+  :root[data-theme="light"] { --paper:#F5F6F4; --ink:#12181C; --slate:#59636B; --faint:#8A939A; --line-strong:#C9CFCA; --signal:#0E94AB; }
+  :root[data-theme="dark"] { --paper:#0B131B; --ink:#E9F1F7; --slate:#9DB0BE; --faint:#6E8393; --line-strong:#2F4454; --signal:#17B3CC; }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; text-align:center; padding:24px;
+    background:var(--paper); color:var(--ink); font-family:var(--font-sans);
+    background-image:radial-gradient(900px 380px at 50% -6%, color-mix(in srgb, var(--signal) 10%, transparent), transparent 70%); }
+  main { max-width:34em; }
+  .eyebrow { font-family:var(--font-mono); font-size:12px; letter-spacing:0.18em; text-transform:uppercase; color:var(--signal); margin:0 0 14px; }
+  h1 { margin:0 0 12px; font-size:clamp(28px,5vw,42px); letter-spacing:-0.02em; }
+  p { color:var(--slate); font-size:17px; line-height:1.6; margin:0 0 26px; }
+  .cta-row { display:flex; gap:12px; justify-content:center; flex-wrap:wrap; }
+  .btn { display:inline-flex; align-items:center; font-family:var(--font-mono); font-size:13px; letter-spacing:0.02em;
+    padding:11px 18px; border-radius:var(--radius); text-decoration:none; border:1px solid var(--ink); background:var(--ink); color:var(--paper); }
+  .btn.ghost { background:transparent; color:var(--ink); border-color:var(--line-strong); }
+  .btn.signal { background:var(--signal); border-color:var(--signal); color:#04222A; }
+  .btn:focus-visible { outline:2px solid var(--signal); outline-offset:2px; }
+</style>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">404</p>
+    <h1>This page wandered off.</h1>
+    <p>The link may be old or mistyped — nothing to see at this address. Here's the way back.</p>
+    <div class="cta-row">
+      <a href="/" class="btn signal">Setpoint home</a>
+      <a href="/work" class="btn ghost">Work with Datum Labs</a>
+    </div>
+  </main>
+</body>
+</html>
