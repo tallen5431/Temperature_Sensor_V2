@@ -199,6 +199,21 @@ def test_ingest_single_replay_is_idempotent(tmp_path):
     assert db.count() == 1
 
 
+def test_ingest_batch_without_timestamps_keeps_all_rows(tmp_path):
+    # Timestamp-less bulk rows must be receipt-stamped 1 ms apart, not collapsed
+    # onto one epoch and silently dropped by the UNIQUE(probe_id, epoch) index.
+    client, db, _ = _make_client(tmp_path)
+    r = client.post("/api/ingest_csv", json={"readings": [
+        {"temperature_c": 4.0, "probe_id": "p1"},
+        {"temperature_c": 4.1, "probe_id": "p1"},
+        {"temperature_c": 4.2, "probe_id": "p1"},
+    ]})
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["accepted"] == 3 and body["rejected"] == 0
+    assert db.count() == 3          # all three kept, none collapsed away
+
+
 def test_ingest_batch_json_array(tmp_path):
     client, db, _ = _make_client(tmp_path)
     r = client.post("/api/ingest_csv", json={"readings": [

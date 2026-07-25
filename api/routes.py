@@ -88,7 +88,12 @@ def _parse_date_epoch(s, end_of_day=False):
     try:
         d = datetime.datetime.fromisoformat(s.replace("Z", ""))
         if len(s) == 10 and end_of_day:
-            d = d.replace(hour=23, minute=59, second=59)
+            # Include sub-second rows in the final second: readings now carry
+            # fractional (ms) epochs, so a bound of ...59 with `epoch <= bound`
+            # would drop 23:59:59.001–.999 on the `to` date. Return a fractional
+            # bound at the very end of the day.
+            d = d.replace(hour=23, minute=59, second=59, microsecond=999999)
+            return d.timestamp()
         return int(d.timestamp())
     except (ValueError, TypeError):
         return None
@@ -577,7 +582,19 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
         valid = []        # (ts, t_c, t_f, probe_id) tuples for bulk_insert
         newest = {}       # probe_id -> (ts, t_c): most-recent accepted reading
         rejected = 0
+        # Receipt-stamp bulk rows that arrive WITHOUT a timestamp, spread 1 ms
+        # apart. Without this every timestamp-less row in a chunk would get the
+        # same millisecond stamp and all but the first would be silently dropped
+        # by the ingest UNIQUE(probe_id, epoch) index. (Rows carrying their own
+        # timestamp — every reading the firmware sends — are untouched.)
+        recv_base = datetime.datetime.now()
+        synth = 0
         for row in rows:
+            if not (row.get("timestamp") or row.get("ts")):
+                row = dict(row)
+                row["timestamp"] = (recv_base + datetime.timedelta(
+                    milliseconds=synth)).isoformat(timespec="milliseconds")
+                synth += 1
             try:
                 pid = sanitize_probe_id(row.get("probe_id") or header_pid)
                 ts, t_c, t_f = normalize_payload(row)

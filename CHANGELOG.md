@@ -34,6 +34,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unchanged, so existing firmware keeps working — the matching firmware change
   (chunked buffer flush) ships in firmware **v2.8.0** (below).
 
+### Fixed
+
+- **Bulk ingest no longer drops timestamp-less rows.** A `/api/ingest_csv`
+  chunk whose rows omit their own timestamp (e.g. the JSON-array form) had every
+  row stamped with the same millisecond and all but one silently dropped by the
+  `UNIQUE(probe_id, epoch)` index. Such rows are now receipt-stamped 1 ms apart
+  so distinct readings are kept. (Shipped firmware always sends timestamps, so it
+  was never affected — this protects other/bulk clients.)
+- **Rate-of-change alert now uses the true window-old sample.** `_check_rate`
+  took `fetch_readings(window)[0]`, but that caps to the most-recent N rows before
+  reversing, so on a high-cadence probe (e.g. 0.5 s over a 60 min window) the
+  "past" sample was only ~N-old, understating the delta and missing slow rate
+  alerts. A new index-backed `oldest_temp_c_in_window()` fetches the real oldest.
+- **`?to=YYYY-MM-DD` range now includes the final second's sub-second rows.** The
+  end bound was `…59` with `epoch <= bound`, dropping `23:59:59.001–.999` on the
+  `to` date now that readings carry fractional epochs.
+- **Auto-provisioner no longer leaks bookkeeping or gets stuck.** Its
+  `_provisioned`/`_pushed` maps are pruned when discovery evicts a probe (they
+  grew unbounded on a churning/spoofed fleet), and it re-verifies a probe's
+  `/status` every N cycles even when config is unchanged, so a probe that silently
+  lost its NVS but keeps advertising mDNS is re-provisioned instead of staying
+  unconfigured until a hub restart.
+- **`probe_upload_intervals` is cleared on device removal** (was orphaned and
+  silently re-applied when the probe reappeared).
+
 ### Changed
 
 - **Idempotent ingest — duplicate readings can no longer be stored.** A

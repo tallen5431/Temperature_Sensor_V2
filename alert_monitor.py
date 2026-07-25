@@ -171,9 +171,11 @@ class AlertMonitor(threading.Thread):
         pairs = {}
         for pid, latest_c in readings.items():
             try:
-                # Oldest-first within the window, so index 0 is ~window-old.
-                rows = self.db.fetch_readings(window_seconds=window_min * 60, probe_id=pid)
-                past_c = float(rows[0]["temperature_c"]) if rows else None
+                # The true window-old sample (index-backed, exact). Do NOT use
+                # fetch_readings()[0]: it caps to the most-recent N rows first, so
+                # on a high-cadence probe its oldest row is only ~N-old, not
+                # window-old, which understates the delta and misses a rate alert.
+                past_c = self.db.oldest_temp_c_in_window(pid, window_min * 60)
             except Exception:  # noqa: BLE001 - a read error must not kill the cycle
                 continue
             if past_c is not None:

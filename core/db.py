@@ -52,14 +52,11 @@ def _csv_safe(value) -> str:
 def _xlsx_safe(value) -> str:
     """Neutralise formula injection for a string written into an .xlsx cell.
 
-    openpyxl treats a string that starts with ``=`` as a formula; the same
-    single-quote guard used for CSV forces it to be stored as literal text. Only
-    the rare free-form string that begins with a formula character is altered.
+    openpyxl treats a leading ``=`` as a formula exactly as Excel does for CSV,
+    so the guard is identical to :func:`_csv_safe`; kept as a named alias for
+    clarity at the xlsx call sites.
     """
-    s = "" if value is None else str(value)
-    if s and s[0] in _FORMULA_LEAD:
-        return "'" + s
-    return s
+    return _csv_safe(value)
 
 
 class ExportTooLargeForXlsx(Exception):
@@ -281,7 +278,7 @@ class Database:
         """True if any reading's ``probe_id`` starts with ``prefix``.
 
         The GLOB prefix pattern rewrites to a range seek on
-        ``idx_readings_probe_epoch`` (verified via EXPLAIN QUERY PLAN in the
+        ``idx_readings_probe_epoch_uniq`` (verified via EXPLAIN QUERY PLAN in the
         tests), so answering "is demo data loaded?" on every settings render is
         O(log N) instead of scanning/grouping the whole readings table the way
         ``last_reading_epoch_per_probe`` does.  ``prefix`` is expected to be a
@@ -443,7 +440,7 @@ class Database:
         Ties on ``epoch`` (two readings in the same second) are broken by
         insertion ``id`` so "latest" is always the most recently stored row.
 
-        Implemented as per-probe index seeks on ``idx_readings_probe_epoch``:
+        Implemented as per-probe index seeks on ``idx_readings_probe_epoch_uniq``:
         the distinct probe ids come straight off the index, then each probe's
         newest row is one backward ``ORDER BY epoch DESC LIMIT 1`` seek (``id``
         is the rowid, so the index order breaks epoch ties for free).  That is
@@ -513,6 +510,26 @@ class Database:
         out = [dict(r) for r in rows]
         out.reverse()  # oldest-first for charting/time-series consumers
         return out
+
+    def oldest_temp_c_in_window(self, probe_id, window_seconds) -> Optional[float]:
+        """The earliest reading's °C within the rolling window for one probe.
+
+        The rate-of-change alert needs the true *window-old* sample. It must NOT
+        use ``fetch_readings(...)[0]``: that caps to the most-recent ``max_points``
+        rows FIRST and then reverses, so on a high-cadence probe (e.g. 0.5 s over
+        a 60 min window = 7200 rows > 6000 cap) its oldest row is only
+        ~cap-samples-old, understating the delta and missing a slow rate alert.
+        A direct ``ORDER BY epoch ASC LIMIT 1`` (index-backed) is exact.
+        """
+        cutoff = self._cutoff(window_seconds)
+        conn = self._conn()
+        where = "WHERE probe_id = ?" + (" AND epoch >= ?" if cutoff is not None else "")
+        params = (probe_id,) if cutoff is None else (probe_id, cutoff)
+        row = conn.execute(
+            f"SELECT temperature_c FROM readings {where} ORDER BY epoch ASC LIMIT 1",
+            params,
+        ).fetchone()
+        return float(row["temperature_c"]) if row else None
 
     def list_events(self, limit: int = 50, window_seconds: Optional[int] = None,
                     kinds: Optional[Iterable[str]] = None,

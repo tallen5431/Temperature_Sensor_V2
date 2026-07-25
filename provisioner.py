@@ -67,6 +67,14 @@ class AutoProvisioner(threading.Thread):
         # provision_probe() succeeds, so it can never record a config (or
         # token) as delivered that wasn't.
         self._pushed: dict = {}
+        # Cycle counter for the periodic re-verify (see _run_cycle): even a
+        # probe whose desired config matches what we last pushed is /status-
+        # verified every REVERIFY_EVERY_CYCLES so one that silently lost its
+        # NVS (server_url gone) but keeps advertising mDNS is re-provisioned
+        # rather than staying unconfigured until the hub restarts.
+        self._cycle = 0
+
+    REVERIFY_EVERY_CYCLES = 30
 
     def stop(self):
         self._stop = True
@@ -112,6 +120,20 @@ class AutoProvisioner(threading.Thread):
             self.discovery.prune_stale(prune_after)
         except Exception:
             pass
+
+        # Drop bookkeeping for probes discovery has evicted, so _provisioned /
+        # _pushed can't grow without bound on a churning or X-Probe-ID-spoofed
+        # fleet (discovery itself is capped; these two were not).
+        try:
+            live_keys = set((self.discovery.list_probes() or {}).keys())
+            self._provisioned &= live_keys
+            for k in [k for k in self._pushed if k not in live_keys]:
+                del self._pushed[k]
+        except Exception:
+            pass
+
+        self._cycle += 1
+        reverify_due = (self._cycle % self.REVERIFY_EVERY_CYCLES == 0)
 
         base = (self.public_base_func() or "").rstrip("/")
         if not base:
@@ -212,8 +234,10 @@ class AutoProvisioner(threading.Thread):
             if key in self._provisioned:
                 # If the desired config is exactly what we last pushed
                 # successfully, the probe is already up to date — skip
-                # even the /status verification GET.
-                if self._pushed.get(key) == desired:
+                # even the /status verification GET. But every
+                # REVERIFY_EVERY_CYCLES do the GET anyway, to catch a probe
+                # that silently lost its NVS config yet still advertises mDNS.
+                if self._pushed.get(key) == desired and not reverify_due:
                     continue
                 try:
                     status = get_probe_status(host, port)

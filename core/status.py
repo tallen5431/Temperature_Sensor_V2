@@ -51,6 +51,12 @@ def probe_fresh_window(cfg, probe_id) -> float:
     try:
         intervals = cfg.get("probe_intervals", {}) or {}
         interval = float(intervals.get(probe_id, cfg.get("interval_sec", 5) or 5))
+        # SLICE-3 TODO (decoupled upload interval): freshness is judged off DB
+        # ingest, which happens on UPLOAD. Once the firmware actually batches
+        # (uploads less often than it samples), fold the per-probe upload interval
+        # in here — `interval = max(interval, probe_upload_intervals[probe_id])` —
+        # or a batched probe reads offline (and fires spurious offline alerts)
+        # between uploads. Harmless today: shipping firmware uploads every sample.
     except (TypeError, ValueError):
         interval = 5.0
     return max(base, interval * STALE_INTERVAL_MULTIPLIER)

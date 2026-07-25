@@ -124,6 +124,17 @@ def test_latest_per_probe_window_and_dedup(db):
     assert by_probe == {"A": 20.0}  # first write kept; OLD is outside the window
 
 
+def test_oldest_temp_c_in_window(db):
+    # The rate-of-change alert's true window-old sample: the EARLIEST reading in
+    # the window, not fetch_readings()[0] (which is only ~cap-samples-old once the
+    # window holds more than max_points rows).
+    now = datetime.datetime.now()
+    for i, t in enumerate((10.0, 11.0, 12.0)):
+        db.append(_iso(now - datetime.timedelta(seconds=(2 - i))), t, 0.0, "p")
+    assert db.oldest_temp_c_in_window("p", 3600) == 10.0   # earliest in the window
+    assert db.oldest_temp_c_in_window("nope", 3600) is None
+
+
 def test_latest_per_probe_returns_newest_by_time(db):
     # With distinct timestamps latest_per_probe returns the most recent reading.
     now = datetime.datetime.now()
