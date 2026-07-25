@@ -115,7 +115,7 @@ inline void ledBlink(uint8_t n, uint16_t onMs = 60, uint16_t offMs = 120) {
 
 // ---------------- Identity --------------------------------------------------
 static const char* SENSOR_NAME = "Setpoint";
-static const char* FW_VERSION  = "2.7.0";
+static const char* FW_VERSION  = "2.8.0";
 
 // The setup SoftAP is intentionally OPEN (no password): it only exists during
 // first-time Wi-Fi setup and is torn down once the probe joins the home network,
@@ -178,6 +178,11 @@ static const uint32_t BURST_MAX_CONSECUTIVE = 3;
 static const uint32_t WIFI_CONNECT_MS         = 8000UL;
 static const uint32_t WIFI_FAIL_BACKOFF_AFTER = 3;
 static const uint32_t WIFI_FAIL_BACKOFF_EVERY = 4;
+// Cold-boot (power-on / recharge) grace to rejoin the SAVED network before the
+// probe gives up and continues offline. Longer than a deep-sleep wake attempt:
+// after a shared power outage the router is often still booting, and a probe
+// that flips to its own setup AP on a brief miss looks broken. Tunable.
+static const uint32_t WIFI_COLD_RECONNECT_MS  = 60000UL;
 
 // Captive-portal timeout (power-outage lockout guard). A cold boot whose saved
 // Wi-Fi is unreachable (e.g. after a power outage the router reboots slower
@@ -253,6 +258,10 @@ static const char*    BUF_POS_KEY = "buf_pos";
 // for minutes; always-on mode has no cap (it can afford to finish the job).
 static const uint16_t FLUSH_CHECKPOINT_EVERY = 10;
 static const uint32_t FLUSH_BUDGET_MS        = 20000UL;
+// Readings per POST /api/ingest_csv chunk when draining the backlog in bulk
+// (one HTTP round-trip per chunk instead of one per reading). 100 lines is
+// ~5 KB — well under the hub's 64 KB body cap and its <=1000-row limit.
+static const uint16_t FLUSH_CHUNK_ROWS       = 100;
 
 // ---------------- RTC memory (survives deep sleep) --------------------------
 // These variables live in the ESP32 RTC slow-memory SRAM and retain their
@@ -477,6 +486,31 @@ bool postWithTimestamp(const String& ts, float tC, float tF,
   return (code >= 200 && code < 300);
 }
 
+// The bulk-ingest URL derived from the single-reading server URL, or "" when it
+// can't be (a non-standard URL → the caller uses the per-reading path). The
+// hub's bulk route is the ingest URL + "_csv" (PROTOCOL.md §5.1).
+String batchUrl() {
+  return cfg_server_url.endsWith("ingest") ? cfg_server_url + "_csv" : String("");
+}
+
+// POST a chunk of raw buffer CSV lines ("ts,tC,tF,pid\n" each) to
+// /api/ingest_csv. Returns +1 on HTTP 2xx (chunk stored), -1 when the endpoint
+// is missing (404/405 — an older hub; the caller falls back to per-reading), and
+// 0 on any other/transient failure (leave the offset put and retry later).
+int postChunk(const String& url, const String& body) {
+  if (WiFi.status() != WL_CONNECTED || url.length() == 0) return 0;
+  HTTPClient httpc;
+  httpc.begin(url);
+  httpc.setTimeout(6000);
+  httpc.addHeader("Content-Type", "text/csv");
+  if (cfg_token.length())  httpc.addHeader("X-Token",    cfg_token);
+  if (g_probeId.length())  httpc.addHeader("X-Probe-ID", g_probeId);
+  int code = httpc.POST((uint8_t*)body.c_str(), body.length());
+  httpc.end();
+  if (code == 404 || code == 405) return -1;
+  return (code >= 200 && code < 300) ? 1 : 0;
+}
+
 // Upload every reading stored in the buffer file, then delete it.
 // Byte-offset of the next line is persisted in NVS every
 // FLUSH_CHECKPOINT_EVERY successful POSTs — and ALWAYS when the flush stops or
@@ -522,6 +556,14 @@ void bufferFlush() {
   bool budgetHit = false;
   unsigned long flushStart = millis();
 
+  // Prefer the bulk endpoint: one HTTP round-trip per ~100 readings instead of
+  // one per reading, so a cold-soak backlog drains in seconds and the radio
+  // spends far less time on. Fall back transparently to the per-reading path if
+  // the URL isn't the standard /api/ingest, or if the hub is too old to have the
+  // /api/ingest_csv route (a 404/405 on the first chunk this flush).
+  const String burl = batchUrl();
+  bool useBatch = (burl.length() > 0);
+
   while (f.available()) {
     http.handleClient();
 
@@ -535,6 +577,44 @@ void bufferFlush() {
       break;
     }
 
+    if (useBatch) {
+      // Accumulate up to FLUSH_CHUNK_ROWS raw buffer lines into one CSV body and
+      // POST the whole chunk. The hub parses/validates each line exactly like
+      // /api/ingest (skips malformed, rejects out-of-range), so we forward lines
+      // verbatim and only track the byte offset to resume from.
+      String   body;
+      int      rows     = 0;
+      uint32_t chunkEnd = pos;               // offset after the last line taken
+      while (rows < FLUSH_CHUNK_ROWS && f.available()) {
+        String line = f.readStringUntil('\n');
+        chunkEnd = f.position();
+        line.trim();
+        if (line.length() == 0) continue;    // skip blank; offset already advanced
+        body += line;
+        body += '\n';
+        rows++;
+      }
+      if (rows == 0) { pos = chunkEnd; break; }   // only blanks remained to EOF
+
+      int r = postChunk(burl, body);
+      if (r > 0) {                    // 2xx — chunk stored
+        pos = chunkEnd;
+        uploaded += rows;
+        saveBufPos(pos);             // one checkpoint per chunk (~100 readings)
+        Serial.printf("[Buffer] Batch uploaded %d  (total %d)\n", rows, uploaded);
+      } else if (r < 0) {            // hub has no /api/ingest_csv (404/405)
+        Serial.println("[Buffer] Hub lacks /api/ingest_csv — using per-reading path.");
+        useBatch = false;
+        f.seek(pos);                 // reprocess this chunk one reading at a time
+      } else {                        // transient failure — stop, resume from pos
+        failed++;
+        Serial.printf("[Buffer] Batch POST failed at offset %u — will retry later.\n", pos);
+        break;
+      }
+      continue;
+    }
+
+    // ── Per-reading fallback (older hub, or non-standard server URL) ──────────
     String line = f.readStringUntil('\n');
     line.trim();
     if (line.length() == 0) { pos = f.position(); continue; }
@@ -1081,53 +1161,66 @@ void setup() {
       }
     }
   } else {
-    // Cold boot: full WiFiManager flow (opens portal if no saved network)
+    // Cold boot (power-on / recharge). WiFiManager parameters are registered so
+    // the setup portal — opened ONLY when there are no saved credentials —
+    // carries the current values.
     WiFi.mode(WIFI_STA);
-    wm.setConnectTimeout(20);
-    // Finite portal timeout (power-outage lockout guard, see PORTAL_TIMEOUT_S):
-    // the old timeout of 0 blocked here FOREVER when the saved Wi-Fi was
-    // unreachable — every probe in the house died in the portal after a power
-    // outage the router took longer to recover from.
     wm.setConfigPortalTimeout(PORTAL_TIMEOUT_S);
     wm.setHostname(SENSOR_NAME);
-
-    // Register parameters exactly once
     wm.addParameter(&p_server);
     wm.addParameter(&p_token);
     wm.addParameter(&p_interval);
 
-    // Per-unit unique, OPEN setup AP (SSID == the probe id, e.g. Setpoint-9A3F2C).
-    // No password: the AP only exists during first-time setup and disappears once
-    // the probe joins the home Wi-Fi, so an open network keeps setup one-tap simple.
-    if (!wm.autoConnect(g_probeId.c_str())) {
-      if (wm.getWiFiIsSaved()) {
-        // Saved credentials, but no join and the portal timed out: power-outage
-        // recovery. Continue into normal operation OFFLINE — readings are
-        // buffered (once the clock is valid) and Wi-Fi keeps retrying in
-        // loop()'s watchdog (always-on) or on the next wake (deep sleep).
-        Serial.println("[WiFi] Saved network unreachable; portal timed out — continuing OFFLINE.");
-        WiFi.mode(WIFI_STA);
-        WiFi.begin();   // keep the STA retrying in the background meanwhile
-      } else {
-        // No credentials at all: nothing useful can run offline, so re-open the
-        // portal in a LOOP (each round bounded by PORTAL_TIMEOUT_S) until it is
-        // configured — never a single infinite hard-block.
-        while (WiFi.status() != WL_CONNECTED && !wm.getWiFiIsSaved()) {
-          Serial.println("[WiFi] No known network; opening portal.");
-          p_server.setValue(cfg_server_url.c_str(), cfg_server_url.length());
-          p_token.setValue (cfg_token.c_str(),      cfg_token.length());
-          char ibuf[12];
-          snprintf(ibuf, sizeof(ibuf), "%lu", (unsigned long)cfg_interval);
-          p_interval.setValue(ibuf, strlen(ibuf));
-          startConfigPortal();
-        }
+    if (wm.getWiFiIsSaved()) {
+      // A deployed probe with saved credentials must REJOIN its network, not flip
+      // to its own setup AP on a brief miss. After a shared power outage the
+      // router is often still booting when the probe wakes, so retry the saved
+      // network hard for a grace window before giving up — the old single 20 s
+      // autoConnect attempt was too short and left the probe hosting an AP
+      // instead of reconnecting.
+      Serial.printf("[WiFi] Cold boot, saved network — reconnecting (up to %lus)...\n",
+                    (unsigned long)(WIFI_COLD_RECONNECT_MS / 1000UL));
+      WiFi.setHostname(SENSOR_NAME);
+      WiFi.begin();
+      uint32_t t0 = millis();
+      while (WiFi.status() != WL_CONNECTED && millis() - t0 < WIFI_COLD_RECONNECT_MS) {
+        http.handleClient();
+        delay(250);
       }
-    }
-
-    if (WiFi.status() == WL_CONNECTED) {
-      Serial.print("[WiFi] Connected. IP: ");
-      Serial.println(WiFi.localIP());
-      g_wasConnected = true;
+      if (WiFi.status() == WL_CONNECTED) {
+        Serial.printf("[WiFi] Reconnected in %lu ms. IP: %s\n",
+                      millis() - t0, WiFi.localIP().toString().c_str());
+        g_wasConnected = true;
+      } else {
+        // Still unreachable after the grace. Do NOT open the setup AP (the user
+        // didn't ask to reconfigure) — continue OFFLINE and keep retrying:
+        // readings are buffered and Wi-Fi reconnects in loop()'s watchdog
+        // (always-on) or on the next wake (deep sleep), exactly like a mid-run
+        // outage. (To move the probe to a new network: re-provision from the hub,
+        // or clear its Wi-Fi credentials to force first-time setup.)
+        Serial.println("[WiFi] Saved network still unreachable — continuing OFFLINE, will keep retrying.");
+        WiFi.mode(WIFI_STA);
+        WiFi.begin();
+      }
+    } else {
+      // No saved credentials: genuine first-time setup. Open the per-unit OPEN
+      // setup AP (SSID == the probe id, e.g. Setpoint-9A3F2C) in a LOOP, each
+      // round bounded by PORTAL_TIMEOUT_S, until configured — never a single
+      // infinite hard-block.
+      while (WiFi.status() != WL_CONNECTED && !wm.getWiFiIsSaved()) {
+        Serial.println("[WiFi] No known network; opening setup portal.");
+        p_server.setValue(cfg_server_url.c_str(), cfg_server_url.length());
+        p_token.setValue (cfg_token.c_str(),      cfg_token.length());
+        char ibuf[12];
+        snprintf(ibuf, sizeof(ibuf), "%lu", (unsigned long)cfg_interval);
+        p_interval.setValue(ibuf, strlen(ibuf));
+        startConfigPortal();
+      }
+      if (WiFi.status() == WL_CONNECTED) {
+        Serial.print("[WiFi] Connected. IP: ");
+        Serial.println(WiFi.localIP());
+        g_wasConnected = true;
+      }
     }
   }
 
