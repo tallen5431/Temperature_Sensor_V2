@@ -103,7 +103,8 @@ interval. Persisted to NVS so it survives reboots.
   "server_url": "http://192.168.1.50:8080/api/ingest",
   "token": "s3cr3t-device-token",
   "interval_ms": 5000,
-  "resolution_bits": 11
+  "resolution_bits": 11,
+  "upload_interval_ms": 300000
 }
 ```
 
@@ -112,6 +113,12 @@ interval. Persisted to NVS so it survives reboots.
   the probe's current resolution unchanged, so a hub that doesn't manage it (or an
   older one) is unaffected; an older probe simply ignores the unknown field. Note
   that 12-bit's 750 ms conversion exceeds a 500 ms interval and caps the sample rate.
+- `upload_interval_ms` is **optional** and decouples how often the probe *uploads*
+  from how often it *samples* (`interval_ms`): the probe logs every `interval_ms` to
+  its on-flash buffer and connects to drain it (via `POST /api/ingest_csv`, §5.1) only
+  every `upload_interval_ms`. The hub clamps it to be **no shorter than `interval_ms`**
+  (you cannot upload more often than you sample). Omitting it — or an older probe that
+  ignores the field — means the probe uploads every sample, exactly as before.
 
 **Response** `200 OK`
 

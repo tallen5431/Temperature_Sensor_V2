@@ -71,3 +71,30 @@ def test_provision_probe_omits_resolution_when_none(monkeypatch):
                         lambda url, json=None, timeout=None: (captured.update(body=json) or _OkResp()))
     provision_probe("p.local", 80, "http://hub")  # no resolution_bits arg
     assert "resolution_bits" not in captured["body"]  # backward compatible
+
+
+def test_provision_probe_includes_upload_interval(monkeypatch):
+    # Decoupled upload interval rides along the /provision payload, clamped so it
+    # can never be shorter than the sample interval (you can't upload more often
+    # than you sample).
+    captured = {}
+    monkeypatch.setattr(provisioning, "resolve_host", lambda *a, **k: "10.0.0.9")
+    monkeypatch.setattr(provisioning.requests, "post",
+                        lambda url, json=None, timeout=None: (captured.update(body=json) or _OkResp()))
+    provision_probe("p.local", 80, "http://hub", interval_ms=1000,
+                    upload_interval_ms=300000)
+    assert captured["body"]["interval_ms"] == 1000
+    assert captured["body"]["upload_interval_ms"] == 300000
+    # Shorter-than-sample is clamped up to the sample interval.
+    provision_probe("p.local", 80, "http://hub", interval_ms=5000,
+                    upload_interval_ms=1000)
+    assert captured["body"]["upload_interval_ms"] == 5000
+
+
+def test_provision_probe_omits_upload_interval_when_none(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(provisioning, "resolve_host", lambda *a, **k: "10.0.0.9")
+    monkeypatch.setattr(provisioning.requests, "post",
+                        lambda url, json=None, timeout=None: (captured.update(body=json) or _OkResp()))
+    provision_probe("p.local", 80, "http://hub")  # no upload_interval_ms arg
+    assert "upload_interval_ms" not in captured["body"]  # older firmware unaffected

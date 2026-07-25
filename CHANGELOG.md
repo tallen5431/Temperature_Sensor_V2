@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Decoupled upload interval — provisioning contract (backend).** `/provision`
+  and `provision_probe()` now accept an optional `upload_interval_ms` that
+  decouples how often a probe *uploads* from how often it *samples*: it logs every
+  `interval_ms` to its on-flash buffer and drains it (via `/api/ingest_csv`) only
+  every `upload_interval_ms`. The hub clamps it to be no shorter than the sample
+  interval and omits it when unset, so older firmware (which uploads every sample)
+  is unaffected. `PROTOCOL.md` §4.1 documents it. *This lands the hub/provisioning
+  side only; the Devices-tab setting and the firmware sampling-loop behavior ship
+  next (the firmware change is bench-validated on hardware, like fw 2.8.0).*
 - **Bulk backlog drain — `POST /api/ingest_csv`.** A probe recovering from an
   outage (weak freezer Wi-Fi, hub down) can have thousands of readings buffered
   to flash; draining them one-HTTP-POST-per-reading is slow and burns radio time

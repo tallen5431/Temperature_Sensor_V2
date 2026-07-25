@@ -68,13 +68,21 @@ def get_probe_status(base_host: str, port: int, timeout: float = 3.0) -> Optiona
 
 def provision_probe(base_host: str, port: int, server_base: str, token: str = "",
                     interval_ms: int = 5000, resolution_bits=None,
-                    timeout: float = 3.0) -> bool:
+                    upload_interval_ms=None, timeout: float = 3.0) -> bool:
     """POST the hub's ingest URL + token + interval to a probe's /provision.
 
     ``resolution_bits`` (9..12), when given, sets the probe's DS18B20 resolution;
     it's omitted from the payload when None so older callers/firmware are
     unaffected (an old probe ignores unknown fields; a hub that doesn't manage
     resolution simply doesn't send it).
+
+    ``upload_interval_ms``, when given, decouples how often the probe *uploads*
+    from how often it *samples* (``interval_ms``): the probe logs every
+    ``interval_ms`` to its on-flash buffer and only connects to drain it every
+    ``upload_interval_ms``. It is clamped to be no shorter than the sample
+    interval (you cannot upload more often than you sample) and, like
+    ``resolution_bits``, is omitted from the payload when None so older firmware
+    (which simply keeps uploading every sample) is unaffected.
 
     Resolves the target to an IP with a bounded timeout and requests by IP, so a
     probe that can't be resolved fails fast rather than hanging the caller.
@@ -90,6 +98,9 @@ def provision_probe(base_host: str, port: int, server_base: str, token: str = ""
     }
     if resolution_bits is not None:
         body["resolution_bits"] = clamp_resolution_bits(resolution_bits)
+    if upload_interval_ms is not None:
+        # Can't upload more often than you sample — clamp up to the sample interval.
+        body["upload_interval_ms"] = max(int(upload_interval_ms), int(interval_ms))
     try:
         r = requests.post(f"http://{ip}:{port}/provision", json=body, timeout=timeout)
         if r.ok:
