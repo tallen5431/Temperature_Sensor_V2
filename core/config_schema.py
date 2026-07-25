@@ -60,7 +60,7 @@ _NUMBERS = [
 ]
 _BOOLS = [("pull_enabled", True), ("auto_provision", True)]
 _DICTS = ["probe_names", "alert_thresholds", "calibration_offsets", "probe_intervals",
-          "probe_resolutions"]
+          "probe_resolutions", "probe_upload_intervals"]
 
 _NOTIF_BOOLS = [("enabled", False), ("notify_recovery", True), ("offline_alerts", True)]
 _EMAIL_BOOLS = [("enabled", False), ("use_tls", True)]

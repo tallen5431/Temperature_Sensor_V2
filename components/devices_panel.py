@@ -98,7 +98,22 @@ DevicesLayout = html.Div([
                     placeholder='e.g. 5',
                     className='mb-2'
                 ),
-                html.Small("How often the probe sends a reading (minimum 0.5 s)", className='text-muted'),
+                html.Small("How often the probe takes a reading (minimum 0.5 s)", className='text-muted'),
+                html.Hr(),
+                html.Label("Upload Interval (seconds):", className='fw-bold mb-2 mt-1 d-block'),
+                dbc.Input(
+                    id='edit-probe-upload-interval-input',
+                    type='number',
+                    min=0.5,
+                    step=0.5,
+                    placeholder='same as read interval',
+                    className='mb-2'
+                ),
+                html.Small("How often the probe connects to upload. Leave equal to the read "
+                           "interval to send every reading. Set it LONGER to log at high rate "
+                           "but transmit in batches — saves radio/network, but the probe can't "
+                           "deep-sleep between fast reads, so battery life drops.",
+                           className='text-muted'),
                 html.Hr(),
                 html.Label("Sensor Resolution:", className='fw-bold mb-2 mt-1 d-block'),
                 dbc.Select(
@@ -354,6 +369,7 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
         Output('edit-probe-id-display', 'children'),
         Output('edit-probe-name-input', 'value'),
         Output('edit-probe-interval-input', 'value'),
+        Output('edit-probe-upload-interval-input', 'value'),
         Output('edit-probe-min-input', 'value'),
         Output('edit-probe-max-input', 'value'),
         Output('edit-probe-cal-input', 'value'),
@@ -368,6 +384,7 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
         State('edit-probe-id-store', 'data'),
         State('edit-probe-name-input', 'value'),
         State('edit-probe-interval-input', 'value'),
+        State('edit-probe-upload-interval-input', 'value'),
         State('edit-probe-min-input', 'value'),
         State('edit-probe-max-input', 'value'),
         State('edit-probe-cal-input', 'value'),
@@ -377,13 +394,13 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
     )
     def toggle_edit_modal(edit_clicks, cancel_clicks, save_clicks, is_open,
                           stored_probe_id, name_value, interval_value,
-                          min_value, max_value, cal_value, resolution_value,
-                          temp_unit):
+                          upload_interval_value, min_value, max_value, cal_value,
+                          resolution_value, temp_unit):
         from dash import callback_context
         # Config always stores Celsius; the modal displays/accepts the unit the
         # dashboard is currently showing so users never convert by hand.
         unit = temp_unit or 'celsius'
-        noup = (no_update,) * 12
+        noup = (no_update,) * 13
         if not callback_context.triggered:
             return noup
 
@@ -410,6 +427,12 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                 probe_intervals = cfg.get('probe_intervals', {})
                 global_interval_sec = cfg.get('interval_sec', 5)
                 current_interval_sec = probe_intervals.get(probe_id, global_interval_sec)
+
+                # Per-probe upload interval; absent means "upload every reading",
+                # shown as equal to the read interval.
+                probe_upload_intervals = cfg.get('probe_upload_intervals', {})
+                current_upload_interval_sec = probe_upload_intervals.get(
+                    probe_id, current_interval_sec)
 
                 # Per-probe alert thresholds
                 alert_thresholds = cfg.get('alert_thresholds', {})
@@ -444,15 +467,15 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                               f"currently {'On' if alerts_on else 'Off'}.")
 
                 return (True, probe_id, probe_id, current_name, current_interval_sec,
-                        disp_min, disp_max, disp_cal, current_res,
-                        thresholds_label, cal_label, breadcrumb)
+                        current_upload_interval_sec, disp_min, disp_max, disp_cal,
+                        current_res, thresholds_label, cal_label, breadcrumb)
             except Exception:
                 return noup
 
         # Cancel button clicked
         elif 'edit-probe-cancel' in button_id:
             return (False, None, '', '', no_update, no_update, no_update, no_update,
-                    no_update, no_update, no_update, no_update)
+                    no_update, no_update, no_update, no_update, no_update)
 
         # Save button clicked
         elif 'edit-probe-save' in button_id:
@@ -541,6 +564,36 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                 if interval_changed:
                     log.info('Saved interval for %s: %s s', stored_probe_id, new_interval_sec)
 
+                # --- Save per-probe upload interval (decouples upload from sample) ---
+                # No override / equal to the read interval = "upload every reading".
+                # An override is stored only when it's genuinely LONGER, and it's
+                # clamped so it can never be shorter than the read interval.
+                probe_upload_intervals = cfg.get('probe_upload_intervals', {})
+                prev_upload_override = probe_upload_intervals.get(stored_probe_id)
+                try:
+                    prev_upload_effective = float(prev_upload_override
+                                                  if prev_upload_override is not None
+                                                  else prev_effective)
+                except (TypeError, ValueError):
+                    prev_upload_effective = float(prev_effective)
+
+                if upload_interval_value in (None, ''):
+                    new_upload_sec = float(new_interval_sec)  # blank = every reading
+                else:
+                    try:
+                        new_upload_sec = max(float(new_interval_sec), float(upload_interval_value))
+                    except (TypeError, ValueError):
+                        new_upload_sec = prev_upload_effective
+
+                if new_upload_sec <= float(new_interval_sec):
+                    probe_upload_intervals.pop(stored_probe_id, None)  # inherit: every reading
+                else:
+                    probe_upload_intervals[stored_probe_id] = new_upload_sec
+                cfg.update({'probe_upload_intervals': probe_upload_intervals})
+                upload_changed = new_upload_sec != prev_upload_effective
+                if upload_changed:
+                    log.info('Saved upload interval for %s: %s s', stored_probe_id, new_upload_sec)
+
                 # --- Save per-probe DS18B20 resolution (only when it differs from
                 # the global default), mirroring the interval logic so a
                 # name/threshold-only edit never writes a spurious override. ---
@@ -562,7 +615,7 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                 # --- Push new interval/resolution to the probe immediately (best-effort) ---
                 # Only when the interval OR resolution actually changed — a
                 # name/threshold-only edit must not trigger an HTTP re-provision.
-                if (interval_changed or resolution_changed) and public_base_func is not None:
+                if (interval_changed or resolution_changed or upload_changed) and public_base_func is not None:
                     try:
                         from provisioning import provision_probe
                         probes = (finder.list_probes() or {}).values()
@@ -580,15 +633,18 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
 
                             if pid == stored_probe_id and host:
                                 base = public_base_func()
+                                upload_ms = (int(new_upload_sec * 1000)
+                                             if new_upload_sec > new_interval_sec else None)
                                 ok = provision_probe(
                                     host.rstrip('.'), port, base,
                                     token=token or '',
                                     interval_ms=int(new_interval_sec * 1000),
                                     resolution_bits=new_res_bits,
+                                    upload_interval_ms=upload_ms,
                                 )
                                 if ok:
-                                    log.info('Provisioned %s with interval=%s s, res=%s-bit',
-                                             stored_probe_id, new_interval_sec, new_res_bits)
+                                    log.info('Provisioned %s with interval=%s s, upload=%s s, res=%s-bit',
+                                             stored_probe_id, new_interval_sec, new_upload_sec, new_res_bits)
                                 else:
                                     log.info('Could not reach %s — interval will apply on next auto-provision cycle', stored_probe_id)
                                 break
@@ -596,7 +652,7 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                         log.warning('Provision-on-save failed: %s', e)
 
             return (False, None, '', '', no_update, no_update, no_update, no_update,
-                    no_update, no_update, no_update, no_update)
+                    no_update, no_update, no_update, no_update, no_update)
 
         return noup
 

@@ -172,6 +172,7 @@ class AutoProvisioner(threading.Thread):
             # live global default derived above
             interval_ms = default_interval_ms
             resolution_bits = None
+            upload_interval_ms = None
             if self.cfg is not None and probe_id:
                 try:
                     interval_value = (self.cfg.get("probe_intervals") or {}).get(probe_id)
@@ -186,13 +187,21 @@ class AutoProvisioner(threading.Thread):
                     resolution_bits = clamp_resolution_bits(res_value)
                 except Exception:
                     resolution_bits = None
+                # Per-probe upload interval override (decoupled batching); absent =
+                # upload every reading, so the field is omitted from provisioning.
+                try:
+                    upl_value = (self.cfg.get("probe_upload_intervals") or {}).get(probe_id)
+                    if upl_value is not None:
+                        upload_interval_ms = max(int(float(upl_value) * 1000), interval_ms)
+                except Exception:
+                    upload_interval_ms = None
 
             host = (host or "").rstrip(".")
             if not host:
                 continue
 
             target_url = f"{base}/api/ingest"
-            desired = (base, interval_ms, resolution_bits, self.token)
+            desired = (base, interval_ms, resolution_bits, upload_interval_ms, self.token)
             # Once we've provisioned this probe this session, only
             # re-provision when its visible config (server_url /
             # interval) differs — this avoids the ESP32 doing an
@@ -213,10 +222,14 @@ class AutoProvisioner(threading.Thread):
                     # re-provision every cycle.
                     res_ok = status.get("resolution_bits") in (None, resolution_bits) \
                         if status else False
+                    # upload_interval_ms may be absent on older firmware — absent
+                    # matches so it doesn't force a re-provision every cycle.
+                    upl_ok = status.get("upload_interval_ms") in (None, upload_interval_ms) \
+                        if status else False
                     if (status and
                             status.get("server_url") == target_url and
                             status.get("interval_ms") == interval_ms and
-                            res_ok):
+                            res_ok and upl_ok):
                         continue  # already configured correctly
                 except Exception:
                     pass  # can't check — fall through and provision
@@ -229,6 +242,7 @@ class AutoProvisioner(threading.Thread):
                     token=self.token,
                     interval_ms=interval_ms,
                     resolution_bits=resolution_bits,
+                    upload_interval_ms=upload_interval_ms,
                 ):
                     self._provisioned.add(key)
                     self._pushed[key] = desired

@@ -178,3 +178,12 @@ def test_resolution_bits_clamped_and_probe_resolutions_dict():
     cfg3, warns = normalize_config({"probe_resolutions": "notadict"})
     assert cfg3["probe_resolutions"] == {}       # reset, with a warning
     assert any("probe_resolutions" in w for w in warns)
+
+
+def test_probe_upload_intervals_is_a_dict():
+    # Per-probe upload interval overrides are a validated dict like the others.
+    cfg, _ = normalize_config({"probe_upload_intervals": {"A": 300}})
+    assert cfg["probe_upload_intervals"] == {"A": 300}
+    cfg2, warns = normalize_config({"probe_upload_intervals": "notadict"})
+    assert cfg2["probe_upload_intervals"] == {}   # reset, with a warning
+    assert any("probe_upload_intervals" in w for w in warns)
