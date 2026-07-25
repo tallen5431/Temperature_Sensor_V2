@@ -106,6 +106,46 @@ parts list (module + LDO + support circuit + connectors) and the KiCad/JLC build
 
 ---
 
+## Firmware / hardware backlog (captured ideas, not yet built)
+
+Validated-on-paper, held until the firmware is flash-tested and the battery
+instrumentation exists. **Rule: don't ship a power feature you can't measure.**
+
+### 1. Battery voltage / state-of-charge logging  *(needs a hardware change)*
+
+The ESP32-C3 can't see the cell today — the TP4056 charger doesn't report SoC to
+the chip. To log it, add a **gated resistor divider** from BAT+ to a spare ADC pin
+(GPIO0–4; GPIO5 = DS18B20, GPIO8 = LED), *gated* so it doesn't trickle-drain in
+deep sleep — or a fuel-gauge IC (MAX17048 / LC709203F on I²C). The hub already
+accepts a `battery_pct` field, so only the firmware ADC read + reporting is
+missing. **Unlocks** a real "run-to-empty" claim (terminal-voltage knee) instead
+of runtime-to-silence. A rev-2 board decision.
+
+### 2. Decoupled sample rate vs. upload rate  *(firmware — a third power mode)*
+
+Split the single interval into a **"sample every"** and a separate **"upload
+every"** on the Devices tab: log fast to the on-flash buffer, drain it in bulk on
+a slower cadence (the `/api/ingest_csv` batch transport added in fw 2.8.0 is
+exactly this pipe).
+
+- **Why it's attractive:** the radio is ~85–90% of per-cycle energy and sampling
+  is cheap — so high-resolution continuous capture (a defrost cycle, a door-open,
+  a cold-chain leg) without mains power or constant network chatter.
+- **The catch — must be surfaced in the UI:** sampling every second **breaks deep
+  sleep** (the chip can't power down if it must read each second), so the idle
+  floor rises from ~tens of µA to ~1 mA. This mode lands *between* always-on
+  (~2 days) and 5-min deep-sleep (weeks) — think **days to a week**, not weeks.
+  The read is cheap; losing the deep sleep is the cost.
+- **Enabling detail:** start the DS18B20 conversion and light-sleep *during* the
+  0.4–0.75 s conversion, then wake only to read the result — per-sample awake time
+  is milliseconds, not the full conversion.
+- **Bound:** at 1 Hz the ~38k-line buffer fills in ~10 h, so the upload gap is
+  capped by fill time (no "log 1 Hz, sync once a day" without a bigger buffer).
+- **Prerequisite / sequencing:** build it *after* (a) fw 2.8.0 is flash-tested and
+  (b) battery-voltage logging is in — so the trade-off is **measured, not guessed**.
+
+---
+
 ## The 30-second version
 
 **Rev-1 boards → DIY kits + free restaurant pilots (validate, ~$0). If they pay → LLC + rev-2 module
