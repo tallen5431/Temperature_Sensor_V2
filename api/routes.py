@@ -31,6 +31,11 @@ DEFAULT_ONLINE_TIMEOUT_SEC = 60
 # Reject absurdly large ingest bodies (DoS / disk-fill protection).
 MAX_INGEST_BYTES = 64 * 1024
 
+# Hard cap on readings accepted in one /ingest_csv call (the ≤1000-rows/request
+# contract in PROTOCOL.md §7). The 64 KB byte limit already bounds this in
+# practice; this is a belt-and-suspenders guard against a small-but-dense body.
+MAX_BATCH_ROWS = 1000
+
 # Named rolling windows accepted by ``GET /api/readings`` (mirrors the CSV
 # download's ?window= values in app.py). ``all`` / unknown -> no window.
 _WINDOW_SECONDS = {"1h": 3600, "6h": 21600, "24h": 86400, "7d": 604800, "30d": 2592000}
@@ -137,6 +142,38 @@ def _is_safe_provision_target(host: str) -> bool:
         return False
     return bool(ip.is_private and not ip.is_loopback and not ip.is_link_local
                 and not ip.is_multicast)
+
+
+def _parse_batch(req):
+    """Parse a bulk-ingest body into a list of reading dicts, or None if unusable.
+
+    Two wire formats, both accepted so the probe sends whichever is cheapest:
+      * ``text/csv`` (default) — the probe's on-flash buffer format, one reading
+        per line: ``timestamp,temp_c,temp_f,probe_id``. No per-reading JSON to
+        build on the MCU; it just POSTs a chunk of the buffer file verbatim.
+      * ``application/json`` — ``{"readings": [ {..}, .. ]}`` or a bare array
+        (handy for tests and other clients).
+    Each element comes back as a dict ``normalize_payload`` understands.
+    """
+    ctype = (req.headers.get("Content-Type") or "").lower()
+    if "application/json" in ctype:
+        body = req.get_json(silent=True)
+        if isinstance(body, dict):
+            body = body.get("readings")
+        if not isinstance(body, list):
+            return None
+        return [r for r in body if isinstance(r, dict)]
+    rows = []
+    for line in (req.get_data(as_text=True) or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split(",")
+        if len(parts) < 4:
+            continue  # structurally corrupt line — skip
+        rows.append({"timestamp": parts[0], "temperature_c": parts[1],
+                     "temperature_f": parts[2], "probe_id": parts[3]})
+    return rows
 
 
 def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str],
@@ -510,5 +547,75 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
         # drive-by CSRF/poisoning vector (<img src=".../api/ingest?...">) and would
         # leak any ?token= into browser history / server logs / Referer headers.
         return jsonify(ok=False, error="method not allowed; use POST"), 405
+
+    @bp.post("/ingest_csv")
+    def ingest_csv():
+        # Bulk backlog drain (PROTOCOL.md §7). A probe recovering from an outage
+        # (weak freezer Wi-Fi, hub down) can hold thousands of buffered readings;
+        # uploading them one-POST-per-reading is slow and burns radio/battery.
+        # This takes a whole chunk in one round-trip — CSV (the probe's on-flash
+        # buffer format) or JSON — validates each reading exactly like /ingest,
+        # and writes them in a single transaction (db.bulk_insert). The
+        # single-reading /ingest stays for live readings, so older firmware is
+        # unaffected.
+        if not _check_auth():
+            return jsonify(ok=False, error="unauthorized"), 401
+        if request.content_length and request.content_length > MAX_INGEST_BYTES:
+            return jsonify(ok=False, error="payload too large"), 413
+        rows = _parse_batch(request)
+        if rows is None:
+            return jsonify(ok=False, error="unparseable batch body"), 400
+        if len(rows) > MAX_BATCH_ROWS:
+            return jsonify(ok=False, error="too many rows (max %d)" % MAX_BATCH_ROWS), 413
+
+        header_pid = request.headers.get("X-Probe-ID") or ""
+        valid = []        # (ts, t_c, t_f, probe_id) tuples for bulk_insert
+        newest = {}       # probe_id -> (ts, t_c): most-recent accepted reading
+        rejected = 0
+        for row in rows:
+            try:
+                pid = sanitize_probe_id(row.get("probe_id") or header_pid)
+                ts, t_c, t_f = normalize_payload(row)
+            except (ValueError, KeyError, TypeError):
+                rejected += 1
+                continue
+            offset = _calibration_offset(pid)
+            if offset:
+                t_c += offset
+                t_f = (t_c * 9.0 / 5.0) + 32.0
+            valid.append((ts, t_c, t_f, pid))
+            prev = newest.get(pid)
+            if prev is None or ts > prev[0]:
+                newest[pid] = (ts, t_c)
+
+        accepted = 0
+        if valid:
+            try:
+                accepted = db.bulk_insert(valid)
+            except Exception:
+                HEALTH.record_failure()
+                log.exception("batch ingest write failed")
+                return jsonify(ok=False, error="storage error"), 503
+            for _ in range(accepted):
+                HEALTH.record_write()
+            # Reflect current state ONCE per probe (its newest reading) in the
+            # Prometheus registry + last-seen, rather than replaying the backlog.
+            # MQTT is deliberately left to the live /ingest path so historical
+            # rows aren't (re)published to Home Assistant out of order.
+            for pid, (_, t_c) in newest.items():
+                if not pid:
+                    continue
+                try:
+                    LATEST.record(pid, t_c)
+                except Exception:
+                    pass
+                if discovery:
+                    try:
+                        discovery.update_last_seen(pid, host="", ip=request.remote_addr or "")
+                    except Exception:
+                        pass
+        for _ in range(rejected):
+            HEALTH.record_reject()
+        return jsonify(ok=True, accepted=accepted, rejected=rejected)
 
     return bp
