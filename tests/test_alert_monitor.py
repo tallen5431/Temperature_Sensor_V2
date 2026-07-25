@@ -95,9 +95,10 @@ def test_monitor_ignores_stale_readings(tmp_path):
 
 def test_monitor_recovery(tmp_path):
     db, cfg, notifier, mon = _setup(tmp_path)
-    db.append(_iso(datetime.datetime.now()), 12.0, 0.0, "TempProbe-FRIDGE")
+    now = datetime.datetime.now()
+    db.append(_iso(now - datetime.timedelta(seconds=1)), 12.0, 0.0, "TempProbe-FRIDGE")
     mon.check_once()  # high
-    db.append(_iso(datetime.datetime.now()), 4.0, 0.0, "TempProbe-FRIDGE")  # back to normal
+    db.append(_iso(now), 4.0, 0.0, "TempProbe-FRIDGE")  # back to normal (newer reading)
     events = mon.check_once()
     assert len(events) == 1 and events[0]["kind"] == "recovery"
 
@@ -105,13 +106,14 @@ def test_monitor_recovery(tmp_path):
 def test_monitor_hysteresis_suppresses_recovery_flap(tmp_path):
     db, cfg, notifier, mon = _setup(tmp_path)          # FRIDGE max = 8
     cfg.update({"alert_hysteresis_c": 0.5})
-    db.append(_iso(datetime.datetime.now()), 9.0, 0.0, "TempProbe-FRIDGE")   # high (> 8)
+    now = datetime.datetime.now()
+    db.append(_iso(now - datetime.timedelta(seconds=2)), 9.0, 0.0, "TempProbe-FRIDGE")   # high (> 8)
     assert mon.check_once()[0]["kind"] == "high"
     # Hover just below the limit but inside the 0.5 deadband -> must NOT flap.
-    db.append(_iso(datetime.datetime.now()), 7.7, 0.0, "TempProbe-FRIDGE")
+    db.append(_iso(now - datetime.timedelta(seconds=1)), 7.7, 0.0, "TempProbe-FRIDGE")
     assert mon.check_once() == []
     # Clear well past the deadband -> a single recovery.
-    db.append(_iso(datetime.datetime.now()), 7.0, 0.0, "TempProbe-FRIDGE")
+    db.append(_iso(now), 7.0, 0.0, "TempProbe-FRIDGE")
     events = mon.check_once()
     assert len(events) == 1 and events[0]["kind"] == "recovery"
 
@@ -236,15 +238,16 @@ def test_monitor_updates_held_registry(tmp_path):
     from core.alerts import HELD
     db, cfg, notifier, mon = _setup(tmp_path)   # FRIDGE max = 8
     cfg.update({"alert_hysteresis_c": 0.5})
-    db.append(_iso(datetime.datetime.now()), 9.0, 0.0, "TempProbe-FRIDGE")
+    now = datetime.datetime.now()
+    db.append(_iso(now - datetime.timedelta(seconds=2)), 9.0, 0.0, "TempProbe-FRIDGE")
     mon.check_once()
     assert HELD.get("TempProbe-FRIDGE") == "high"
     # Inside the deadband the breach is held -> still registered.
-    db.append(_iso(datetime.datetime.now()), 7.7, 0.0, "TempProbe-FRIDGE")
+    db.append(_iso(now - datetime.timedelta(seconds=1)), 7.7, 0.0, "TempProbe-FRIDGE")
     mon.check_once()
     assert HELD.get("TempProbe-FRIDGE") == "high"
     # Cleared past the deadband -> removed from the registry.
-    db.append(_iso(datetime.datetime.now()), 7.0, 0.0, "TempProbe-FRIDGE")
+    db.append(_iso(now), 7.0, 0.0, "TempProbe-FRIDGE")
     mon.check_once()
     assert HELD.get("TempProbe-FRIDGE") is None
 

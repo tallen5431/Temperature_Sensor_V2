@@ -1,4 +1,18 @@
 // ESP32 + DS18B20 + WiFiManager + mDNS + OTA + WebServer
+// v2.8.0 — reliability + bulk drain: (a) the offline buffer now drains to the
+//           hub in bulk via POST /api/ingest_csv — one HTTP round-trip per
+//           ~FLUSH_CHUNK_ROWS readings instead of one per reading — so a
+//           several-hundred-KB cold-soak backlog uploads in seconds and the
+//           radio spends far less time on. Falls back transparently to the
+//           per-reading path on an older hub (404/405) or a non-standard server
+//           URL. The hub dedupes by (probe_id, timestamp), so a re-sent chunk
+//           (dropped ACK) is ignored, never duplicated. (b) cold-boot rejoin —
+//           a probe with saved credentials retries its network for a 60 s grace
+//           and then continues OFFLINE instead of flipping to its own setup AP
+//           on a brief miss (the recharge-hosts-an-AP bug); after
+//           COLD_FAIL_PORTAL_AFTER consecutive failed cold boots (a permanent
+//           network change, not a passing outage) it opens the setup portal once
+//           so the probe can be re-pointed without a USB re-flash.
 // v2.7.0 — reliability: (a) power-outage lockout fix — the captive portal now
 //           times out after PORTAL_TIMEOUT_S (180 s) instead of blocking
 //           forever, so a probe whose router reboots slower than it does after
@@ -194,6 +208,19 @@ static const uint32_t WIFI_COLD_RECONNECT_MS  = 60000UL;
 // re-opened in a loop — there is nothing useful to run without them.
 static const uint32_t PORTAL_TIMEOUT_S = 180;
 
+// Field-recovery escape hatch. Continuing OFFLINE on a saved-network miss is
+// right for a transient outage (router still booting), but a PERMANENT change —
+// a new router, a changed SSID/password, or moving the probe to another house —
+// would otherwise strand it offline forever with no way to re-point it short of
+// a USB re-flash. So count consecutive cold boots whose saved network stayed
+// unreachable through the full grace window; after this many (a deliberate,
+// persistent condition — a healthy network reconnects and clears the count on
+// the first cold boot), open the setup portal ONCE so the user can reconfigure.
+// A single recharge or brief outage never reaches it, so the probe still won't
+// flip to its own AP on a passing miss. Recovery gesture, for the docs: power-
+// cycle the probe this many times to force setup mode.
+static const uint32_t COLD_FAIL_PORTAL_AFTER = 3;
+
 // The hub's auto-provisioner only needs to reach the probe occasionally, so the
 // 3 s HTTP window isn't held on every deep-sleep wake: it's served for the first
 // WEBSERVER_WARMUP_WAKES (initial provisioning) and then every
@@ -250,6 +277,10 @@ static const char*    BUFFER_FILE      = "/buf.csv";
 static const uint32_t BUFFER_MAX_BYTES = 1900UL * 1024UL;  // 1.9 MB cap
 static const uint32_t BUFFER_MIN_FREE  =    8UL * 1024UL;  // 8 KB FS headroom
 static const char*    BUF_POS_KEY = "buf_pos";
+// Consecutive cold boots whose saved Wi-Fi stayed unreachable (see
+// COLD_FAIL_PORTAL_AFTER). NVS-backed, not RTC, so it survives the full power
+// loss of a dead battery / recharge — the exact event this guards.
+static const char*    COLD_FAIL_KEY = "coldfail";
 // Flush checkpoint/budget: persist buf_pos every N successful uploads (plus
 // always when a flush stops or completes) instead of after every line — the
 // same resume guarantee at ~1/10th the NVS write wear. In deep-sleep mode one
@@ -426,6 +457,19 @@ void saveBufPos(uint32_t pos) {
   prefs.end();
 }
 
+uint32_t loadColdFail() {
+  if (!prefs.begin("tscfg", true)) return 0;
+  uint32_t n = prefs.getUInt(COLD_FAIL_KEY, 0);
+  prefs.end();
+  return n;
+}
+
+void saveColdFail(uint32_t n) {
+  if (!prefs.begin("tscfg", false)) return;
+  prefs.putUInt(COLD_FAIL_KEY, n);
+  prefs.end();
+}
+
 // ============================================================================
 // Offline buffer
 // ============================================================================
@@ -512,11 +556,15 @@ int postChunk(const String& url, const String& body) {
 }
 
 // Upload every reading stored in the buffer file, then delete it.
-// Byte-offset of the next line is persisted in NVS every
-// FLUSH_CHECKPOINT_EVERY successful POSTs — and ALWAYS when the flush stops or
-// completes — so a mid-flush drop resumes with at most a few duplicates.
-// In deep-sleep mode a single wake's flush is capped at FLUSH_BUDGET_MS and
-// the backlog resumes from the checkpoint on the next wake.
+// Byte-offset of the next line is persisted in NVS on the batch path once per
+// chunk (~FLUSH_CHUNK_ROWS readings) and on the per-reading fallback every
+// FLUSH_CHECKPOINT_EVERY POSTs — and ALWAYS when the flush stops or completes —
+// so a mid-flush drop resumes from the last checkpoint. A resume may re-send the
+// last un-checkpointed chunk (a dropped ACK, or power lost before the checkpoint
+// commits), but the hub dedupes by (probe_id, timestamp) — every buffered line
+// carries a millisecond-precision stamp (bufferAppend refuses an empty one) —
+// so replays are ignored, not duplicated. In deep-sleep mode a single wake's
+// flush is capped at FLUSH_BUDGET_MS and resumes from the checkpoint next wake.
 void bufferFlush() {
   if (!LittleFS.exists(BUFFER_FILE)) return;
 
@@ -1184,23 +1232,49 @@ void setup() {
       WiFi.begin();
       uint32_t t0 = millis();
       while (WiFi.status() != WL_CONNECTED && millis() - t0 < WIFI_COLD_RECONNECT_MS) {
-        http.handleClient();
+        // (No http.handleClient() here: the web server isn't begun until after
+        // this block, and the probe has no IP while still associating, so there
+        // is nothing to serve — just wait for the association to complete.)
         delay(250);
       }
       if (WiFi.status() == WL_CONNECTED) {
         Serial.printf("[WiFi] Reconnected in %lu ms. IP: %s\n",
                       millis() - t0, WiFi.localIP().toString().c_str());
         g_wasConnected = true;
+        saveColdFail(0);   // network reachable — clear the consecutive-fail count
       } else {
-        // Still unreachable after the grace. Do NOT open the setup AP (the user
-        // didn't ask to reconfigure) — continue OFFLINE and keep retrying:
-        // readings are buffered and Wi-Fi reconnects in loop()'s watchdog
-        // (always-on) or on the next wake (deep sleep), exactly like a mid-run
-        // outage. (To move the probe to a new network: re-provision from the hub,
-        // or clear its Wi-Fi credentials to force first-time setup.)
-        Serial.println("[WiFi] Saved network still unreachable — continuing OFFLINE, will keep retrying.");
-        WiFi.mode(WIFI_STA);
-        WiFi.begin();
+        // Still unreachable after the grace. A transient miss (router still
+        // booting after a shared outage) must NOT flip the probe to its own setup
+        // AP, so the default is to continue OFFLINE and keep retrying: readings
+        // are buffered and Wi-Fi reconnects in loop()'s watchdog (always-on) or on
+        // the next wake (deep sleep), exactly like a mid-run outage. The STA is
+        // already retrying in the background from the WiFi.begin() above.
+        uint32_t coldFails = loadColdFail() + 1;
+        saveColdFail(coldFails);
+        if (coldFails >= COLD_FAIL_PORTAL_AFTER) {
+          // The saved network has been unreachable across this many consecutive
+          // cold boots — a persistent change (new router / SSID / relocation),
+          // not a passing outage. Open the setup portal ONCE so the probe can be
+          // re-pointed instead of being stranded offline until a USB re-flash.
+          // Bounded by PORTAL_TIMEOUT_S; returns whether or not anyone connects.
+          Serial.printf("[WiFi] Saved network unreachable on %u consecutive cold boots — "
+                        "opening setup portal for reconfiguration.\n", coldFails);
+          startConfigPortal();
+          if (WiFi.status() == WL_CONNECTED) {
+            g_wasConnected = true;
+            saveColdFail(0);        // reconfigured/reconnected — clear the count
+          } else {
+            // No one reconfigured it; resume the background STA retry (the portal
+            // took the radio into AP mode) and leave the count set so the next
+            // cold boot offers setup again.
+            WiFi.mode(WIFI_STA);
+            WiFi.begin();
+          }
+        } else {
+          Serial.printf("[WiFi] Saved network still unreachable (cold-boot streak %u/%u) — "
+                        "continuing OFFLINE, will keep retrying.\n",
+                        coldFails, (unsigned)COLD_FAIL_PORTAL_AFTER);
+        }
       }
     } else {
       // No saved credentials: genuine first-time setup. Open the per-unit OPEN

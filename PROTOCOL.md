@@ -282,11 +282,18 @@ Each reading is validated exactly like `/api/ingest` (§6: finite, `-60..150 °C
 timestamp normalisation, per-probe calibration). Invalid rows are skipped, not
 fatal — one corrupt line never rejects the rest of the chunk.
 
-**Response** `200`: `{ "ok": true, "accepted": <int>, "rejected": <int> }`.
-Errors mirror `/api/ingest` (`401` unauthorized, `413` too large / > 1000 rows,
-`400` unparseable body, `503` storage error). The probe advances its buffer
-checkpoint by `accepted`, so a mid-drain drop resumes with at most a few
-duplicates.
+**Response** `200`: `{ "ok": true, "accepted": <int>, "rejected": <int> }`,
+where `accepted` is the number of rows **newly stored** — a re-sent reading that
+the hub already holds is deduped, not counted. Errors mirror `/api/ingest`
+(`401` unauthorized, `413` too large / > 1000 rows, `400` unparseable body,
+`503` storage error).
+
+Ingest is **idempotent**: the hub enforces one reading per `(probe_id,
+timestamp)` (`INSERT OR IGNORE` on a unique index). A probe advances its buffer
+checkpoint once the chunk is accepted (any `2xx`), so if an ACK is lost and the
+identical chunk is re-sent on the next drain, the replay is ignored — it cannot
+create duplicate rows. Readings therefore carry a millisecond-precision
+timestamp so two distinct readings never collide.
 
 ---
 

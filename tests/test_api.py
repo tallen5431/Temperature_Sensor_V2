@@ -172,6 +172,33 @@ def test_ingest_batch_csv_stores_all(tmp_path):
     assert "p1" in disc.seen                        # probe marked seen once
 
 
+def test_ingest_batch_replay_is_idempotent(tmp_path):
+    # A dropped ACK on a bulk flush makes the probe re-POST the identical chunk.
+    # The hub must dedupe by (probe_id, timestamp) so the replay can't inflate
+    # the log with up to a whole chunk of duplicate rows.
+    client, db, _ = _make_client(tmp_path)
+    csv = ("2026-07-24T10:00:00,4.0,39.2,p1\n"
+           "2026-07-24T10:00:05,4.1,39.4,p1\n"
+           "2026-07-24T10:00:10,4.2,39.6,p1\n")
+    first = client.post("/api/ingest_csv", data=csv, content_type="text/csv").get_json()
+    assert first["accepted"] == 3 and db.count() == 3
+    # Re-send the exact same chunk (the lost-ACK case).
+    second = client.post("/api/ingest_csv", data=csv, content_type="text/csv").get_json()
+    assert second["ok"] is True
+    assert second["accepted"] == 0        # nothing new stored — all deduped
+    assert db.count() == 3                # still three rows, no duplicates
+
+
+def test_ingest_single_replay_is_idempotent(tmp_path):
+    # The same guarantee protects the single-reading path: a re-sent POST with an
+    # explicit timestamp does not create a duplicate row.
+    client, db, _ = _make_client(tmp_path)
+    payload = {"timestamp": "2026-07-24T10:00:00", "temperature_c": 4.0, "probe_id": "p1"}
+    assert client.post("/api/ingest", json=payload).status_code == 200
+    assert client.post("/api/ingest", json=payload).status_code == 200
+    assert db.count() == 1
+
+
 def test_ingest_batch_json_array(tmp_path):
     client, db, _ = _make_client(tmp_path)
     r = client.post("/api/ingest_csv", json={"readings": [

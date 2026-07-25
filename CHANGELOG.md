@@ -21,7 +21,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   endpoint was already specified in `PROTOCOL.md` (§7) but never implemented;
   §5.1 now documents the body formats. The single-reading `/api/ingest` is
   unchanged, so existing firmware keeps working — the matching firmware change
-  (chunked buffer flush + HTTP keep-alive) ships separately.
+  (chunked buffer flush) ships in firmware **v2.8.0** (below).
+
+### Changed
+
+- **Idempotent ingest — duplicate readings can no longer be stored.** A
+  `UNIQUE(probe_id, epoch)` index now backs the readings table and both write
+  paths (`append`, `bulk_insert`) use `INSERT OR IGNORE`. A probe that re-sends a
+  reading — a dropped ACK on a bulk `ingest_csv` flush would otherwise re-POST a
+  whole ~100-row chunk — no longer inflates `COUNT`/`AVG`/min-max or CSV exports;
+  the replay is silently ignored. Every reading carries a millisecond-precision
+  timestamp (the probe's, or the hub's own when a payload omits one — now
+  stamped to the millisecond so two same-second live readings stay distinct), so
+  only a byte-identical replay collides. A database that already holds exact
+  duplicates from the old path is de-duplicated in place when the index is built.
+  `bulk_insert` now returns the count of rows *actually* inserted (replays
+  excluded) so the health counters stay honest.
+
+### Firmware — v2.8.0
+
+- **Bulk buffer drain.** The offline buffer now uploads to the hub in bulk via
+  `POST /api/ingest_csv` — one HTTP round-trip per ~100 readings instead of one
+  per reading — so a several-hundred-KB cold-soak backlog (the freezer-test case)
+  drains in seconds rather than thousands of sequential POSTs, and the radio
+  spends far less time on. Falls back transparently to the per-reading path on an
+  older hub (404/405) or a non-standard server URL. Combined with the hub-side
+  idempotency above, a re-sent chunk after a dropped ACK is deduped, not
+  duplicated. All existing checkpoint / resume / flush-budget guarantees are
+  preserved.
+- **Cold-boot rejoin (recharge-hosts-an-AP fix).** A probe with saved
+  credentials now retries its network for a 60 s grace on cold boot and then
+  continues **offline** — buffering and reconnecting on the next wake — instead
+  of flipping to its own setup AP on a brief miss (e.g. the router still booting
+  after a shared outage). To keep a *permanent* network change (new router,
+  changed SSID/password, relocation) from stranding the probe offline forever, it
+  opens the setup portal once after `COLD_FAIL_PORTAL_AFTER` (3) consecutive
+  failed cold boots — a deliberate power-cycle gesture — so it can be re-pointed
+  without a USB re-flash. The streak is NVS-backed so it survives the battery
+  loss of a recharge, and a healthy network clears it on the first cold boot.
 
 ## [2.6.2] - 2026-07-23
 
