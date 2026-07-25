@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🛠️</text></svg>">
+<title>About — Thomas Allen, Datum Labs</title>
+<meta name="description" content="Thomas Allen, founder of Datum Laboratories. I design and build embedded products end to end — hardware, firmware, and the software around them. Setpoint is one I took from concept to a shipping, field-tested product.">
+<link rel="canonical" href="https://datumlaboratories.com/about">
+<meta property="og:title" content="About — Thomas Allen, Datum Labs">
+<meta property="og:description" content="Solo engineer who takes embedded products from concept to shipping. Firmware, custom PCBs, computer vision, and the software around them.">
+<meta property="og:type" content="profile">
+<meta property="og:url" content="https://datumlaboratories.com/about">
+<meta property="og:site_name" content="Datum Labs">
+<meta property="og:image" content="https://datumlaboratories.com/og-image.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://datumlaboratories.com/og-image.jpg">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Person",
+  "name": "Thomas Allen",
+  "jobTitle": "Founder & Engineer",
+  "url": "https://datumlaboratories.com/about",
+  "worksFor": { "@type": "Organization", "name": "Datum Laboratories", "url": "https://datumlaboratories.com" },
+  "sameAs": [ "https://github.com/tallen5431" ],
+  "knowsAbout": [
+    "Embedded systems", "Firmware development", "ESP32", "Embedded C/C++",
+    "PCB design", "KiCad", "Computer vision", "NVIDIA Jetson", "Local LLMs",
+    "OCR", "3D printing", "Product development", "IoT"
+  ]
+}
+</script>
+<style>
+  :root {
+    --paper:#F5F6F4; --surface:#FFFFFF; --raised:#FBFCFA; --ink:#12181C; --slate:#59636B;
+    --faint:#8A939A; --line:#DEE2DE; --line-strong:#C9CFCA; --signal:#0E94AB;
+    --signal-soft:#E2F1F4; --warn:#C7860F; --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --font-mono:ui-monospace,"SF Mono","Cascadia Code","Roboto Mono",Menlo,Consolas,monospace;
+    --maxw:1140px; --radius:4px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:#0B131B; --surface:#131F2B; --raised:#18242F; --ink:#E9F1F7; --slate:#9DB0BE;
+      --faint:#6E8393; --line:#22323F; --line-strong:#2F4454; --signal:#17B3CC;
+      --signal-soft:rgba(23,179,204,.14); --warn:#EFB02E;
+    }
+  }
+  :root[data-theme="light"] {
+    --paper:#F5F6F4; --surface:#FFFFFF; --raised:#FBFCFA; --ink:#12181C; --slate:#59636B;
+    --faint:#8A939A; --line:#DEE2DE; --line-strong:#C9CFCA; --signal:#0E94AB; --signal-soft:#E2F1F4; --warn:#C7860F;
+  }
+  :root[data-theme="dark"] {
+    --paper:#0B131B; --surface:#131F2B; --raised:#18242F; --ink:#E9F1F7; --slate:#9DB0BE;
+    --faint:#6E8393; --line:#22323F; --line-strong:#2F4454; --signal:#17B3CC; --signal-soft:rgba(23,179,204,.14); --warn:#EFB02E;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--paper); color:var(--ink); font-family:var(--font-sans); font-size:17px; line-height:1.6; -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:var(--maxw); margin:0 auto; padding:0 28px; }
+  a { color:inherit; }
+  h1,h2,h3 { text-wrap:balance; letter-spacing:-0.02em; line-height:1.1; margin:0; }
+  .eyebrow { font-family:var(--font-mono); font-size:12px; letter-spacing:0.16em; text-transform:uppercase; color:var(--signal); margin:0 0 18px; display:flex; align-items:center; gap:10px; }
+  .eyebrow::before { content:""; width:22px; height:1px; background:var(--signal); display:inline-block; }
+
+  header.bar { position:sticky; top:0; z-index:50; background:color-mix(in srgb, var(--paper) 88%, transparent); backdrop-filter:saturate(1.2) blur(8px); border-bottom:1px solid var(--line); }
+  .bar-inner { display:flex; align-items:center; justify-content:space-between; height:62px; }
+  .brand { display:flex; align-items:baseline; gap:10px; font-weight:700; letter-spacing:-0.02em; text-decoration:none; color:inherit; }
+  .brand .mk { font-size:19px; }
+  .brand .by { font-family:var(--font-mono); font-size:11px; letter-spacing:0.08em; color:var(--faint); text-transform:uppercase; }
+  nav.top { display:flex; gap:26px; align-items:center; }
+  nav.top a { font-family:var(--font-mono); font-size:13px; letter-spacing:0.02em; text-decoration:none; color:var(--slate); }
+  nav.top a:hover, nav.top a.active { color:var(--ink); }
+  @media (max-width:720px){ nav.top a.hide-sm { display:none; } }
+
+  .btn { display:inline-flex; align-items:center; gap:8px; font-family:var(--font-mono); font-size:13px; letter-spacing:0.02em; padding:11px 18px; border-radius:var(--radius); text-decoration:none; border:1px solid var(--ink); background:var(--ink); color:var(--paper); cursor:pointer; transition:transform .12s ease, opacity .12s ease; }
+  .btn:hover { transform:translateY(-1px); }
+  .btn:focus-visible { outline:2px solid var(--signal); outline-offset:2px; }
+  .btn.ghost { background:transparent; color:var(--ink); border-color:var(--line-strong); }
+  .btn.signal { background:var(--signal); border-color:var(--signal); color:#04222A; }
+
+  .hero { padding:74px 0 56px; }
+  .hero h1 { font-size:clamp(34px,5vw,54px); font-weight:760; }
+  .hero .lede { font-size:19px; color:var(--slate); margin:22px 0 30px; max-width:38em; }
+  .cta-row { display:flex; gap:12px; flex-wrap:wrap; }
+
+  section { padding:64px 0; border-top:1px solid var(--line); }
+  .sec-head { max-width:44em; margin-bottom:40px; }
+  .sec-head h2 { font-size:clamp(26px,3.4vw,36px); font-weight:720; }
+  .sec-head p { color:var(--slate); margin:14px 0 0; font-size:18px; }
+
+  /* Proof block — the trust anchor */
+  .proof-block { background:var(--surface); border:1px solid var(--line); border-left:3px solid var(--signal); border-radius:10px; padding:30px 30px; }
+  .proof-block h2 { font-size:clamp(22px,3vw,30px); font-weight:730; margin-bottom:14px; }
+  .proof-block p { color:var(--slate); font-size:17px; margin:0 0 16px; max-width:60em; }
+  .proof-block p:last-of-type { margin-bottom:0; }
+  .proof-block a { color:var(--signal); text-decoration:none; font-weight:600; }
+  .proof-block a:hover { text-decoration:underline; }
+  .proof-stats { display:flex; flex-wrap:wrap; gap:14px 34px; margin:22px 0 4px; padding-top:20px; border-top:1px solid var(--line); }
+  .proof-stats .s { display:flex; flex-direction:column; gap:2px; }
+  .proof-stats .s b { font-family:var(--font-mono); font-size:22px; font-weight:700; letter-spacing:-0.02em; color:var(--ink); }
+  .proof-stats .s span { font-family:var(--font-mono); font-size:11.5px; letter-spacing:0.06em; text-transform:uppercase; color:var(--faint); }
+
+  /* Principles */
+  .principles { display:grid; grid-template-columns:repeat(2,1fr); gap:16px; }
+  @media (max-width:720px){ .principles { grid-template-columns:1fr; } }
+  .principle { background:var(--raised); border:1px solid var(--line); border-radius:8px; padding:22px 24px; }
+  .principle h3 { font-size:17px; font-weight:680; margin-bottom:7px; }
+  .principle p { margin:0; color:var(--slate); font-size:15px; }
+
+  /* Projects */
+  .project { border-top:1px solid var(--line); padding:34px 0; display:grid; grid-template-columns:200px 1fr; gap:30px; }
+  .project:first-of-type { border-top:none; padding-top:0; }
+  @media (max-width:760px){ .project { grid-template-columns:1fr; gap:12px; } }
+  .project .side .k { font-family:var(--font-mono); font-size:11px; letter-spacing:0.12em; text-transform:uppercase; color:var(--signal); }
+  .project .side h3 { font-size:21px; font-weight:720; margin:8px 0 10px; }
+  .project .side .tag { font-family:var(--font-mono); font-size:11.5px; color:var(--slate); background:var(--signal-soft); padding:4px 9px; border-radius:100px; display:inline-block; }
+  .project .body p { margin:0 0 12px; color:var(--slate); font-size:15.5px; }
+  .project .body p b { color:var(--ink); font-weight:650; }
+  .project .body a { color:var(--signal); text-decoration:none; font-weight:600; }
+  .project .body a:hover { text-decoration:underline; }
+  .project .body .built { color:var(--ink); }
+
+  /* Skills — compact, grouped (not a 30-item matrix) */
+  .skills { display:grid; grid-template-columns:repeat(2,1fr); gap:16px; }
+  @media (max-width:720px){ .skills { grid-template-columns:1fr; } }
+  .skill { background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:20px 22px; }
+  .skill .k { font-family:var(--font-mono); font-size:11px; letter-spacing:0.12em; text-transform:uppercase; color:var(--signal); margin-bottom:9px; }
+  .skill p { margin:0; font-size:15px; color:var(--ink); }
+
+  .also { color:var(--slate); font-size:15px; margin:26px 0 0; }
+
+  /* Background */
+  .bg-item { display:grid; grid-template-columns:200px 1fr; gap:30px; }
+  @media (max-width:760px){ .bg-item { grid-template-columns:1fr; gap:10px; } }
+  .bg-item .role { font-weight:700; }
+  .bg-item .role span { display:block; font-family:var(--font-mono); font-size:12px; color:var(--slate); font-weight:400; margin-top:4px; }
+  .bg-item p { margin:0; color:var(--slate); font-size:15.5px; }
+
+  .cta-band { text-align:center; }
+  .cta-band h2 { font-size:clamp(26px,3.4vw,38px); font-weight:730; max-width:16em; margin:0 auto 16px; }
+  .cta-band p { color:var(--slate); font-size:18px; max-width:34em; margin:0 auto 28px; }
+
+  footer { padding:46px 0; border-top:1px solid var(--line); }
+  .foot-inner { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:18px; }
+  .fmk { font-weight:700; letter-spacing:-0.02em; }
+  .fmk span { font-family:var(--font-mono); font-size:11px; color:var(--faint); text-transform:uppercase; letter-spacing:0.08em; display:block; font-weight:400; margin-top:2px; }
+  .foot-links { display:flex; gap:22px; font-family:var(--font-mono); font-size:12.5px; }
+  .foot-links a { color:var(--slate); text-decoration:none; }
+  .foot-links a:hover { color:var(--ink); }
+  .fineprint { font-family:var(--font-mono); font-size:11px; color:var(--faint); margin-top:20px; max-width:60em; line-height:1.7; }
+</style>
+</head>
+<body>
+
+<!--
+  Datum Labs "About" page (/about). This is the trust page — story + proof, then
+  a hand-off to /services for the offerings + contact form (deliberately NOT
+  duplicated here). Edit the voice to sound like you; the structure is built to
+  lead with evidence (Setpoint) rather than a skills checklist.
+  Swap the GitHub link (github.com/tallen5431) for the specific Jetson repo when
+  you're ready, and add a photo of yourself / the bench to the hero if you like.
+-->
+
+<header class="bar">
+  <div class="wrap bar-inner">
+    <a class="brand" href="/"><span class="mk">Datum Labs</span><span class="by">Setpoint &amp; custom builds</span></a>
+    <nav class="top">
+      <a href="/" class="hide-sm">Setpoint</a>
+      <a href="/services">Services</a>
+      <a href="/about" class="active">About</a>
+      <a href="/services#contact" class="btn ghost" style="padding:8px 14px;">Contact</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero" style="border-top:none;">
+    <div class="wrap">
+      <p class="eyebrow">Datum Labs · About</p>
+      <h1>I'm Thomas Allen. I build embedded products end to end.</h1>
+      <p class="lede">Founder of Datum Laboratories — a one-person shop where the person who talks to you is the one who designs the board, writes the firmware, and builds the software around it. I like taking an idea all the way to a working, reliable, manufacturable thing. <a href="/" style="color:var(--signal);text-decoration:none;">Setpoint</a> is one I took the whole way.</p>
+      <div class="cta-row">
+        <a href="/services" class="btn signal">See what I offer →</a>
+        <a href="/" class="btn ghost">Setpoint</a>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="proof-block">
+        <h2>The short version: I ship.</h2>
+        <p>Plenty of people can list "ESP32" and "Python" on a page. Fewer can point to a product they designed, built, and put in customers' hands — hardware, firmware, and software, all of it. <a href="/">Setpoint</a> is a no-cloud Wi-Fi temperature logger I took from concept to a shipping DIY kit: I designed the ESP32-C3 hardware and carrier, wrote the firmware (offline buffering, deep-sleep battery modes, browser-based flashing), built the self-hosted dashboard and REST/MQTT/Prometheus back end, and wrote the documentation so a buyer is never locked in.</p>
+        <p>Then I field-tested it — because a spec sheet isn't proof. One unit logged <b>160,916 readings over 46 continuous hours</b> on a single charge with zero dropouts, and the write-up is honest about exactly what that does and doesn't establish. That's how I work: build it, test it, and tell you the truth about the result.</p>
+        <div class="proof-stats">
+          <div class="s"><b>Concept → shipping</b><span>Hardware · firmware · software</span></div>
+          <div class="s"><b>430k+</b><span>Readings logged in first field test</span></div>
+          <div class="s"><b>Open</b><span>Firmware you can read &amp; reflash</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="how-i-work">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow">How I work</p>
+        <h2>Practical, tested, and honest about the trade-offs.</h2>
+        <p>Not a big firm and not trying to be. The advantage of working with me is that you work directly with the engineer building the thing.</p>
+      </div>
+      <div class="principles">
+        <div class="principle"><h3>Learn by building</h3><p>I get to a working prototype fast, then let real behavior — not assumptions — drive the design.</p></div>
+        <div class="principle"><h3>Practical over clever</h3><p>The simplest design that's reliable beats the impressive one that isn't. I optimize for something you can actually run and maintain.</p></div>
+        <div class="principle"><h3>Design for the real world</h3><p>Manufacturability, battery life, weak Wi-Fi, field recovery — I design for the messy conditions, not just the bench.</p></div>
+        <div class="principle"><h3>Test, then tell the truth</h3><p>I measure what I build and I'm straight about what the data shows. No overselling — you get an accurate picture.</p></div>
+        <div class="principle"><h3>Document and hand off</h3><p>You get the files, the code, and the notes. No black boxes, no vendor lock-in, nothing that dies if I disappear.</p></div>
+        <div class="principle"><h3>Combine disciplines</h3><p>Hardware, firmware, software, and mechanical in one head means fewer hand-off gaps and a system that actually fits together.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="work">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow">Selected work</p>
+        <h2>A few things I've built.</h2>
+        <p>Told as problem → what I built → outcome, because that's what actually shows capability.</p>
+      </div>
+
+      <div class="project">
+        <div class="side">
+          <div class="k">Product</div>
+          <h3>Setpoint</h3>
+          <span class="tag">Shipping now</span>
+        </div>
+        <div class="body">
+          <p><b>The problem:</b> Off-the-shelf temperature loggers are cloud-locked, subscription-bound, or too dumb to trust with a freezer full of food or a server rack.</p>
+          <p class="built"><b>What I built:</b> A self-contained Wi-Fi probe on an ESP32-C3 + DS18B20 — custom carrier board, low-power firmware with an on-device offline buffer and deep-sleep modes, a browser flasher (no toolchain), and a self-hosted Python dashboard with alerts, CSV/Excel export, and MQTT/Prometheus/Home-Assistant integrations. No cloud, no account.</p>
+          <p><b>Outcome:</b> Shipping as a DIY kit on Tindie with a small-batch Rev-2 in production, and field-tested over multi-day runs. <a href="/">See Setpoint →</a></p>
+        </div>
+      </div>
+
+      <div class="project">
+        <div class="side">
+          <div class="k">Embedded vision</div>
+          <h3>Wearable vision system</h3>
+          <span class="tag">Uncommon build</span>
+        </div>
+        <div class="body">
+          <p><b>The goal:</b> A head-mounted, real-time camera-vision headset with night vision — the kind of integration very few people have actually built end to end.</p>
+          <p class="built"><b>What I built:</b> An NVIDIA Jetson embedded-Linux pipeline driving live camera vision to a head-mounted display — low-light/night-vision imaging, real-time video, power management for a wearable, and custom + 3D-printed mechanical housing to carry it all.</p>
+          <p><b>Outcome:</b> A working, self-contained rig that pulls embedded Linux, optics, real-time vision, power, and mechanical design into one wearable. <a href="https://github.com/tallen5431" target="_blank" rel="noopener">Code on GitHub →</a></p>
+        </div>
+      </div>
+
+      <div class="project">
+        <div class="side">
+          <div class="k">Local AI</div>
+          <h3>AI inventory &amp; OCR system</h3>
+          <span class="tag">Runs offline</span>
+        </div>
+        <div class="body">
+          <p><b>The problem:</b> Cataloging items by hand is slow and error-prone, and most "AI" tools want to send your data to someone else's cloud.</p>
+          <p class="built"><b>What I built:</b> A local-AI pipeline — OCR and vision models running on hardware you own — that reads, extracts, and organizes items automatically, with the automation glue to make it a hands-off workflow. Nothing leaves the machine.</p>
+          <p><b>Outcome:</b> A tedious manual task turned into an automated, private pipeline — the same "keep it local, keep it yours" philosophy behind Setpoint.</p>
+        </div>
+      </div>
+
+      <p class="also">Also in the mix: ESP32 firmware and sensor work, small networking and automation utilities, test fixtures, and open-source code on <a href="https://github.com/tallen5431" target="_blank" rel="noopener" style="color:var(--signal);text-decoration:none;">GitHub</a>.</p>
+    </div>
+  </section>
+
+  <section id="skills">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow">What I work across</p>
+        <h2>Hardware to software, in one place.</h2>
+        <p>Broad by design — the projects above are where these actually get used, which is the part that matters.</p>
+      </div>
+      <div class="skills">
+        <div class="skill"><div class="k">Embedded &amp; electronics</div><p>ESP32 · embedded C/C++ · Arduino · sensor integration &amp; data logging · KiCad PCB design, schematic capture, prototyping, soldering &amp; hardware bring-up.</p></div>
+        <div class="skill"><div class="k">Software &amp; data</div><p>Python · Linux · Bash · web interfaces &amp; dashboards · REST APIs · networking (Wi-Fi / MQTT / Prometheus) · self-hosted data pipelines.</p></div>
+        <div class="skill"><div class="k">AI &amp; computer vision</div><p>Local LLMs · OCR pipelines · vision models &amp; image processing · edge inference on NVIDIA Jetson · automation workflows — kept on-device.</p></div>
+        <div class="skill"><div class="k">Mechanical &amp; fabrication</div><p>3D printing (two-printer setup) · functional CAD · enclosure &amp; mount design · product prototyping and short runs.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="background">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow">Background</p>
+        <h2>Where the habits come from.</h2>
+      </div>
+      <div class="bg-item">
+        <div class="role">Research Technician<span>Huber</span></div>
+        <p>R&amp;D and product testing gave me the working habits I still build with: methodical evaluation, careful data collection and analysis, systematic troubleshooting, and documentation that lets the next person pick up where you left off. That discipline — measure it, write it down, improve it — is exactly what I bring to a build now.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta-band">
+    <div class="wrap">
+      <h2>Have something you want built?</h2>
+      <p>Whether it's a new product, an existing design that needs improving, or a hard engineering problem — tell me about it and I'll tell you honestly whether and how I can help.</p>
+      <div class="cta-row" style="justify-content:center;">
+        <a href="/services#contact" class="btn signal">Start a project →</a>
+        <a href="mailto:support@datumlaboratories.com?subject=Project%20inquiry" class="btn ghost">Email me</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-inner">
+      <div class="fmk">Datum Labs<span>Setpoint &amp; custom builds</span></div>
+      <div class="foot-links">
+        <a href="/">Setpoint</a>
+        <a href="/services">Services</a>
+        <a href="/about">About</a>
+        <a href="/services#contact">Contact</a>
+        <a href="https://github.com/tallen5431" target="_blank" rel="noopener">GitHub</a>
+      </div>
+    </div>
+    <p class="fineprint">Datum Labs — embedded hardware, firmware, and computer-vision builds by Thomas Allen. Setpoint is not a certified medical, food-safety, or life-safety device. © 2026 Datum Labs.</p>
+  </div>
+</footer>
+
+</body>
+</html>
