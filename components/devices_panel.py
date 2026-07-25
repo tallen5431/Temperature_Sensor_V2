@@ -701,8 +701,8 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
         try:
             deleted = db.delete_probe(probe_id) if db is not None else 0
             # Drop this probe's entry from every per-probe config dict.
-            for key in ('probe_names', 'probe_intervals', 'alert_thresholds',
-                        'calibration_offsets', 'probe_resolutions'):
+            for key in ('probe_names', 'probe_intervals', 'probe_upload_intervals',
+                        'alert_thresholds', 'calibration_offsets', 'probe_resolutions'):
                 d = cfg.get(key, {}) or {}
                 if probe_id in d:
                     d.pop(probe_id, None)
