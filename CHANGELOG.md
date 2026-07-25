@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Rate-of-change alert now uses the true window-old sample.** `_check_rate`
+  took `fetch_readings(window)[0]`, but that caps to the most-recent N rows
+  before reversing, so on a high-cadence probe (e.g. 0.5 s over a 60 min window)
+  the "past" sample was only ~N-old — understating the delta and missing slow
+  rate alerts. A new index-backed `db.oldest_temp_c_in_window()` fetches the real
+  oldest reading in the window.
+- **`?to=YYYY-MM-DD` range now includes the final second's sub-second rows.** The
+  end bound was `…59` with `epoch <= bound`, which dropped `23:59:59.001–.999` on
+  the `to` date for readings carrying fractional (millisecond) epochs.
+- **Auto-provisioner no longer leaks bookkeeping or gets stuck.** Its
+  `_provisioned`/`_pushed` maps are pruned when discovery evicts a probe (they
+  grew unbounded on a churning/spoofed fleet), and it re-verifies a probe's
+  `/status` every N cycles even when config is unchanged — so a probe that
+  silently lost its NVS config but keeps advertising mDNS is re-provisioned
+  instead of staying unconfigured until a hub restart.
+
 ### Added
 
 - **Bulk backlog drain — `POST /api/ingest_csv`.** A probe recovering from an

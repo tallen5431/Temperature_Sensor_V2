@@ -88,7 +88,12 @@ def _parse_date_epoch(s, end_of_day=False):
     try:
         d = datetime.datetime.fromisoformat(s.replace("Z", ""))
         if len(s) == 10 and end_of_day:
-            d = d.replace(hour=23, minute=59, second=59)
+            # Include sub-second rows in the final second: readings can carry
+            # fractional (ms) epochs, so a bound of ...59 with `epoch <= bound`
+            # would drop 23:59:59.001–.999 on the `to` date. Return a fractional
+            # bound at the very end of the day.
+            d = d.replace(hour=23, minute=59, second=59, microsecond=999999)
+            return d.timestamp()
         return int(d.timestamp())
     except (ValueError, TypeError):
         return None

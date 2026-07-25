@@ -470,6 +470,17 @@ def test_delete_probe(db):
     assert db.count() == 4
 
 
+def test_oldest_temp_c_in_window(db):
+    # The rate-of-change alert's true window-old sample: the EARLIEST reading in
+    # the window, not fetch_readings()[0] (which is only ~cap-samples-old once the
+    # window holds more than max_points rows).
+    now = datetime.datetime.now()
+    for i, t in enumerate((10.0, 11.0, 12.0)):
+        db.append(_iso(now - datetime.timedelta(seconds=(2 - i))), t, 0.0, "p")
+    assert db.oldest_temp_c_in_window("p", 3600) == 10.0   # earliest in the window
+    assert db.oldest_temp_c_in_window("nope", 3600) is None
+
+
 def test_bulk_insert(db):
     now = datetime.datetime.now()
     rows = [(_iso(now - datetime.timedelta(seconds=i)), float(i), float(i) * 2, "p")
