@@ -7,6 +7,22 @@ rebrand and refer to the product by its former name, "TempSensor".)
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Bulk backlog drain — `POST /api/ingest_csv`.** A probe recovering from an
+  outage (weak freezer Wi-Fi, hub down) can have thousands of readings buffered
+  to flash; draining them one-HTTP-POST-per-reading is slow and burns radio time
+  on a battery probe. The hub now accepts a whole chunk in one request — CSV (the
+  probe's on-flash buffer format) or JSON, ≤ 1000 rows — validated exactly like
+  `/api/ingest` and written in a single transaction (`db.bulk_insert`). Invalid
+  rows are skipped, not fatal; the response reports `accepted`/`rejected`. This
+  endpoint was already specified in `PROTOCOL.md` (§7) but never implemented;
+  §5.1 now documents the body formats. The single-reading `/api/ingest` is
+  unchanged, so existing firmware keeps working — the matching firmware change
+  (chunked buffer flush + HTTP keep-alive) ships separately.
+
 ## [2.6.2] - 2026-07-23
 
 ### Added

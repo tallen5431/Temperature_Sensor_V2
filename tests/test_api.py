@@ -156,6 +156,57 @@ def test_calibration_offset_applied_at_ingest(tmp_path):
     assert db.latest()["temperature_c"] == 20.0
 
 
+def test_ingest_batch_csv_stores_all(tmp_path):
+    # The probe drains its on-flash buffer as one CSV chunk (ts,tC,tF,pid per
+    # line) in a single round-trip instead of one POST per reading.
+    client, db, disc = _make_client(tmp_path)
+    csv = ("2026-07-24T10:00:00,4.0,39.2,p1\n"
+           "2026-07-24T10:00:05,4.1,39.4,p1\n"
+           "2026-07-24T10:00:10,4.2,39.6,p1\n")
+    r = client.post("/api/ingest_csv", data=csv, content_type="text/csv")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["ok"] is True and body["accepted"] == 3 and body["rejected"] == 0
+    assert db.count() == 3
+    assert db.latest()["temperature_c"] == 4.2     # newest reading wins
+    assert "p1" in disc.seen                        # probe marked seen once
+
+
+def test_ingest_batch_json_array(tmp_path):
+    client, db, _ = _make_client(tmp_path)
+    r = client.post("/api/ingest_csv", json={"readings": [
+        {"timestamp": "2026-07-24T10:00:00", "temperature_c": 5.0, "probe_id": "p2"},
+        {"timestamp": "2026-07-24T10:00:05", "temperature_c": 5.5, "probe_id": "p2"},
+    ]})
+    assert r.status_code == 200 and r.get_json()["accepted"] == 2
+    assert db.count() == 2
+
+
+def test_ingest_batch_rejects_bad_rows_keeps_good(tmp_path):
+    # A -127 fault code and an out-of-range value are rejected; the valid rows in
+    # the same chunk still store — one corrupt line can't poison the whole backlog.
+    client, db, _ = _make_client(tmp_path)
+    csv = ("2026-07-24T10:00:00,4.0,39.2,p1\n"
+           "2026-07-24T10:00:05,-127.0,-196.6,p1\n"
+           "2026-07-24T10:00:10,999,1830,p1\n"
+           "2026-07-24T10:00:15,4.3,39.7,p1\n")
+    body = client.post("/api/ingest_csv", data=csv,
+                       content_type="text/csv").get_json()
+    assert body["accepted"] == 2 and body["rejected"] == 2
+    assert db.count() == 2
+
+
+def test_ingest_batch_requires_auth_when_token_set(tmp_path):
+    client, db, _ = _make_client(tmp_path, token="abc123")
+    csv = "2026-07-24T10:00:00,4.0,39.2,p1\n"
+    assert client.post("/api/ingest_csv", data=csv,
+                       content_type="text/csv").status_code == 401
+    assert db.count() == 0
+    ok = client.post("/api/ingest_csv", data=csv, content_type="text/csv",
+                     headers={"X-Token": "abc123"})
+    assert ok.status_code == 200 and db.count() == 1
+
+
 def test_config_get_requires_auth_when_token_set(tmp_path):
     # GET /api/config exposes SMTP/MQTT/threshold detail, so with a token set it
     # must be gated like the write path (not readable by any LAN device).

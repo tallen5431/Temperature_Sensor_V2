@@ -255,6 +255,39 @@ stored, and displayed entirely hub-side, so adding it required **no `proto` chan
 | `405` | `{"ok": false, "error": "method not allowed; use POST"}` | `GET /api/ingest` — ingest is **POST-only**. |
 | `500` | `{"ok": false, "error": "<reason>"}` | Persist failure on the hub. |
 
+### 5.1 Bulk backlog drain — `POST /api/ingest_csv`
+
+Live readings use `POST /api/ingest` (one reading per request). But a probe that
+was offline (weak Wi-Fi, hub down) buffers readings to flash and, on reconnect,
+must drain a backlog that can be thousands of rows. Sending those one-per-POST is
+slow and — on a battery probe — burns radio time. `POST /api/ingest_csv` uploads
+a **chunk of buffered readings in a single request**, written to the log in one
+transaction.
+
+Same auth (`X-Token`) and the same 64 KiB body cap as `/api/ingest`; **≤ 1000
+rows per request**. Two body formats are accepted:
+
+- **`Content-Type: text/csv`** (preferred; the probe's on-flash buffer format) —
+  one reading per line, `timestamp,temperature_c,temperature_f,probe_id`:
+
+  ```
+  2026-07-24T10:00:00,4.0,39.2,Setpoint-9A3F2C
+  2026-07-24T10:00:05,4.1,39.4,Setpoint-9A3F2C
+  ```
+
+- **`Content-Type: application/json`** — `{ "readings": [ {…}, … ] }` or a bare
+  array, each element the same object shape as a single `/api/ingest` body.
+
+Each reading is validated exactly like `/api/ingest` (§6: finite, `-60..150 °C`,
+timestamp normalisation, per-probe calibration). Invalid rows are skipped, not
+fatal — one corrupt line never rejects the rest of the chunk.
+
+**Response** `200`: `{ "ok": true, "accepted": <int>, "rejected": <int> }`.
+Errors mirror `/api/ingest` (`401` unauthorized, `413` too large / > 1000 rows,
+`400` unparseable body, `503` storage error). The probe advances its buffer
+checkpoint by `accepted`, so a mid-drain drop resumes with at most a few
+duplicates.
+
 ---
 
 ## 6. Hub validation rules (`POST /api/ingest`)
@@ -337,7 +370,7 @@ and is the value probes echo on ingest.
 | `POST /api/provision` | token | Hub pushes ingest URL + token to probe `/provision`. |
 | `POST /api/ingest` | token | Ingest one reading (§5, §6). |
 | `GET  /api/ingest` | — | `405`, POST-only. |
-| `POST /api/ingest_csv` | token | Bulk ingest (≤ 1000 rows/request). |
+| `POST /api/ingest_csv` | token | Bulk backlog drain (§5.1, ≤ 1000 rows/request). |
 
 `GET /download/temperature_log.csv` is the **only** downloadable file.
 
