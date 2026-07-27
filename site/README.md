@@ -129,10 +129,11 @@ var MEASURE_URL = "https://measure.datumlaboratories.com";   // hosted CamScan
 
 Set it to `""` to fall back to the safe **"coming soon"** state (no dead link) if the tool ever goes offline.
 
-> ⚠ **Before sending this page in an email:** replace the four placeholder case slots in the
-> proof gallery with real jobs and delete the amber build-note box. The page ships with them
-> visibly unfinished on purpose so it can't go out looking like fabricated work. Two real cases
-> beat four invented ones.
+> **Filling the "Capability demo" section:** it ships with one honest demo case (framed as a
+> demonstration build, *not* a customer job) with empty photo slots. Drop three images into
+> `site/parts/` — broken / measured / printed — and swap each placeholder `.shot` div for an
+> `<img>`, then write the caption. Copy the `.case` block to add more demos or real jobs as they
+> come in. It's safe to show as-is, but real photos make it land.
 
 ## Keep in sync by hand
 

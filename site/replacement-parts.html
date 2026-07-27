@@ -87,8 +87,6 @@
   .shot .step { position:absolute; top:6px; left:6px; font-family:var(--font-mono); font-size:9.5px; letter-spacing:0.08em; text-transform:uppercase; background:var(--ink); color:var(--paper); padding:3px 6px; border-radius:3px; opacity:.9; }
   .case h3 { font-size:17px; font-weight:680; margin:16px 0 5px; }
   .case p { margin:0; color:var(--slate); font-size:14.5px; }
-  .todo { background:var(--signal-soft); border-left:3px solid var(--warn); border-radius:6px; padding:14px 16px; margin-bottom:24px; font-family:var(--font-mono); font-size:12.5px; line-height:1.7; color:var(--ink); }
-  .todo b { color:var(--warn); }
 
   /* 3 — Process */
   .steps { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
@@ -163,11 +161,13 @@
   /replacement-parts — cold-outreach landing page. ONE conversion action: upload a
   photo, get a quote. Audience is a shop owner on a phone, mid-job, low patience.
 
-  BEFORE SENDING THIS IN AN EMAIL, do the two things marked ⚠ below:
-    1. Replace the four placeholder case items in the proof gallery with real jobs.
-    2. Delete the amber .todo box above the gallery.
-  Everything else (price, turnaround, free-first-part) is already filled in and
-  must stay in sync with the outreach email copy.
+  The "Capability demo" section shows ONE honest demonstration build (not a customer
+  job). To fill it: drop three images into site/parts/ (broken / measured / printed)
+  and swap the placeholder .shot divs for <img> tags, then write the caption. Copy the
+  .case block to add more demos or real jobs later.
+
+  Price, turnaround, and free-first-part are filled in and must stay in sync with the
+  outreach email copy.
 
   Backend: the form POSTs multipart/form-data to /api/quote
   (functions/api/quote.js). Setup is documented in site/README.md.
@@ -204,68 +204,28 @@
     </div>
   </section>
 
-  <!-- ============ 2. Proof gallery ============ -->
+  <!-- ============ 2. Capability demo ============ -->
   <section id="work">
     <div class="wrap">
       <div class="sec-head">
-        <p class="eyebrow">Recent work</p>
-        <h2>Broken original, to CAD, to a part back in the machine.</h2>
-        <p>Every job follows the same three pictures. That's the whole service in one row.</p>
+        <p class="eyebrow">Capability demo</p>
+        <h2>Broken part in, printed part out.</h2>
+        <p>A demonstration of the process end to end — a broken original, measured, modelled, and reprinted. This is a demo build, not a customer job; real shop work will replace it here as it comes in.</p>
       </div>
 
-      <!-- ⚠ DELETE THIS BOX once real photos are in. -->
-      <div class="todo">
-        <b>⚠ BUILD NOTE — not visible-ready.</b> These four cases are empty photo slots.
-        Replace each with a real job before sending this page to anyone:
-        drop images into <code>site/parts/</code> and swap each
-        <code>&lt;div class="shot"&gt;…&lt;/div&gt;</code> for
-        <code>&lt;div class="shot"&gt;&lt;img src="/parts/case1-broken.jpg" alt="…" loading="lazy" width="800" height="600"&gt;&lt;/div&gt;</code>.
-        Then rewrite the caption under each and delete this box.
-        Two real cases beat four fake ones — cut the unused ones rather than inventing them.
-      </div>
-
+      <!-- Demo case. Drop three images into site/parts/ and swap each placeholder .shot
+           for e.g. <div class="shot"><img src="/parts/demo-broken.jpg" alt="…"
+           loading="lazy" width="800" height="600"></div>. Copy this .case block to add more. -->
       <div class="cases">
-
         <div class="case">
           <div class="shots">
             <div class="shot"><span class="step">1 · Broken</span><p class="ph">Photo slot<br>broken original</p></div>
-            <div class="shot"><span class="step">2 · CAD</span><p class="ph">Photo slot<br>CAD screenshot</p></div>
-            <div class="shot"><span class="step">3 · Installed</span><p class="ph">Photo slot<br>printed part in place</p></div>
+            <div class="shot"><span class="step">2 · Measured</span><p class="ph">Photo slot<br>CamScan / CAD</p></div>
+            <div class="shot"><span class="step">3 · Printed</span><p class="ph">Photo slot<br>finished part</p></div>
           </div>
-          <h3>[Part name] — [equipment make/model]</h3>
-          <p>[One sentence: what failed, what it would have cost to replace the whole unit, how long the new part took.]</p>
+          <h3>Demo build — measured and reprinted</h3>
+          <p>A sample part carried from broken original to finished replacement, to show the process. Your part follows the same three steps.</p>
         </div>
-
-        <div class="case">
-          <div class="shots">
-            <div class="shot"><span class="step">1 · Broken</span><p class="ph">Photo slot<br>broken original</p></div>
-            <div class="shot"><span class="step">2 · CAD</span><p class="ph">Photo slot<br>CAD screenshot</p></div>
-            <div class="shot"><span class="step">3 · Installed</span><p class="ph">Photo slot<br>printed part in place</p></div>
-          </div>
-          <h3>[Part name] — [equipment make/model]</h3>
-          <p>[One sentence: what failed, what it would have cost to replace the whole unit, how long the new part took.]</p>
-        </div>
-
-        <div class="case">
-          <div class="shots">
-            <div class="shot"><span class="step">1 · Broken</span><p class="ph">Photo slot<br>broken original</p></div>
-            <div class="shot"><span class="step">2 · CAD</span><p class="ph">Photo slot<br>CAD screenshot</p></div>
-            <div class="shot"><span class="step">3 · Installed</span><p class="ph">Photo slot<br>printed part in place</p></div>
-          </div>
-          <h3>[Part name] — [equipment make/model]</h3>
-          <p>[One sentence: what failed, what it would have cost to replace the whole unit, how long the new part took.]</p>
-        </div>
-
-        <div class="case">
-          <div class="shots">
-            <div class="shot"><span class="step">1 · Broken</span><p class="ph">Photo slot<br>broken original</p></div>
-            <div class="shot"><span class="step">2 · CAD</span><p class="ph">Photo slot<br>CAD screenshot</p></div>
-            <div class="shot"><span class="step">3 · Installed</span><p class="ph">Photo slot<br>printed part in place</p></div>
-          </div>
-          <h3>[Part name] — [equipment make/model]</h3>
-          <p>[One sentence: what failed, what it would have cost to replace the whole unit, how long the new part took.]</p>
-        </div>
-
       </div>
     </div>
   </section>
@@ -291,14 +251,9 @@
       <div class="sec-head">
         <p class="eyebrow">Optional · Tighter quotes</p>
         <h2>Want to measure it yourself?</h2>
-        <p>A clear photo is all I need to start. But if you want the most exact quote — or the part has tight tolerances — you can measure it right in your browser with CamScan, a free tool I built. No install, no account.</p>
+        <p>A clear photo is all I need to start. But for the most exact quote, you can measure the part right in your browser with CamScan — a free tool I built, no install or account. Lay a coin or ruler in the shot for scale, mark the edges and holes, and send the annotated image with your photos.</p>
       </div>
-      <div class="steps">
-        <div class="step-card"><div class="n">1</div><h3>Add something for scale</h3><p>Lay a ruler, a coin, or a printed calibration square in the shot. CamScan uses its known size to turn pixels into real millimetres.</p></div>
-        <div class="step-card"><div class="n">2</div><h3>Measure on-screen</h3><p>Draw across edges, holes, gaps and angles. Every reading comes out in real mm — distances, diameters, even perimeters.</p></div>
-        <div class="step-card"><div class="n">3</div><h3>Send the annotated image</h3><p>Export the marked-up photo and add it with the others below — the dimensions are written right on it. Need CAD-ready geometry? Email the DXF export and I'll model straight from it.</p></div>
-      </div>
-      <div class="cta-row" style="margin-top:24px;">
+      <div class="cta-row">
         <a href="#quote" id="measureBtn" class="btn signal" target="_blank" rel="noopener">Open the measuring tool →</a>
       </div>
       <p class="hint" id="measureNote" style="margin-top:12px;">CamScan is a free browser tool — no install, no account.</p>
@@ -322,7 +277,7 @@
         <span>Spacers &amp; bushings</span>
         <span>Jigs &amp; fixtures</span>
       </div>
-      <p class="makes-note">If the original was injection-moulded plastic and the manufacturer stopped making it, it's probably in scope. Send it and I'll tell you straight whether printing is the right answer — sometimes it isn't, and I'll say so rather than sell you a part that will fail. Load-bearing metal, gas-wetted, or food-contact parts are the usual no.</p>
+      <p class="makes-note">If the original was injection-moulded plastic and the manufacturer stopped making it, it's probably in scope. I'll tell you straight when printing isn't the right answer rather than sell you a part that will fail — load-bearing metal, gas-wetted, and food-contact parts are the usual no.</p>
     </div>
   </section>
 
