@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔧</text></svg>">
+<title>Replacement Parts for Repair Shops — Datum Labs</title>
+<meta name="description" content="Discontinued part? Send a photo. I reverse-engineer and 3D print replacement housings, brackets, gears, clips and knobs. Quote in 24 hours, parts ship in 3–5 business days. First simple part free.">
+<link rel="canonical" href="https://datumlaboratories.com/replacement-parts">
+<meta property="og:title" content="Replacement Parts for Repair Shops — Datum Labs">
+<meta property="og:description" content="Send a photo of the broken part. I model it, print it, and ship it. Quote in 24 hours.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://datumlaboratories.com/replacement-parts">
+<meta property="og:site_name" content="Datum Labs">
+<meta property="og:image" content="https://datumlaboratories.com/og-image.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://datumlaboratories.com/og-image.jpg">
+<style>
+  :root {
+    --paper:#F5F6F4; --surface:#FFFFFF; --raised:#FBFCFA; --ink:#12181C; --slate:#59636B;
+    --faint:#8A939A; --line:#DEE2DE; --line-strong:#C9CFCA; --signal:#0E94AB;
+    --signal-soft:#E2F1F4; --warn:#C7860F; --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --font-mono:ui-monospace,"SF Mono","Cascadia Code","Roboto Mono",Menlo,Consolas,monospace;
+    --maxw:1140px; --radius:4px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:#0B131B; --surface:#131F2B; --raised:#18242F; --ink:#E9F1F7; --slate:#9DB0BE;
+      --faint:#6E8393; --line:#22323F; --line-strong:#2F4454; --signal:#17B3CC;
+      --signal-soft:rgba(23,179,204,.14); --warn:#EFB02E;
+    }
+  }
+  :root[data-theme="light"] {
+    --paper:#F5F6F4; --surface:#FFFFFF; --raised:#FBFCFA; --ink:#12181C; --slate:#59636B;
+    --faint:#8A939A; --line:#DEE2DE; --line-strong:#C9CFCA; --signal:#0E94AB; --signal-soft:#E2F1F4; --warn:#C7860F;
+  }
+  :root[data-theme="dark"] {
+    --paper:#0B131B; --surface:#131F2B; --raised:#18242F; --ink:#E9F1F7; --slate:#9DB0BE;
+    --faint:#6E8393; --line:#22323F; --line-strong:#2F4454; --signal:#17B3CC; --signal-soft:rgba(23,179,204,.14); --warn:#EFB02E;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--paper); color:var(--ink); font-family:var(--font-sans); font-size:17px; line-height:1.6; -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:var(--maxw); margin:0 auto; padding:0 22px; }
+  a { color:inherit; }
+  h1,h2,h3 { text-wrap:balance; letter-spacing:-0.02em; line-height:1.1; margin:0; }
+  .eyebrow { font-family:var(--font-mono); font-size:12px; letter-spacing:0.16em; text-transform:uppercase; color:var(--signal); margin:0 0 16px; display:flex; align-items:center; gap:10px; }
+  .eyebrow::before { content:""; width:22px; height:1px; background:var(--signal); display:inline-block; }
+
+  header.bar { position:sticky; top:0; z-index:50; background:color-mix(in srgb, var(--paper) 92%, transparent); backdrop-filter:saturate(1.2) blur(8px); border-bottom:1px solid var(--line); }
+  .bar-inner { display:flex; align-items:center; justify-content:space-between; height:60px; gap:12px; }
+  .brand { display:flex; align-items:baseline; gap:9px; font-weight:700; letter-spacing:-0.02em; text-decoration:none; color:inherit; min-width:0; }
+  .brand .mk { font-size:18px; }
+  .brand .by { font-family:var(--font-mono); font-size:11px; letter-spacing:0.08em; color:var(--faint); text-transform:uppercase; }
+  @media (max-width:520px){ .brand .by { display:none; } }
+  nav.top { display:flex; gap:22px; align-items:center; }
+  nav.top a { font-family:var(--font-mono); font-size:13px; text-decoration:none; color:var(--slate); white-space:nowrap; }
+  nav.top a:hover, nav.top a.active { color:var(--ink); }
+  @media (max-width:720px){ nav.top a.hide-sm { display:none; } }
+
+  .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; font-family:var(--font-mono); font-size:14px; padding:13px 20px; border-radius:var(--radius); text-decoration:none; border:1px solid var(--ink); background:var(--ink); color:var(--paper); cursor:pointer; min-height:46px; }
+  .btn:focus-visible { outline:2px solid var(--signal); outline-offset:2px; }
+  .btn.ghost { background:transparent; color:var(--ink); border-color:var(--line-strong); }
+  .btn.signal { background:var(--signal); border-color:var(--signal); color:#04222A; font-weight:600; }
+  .btn[disabled] { opacity:.55; cursor:default; }
+
+  section { padding:52px 0; border-top:1px solid var(--line); }
+  .sec-head { max-width:42em; margin-bottom:32px; }
+  .sec-head h2 { font-size:clamp(24px,4vw,34px); font-weight:720; }
+  .sec-head p { color:var(--slate); margin:12px 0 0; font-size:17px; }
+
+  /* 1 — Hero */
+  .hero { padding:52px 0 44px; border-top:none; }
+  .hero h1 { font-size:clamp(31px,6vw,52px); font-weight:760; }
+  .hero .lede { font-size:19px; color:var(--slate); margin:20px 0 26px; max-width:33em; }
+  .cta-row { display:flex; gap:12px; flex-wrap:wrap; }
+  @media (max-width:520px){ .cta-row .btn { width:100%; } }
+  .trustbar { display:flex; flex-wrap:wrap; gap:10px 22px; margin-top:26px; padding-top:22px; border-top:1px solid var(--line); font-family:var(--font-mono); font-size:13px; color:var(--slate); }
+  .trustbar b { color:var(--ink); font-weight:600; }
+
+  /* 2 — Proof gallery */
+  .cases { display:flex; flex-direction:column; gap:28px; }
+  .case { background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:18px; }
+  .shots { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+  .shot { position:relative; aspect-ratio:4/3; border-radius:6px; overflow:hidden; background:var(--raised); border:1px dashed var(--line-strong); display:flex; align-items:center; justify-content:center; text-align:center; }
+  .shot img { width:100%; height:100%; object-fit:cover; display:block; }
+  .shot .ph { font-family:var(--font-mono); font-size:10px; letter-spacing:0.06em; text-transform:uppercase; color:var(--faint); padding:6px; line-height:1.5; }
+  .shot .step { position:absolute; top:6px; left:6px; font-family:var(--font-mono); font-size:9.5px; letter-spacing:0.08em; text-transform:uppercase; background:var(--ink); color:var(--paper); padding:3px 6px; border-radius:3px; opacity:.9; }
+  .case h3 { font-size:17px; font-weight:680; margin:16px 0 5px; }
+  .case p { margin:0; color:var(--slate); font-size:14.5px; }
+  .todo { background:var(--signal-soft); border-left:3px solid var(--warn); border-radius:6px; padding:14px 16px; margin-bottom:24px; font-family:var(--font-mono); font-size:12.5px; line-height:1.7; color:var(--ink); }
+  .todo b { color:var(--warn); }
+
+  /* 3 — Process */
+  .steps { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
+  @media (max-width:700px){ .steps { grid-template-columns:1fr; } }
+  .step-card { background:var(--raised); border:1px solid var(--line); border-radius:8px; padding:20px; }
+  .step-card .n { font-family:var(--font-mono); font-size:13px; color:var(--paper); background:var(--ink); width:28px; height:28px; display:flex; align-items:center; justify-content:center; border-radius:50%; margin-bottom:13px; }
+  .step-card h3 { font-size:17px; font-weight:650; margin-bottom:6px; }
+  .step-card p { margin:0; color:var(--slate); font-size:15px; }
+
+  /* 4 — What I make */
+  .makes { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:22px; }
+  .makes span { font-family:var(--font-mono); font-size:13.5px; background:var(--surface); border:1px solid var(--line-strong); border-radius:100px; padding:9px 16px; }
+  .makes-note { color:var(--slate); font-size:15.5px; margin:0; max-width:44em; }
+
+  /* 5 — Quote form */
+  #quote { background:var(--surface); }
+  .form { max-width:600px; }
+  .row2 { display:flex; gap:14px; }
+  @media (max-width:560px){ .row2 { flex-direction:column; gap:16px; } }
+  .field { flex:1; margin-bottom:16px; }
+  .field label { font-family:var(--font-mono); font-size:11.5px; letter-spacing:0.06em; text-transform:uppercase; color:var(--slate); display:block; margin-bottom:6px; }
+  .field label .req { color:var(--signal); }
+  .field label .opt { color:var(--faint); text-transform:none; letter-spacing:0; }
+  .field input[type=text], .field input[type=email], .field input[type=tel], .field textarea {
+    width:100%; font-family:var(--font-sans); font-size:16px; padding:13px 14px; min-height:48px;
+    border-radius:var(--radius); border:1px solid var(--line-strong); background:var(--paper); color:var(--ink);
+  }
+  .field textarea { min-height:96px; resize:vertical; }
+  .field input::placeholder, .field textarea::placeholder { color:var(--faint); }
+  .field input:focus-visible, .field textarea:focus-visible { outline:2px solid var(--signal); outline-offset:1px; }
+
+  .drop { border:2px dashed var(--line-strong); border-radius:10px; background:var(--paper); padding:26px 18px; text-align:center; cursor:pointer; display:block; }
+  .drop:hover, .drop:focus-within { border-color:var(--signal); background:var(--signal-soft); }
+  .drop .icon { font-size:30px; line-height:1; }
+  .drop .big { font-size:17px; font-weight:650; margin:10px 0 4px; }
+  .drop .small { font-size:14px; color:var(--slate); margin:0; }
+  .drop input[type=file] { position:absolute; width:1px; height:1px; opacity:0; overflow:hidden; }
+  .thumbs { display:flex; flex-wrap:wrap; gap:10px; margin-top:14px; }
+  .thumb { position:relative; width:78px; height:78px; border-radius:6px; overflow:hidden; border:1px solid var(--line-strong); background:var(--raised); }
+  .thumb img { width:100%; height:100%; object-fit:cover; display:block; }
+  .thumb button { position:absolute; top:2px; right:2px; width:22px; height:22px; border-radius:50%; border:none; background:rgba(0,0,0,.68); color:#fff; font-size:14px; line-height:1; cursor:pointer; padding:0; }
+  .hint { font-family:var(--font-mono); font-size:12px; color:var(--slate); margin:9px 0 0; }
+  .note { font-family:var(--font-mono); font-size:13px; margin:14px 0 0; min-height:1.3em; color:var(--slate); }
+  .note.err { color:var(--warn); }
+  .success { background:var(--signal-soft); border:1px solid var(--signal); border-radius:10px; padding:26px 24px; max-width:600px; }
+  .success h3 { font-size:21px; font-weight:720; margin-bottom:10px; }
+  .success p { margin:0 0 10px; color:var(--ink); font-size:16px; }
+  .success p:last-child { margin-bottom:0; color:var(--slate); font-size:14.5px; }
+
+  /* 6 — Pricing */
+  .price-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
+  @media (max-width:760px){ .price-grid { grid-template-columns:1fr; } }
+  .price-card { background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:24px 22px; }
+  .price-card.free { border-color:var(--signal); border-left:3px solid var(--signal); }
+  .price-card .k { font-family:var(--font-mono); font-size:11px; letter-spacing:0.12em; text-transform:uppercase; color:var(--signal); margin-bottom:10px; }
+  .price-card .v { font-size:27px; font-weight:730; letter-spacing:-0.02em; margin-bottom:8px; }
+  .price-card p { margin:0; color:var(--slate); font-size:14.5px; }
+
+  footer { padding:40px 0; border-top:1px solid var(--line); }
+  .foot-inner { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; }
+  .fmk { font-weight:700; letter-spacing:-0.02em; }
+  .fmk span { font-family:var(--font-mono); font-size:11px; color:var(--faint); text-transform:uppercase; letter-spacing:0.08em; display:block; font-weight:400; margin-top:2px; }
+  .foot-links { display:flex; gap:20px; flex-wrap:wrap; font-family:var(--font-mono); font-size:12.5px; }
+  .foot-links a { color:var(--slate); text-decoration:none; }
+  .foot-links a:hover { color:var(--ink); }
+  .fineprint { font-family:var(--font-mono); font-size:11px; color:var(--faint); margin-top:18px; max-width:60em; line-height:1.7; }
+</style>
+</head>
+<body>
+
+<!--
+  /replacement-parts — cold-outreach landing page. ONE conversion action: upload a
+  photo, get a quote. Audience is a shop owner on a phone, mid-job, low patience.
+
+  BEFORE SENDING THIS IN AN EMAIL, do the two things marked ⚠ below:
+    1. Replace the four placeholder case items in the proof gallery with real jobs.
+    2. Delete the amber .todo box above the gallery.
+  Everything else (price, turnaround, free-first-part) is already filled in and
+  must stay in sync with the outreach email copy.
+
+  Backend: the form POSTs multipart/form-data to /api/quote
+  (functions/api/quote.js). Setup is documented in site/README.md.
+-->
+
+<header class="bar">
+  <div class="wrap bar-inner">
+    <a class="brand" href="/"><span class="mk">Datum Labs</span><span class="by">Setpoint &amp; custom builds</span></a>
+    <nav class="top">
+      <a href="/services" class="hide-sm">Services</a>
+      <a href="/about" class="hide-sm">About</a>
+      <a href="#quote" class="btn signal" style="padding:9px 16px;min-height:0;">Get a quote</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <!-- ============ 1. Headline ============ -->
+  <section class="hero">
+    <div class="wrap">
+      <p class="eyebrow">Datum Labs · For repair shops</p>
+      <h1>The part is discontinued. I'll make you a new one.</h1>
+      <p class="lede">Reverse-engineered and 3D printed replacements for parts you can't buy anymore. Send a photo of the broken original, the old part number, or your own measurements — whatever you have.</p>
+      <div class="cta-row">
+        <a href="#quote" class="btn signal">Send a photo, get a quote →</a>
+      </div>
+      <div class="trustbar">
+        <span><b>First simple part free</b></span>
+        <span>Quote in <b>24 hours</b></span>
+        <span>Ships in <b>3–5 business days</b></span>
+        <span>Most parts <b>$75–250</b></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 2. Proof gallery ============ -->
+  <section id="work">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow">Recent work</p>
+        <h2>Broken original, to CAD, to a part back in the machine.</h2>
+        <p>Every job follows the same three pictures. That's the whole service in one row.</p>
+      </div>
+
+      <!-- ⚠ DELETE THIS BOX once real photos are in. -->
+      <div class="todo">
+        <b>⚠ BUILD NOTE — not visible-ready.</b> These four cases are empty photo slots.
+        Replace each with a real job before sending this page to anyone:
+        drop images into <code>site/parts/</code> and swap each
+        <code>&lt;div class="shot"&gt;…&lt;/div&gt;</code> for
+        <code>&lt;div class="shot"&gt;&lt;img src="/parts/case1-broken.jpg" alt="…" loading="lazy" width="800" height="600"&gt;&lt;/div&gt;</code>.
+        Then rewrite the caption under each and delete this box.
+        Two real cases beat four fake ones — cut the unused ones rather than inventing them.
+      </div>
+
+      <div class="cases">
+
+        <div class="case">
+          <div class="shots">
+            <div class="shot"><span class="step">1 · Broken</span><p class="ph">Photo slot<br>broken original</p></div>
+            <div class="shot"><span class="step">2 · CAD</span><p class="ph">Photo slot<br>CAD screenshot</p></div>
+            <div class="shot"><span class="step">3 · Installed</span><p class="ph">Photo slot<br>printed part in place</p></div>
+          </div>
+          <h3>[Part name] — [equipment make/model]</h3>
+          <p>[One sentence: what failed, what it would have cost to replace the whole unit, how long the new part took.]</p>
+        </div>
+
+        <div class="case">
+          <div class="shots">
+            <div class="shot"><span class="step">1 · Broken</span><p class="ph">Photo slot<br>broken original</p></div>
+            <div class="shot"><span class="step">2 · CAD</span><p class="ph">Photo slot<br>CAD screenshot</p></div>
+            <div class="shot"><span class="step">3 · Installed</span><p class="ph">Photo slot<br>printed part in place</p></div>
+          </div>
+          <h3>[Part name] — [equipment make/model]</h3>
+          <p>[One sentence: what failed, what it would have cost to replace the whole unit, how long the new part took.]</p>
+        </div>
+
+        <div class="case">
+          <div class="shots">
+            <div class="shot"><span class="step">1 · Broken</span><p class="ph">Photo slot<br>broken original</p></div>
+            <div class="shot"><span class="step">2 · CAD</span><p class="ph">Photo slot<br>CAD screenshot</p></div>
+            <div class="shot"><span class="step">3 · Installed</span><p class="ph">Photo slot<br>printed part in place</p></div>
+          </div>
+          <h3>[Part name] — [equipment make/model]</h3>
+          <p>[One sentence: what failed, what it would have cost to replace the whole unit, how long the new part took.]</p>
+        </div>
+
+        <div class="case">
+          <div class="shots">
+            <div class="shot"><span class="step">1 · Broken</span><p class="ph">Photo slot<br>broken original</p></div>
+            <div class="shot"><span class="step">2 · CAD</span><p class="ph">Photo slot<br>CAD screenshot</p></div>
+            <div class="shot"><span class="step">3 · Installed</span><p class="ph">Photo slot<br>printed part in place</p></div>
+          </div>
+          <h3>[Part name] — [equipment make/model]</h3>
+          <p>[One sentence: what failed, what it would have cost to replace the whole unit, how long the new part took.]</p>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 3. Process ============ -->
+  <section id="how">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow">How it works</p>
+        <h2>Three steps, no account, no phone tag.</h2>
+      </div>
+      <div class="steps">
+        <div class="step-card"><div class="n">1</div><h3>Send a photo</h3><p>From your phone, right now. The broken part, a ruler next to it if you have one. That's enough to start.</p></div>
+        <div class="step-card"><div class="n">2</div><h3>I model it and quote</h3><p>You get a fixed price and a ship date within 24 hours. No charge to look, no obligation.</p></div>
+        <div class="step-card"><div class="n">3</div><h3>Printed and shipped</h3><p>Approved parts ship in 3–5 business days. If it doesn't fit, I revise the model and reprint it.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 3b. Optional: measure it yourself (CamScan) ============ -->
+  <section id="measure">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow">Optional · Tighter quotes</p>
+        <h2>Want to measure it yourself?</h2>
+        <p>A clear photo is all I need to start. But if you want the most exact quote — or the part has tight tolerances — you can measure it right in your browser with CamScan, a free tool I built. No install, no account.</p>
+      </div>
+      <div class="steps">
+        <div class="step-card"><div class="n">1</div><h3>Add something for scale</h3><p>Lay a ruler, a coin, or a printed calibration square in the shot. CamScan uses its known size to turn pixels into real millimetres.</p></div>
+        <div class="step-card"><div class="n">2</div><h3>Measure on-screen</h3><p>Draw across edges, holes, gaps and angles. Every reading comes out in real mm — distances, diameters, even perimeters.</p></div>
+        <div class="step-card"><div class="n">3</div><h3>Send the annotated image</h3><p>Export the marked-up photo and add it with the others below — the dimensions are written right on it. Need CAD-ready geometry? Email the DXF export and I'll model straight from it.</p></div>
+      </div>
+      <div class="cta-row" style="margin-top:24px;">
+        <a href="#quote" id="measureBtn" class="btn signal" target="_blank" rel="noopener">Open the measuring tool →</a>
+      </div>
+      <p class="hint" id="measureNote" style="margin-top:12px;">CamScan is a free browser tool — no install, no account.</p>
+    </div>
+  </section>
+
+  <!-- ============ 4. What I make ============ -->
+  <section id="what">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow">What I make</p>
+        <h2>Obsolete plastic, mostly.</h2>
+      </div>
+      <div class="makes">
+        <span>Housings &amp; covers</span>
+        <span>Brackets &amp; mounts</span>
+        <span>Gears</span>
+        <span>Clips &amp; latches</span>
+        <span>Knobs &amp; handles</span>
+        <span>Bezels &amp; trim</span>
+        <span>Spacers &amp; bushings</span>
+        <span>Jigs &amp; fixtures</span>
+      </div>
+      <p class="makes-note">If the original was injection-moulded plastic and the manufacturer stopped making it, it's probably in scope. Send it and I'll tell you straight whether printing is the right answer — sometimes it isn't, and I'll say so rather than sell you a part that will fail. Load-bearing metal, gas-wetted, or food-contact parts are the usual no.</p>
+    </div>
+  </section>
+
+  <!-- ============ 5. Quote form — THE conversion point ============ -->
+  <section id="quote">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow">Get a quote</p>
+        <h2>Upload a photo of the part.</h2>
+        <p>One screen, no login. I read every one myself and reply within one business day.</p>
+      </div>
+
+      <form class="form" id="quoteForm" novalidate enctype="multipart/form-data">
+        <div class="row2">
+          <div class="field">
+            <label for="qName">Your name <span class="req">*</span></label>
+            <input type="text" id="qName" name="name" autocomplete="name" placeholder="Jane Doe" required>
+          </div>
+          <div class="field">
+            <label for="qShop">Shop name <span class="req">*</span></label>
+            <input type="text" id="qShop" name="shop" autocomplete="organization" placeholder="Doe Appliance Repair" required>
+          </div>
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label for="qEmail">Email <span class="req">*</span></label>
+            <input type="email" id="qEmail" name="email" autocomplete="email" inputmode="email" placeholder="you@shop.com" required>
+          </div>
+          <div class="field">
+            <label for="qPhone">Phone <span class="opt">(optional)</span></label>
+            <input type="tel" id="qPhone" name="phone" autocomplete="tel" inputmode="tel" placeholder="Faster for quick questions">
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="qPhotos">Photos of the part <span class="req">*</span></label>
+          <!-- accept="image/*" (no capture attr) so mobile offers BOTH the camera and the
+               photo library — forcing capture="environment" would remove the library option. -->
+          <label class="drop" for="qPhotos">
+            <input type="file" id="qPhotos" name="photos" accept="image/*,.heic,.heif" multiple required>
+            <div class="icon" aria-hidden="true">📷</div>
+            <p class="big" id="dropTitle">Take a photo or choose files</p>
+            <p class="small">Up to 6 images. A ruler or coin next to the part helps a lot.</p>
+          </label>
+          <div class="thumbs" id="thumbs"></div>
+          <p class="hint" id="photoHint">JPG, PNG, WebP or HEIC. Resized on your phone before upload, so it works on bad signal.</p>
+        </div>
+
+        <div class="field">
+          <label for="qDesc">What is it? <span class="opt">(optional)</span></label>
+          <textarea id="qDesc" name="description" placeholder="Equipment make and model, the old part number if you have it, rough dimensions, how many you need…"></textarea>
+        </div>
+
+        <button type="submit" class="btn signal" id="qSubmit" style="width:100%;">Send for a quote</button>
+        <p class="note" id="qNote">No account, no spam, no sharing your details. Photos are used only to quote your part.</p>
+      </form>
+
+      <div class="success" id="qSuccess" hidden>
+        <h3>Got it — your photos are with me.</h3>
+        <p><b>I'll reply with a fixed price and a ship date within one business day.</b> If it's urgent, call or text and say you sent a part through the site.</p>
+        <p>Quote goes to the email you entered. Nothing else to do on your end.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 6. Pricing anchor + turnaround + free first part ============ -->
+  <section id="pricing">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow">Price &amp; turnaround</p>
+        <h2>What this usually costs.</h2>
+        <p>Every part is quoted individually before you commit — the numbers below are what most jobs land at, not a rate card you're locked into.</p>
+      </div>
+      <div class="price-grid">
+        <div class="price-card">
+          <div class="k">Typical part</div>
+          <div class="v">$75–250</div>
+          <p>Most land around $120. The modelling is the real work, so a second identical part is far cheaper than the first — say up front if you need a few.</p>
+        </div>
+        <div class="price-card">
+          <div class="k">Turnaround</div>
+          <div class="v">3–5 days</div>
+          <p>Business days from your approval to shipped, with the quote back to you within 24 hours. Rush is sometimes possible — ask.</p>
+        </div>
+        <div class="price-card free">
+          <div class="k">New shops</div>
+          <div class="v">First part free</div>
+          <p>Your first part is on me if it's simple geometry — a clip, knob, spacer, bracket or cover. I'll tell you honestly when a part doesn't qualify before doing any work.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-inner">
+      <div class="fmk">Datum Labs<span>Setpoint &amp; custom builds</span></div>
+      <div class="foot-links">
+        <a href="/">Setpoint</a>
+        <a href="/services">Services</a>
+        <a href="/replacement-parts">Replacement parts</a>
+        <a href="/about">About</a>
+        <a href="mailto:thomas.allen@datumlaboratories.com">Email</a>
+      </div>
+    </div>
+    <p class="fineprint">Datum Labs — embedded hardware, firmware, and computer-vision builds by Thomas Allen. Replacement parts are custom-made aftermarket components, not OEM parts, and carry no manufacturer approval or endorsement. Not for load-bearing, pressure-retaining, food-contact, or safety-critical use. © 2026 Datum Labs.</p>
+  </div>
+</footer>
+
+<script>
+// ---- Optional measuring tool (CamScan) -------------------------------------
+// Paste your hosted CamScan URL below once it's live (e.g. a Render/Fly/Spaces
+// deploy, or measure.datumlaboratories.com). While it's empty the button shows a
+// safe "coming soon" state instead of a dead link — so this page is safe to ship.
+(function () {
+  "use strict";
+  var MEASURE_URL = "https://measure.datumlaboratories.com";   // hosted CamScan (Cloudflare Tunnel → self-hosted)
+  var btn  = document.getElementById("measureBtn");
+  var note = document.getElementById("measureNote");
+  if (!btn) return;
+  if (MEASURE_URL) {
+    btn.href = MEASURE_URL;
+    return;
+  }
+  // Not hosted yet: neutralise the link so nothing broken goes live.
+  btn.removeAttribute("href");
+  btn.removeAttribute("target");
+  btn.setAttribute("aria-disabled", "true");
+  btn.classList.remove("signal");
+  btn.classList.add("ghost");
+  btn.style.opacity = ".6";
+  btn.style.cursor = "default";
+  btn.textContent = "Measuring tool — coming soon";
+  if (note) note.textContent = "The self-serve measuring tool is going live shortly. For now, just lay a ruler or coin next to the part in your photo and I'll measure from that.";
+})();
+
+(function () {
+  "use strict";
+
+  var MAX_FILES = 6;
+  var MAX_BYTES = 8 * 1024 * 1024;   // per original file, pre-resize
+  var MAX_DIM   = 1600;              // longest edge after resize
+  var QUALITY   = 0.82;
+
+  var form    = document.getElementById("quoteForm");
+  var input   = document.getElementById("qPhotos");
+  var thumbs  = document.getElementById("thumbs");
+  var note    = document.getElementById("qNote");
+  var submit  = document.getElementById("qSubmit");
+  var success = document.getElementById("qSuccess");
+  var title   = document.getElementById("dropTitle");
+  if (!form) return;
+
+  var picked = [];   // [{ blob, name, url }]
+
+  function say(msg, isErr) {
+    note.textContent = msg;
+    note.className = isErr ? "note err" : "note";
+  }
+
+  function refresh() {
+    thumbs.innerHTML = "";
+    picked.forEach(function (p, i) {
+      var d = document.createElement("div");
+      d.className = "thumb";
+      var img = document.createElement("img");
+      img.src = p.url;
+      img.alt = "Selected photo " + (i + 1);
+      var x = document.createElement("button");
+      x.type = "button";
+      x.textContent = "×";
+      x.setAttribute("aria-label", "Remove photo " + (i + 1));
+      x.addEventListener("click", function () {
+        URL.revokeObjectURL(p.url);
+        picked.splice(i, 1);
+        refresh();
+      });
+      d.appendChild(img);
+      d.appendChild(x);
+      thumbs.appendChild(d);
+    });
+    title.textContent = picked.length
+      ? picked.length + (picked.length === 1 ? " photo ready" : " photos ready") + " — tap to add more"
+      : "Take a photo or choose files";
+  }
+
+  // Re-encode through a canvas: shrinks the file for slow connections AND drops all
+  // EXIF (including GPS) as a side effect, since canvas output carries no metadata.
+  // If the browser can't decode the format (HEIC outside Safari), fall back to the
+  // original bytes and let the server validate it.
+  function prepare(file) {
+    return new Promise(function (resolve) {
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function () {
+        var w = img.naturalWidth, h = img.naturalHeight;
+        if (!w || !h) { URL.revokeObjectURL(url); resolve({ blob: file, name: file.name }); return; }
+        var scale = Math.min(1, MAX_DIM / Math.max(w, h));
+        var canvas = document.createElement("canvas");
+        canvas.width = Math.round(w * scale);
+        canvas.height = Math.round(h * scale);
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        URL.revokeObjectURL(url);
+        canvas.toBlob(function (blob) {
+          if (!blob) { resolve({ blob: file, name: file.name }); return; }
+          resolve({ blob: blob, name: file.name.replace(/\.[^.]+$/, "") + ".jpg" });
+        }, "image/jpeg", QUALITY);
+      };
+      img.onerror = function () {
+        URL.revokeObjectURL(url);
+        resolve({ blob: file, name: file.name });   // e.g. HEIC on Chrome/Firefox
+      };
+      img.src = url;
+    });
+  }
+
+  input.addEventListener("change", function () {
+    var files = Array.prototype.slice.call(input.files || []);
+    input.value = "";                      // let the same file be re-picked later
+    if (!files.length) return;
+
+    var room = MAX_FILES - picked.length;
+    if (room <= 0) { say("That's the limit of " + MAX_FILES + " photos.", true); return; }
+    var over = files.length > room;
+    files = files.slice(0, room);
+
+    var tooBig = files.filter(function (f) { return f.size > MAX_BYTES; });
+    files = files.filter(function (f) { return f.size <= MAX_BYTES; });
+
+    say("Preparing photos…");
+    Promise.all(files.map(prepare)).then(function (out) {
+      out.forEach(function (o) {
+        picked.push({ blob: o.blob, name: o.name, url: URL.createObjectURL(o.blob) });
+      });
+      refresh();
+      if (tooBig.length) say(tooBig.length + " photo(s) were over 8 MB and were skipped.", true);
+      else if (over) say("Added the first " + room + " — " + MAX_FILES + " photos max.", true);
+      else say("Looks good. Add more angles if you have them.");
+    });
+  });
+
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+
+    var name  = document.getElementById("qName").value.trim();
+    var shop  = document.getElementById("qShop").value.trim();
+    var email = document.getElementById("qEmail").value.trim();
+
+    if (!name)  { say("Add your name so I know who I'm replying to.", true); return; }
+    if (!shop)  { say("Add your shop name.", true); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { say("That email doesn't look right — I can't send the quote without it.", true); return; }
+    if (!picked.length) { say("At least one photo is required — it's what I quote from.", true); return; }
+
+    var fd = new FormData();
+    fd.append("name", name);
+    fd.append("shop", shop);
+    fd.append("email", email);
+    fd.append("phone", document.getElementById("qPhone").value.trim());
+    fd.append("description", document.getElementById("qDesc").value.trim());
+    picked.forEach(function (p) { fd.append("photos", p.blob, p.name); });
+
+    submit.disabled = true;
+    say("Sending " + picked.length + " photo(s)…");
+
+    fetch("/api/quote", { method: "POST", body: fd })
+      .then(function (r) { return r.json().catch(function () { return {}; }); })
+      .then(function (body) {
+        if (body && body.ok) {
+          form.hidden = true;
+          success.hidden = false;
+          success.scrollIntoView({ block: "center" });
+        } else {
+          submit.disabled = false;
+          var map = {
+            no_photos: "No photos came through — try picking them again.",
+            too_many: "Too many photos — " + MAX_FILES + " max.",
+            too_large: "Those photos are too large to send. Try fewer at a time.",
+            bad_type: "One of those files isn't an image I can read.",
+            invalid_email: "That email doesn't look right."
+          };
+          say(map[body && body.error] || "That didn't send. Try again, or email thomas.allen@datumlaboratories.com.", true);
+        }
+      })
+      .catch(function () {
+        submit.disabled = false;
+        say("Network dropped — your photos are still selected, just hit send again.", true);
+      });
+  });
+})();
+</script>
+
+</body>
+</html>

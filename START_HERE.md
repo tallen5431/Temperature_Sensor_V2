@@ -90,6 +90,7 @@ Ordered by dependency — each unblocks the next.
 | I want to… | Go to |
 |---|---|
 | See the whole plan / money math | [`docs/ACTION_PLAN.md`](docs/ACTION_PLAN.md) · `docs/action-plan.html` |
+| Earn from skills/services, not just Setpoint | [`docs/INCOME_STREAMS.md`](docs/INCOME_STREAMS.md) |
 | Buy materials + readiness gates + gaps | [`docs/MATERIALS_AND_NEXT_STEPS.md`](docs/MATERIALS_AND_NEXT_STEPS.md) |
 | Launch the pre-order | [`docs/PREORDER.md`](docs/PREORDER.md) |
 | Run a restaurant pilot / show ROI | [`docs/PILOT_OFFER.md`](docs/PILOT_OFFER.md) · `docs/roi-calculator.html` |

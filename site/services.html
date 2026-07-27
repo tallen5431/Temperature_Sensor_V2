@@ -134,6 +134,7 @@
     <nav class="top">
       <a href="/" class="hide-sm">Setpoint</a>
       <a href="/services" class="active">Services</a>
+      <a href="/replacement-parts" class="hide-sm">Parts</a>
       <a href="/about">About</a>
       <a href="#contact" class="btn ghost" style="padding:8px 14px;">Contact</a>
     </nav>
@@ -198,7 +199,7 @@
             <li>Short production runs</li>
             <li>Print-from-your-file or design help</li>
           </ul>
-          <p class="proof">Send an STL or a sketch — I'll quote it.</p>
+          <p class="proof">Repair shop? <a href="/replacement-parts">Discontinued replacement parts →</a></p>
         </div>
 
       </div>
@@ -224,7 +225,7 @@
       <div class="sec-head">
         <p class="eyebrow">Contact</p>
         <h2>Start a project.</h2>
-        <p>Tell me a bit about it and I'll get back to you. Prefer email? <a href="mailto:support@datumlaboratories.com?subject=Project%20inquiry" style="color:var(--signal);text-decoration:none;">support@datumlaboratories.com</a>.</p>
+        <p>Tell me a bit about it and I'll get back to you. Prefer email? <a href="mailto:thomas.allen@datumlaboratories.com?subject=Project%20inquiry" style="color:var(--signal);text-decoration:none;">thomas.allen@datumlaboratories.com</a>.</p>
       </div>
       <form class="contact" id="contactForm" novalidate>
         <div class="row">
@@ -266,6 +267,7 @@
       <div class="foot-links">
         <a href="/">Setpoint</a>
         <a href="/services">Services</a>
+        <a href="/replacement-parts">Replacement parts</a>
         <a href="/about">About</a>
         <a href="#contact">Contact</a>
         <a href="https://github.com/tallen5431" target="_blank" rel="noopener">GitHub</a>
@@ -313,7 +315,7 @@
         note.textContent = "Thanks — got it. I'll be in touch soon.";
         form.reset();
       } else {
-        note.textContent = "That didn't send — try again, or email support@datumlaboratories.com.";
+        note.textContent = "That didn't send — try again, or email thomas.allen@datumlaboratories.com.";
       }
       note.style.color = "var(--signal)";
     }).catch(function () {
