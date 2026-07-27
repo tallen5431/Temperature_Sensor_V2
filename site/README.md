@@ -102,6 +102,23 @@ server-side for JPEG, PNG and WebP. HEIC/AVIF that arrive un-transcoded pass thr
 metadata intact (stripping them needs a full ISO-BMFF parser); each stored record carries an
 `exif_stripped` flag per photo so you can see which is which.
 
+### Optional measuring tool (CamScan)
+
+The page has a **"Measure it yourself (optional)"** section (`#measure`) that points shops at
+[CamScan](https://github.com/tallen5431/CamScan) — a browser measuring tool — so they can send
+exact dimensions with their photos. CamScan is a **Python/Dash + OpenCV app**, so it can't run on
+Cloudflare Pages itself; it has to be hosted somewhere with a Python runtime (Render, Fly.io,
+HuggingFace Spaces, a small VPS, etc.), ideally behind a subdomain like `measure.datumlaboratories.com`.
+
+Until it's hosted, the button shows a **"coming soon"** state — no dead link ships. To switch it on,
+set one constant near the top of the `<script>` block in `replacement-parts.html`:
+
+```js
+var MEASURE_URL = "https://measure.datumlaboratories.com";   // your hosted CamScan URL
+```
+
+The moment it's non-empty, the button links out to the tool; leave it `""` to keep the coming-soon state.
+
 > ⚠ **Before sending this page in an email:** replace the four placeholder case slots in the
 > proof gallery with real jobs and delete the amber build-note box. The page ships with them
 > visibly unfinished on purpose so it can't go out looking like fabricated work. Two real cases

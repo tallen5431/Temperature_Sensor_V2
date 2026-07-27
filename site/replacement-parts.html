@@ -285,6 +285,26 @@
     </div>
   </section>
 
+  <!-- ============ 3b. Optional: measure it yourself (CamScan) ============ -->
+  <section id="measure">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow">Optional · Tighter quotes</p>
+        <h2>Want to measure it yourself?</h2>
+        <p>A clear photo is all I need to start. But if you want the most exact quote — or the part has tight tolerances — you can measure it right in your browser with CamScan, a free tool I built. No install, no account.</p>
+      </div>
+      <div class="steps">
+        <div class="step-card"><div class="n">1</div><h3>Add something for scale</h3><p>Lay a ruler, a coin, or a printed calibration square in the shot. CamScan uses its known size to turn pixels into real millimetres.</p></div>
+        <div class="step-card"><div class="n">2</div><h3>Measure on-screen</h3><p>Draw across edges, holes, gaps and angles. Every reading comes out in real mm — distances, diameters, even perimeters.</p></div>
+        <div class="step-card"><div class="n">3</div><h3>Send the annotated image</h3><p>Export the marked-up photo and add it with the others below — the dimensions are written right on it. Need CAD-ready geometry? Email the DXF export and I'll model straight from it.</p></div>
+      </div>
+      <div class="cta-row" style="margin-top:24px;">
+        <a href="#quote" id="measureBtn" class="btn signal" target="_blank" rel="noopener">Open the measuring tool →</a>
+      </div>
+      <p class="hint" id="measureNote" style="margin-top:12px;">CamScan is a free browser tool — no install, no account.</p>
+    </div>
+  </section>
+
   <!-- ============ 4. What I make ============ -->
   <section id="what">
     <div class="wrap">
@@ -415,6 +435,32 @@
 </footer>
 
 <script>
+// ---- Optional measuring tool (CamScan) -------------------------------------
+// Paste your hosted CamScan URL below once it's live (e.g. a Render/Fly/Spaces
+// deploy, or measure.datumlaboratories.com). While it's empty the button shows a
+// safe "coming soon" state instead of a dead link — so this page is safe to ship.
+(function () {
+  "use strict";
+  var MEASURE_URL = "";   // <-- paste the CamScan URL here once it's hosted
+  var btn  = document.getElementById("measureBtn");
+  var note = document.getElementById("measureNote");
+  if (!btn) return;
+  if (MEASURE_URL) {
+    btn.href = MEASURE_URL;
+    return;
+  }
+  // Not hosted yet: neutralise the link so nothing broken goes live.
+  btn.removeAttribute("href");
+  btn.removeAttribute("target");
+  btn.setAttribute("aria-disabled", "true");
+  btn.classList.remove("signal");
+  btn.classList.add("ghost");
+  btn.style.opacity = ".6";
+  btn.style.cursor = "default";
+  btn.textContent = "Measuring tool — coming soon";
+  if (note) note.textContent = "The self-serve measuring tool is going live shortly. For now, just lay a ruler or coin next to the part in your photo and I'll measure from that.";
+})();
+
 (function () {
   "use strict";
 
