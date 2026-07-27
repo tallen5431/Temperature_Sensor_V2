@@ -107,17 +107,27 @@ metadata intact (stripping them needs a full ISO-BMFF parser); each stored recor
 The page has a **"Measure it yourself (optional)"** section (`#measure`) that points shops at
 [CamScan](https://github.com/tallen5431/CamScan) — a browser measuring tool — so they can send
 exact dimensions with their photos. CamScan is a **Python/Dash + OpenCV app**, so it can't run on
-Cloudflare Pages itself; it has to be hosted somewhere with a Python runtime (Render, Fly.io,
-HuggingFace Spaces, a small VPS, etc.), ideally behind a subdomain like `measure.datumlaboratories.com`.
+Cloudflare Pages itself.
 
-Until it's hosted, the button shows a **"coming soon"** state — no dead link ships. To switch it on,
-set one constant near the top of the `<script>` block in `replacement-parts.html`:
+**It's live at [`measure.datumlaboratories.com`](https://measure.datumlaboratories.com).** It runs
+self-hosted (on a dedicated box managed by [HTTP_Server](https://github.com/tallen5431/HTTP_Server)
+on port `8059`) and is published to the public internet through a **Cloudflare Tunnel** —
+`cloudflared` maps the subdomain to `http://localhost:8059`, so there's no open router port and the
+home IP stays hidden. The tunnel runs as a `systemd` service (`cloudflared.service`), so it survives
+reboots; CamScan itself must be running (flip its **Autostart** toggle in the HTTP_Server manager)
+for the tunnel to have something to serve.
+
+> Because it's self-hosted, the Measure button depends on that box being on. If the machine is off or
+> CamScan is stopped, the button opens a dead tab. It's an *optional* step (shops can just lay a coin
+> or ruler in the photo), so this degrades softly — but keep it in mind.
+
+The link is controlled by one constant near the top of the `<script>` block in `replacement-parts.html`:
 
 ```js
-var MEASURE_URL = "https://measure.datumlaboratories.com";   // your hosted CamScan URL
+var MEASURE_URL = "https://measure.datumlaboratories.com";   // hosted CamScan
 ```
 
-The moment it's non-empty, the button links out to the tool; leave it `""` to keep the coming-soon state.
+Set it to `""` to fall back to the safe **"coming soon"** state (no dead link) if the tool ever goes offline.
 
 > ⚠ **Before sending this page in an email:** replace the four placeholder case slots in the
 > proof gallery with real jobs and delete the amber build-note box. The page ships with them
