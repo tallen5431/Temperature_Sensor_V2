@@ -69,7 +69,7 @@ waitlist, and photos ride along as email attachments, so **R2 is optional**:
 | `WAITLIST` | KV | already bound | Stores the request under a `quote:` key prefix |
 | `RESEND_API_KEY` | secret | **strongly recommended** | Emails you each request *with the photos attached* |
 | `QUOTE_NOTIFY_TO` | var | **strongly recommended** | Address that notification goes to |
-| `QUOTE_FROM` | var | optional | From address; defaults to `Datum Labs <quotes@datumlaboratories.com>` |
+| `QUOTE_FROM` | var | optional | From address; defaults to `Datum Labs <thomas.allen@datumlaboratories.com>` |
 | `QUOTE_PHOTOS` | R2 | optional | Archives full-resolution photos beyond the email |
 | `WAITLIST_TOKEN` | secret | optional | Gates the `GET` export, same as the other two forms |
 
@@ -115,7 +115,10 @@ Some facts must match the rest of the repo and the live listing when they change
 - **Battery life** — currently "weeks" pending bench testing; raise only once the
   real number is confirmed (see `docs/TINDIE_LISTING.md` honest-specs framing).
 - **Tindie "Buy" link** — the DIY card links to the live Tindie product URL.
-- **Support email** — `support@datumlaboratories.com` (Cloudflare Email Routing → inbox).
+- **Contact email** — `thomas.allen@datumlaboratories.com` (Zoho Mail mailbox). This is the address
+  shown in every `mailto:` link on the site and the default `QUOTE_FROM`/`QUOTE_NOTIFY_TO` target, so
+  the whole site reaches one inbox with no aliases required. (Cloudflare Email Routing is retired now
+  that the domain's MX points at Zoho — the two can't both own MX.)
 - **Replacement-part price + turnaround** — currently **$75–250 (most ~$120)**, **quote in 24 h**,
   **ships in 3–5 business days**, **first simple part free**. These appear in three places on
   `replacement-parts.html` (hero trust bar, process step 3, pricing cards) **and in the cold

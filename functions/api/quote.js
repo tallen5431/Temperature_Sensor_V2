@@ -215,7 +215,7 @@ async function notify(env, record, photos) {
     "</div>";
 
   const body = {
-    from: env.QUOTE_FROM || "Datum Labs <quotes@datumlaboratories.com>",
+    from: env.QUOTE_FROM || "Datum Labs <thomas.allen@datumlaboratories.com>",
     to: [env.QUOTE_NOTIFY_TO],
     reply_to: record.email,
     subject: "Part quote — " + record.shop + " (" + photos.length + " photo" + (photos.length === 1 ? "" : "s") + ")",
