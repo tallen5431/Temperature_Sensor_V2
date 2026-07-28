@@ -390,29 +390,100 @@
 
 <script>
 // ---- Optional measuring tool (CamScan) -------------------------------------
-// Paste your hosted CamScan URL below once it's live (e.g. a Render/Fly/Spaces
-// deploy, or measure.datumlaboratories.com). While it's empty the button shows a
-// safe "coming soon" state instead of a dead link — so this page is safe to ship.
+// Set your hosted CamScan URL below once it's live (e.g. measure.datumlaboratories.com,
+// a Cloudflare Tunnel to the self-hosted app). While it's empty the button shows a safe
+// "coming soon" state instead of a dead link — so this page is always safe to ship.
+//
+// When a URL IS set, the button embeds CamScan in a full-screen overlay on this page
+// (the "actual embed") rather than bouncing the customer to another site. Modifier-click
+// still opens it in a new tab, and with JS off the link falls back to the quote form.
 (function () {
   "use strict";
   var MEASURE_URL = "https://measure.datumlaboratories.com";   // hosted CamScan (Cloudflare Tunnel → self-hosted)
   var btn  = document.getElementById("measureBtn");
   var note = document.getElementById("measureNote");
   if (!btn) return;
-  if (MEASURE_URL) {
-    btn.href = MEASURE_URL;
+
+  // Not hosted yet: neutralise the link so nothing broken goes live.
+  if (!MEASURE_URL) {
+    btn.removeAttribute("href");
+    btn.removeAttribute("target");
+    btn.setAttribute("aria-disabled", "true");
+    btn.classList.remove("signal");
+    btn.classList.add("ghost");
+    btn.style.opacity = ".6";
+    btn.style.cursor = "default";
+    btn.textContent = "Measuring tool — coming soon";
+    if (note) note.textContent = "The self-serve measuring tool is going live shortly. For now, just lay a ruler or coin next to the part in your photo and I'll measure from that.";
     return;
   }
-  // Not hosted yet: neutralise the link so nothing broken goes live.
-  btn.removeAttribute("href");
-  btn.removeAttribute("target");
-  btn.setAttribute("aria-disabled", "true");
-  btn.classList.remove("signal");
-  btn.classList.add("ghost");
-  btn.style.opacity = ".6";
-  btn.style.cursor = "default";
-  btn.textContent = "Measuring tool — coming soon";
-  if (note) note.textContent = "The self-serve measuring tool is going live shortly. For now, just lay a ruler or coin next to the part in your photo and I'll measure from that.";
+
+  // Hosted: open CamScan inside a full-screen overlay on this page. The iframe carries
+  // ?embed=1 so CamScan can tell it's embedded (and, later, hand results back to the form).
+  var EMBED_SRC = MEASURE_URL + (MEASURE_URL.indexOf("?") === -1 ? "?" : "&") + "embed=1";
+  btn.href = MEASURE_URL;          // real href → middle/⌘-click opens a tab; no-JS falls back
+  btn.removeAttribute("target");   // …but a normal click opens the in-page overlay instead
+
+  var css = document.createElement("style");
+  css.textContent =
+    "#measureModal{position:fixed;inset:0;z-index:1000;display:none;background:#0f1417;}" +
+    "#measureModal.open{display:block;}" +
+    "#measureModal .frame-wrap{position:absolute;inset:0;display:flex;flex-direction:column;}" +
+    "#measureModal .bar{display:flex;align-items:center;gap:10px;padding:10px 14px;background:#0b0f11;" +
+      "color:#e8eef2;font:600 15px -apple-system,Segoe UI,Roboto,sans-serif;border-bottom:1px solid #1c2529;}" +
+    "#measureModal .bar .ttl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}" +
+    "#measureModal .bar a,#measureModal .bar button{color:#cfe6ee;background:transparent;border:1px solid #2a3a44;" +
+      "border-radius:8px;padding:0 12px;font:600 13px -apple-system,Segoe UI,Roboto,sans-serif;cursor:pointer;" +
+      "text-decoration:none;min-height:40px;display:inline-flex;align-items:center;}" +
+    "#measureModal .bar .x{border-color:transparent;font-size:19px;padding:0 12px;}" +
+    "#measureModal iframe{flex:1;width:100%;border:0;background:#0f1417;}" +
+    "@media (max-width:560px){#measureModal .bar{font-size:14px;}#measureModal .bar .newtab{display:none;}}";
+  document.head.appendChild(css);
+
+  var modal = document.createElement("div");
+  modal.id = "measureModal";
+  modal.setAttribute("role", "dialog");
+  modal.setAttribute("aria-modal", "true");
+  modal.setAttribute("aria-label", "CamScan measuring tool");
+  modal.innerHTML =
+    '<div class="frame-wrap">' +
+      '<div class="bar">' +
+        '<span class="ttl">CamScan — measure your part</span>' +
+        '<a class="newtab" href="' + MEASURE_URL + '" target="_blank" rel="noopener">Open in new tab ↗</a>' +
+        '<button type="button" class="x" data-close aria-label="Close measuring tool">✕</button>' +
+      '</div>' +
+      '<iframe title="CamScan measuring tool" allow="camera;fullscreen"></iframe>' +
+    '</div>';
+  document.body.appendChild(modal);
+
+  var iframe   = modal.querySelector("iframe");
+  var lastFocus = null;
+
+  function open() {
+    lastFocus = document.activeElement;
+    if (!iframe.getAttribute("src")) iframe.src = EMBED_SRC;   // lazy — load CamScan only on first open
+    modal.classList.add("open");
+    document.documentElement.style.overflow = "hidden";
+    var x = modal.querySelector(".x"); if (x) x.focus();
+  }
+  function close() {
+    modal.classList.remove("open");
+    document.documentElement.style.overflow = "";
+    if (lastFocus && lastFocus.focus) lastFocus.focus();
+  }
+
+  btn.addEventListener("click", function (e) {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;  // let modifier-click open a tab
+    e.preventDefault();
+    open();
+  });
+  modal.addEventListener("click", function (e) {
+    var t = e.target;
+    if (t && t.hasAttribute && t.hasAttribute("data-close")) close();
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && modal.classList.contains("open")) close();
+  });
 })();
 
 (function () {
