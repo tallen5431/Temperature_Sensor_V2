@@ -155,8 +155,7 @@
   .success p:last-child { margin-bottom:0; color:var(--slate); font-size:14.5px; }
 
   /* 6 — Pricing */
-  .price-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
-  @media (max-width:760px){ .price-grid { grid-template-columns:1fr; } }
+  .price-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(212px, 1fr)); gap:16px; }
   .price-card { background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:24px 22px; }
   .price-card.free { border-color:var(--signal); border-left:3px solid var(--signal); }
   .price-card .k { font-family:var(--font-mono); font-size:11px; letter-spacing:0.12em; text-transform:uppercase; color:var(--signal); margin-bottom:10px; }
@@ -219,7 +218,7 @@
         <span><b>First simple part free</b></span>
         <span>Quote in <b>24 hours</b></span>
         <span>Ships in <b>3–5 business days</b></span>
-        <span>Most parts <b>$75–250</b></span>
+        <span>Parts <b>from $29</b></span>
       </div>
     </div>
   </section>
@@ -314,7 +313,7 @@
         <span>Spacers &amp; bushings</span>
         <span>Jigs &amp; fixtures</span>
       </div>
-      <p class="makes-note">If the original was injection-moulded plastic and the manufacturer stopped making it, it's probably in scope. I'll tell you straight when printing isn't the right answer rather than sell you a part that will fail — load-bearing metal, gas-wetted, and food-contact parts are the usual no.</p>
+      <p class="makes-note">If the original was injection-moulded plastic and the manufacturer stopped making it, it's probably in scope. I'll tell you straight when printing isn't the right answer rather than sell you a part that will fail — load-bearing metal, gas-wetted, and food-contact parts are the usual no. <b>Have your own design or 3D file?</b> I take general print jobs too — send it over.</p>
     </div>
   </section>
 
@@ -324,25 +323,31 @@
       <div class="sec-head">
         <p class="eyebrow">Price &amp; turnaround</p>
         <h2>What this usually costs.</h2>
-        <p>Every part is quoted individually before you commit — the numbers below are what most jobs land at, not a rate card you're locked into.</p>
+        <p>Every job is quoted before you commit — free, no obligation. The tiers below are where most land, not a rate card you're locked into.</p>
       </div>
       <div class="price-grid">
         <div class="price-card">
-          <div class="k">Typical part</div>
-          <div class="v">$75–250</div>
-          <p>Most land around $120. The modelling is the real work, so a second identical part is far cheaper than the first — say up front if you need a few.</p>
+          <div class="k">Print from your file</div>
+          <div class="v">Material&nbsp;+&nbsp;$15</div>
+          <p>Already have a 3D file? Send an STL or STEP and I'll print it — a replacement, a prototype, or any model. PLA, PETG, or carbon-fiber PETG. General print jobs welcome, not just replacements.</p>
         </div>
         <div class="price-card">
-          <div class="k">Turnaround</div>
-          <div class="v">3–5 days</div>
-          <p>Business days from your approval to shipped, with the quote back to you within 24 hours. Rush is sometimes possible — ask.</p>
+          <div class="k">Simple replacement</div>
+          <div class="v">$29–60</div>
+          <p>A clip, knob, spacer, or bracket I can model from a clear photo and one known dimension. Simple geometry, quick turnaround.</p>
+        </div>
+        <div class="price-card">
+          <div class="k">Reverse-engineered</div>
+          <div class="v">$75–250</div>
+          <p>Measured or multi-view parts with tighter tolerances — most land around $120. A second identical part is far cheaper than the first, so say up front if you need a few.</p>
         </div>
         <div class="price-card free">
-          <div class="k">New shops</div>
-          <div class="v">First part free</div>
-          <p>Your first part is on me if it's simple geometry — a clip, knob, spacer, bracket or cover. I'll tell you honestly when a part doesn't qualify before doing any work.</p>
+          <div class="k">Design from scratch</div>
+          <div class="v">Quoted</div>
+          <p>No original to copy? I'll engineer it from your requirements — priced hourly or by the project.</p>
         </div>
       </div>
+      <p class="makes-note" style="margin-top:20px;">Quote back within 24 hours; approved parts ship in 3–5 business days. $25 minimum · quotes always free · repeat parts discounted · rush sometimes possible, just ask. <b>New repair shops:</b> your first simple part is on me.</p>
     </div>
   </section>
 
