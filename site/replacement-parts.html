@@ -152,6 +152,13 @@
   /* 5 — Quote form */
   #quote { background:var(--surface); }
   .form { max-width:600px; }
+  /* Featured "measure first" entry block at the top of the quote flow */
+  .measure-lead { max-width:600px; background:var(--signal-soft); border:1px solid var(--signal); border-radius:12px; padding:24px 22px; }
+  .measure-lead .ml-title { font-size:20px; font-weight:720; margin-bottom:8px; }
+  .measure-lead .ml-sub { color:var(--slate); font-size:15.5px; margin:0; }
+  .or-divider { display:flex; align-items:center; gap:14px; max-width:600px; margin:22px 0; }
+  .or-divider::before, .or-divider::after { content:""; flex:1; height:1px; background:var(--line); }
+  .or-divider span { font-family:var(--font-mono); font-size:12px; letter-spacing:0.08em; text-transform:uppercase; color:var(--faint); white-space:nowrap; }
   .row2 { display:flex; gap:14px; }
   @media (max-width:560px){ .row2 { flex-direction:column; gap:16px; } }
   .field { flex:1; margin-bottom:16px; }
@@ -253,7 +260,7 @@
     <nav class="top">
       <a href="#how" class="hide-sm">How it works</a>
       <a href="#pricing" class="hide-sm">Pricing</a>
-      <a href="#measure" class="hide-sm">Measure</a>
+      <a href="#faq" class="hide-sm">FAQ</a>
       <a href="#quote" class="btn signal" style="padding:9px 16px;min-height:0;">Get a quote</a>
     </nav>
   </div>
@@ -301,9 +308,27 @@
     <div class="wrap">
       <div class="sec-head">
         <p class="eyebrow">Get a quote</p>
-        <h2>Send photos of the part.</h2>
-        <p>One screen, no login. Add a shot from each angle, tell me what it is, and I'll reply with a fixed price and a ship date within one business day — I read every one myself.</p>
+        <h2>Measure or photograph your part.</h2>
+        <p>Two ways to send it: measure it in your browser for the tightest quote, or just upload photos. Either way I reply with a fixed price and a ship date within one business day — I read every one myself.</p>
       </div>
+
+      <!-- Featured entry point: the CamScan measuring tool. It guides per-angle capture +
+           annotation and drops the results into the form below. #measureBtn / #measureNote are
+           wired by the CamScan embed script — keep exactly one of each on the page. -->
+      <div class="measure-lead">
+        <p class="eyebrow" style="margin-bottom:10px;">Recommended · Tightest quote</p>
+        <h3 class="ml-title">Measure it in your browser first</h3>
+        <p class="ml-sub">CamScan opens right here — a free tool I built, no install or account. Add each angle, set its orientation, and mark the dimensions; the annotated photos then drop straight into the form below. Best for an exact quote.</p>
+        <div class="steps" style="margin:18px 0 20px;">
+          <div class="step-card"><div class="n">1</div><h3>Set the scale</h3><p>Lay a printed marker — or a coin, card, or ruler — flat beside the part. CamScan finds it and corrects for tilt automatically.</p></div>
+          <div class="step-card"><div class="n">2</div><h3>Measure each angle</h3><p>Pick the view — Top, Front or Side — then mark the edges, holes and gaps. Add another photo for each angle.</p></div>
+          <div class="step-card"><div class="n">3</div><h3>It fills the form</h3><p>Hit Review &amp; Submit and the annotated, measured photos drop into the form below — no re-uploading.</p></div>
+        </div>
+        <a href="#quote" id="measureBtn" class="btn signal" target="_blank" rel="noopener">📐 Measure your part →</a>
+        <p class="hint" id="measureNote" style="margin-top:12px;">Free browser tool — no install, no account. It runs right on this page.</p>
+      </div>
+
+      <p class="or-divider"><span>or just upload photos</span></p>
 
       <form class="form" id="quoteForm" novalidate enctype="multipart/form-data">
         <div class="row2">
@@ -329,7 +354,7 @@
 
         <div class="field">
           <label>Photos of the part <span class="req">*</span></label>
-          <p class="hint" style="margin:0 0 12px">Tap an angle to take or choose a photo — add whichever ones show the part and the damage. At least one is required. A ruler or coin in the shot helps a lot. Tap a filled tile to preview it full-size and check the scan.</p>
+          <p class="hint" style="margin:0 0 12px">Measured photos from the tool above land here automatically — or tap a tile to add one directly (no measuring needed). At least one is required. A ruler or coin in the shot helps; tap a filled tile to preview it full-size.</p>
           <!-- Tiles (with their hidden file inputs) are built in JS; accept has no capture
                attr so mobile offers BOTH the camera and the photo library. -->
           <div class="angles" id="angleGrid"></div>
@@ -408,28 +433,7 @@
     </div>
   </section>
 
-  <!-- ============ 6. Optional: measure it yourself (CamScan) — a secondary, power-user path,
-       so its CTA is a ghost button (the bright "signal" style is reserved for sending the quote) ============ -->
-  <section id="measure">
-    <div class="wrap">
-      <div class="sec-head">
-        <p class="eyebrow">Optional · Tighter quotes</p>
-        <h2>Want to measure it yourself?</h2>
-        <p>A clear photo is all I need to start — but if you want the tightest quote, measure the part right in your browser with CamScan, a free tool I built (no install, no account). It opens right here on the page and drops the measured photos straight into your quote form — no re-uploading.</p>
-      </div>
-      <div class="steps">
-        <div class="step-card"><div class="n">1</div><h3>Set the scale</h3><p>Lay a printed marker — or a coin, card, or ruler — flat beside the part. CamScan finds it and corrects for camera tilt automatically, so the millimetres come out true.</p></div>
-        <div class="step-card"><div class="n">2</div><h3>Measure each angle</h3><p>Pick the view — Top, Front or Side — then mark the edges, holes and gaps right on the photo. Use “Add another photo” for each angle you want to capture.</p></div>
-        <div class="step-card"><div class="n">3</div><h3>Send it to your quote</h3><p>Hit Review &amp; Submit and the annotated, measured photos drop straight into your quote form — no re-uploading. Then just add your details and send.</p></div>
-      </div>
-      <div class="cta-row" style="margin-top:24px;">
-        <a href="#quote" id="measureBtn" class="btn ghost" target="_blank" rel="noopener">Open the measuring tool →</a>
-      </div>
-      <p class="hint" id="measureNote" style="margin-top:12px;">CamScan is a free browser tool — no install, no account. It runs right on this page.</p>
-    </div>
-  </section>
-
-  <!-- ============ 6b. FAQ — visible copy mirrors the FAQPage JSON-LD in <head>
+  <!-- ============ 6. FAQ — visible copy mirrors the FAQPage JSON-LD in <head>
        (search engines want the answers on the page, not only in structured data) ============ -->
   <section id="faq">
     <div class="wrap">
