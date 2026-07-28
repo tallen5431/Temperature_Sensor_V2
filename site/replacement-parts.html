@@ -484,6 +484,43 @@
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape" && modal.classList.contains("open")) close();
   });
+
+  // ---- CamScan handoff bridge ----------------------------------------------
+  // Learn CamScan's origin and tell it ours (handshake), then accept ONE message type —
+  // the finished job — only from that exact origin, and hand it to the quote form. Every
+  // other message, and any message from any other origin, is ignored.
+  var camscanOrigin = null;
+  try { camscanOrigin = new URL(MEASURE_URL).origin; } catch (_) { camscanOrigin = null; }
+
+  function sendHost() {
+    try {
+      if (camscanOrigin && iframe.contentWindow) {
+        iframe.contentWindow.postMessage({ type: "camscan:host" }, camscanOrigin);
+      }
+    } catch (e) { /* cross-origin frame not ready yet — the child-ready ping will retry */ }
+  }
+  iframe.addEventListener("load", sendHost);
+
+  window.addEventListener("message", function (e) {
+    if (!camscanOrigin || e.origin !== camscanOrigin) return;   // trust only the CamScan frame
+    var d = e.data;
+    if (!d || typeof d !== "object") return;
+    if (d.type === "camscan:child-ready") { sendHost(); return; }
+    if (d.type === "camscan:submit") {
+      var res = (window.QuoteForm && window.QuoteForm.ingestCamScan)
+        ? window.QuoteForm.ingestCamScan(d) : { added: 0 };
+      try {
+        if (iframe.contentWindow) {
+          iframe.contentWindow.postMessage({ type: "camscan:ack", added: (res && res.added) || 0 }, camscanOrigin);
+        }
+      } catch (_) { /* best-effort ack */ }
+      close();
+      var q = document.getElementById("quote");
+      if (q) q.scrollIntoView({ behavior: "smooth", block: "start" });
+      var nm = document.getElementById("qName");
+      if (nm && !nm.value) setTimeout(function () { try { nm.focus(); } catch (_) {} }, 450);
+    }
+  });
 })();
 
 (function () {
@@ -582,7 +619,7 @@
       t.lab.innerHTML = "";
       if (p) {
         var img = document.createElement("img"); img.src = p.url; img.alt = t.slot.label + " photo";
-        var cap = document.createElement("span"); cap.className = "angle-cap"; cap.textContent = t.slot.label;
+        var cap = document.createElement("span"); cap.className = "angle-cap"; cap.textContent = p.angle || t.slot.label;
         t.lab.appendChild(img); t.lab.appendChild(cap);
         // The remove button is a sibling of the <label>, not a child — otherwise a tap on it
         // would also fire the label and reopen the file picker.
@@ -620,7 +657,7 @@
     fd.append("phone", document.getElementById("qPhone").value.trim());
     fd.append("description", document.getElementById("qDesc").value.trim());
     var angles = [];
-    keys.forEach(function (k) { fd.append("photos", photos[k].blob, photos[k].name); angles.push(LABEL[k]); });
+    keys.forEach(function (k) { fd.append("photos", photos[k].blob, photos[k].name); angles.push(photos[k].angle || LABEL[k]); });
     fd.append("angles", JSON.stringify(angles));
 
     submit.disabled = true;
@@ -650,6 +687,82 @@
         say("Network dropped — your photos are still selected, just hit send again.", true);
       });
   });
+
+  // ---- CamScan handoff ------------------------------------------------------
+  // The embedded CamScan tool hands its finished, annotated + scaled views here so the
+  // whole job goes through this one form (and its /api/quote backend) instead of a second
+  // pipeline. Called by the overlay's message handler AFTER it has validated the sender's
+  // origin — so this function itself just trusts its input and fills the form.
+  function dataUrlToBlob(u) {
+    var parts = String(u).split(","), meta = parts[0] || "", b64 = parts[1] || "";
+    var mime = (meta.match(/data:([^;]+)/) || [])[1] || "image/jpeg";
+    var bin = atob(b64), arr = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], { type: mime });
+  }
+  // CamScan labels → this form's fixed slots. Anything unmapped (or a collision) spills to
+  // the first empty slot; the true CamScan label is kept as the photo's angle regardless.
+  var CS_MAP = { top: "top", front: "front", back: "back", rear: "back", left: "left", right: "right", side: "right", detail: "detail" };
+  function firstEmptySlot() {
+    for (var i = 0; i < SLOTS.length; i++) { if (!photos[SLOTS[i].key]) return SLOTS[i].key; }
+    return null;
+  }
+  function buildDesc(b, views) {
+    b = b || {};
+    var lines = [];
+    if (b.part) lines.push("Part: " + b.part);
+    if (b.material) lines.push("Material: " + b.material);
+    if (b.quantity) lines.push("Quantity: " + b.quantity);
+    if (b.whatBroke) lines.push("What broke / needed: " + b.whatBroke);
+    if (b.notes) lines.push("Notes: " + b.notes);
+    var mlines = [];
+    (views || []).forEach(function (v) {
+      var ms = (v && v.measurements) || [];
+      if (!ms.length) return;
+      var txt = ms.map(function (m) { return m.text || m.label; }).filter(Boolean).join("; ");
+      if (!txt) return;
+      var sc = (v.scale && v.scale.calibrated) ? (v.scale.perspective ? " (tilt-corrected)" : "") : " (no scale)";
+      mlines.push("• " + (v.label || "View") + sc + ": " + txt);
+    });
+    var out = lines.join("\n");
+    if (mlines.length) out += (out ? "\n\n" : "") + "Measured with CamScan:\n" + mlines.join("\n");
+    return out;
+  }
+  window.QuoteForm = {
+    ingestCamScan: function (payload) {
+      if (!payload || !Array.isArray(payload.views)) return { added: 0, dropped: 0 };
+      var added = 0, dropped = 0;
+      payload.views.forEach(function (v) {
+        if (!v || !v.image) return;
+        var want = CS_MAP[String(v.label || "").toLowerCase()];
+        var key = (want && !photos[want]) ? want : firstEmptySlot();
+        if (!key) { dropped++; return; }   // form holds 6; extras can't attach
+        var blob;
+        try { blob = dataUrlToBlob(v.image); } catch (e) { dropped++; return; }
+        if (photos[key] && photos[key].url) URL.revokeObjectURL(photos[key].url);
+        photos[key] = { blob: blob, name: key + ".jpg", url: URL.createObjectURL(blob), angle: v.label || LABEL[key] };
+        added++;
+      });
+      render();
+
+      var b = payload.brief || {};
+      var emailEl = document.getElementById("qEmail");
+      if (emailEl && !emailEl.value.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((b.contact || "").trim())) {
+        emailEl.value = b.contact.trim();
+      }
+      var desc = buildDesc(b, payload.views);
+      var descEl = document.getElementById("qDesc");
+      if (descEl && desc) descEl.value = descEl.value.trim() ? (descEl.value.trim() + "\n\n" + desc) : desc;
+
+      if (added) {
+        say("Added " + added + " measured view" + (added === 1 ? "" : "s") + " from CamScan" +
+            (dropped ? (" — " + dropped + " didn’t fit (6 photos max)") : "") + ". Add your details and send.");
+      } else {
+        say("CamScan didn’t return any usable views — add photos below instead.", true);
+      }
+      return { added: added, dropped: dropped };
+    }
+  };
 })();
 </script>
 
