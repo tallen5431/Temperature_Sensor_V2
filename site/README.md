@@ -147,10 +147,16 @@ Some facts must match the rest of the repo and the live listing when they change
   shown in every `mailto:` link on the site and the default `QUOTE_FROM`/`QUOTE_NOTIFY_TO` target, so
   the whole site reaches one inbox with no aliases required. (Cloudflare Email Routing is retired now
   that the domain's MX points at Zoho — the two can't both own MX.)
-- **Replacement-part price + turnaround** — currently **$75–250 (most ~$120)**, **quote in 24 h**,
-  **ships in 3–5 business days**, **first simple part free**. These appear in three places on
-  `replacement-parts.html` (hero trust bar, process step 3, pricing cards) **and in the cold
-  outreach email** — change them together or the email will contradict the page.
+- **Replacement-part pricing (tiered)** — **print-from-your-file** (material + $15),
+  **simple replacement** ($29–60), **reverse-engineered** ($75–250, most ~$120), **design from
+  scratch** (quoted). Plus **$25 minimum**, **quote in 24 h**, **ships in 3–5 business days**,
+  **first simple part free for repair shops**. The numbers live in the hero trust bar ("from $29")
+  and the pricing cards on `replacement-parts.html`, in `docs/ETSY_EBAY_LISTINGS.md`, **and in the
+  cold outreach email** — change them together or they'll contradict each other. Marketplace
+  (Etsy/eBay) prices should run ~10–15 % above these to cover platform fees.
+- **General print services** — the "Print from your file" tier and the "What I make" note invite
+  general 3D-print jobs (send an STL), not only replacements. `docs/ETSY_EBAY_LISTINGS.md` has the
+  made-to-order marketplace copy.
 
 ## Related (auto-deployed elsewhere — not this site)
 
