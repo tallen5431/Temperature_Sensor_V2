@@ -205,10 +205,10 @@ def test_focus_mode_filters_to_one_probe(tmp_path):
     cfg = Config(tmp_path / "c.json")
     cfg.update({"probe_names": {"A": "Freezer", "B": "Room"}})
     now = datetime.datetime.now()
-    for t in (-20.0, -18.0, -16.0):
-        db.append(_iso(now), t, 0.0, "A")
-    for t in (20.0, 22.0, 24.0):
-        db.append(_iso(now), t, 0.0, "B")
+    for i, t in enumerate((-20.0, -18.0, -16.0)):
+        db.append(_iso(now - datetime.timedelta(seconds=i)), t, 0.0, "A")
+    for i, t in enumerate((20.0, 22.0, 24.0)):
+        db.append(_iso(now - datetime.timedelta(seconds=i)), t, 0.0, "B")
 
     allm = build_dashboard(db, cfg, FakeFinder(), "24h", "celsius", "all")
     assert len(_series(allm[1])) == 2      # graph overlays both probes

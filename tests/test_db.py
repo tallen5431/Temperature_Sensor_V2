@@ -110,15 +110,28 @@ def test_latest_per_probe(db):
     assert by_probe == {"A": 25.0, "B": 30.0}
 
 
-def test_latest_per_probe_window_and_same_second_tie(db):
+def test_latest_per_probe_window_and_dedup(db):
     now = datetime.datetime.now()
     ts = _iso(now)
     db.append(ts, 20.0, 0.0, "A")
-    db.append(ts, 21.0, 0.0, "A")  # same second: the later insert (higher id) wins
+    db.append(ts, 21.0, 0.0, "A")  # same (probe, instant): idempotent — ignored
     db.append(_iso(now - datetime.timedelta(hours=2)), 5.0, 0.0, "OLD")
+    # The duplicate second is not stored (INSERT OR IGNORE on UNIQUE(probe_id,
+    # epoch)): a re-sent reading can't create a second row. The first write wins.
+    assert db.count() == 2
     latest = db.latest_per_probe(window_seconds=3600)
     by_probe = {r["probe_id"]: r["temperature_c"] for _, r in latest.iterrows()}
-    assert by_probe == {"A": 21.0}  # OLD is outside the window entirely
+    assert by_probe == {"A": 20.0}  # first write kept; OLD is outside the window
+
+
+def test_latest_per_probe_returns_newest_by_time(db):
+    # With distinct timestamps latest_per_probe returns the most recent reading.
+    now = datetime.datetime.now()
+    db.append(_iso(now - datetime.timedelta(seconds=2)), 20.0, 0.0, "A")
+    db.append(_iso(now), 21.0, 0.0, "A")
+    latest = db.latest_per_probe(window_seconds=3600)
+    by_probe = {r["probe_id"]: r["temperature_c"] for _, r in latest.iterrows()}
+    assert by_probe == {"A": 21.0}
 
 
 def test_battery_stored_and_exposed(db):
@@ -421,11 +434,13 @@ def test_subsecond_readings_ordering_and_export(db):
 
 def test_stats_per_probe(db):
     now = datetime.datetime.now()
-    # Freezer probe A: cold range; room probe B: warm range.
-    for t in (-20.0, -18.0, -16.0):
-        db.append(_iso(now), t, 0.0, "A")
-    for t in (20.0, 22.0, 24.0):
-        db.append(_iso(now), t, 0.0, "B")
+    # Freezer probe A: cold range; room probe B: warm range. Distinct timestamps
+    # per reading — one probe cannot hold two readings at the same instant (the
+    # UNIQUE(probe_id, epoch) ingest index dedupes those).
+    for i, t in enumerate((-20.0, -18.0, -16.0)):
+        db.append(_iso(now - datetime.timedelta(seconds=i)), t, 0.0, "A")
+    for i, t in enumerate((20.0, 22.0, 24.0)):
+        db.append(_iso(now - datetime.timedelta(seconds=i)), t, 0.0, "B")
     stats = db.stats_per_probe()
     assert set(stats.keys()) == {"A", "B"}
     assert stats["A"]["min"] == -20.0 and stats["A"]["max"] == -16.0
@@ -441,10 +456,10 @@ def test_stats_per_probe_empty(db):
 
 def test_window_stats_probe_filter(db):
     now = datetime.datetime.now()
-    for t in (-20.0, -18.0, -16.0):
-        db.append(_iso(now), t, 0.0, "A")
-    for t in (20.0, 22.0, 24.0):
-        db.append(_iso(now), t, 0.0, "B")
+    for i, t in enumerate((-20.0, -18.0, -16.0)):
+        db.append(_iso(now - datetime.timedelta(seconds=i)), t, 0.0, "A")
+    for i, t in enumerate((20.0, 22.0, 24.0)):
+        db.append(_iso(now - datetime.timedelta(seconds=i)), t, 0.0, "B")
     alls = db.window_stats()
     assert alls["min"] == -20.0 and alls["max"] == 24.0 and alls["count"] == 6
     a = db.window_stats(probe_id="A")
@@ -456,9 +471,9 @@ def test_window_stats_probe_filter(db):
 def test_delete_probe(db):
     now = datetime.datetime.now()
     for i in range(4):
-        db.append(_iso(now), 20.0 + i, 0.0, "keep")
+        db.append(_iso(now - datetime.timedelta(seconds=i)), 20.0 + i, 0.0, "keep")
     for i in range(3):
-        db.append(_iso(now), 5.0 + i, 0.0, "gone")
+        db.append(_iso(now - datetime.timedelta(seconds=i)), 5.0 + i, 0.0, "gone")
     assert db.count() == 7
     removed = db.delete_probe("gone")
     assert removed == 3

@@ -577,7 +577,19 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
         valid = []        # (ts, t_c, t_f, probe_id) tuples for bulk_insert
         newest = {}       # probe_id -> (ts, t_c): most-recent accepted reading
         rejected = 0
+        # Receipt-stamp bulk rows that arrive WITHOUT a timestamp, spread 1 ms
+        # apart. Without this every timestamp-less row in a chunk would get the
+        # same millisecond stamp and all but the first would be silently dropped
+        # by the ingest UNIQUE(probe_id, epoch) index. (Rows carrying their own
+        # timestamp — every reading the firmware sends — are untouched.)
+        recv_base = datetime.datetime.now()
+        synth = 0
         for row in rows:
+            if not (row.get("timestamp") or row.get("ts")):
+                row = dict(row)
+                row["timestamp"] = (recv_base + datetime.timedelta(
+                    milliseconds=synth)).isoformat(timespec="milliseconds")
+                synth += 1
             try:
                 pid = sanitize_probe_id(row.get("probe_id") or header_pid)
                 ts, t_c, t_f = normalize_payload(row)

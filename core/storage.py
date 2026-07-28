@@ -39,8 +39,16 @@ def sanitize_probe_id(probe_id) -> str:
 
 
 def _local_iso_now() -> str:
-    """Current local machine time as a naive ISO 8601 string (no tz suffix)."""
-    return datetime.datetime.now().isoformat(timespec="seconds")
+    """Current local machine time as a naive ISO 8601 string (no tz suffix).
+
+    Millisecond precision: this stamps a payload that arrives WITHOUT its own
+    timestamp (a probe whose clock hasn't synced yet). Two such readings from
+    one probe within the same wall-clock second would collapse onto an identical
+    whole-second stamp — and the UNIQUE(probe_id, epoch) ingest index would then
+    treat the second as a duplicate and drop it. Sub-second precision keeps them
+    distinct so no legitimate reading is ever discarded.
+    """
+    return datetime.datetime.now().isoformat(timespec="milliseconds")
 
 
 def _iso_keep_subsec(dt: datetime.datetime) -> str:

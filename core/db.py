@@ -139,9 +139,35 @@ class Database:
                 except sqlite3.OperationalError:
                     pass  # column already present
             conn.execute("CREATE INDEX IF NOT EXISTS idx_readings_epoch ON readings(epoch)")
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_readings_probe_epoch ON readings(probe_id, epoch)"
-            )
+            # One physical reading per (probe, instant): a UNIQUE index makes
+            # ingest idempotent, so a re-sent bulk chunk (a dropped ACK on a
+            # /ingest_csv flush) or a replayed single POST cannot create
+            # duplicate rows that would inflate COUNT/AVG/min-max and CSV
+            # exports. Every reading carries a millisecond-precision timestamp
+            # (the probe's nowIso(), or the hub's own ms stamp when a payload
+            # omits one), so two DISTINCT readings never share an epoch — only a
+            # byte-identical replay collides, and INSERT OR IGNORE drops it.
+            # Replaces the old non-unique (probe_id, epoch) index, which this
+            # supersedes for the same query patterns.
+            conn.execute("DROP INDEX IF EXISTS idx_readings_probe_epoch")
+            try:
+                conn.execute(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_readings_probe_epoch_uniq "
+                    "ON readings(probe_id, epoch)"
+                )
+            except sqlite3.IntegrityError:
+                # A pre-existing database may already hold exact (probe_id, epoch)
+                # duplicates from the older non-idempotent path. Collapse them —
+                # keeping the earliest row, which is the same reading — so the
+                # unique index can be built. This removes only true duplicates.
+                conn.execute(
+                    "DELETE FROM readings WHERE id NOT IN "
+                    "(SELECT MIN(id) FROM readings GROUP BY probe_id, epoch)"
+                )
+                conn.execute(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_readings_probe_epoch_uniq "
+                    "ON readings(probe_id, epoch)"
+                )
             # Alert-lifecycle event log (threshold breach/recovery, probe
             # offline/online, rate-of-change) — powers the dashboard's recent
             # events feed without re-deriving history from raw readings.
@@ -169,7 +195,7 @@ class Database:
         conn = self._conn()
         with self._write_lock:
             conn.execute(
-                "INSERT INTO readings (ts, epoch, temperature_c, temperature_f, probe_id, "
+                "INSERT OR IGNORE INTO readings (ts, epoch, temperature_c, temperature_f, probe_id, "
                 "humidity_pct, vpd_kpa, battery_pct) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (str(ts), epoch, float(t_c), float(t_f), probe_id or "",
                  (float(humidity) if humidity is not None else None),
@@ -213,8 +239,12 @@ class Database:
     def bulk_insert(self, rows) -> int:
         """Insert many ``(ts, t_c, t_f, probe_id)`` tuples in one transaction.
 
-        Used for the legacy-CSV migration so importing tens of thousands of rows
-        is a single commit rather than one per row.  Returns rows inserted.
+        Used for the legacy-CSV migration and the probe's bulk backlog drain
+        (``/api/ingest_csv``) so importing tens of thousands of rows is a single
+        commit rather than one per row.  Uses ``INSERT OR IGNORE`` against the
+        UNIQUE(probe_id, epoch) index, so a re-sent chunk (a dropped ACK on a
+        flush) does not duplicate already-stored readings.  Returns the number of
+        rows actually inserted (replayed duplicates are skipped, not counted).
         """
         params = [(str(ts), iso_to_epoch(ts), float(t_c), float(t_f), (pid or ""))
                   for (ts, t_c, t_f, pid) in rows]
@@ -222,13 +252,15 @@ class Database:
             return 0
         conn = self._conn()
         with self._write_lock:
+            before = conn.total_changes
             conn.executemany(
-                "INSERT INTO readings (ts, epoch, temperature_c, temperature_f, probe_id) "
+                "INSERT OR IGNORE INTO readings (ts, epoch, temperature_c, temperature_f, probe_id) "
                 "VALUES (?, ?, ?, ?, ?)",
                 params,
             )
             conn.commit()
-        return len(params)
+            inserted = conn.total_changes - before
+        return inserted
 
     # -- reads -----------------------------------------------------------------
     def count(self) -> int:
