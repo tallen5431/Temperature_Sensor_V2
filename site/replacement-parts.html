@@ -805,6 +805,10 @@
   }
   render();
 
+  // Full reloadable CamScan bundle (brief + views incl. the `restore` snapshot) captured from
+  // the embed handoff and forwarded with the quote, so the measured trace can be reopened later.
+  var capturedJob = null;
+
   form.addEventListener("submit", function (e) {
     e.preventDefault();
 
@@ -828,6 +832,9 @@
     var angles = [];
     keys.forEach(function (k) { fd.append("photos", photos[k].blob, photos[k].name); angles.push(photos[k].angle || LABEL[k]); });
     fd.append("angles", JSON.stringify(angles));
+    if (capturedJob) {
+      try { fd.append("camscan_job", new Blob([JSON.stringify(capturedJob)], { type: "application/json" }), "job.camscan.json"); } catch (e) {}
+    }
 
     submit.disabled = true;
     say("Sending " + keys.length + " photo" + (keys.length === 1 ? "" : "s") + "…");
@@ -914,6 +921,10 @@
         added++;
       });
       render();
+
+      // Keep the full reloadable bundle (brief + views incl. `restore`) to forward with the
+      // quote — harmless to the rest of the flow, and enables reopening the trace in CamScan.
+      capturedJob = { kind: "camscan.job", version: 1, brief: payload.brief || {}, views: payload.views };
 
       var b = payload.brief || {};
       var emailEl = document.getElementById("qEmail");
