@@ -131,36 +131,108 @@ def evaluate(readings: Dict[str, float], thresholds: dict, states: dict,
     return events, new_states
 
 
+def _normalize_conn_state(state, now: float) -> dict:
+    """Coerce a stored connectivity state into the working dict form.
+
+    Accepts the legacy plain string (``"online"``/``"offline"``) so old persisted
+    state — and the hand-seeded state in tests — keeps working, as well as the
+    richer dict this function now returns.
+    """
+    if isinstance(state, dict):
+        committed = state.get("committed", "online")
+        return {
+            "raw": state.get("raw", committed),
+            "committed": committed,
+            "online_since": state.get("online_since"),
+            "flaps": int(state.get("flaps", 0) or 0),
+        }
+    s = state if state in ("online", "offline") else "online"
+    return {"raw": s, "committed": s,
+            "online_since": now if s == "online" else None, "flaps": 0}
+
+
 def evaluate_offline(last_epochs: Dict[str, int], states: dict,
                      now: Optional[float] = None,
-                     offline_after_sec: Union[float, Dict[str, float]] = 300) -> Tuple[List[dict], dict]:
-    """Detect probes that have stopped (or resumed) reporting.
+                     offline_after_sec: Union[float, Dict[str, float]] = 300,
+                     recover_hold_sec: Union[float, Dict[str, float]] = 0) -> Tuple[List[dict], dict]:
+    """Detect probes that have stopped (or resumed) reporting, with flap damping.
+
+    Going *offline* is reported the moment a probe has been silent past its
+    threshold — that first drop is a genuine incident you want to know about.
+    Coming *back online* is damped: a probe on a weak link (spotty freezer Wi-Fi)
+    that lands one reading then goes quiet again would otherwise flap
+    offline→online→offline and fire a pair of notifications every cycle.
+
+    ``recover_hold_sec`` is the connectivity analogue of the temperature
+    :func:`classify` deadband: once a probe is reported offline it must stay
+    *continuously* online for this long before "back online" is emitted.  Blips
+    shorter than the hold are absorbed, so a whole flaky episode collapses to a
+    single offline and a single (confirmed) back-online.  Each offline→online
+    bounce that happens *during* an open outage is counted and carried out on the
+    eventual back-online event as ``flaps``, so the message can say the link was
+    unstable.  ``0`` (the default) restores the legacy behaviour: recovery is
+    reported on the first fresh reading.
 
     Parameters
     ----------
     last_epochs : ``{probe_id: epoch_of_latest_reading}`` for currently-tracked probes
-    states : previous per-probe ``"online"``/``"offline"`` string
+    states : previous per-probe state (a dict as returned here, or a legacy
+        ``"online"``/``"offline"`` string — both are accepted)
     offline_after_sec : silence threshold in seconds — either one number applied
         to every probe, or a ``{probe_id: seconds}`` mapping so each probe is
         judged against its own window (e.g. ``core.status.probe_fresh_window``,
         which scales with a probe's reporting interval).  Probes missing from
         the mapping fall back to 300 s.
+    recover_hold_sec : back-online confirmation window in seconds — a single
+        number or a ``{probe_id: seconds}`` mapping (probes missing from it use
+        0). ``core.status.probe_fresh_window`` is a natural per-probe value: a
+        probe is trusted "back" once it has been steady for as long as it took to
+        call it offline.
 
     Returns ``(events, new_states)``.  Probes absent from ``last_epochs`` (e.g.
     aged out of the tracking window) are dropped from the returned states.
     """
     now = now if now is not None else time.time()
     per_probe = offline_after_sec if isinstance(offline_after_sec, dict) else None
+    per_hold = recover_hold_sec if isinstance(recover_hold_sec, dict) else None
     new_states: dict = {}
     events: List[dict] = []
     for probe_id, last_epoch in last_epochs.items():
         threshold = per_probe.get(probe_id, 300) if per_probe is not None else offline_after_sec
+        hold = (per_hold.get(probe_id, 0) if per_hold is not None else recover_hold_sec) or 0
         age = now - last_epoch
-        cond = "offline" if age > threshold else "online"
-        prev = states.get(probe_id, "online")
-        if cond != prev:
-            events.append({"probe_id": probe_id, "kind": cond, "age_sec": int(age)})
-        new_states[probe_id] = cond
+        raw = "offline" if age > threshold else "online"
+
+        st = _normalize_conn_state(states.get(probe_id), now)
+        committed = st["committed"]
+        online_since = st["online_since"]
+        flaps = st["flaps"]
+
+        # Maintain the continuous-online timer, and count a "flap" whenever the
+        # probe bounces back offline while an outage is still open (unconfirmed).
+        if raw == "online":
+            if online_since is None:
+                online_since = now
+        else:  # raw offline
+            if st["raw"] == "online" and committed == "offline":
+                flaps += 1
+            online_since = None
+
+        if committed == "online":
+            if raw == "offline":
+                committed, flaps = "offline", 0
+                events.append({"probe_id": probe_id, "kind": "offline", "age_sec": int(age)})
+        else:  # committed offline — hold the all-clear until it's steady
+            if raw == "online" and (now - online_since) >= hold:
+                committed = "online"
+                ev = {"probe_id": probe_id, "kind": "online", "age_sec": int(age)}
+                if flaps:
+                    ev["flaps"] = flaps
+                events.append(ev)
+                flaps = 0
+
+        new_states[probe_id] = {"raw": raw, "committed": committed,
+                                "online_since": online_since, "flaps": flaps}
     return events, new_states
 
 
@@ -229,6 +301,11 @@ def format_event(event: dict, names: Optional[dict] = None) -> Tuple[str, str]:
         return (f"⚠️ {label}: OFFLINE (silent {mins} min)",
                 f"{label} has stopped reporting — no readings for {mins} minute(s).")
     if kind == "online":
+        flaps = int(event.get("flaps", 0) or 0)
+        if flaps >= 2:
+            return (f"✅ {label}: back online (link was unstable)",
+                    f"{label} is reporting steadily again — it dropped {flaps} times "
+                    f"on a weak connection before staying up.")
         return (f"✅ {label}: back online",
                 f"{label} is reporting again.")
 

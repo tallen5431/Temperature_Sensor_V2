@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Ingest is now idempotent.** A `UNIQUE(probe_id, epoch)` index backs the
+  readings table and both write paths use `INSERT OR IGNORE`, so a re-sent
+  reading — a dropped ACK on a bulk `/api/ingest_csv` flush re-POSTs a whole
+  chunk — can no longer create duplicate rows that inflate COUNT/AVG/min-max and
+  exports. Timestamp-less bulk rows are receipt-stamped 1 ms apart so a chunk
+  isn't collapsed to one row; a pre-existing DB with exact `(probe_id, epoch)`
+  duplicates is de-duplicated in place when the index is built.
 - **Rate-of-change alert now uses the true window-old sample.** `_check_rate`
   took `fetch_readings(window)[0]`, but that caps to the most-recent N rows
   before reversing, so on a high-cadence probe (e.g. 0.5 s over a 60 min window)
@@ -29,6 +36,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Offline flap damping for weak-Wi-Fi probes.** A probe on a spotty link (e.g.
+  freezer Wi-Fi through a metal door) that drops, lands one reading, then drops
+  again used to fire an *offline* + *back online* pair every cycle — the exact
+  "flapping (15×)" churn the Recent-events feed already coalesced, but which the
+  notifications did not. Connectivity now gets the same damping the temperature
+  path has always had: the drop is reported once, but the **back-online** alert is
+  *held* until the probe has reported steadily for a confirmation window, so a
+  brief blip no longer clears the outage. The eventual single back-online message
+  notes when the link was unstable and how many times it dropped. A new
+  **Confirm back-online after** setting (`notifications.flap_grace_sec`) controls
+  it: blank/`null` = auto (self-tunes to each probe's own offline window), a number
+  pins the hold in minutes, and `0` disables damping (the previous
+  report-on-first-reading behaviour). Pure-function core in
+  `core.alerts.evaluate_offline` (new `recover_hold_sec`), wired through the alert
+  monitor, config schema and Settings page.
 - **Bulk backlog drain — `POST /api/ingest_csv`.** A probe recovering from an
   outage (weak freezer Wi-Fi, hub down) can have thousands of readings buffered
   to flash; draining them one-HTTP-POST-per-reading is slow and burns radio time

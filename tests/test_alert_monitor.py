@@ -173,12 +173,40 @@ def test_monitor_offline_disabled(tmp_path):
     assert mon.check_once() == []  # offline alerts off -> nothing
 
 
+def test_monitor_flap_damping_holds_recovery(tmp_path):
+    # With the default (auto) flap grace, a probe that has just come back does NOT
+    # immediately fire "back online" — it must stay steady for the hold window,
+    # so a spotty link that lands one reading and drops again stops flapping.
+    db, cfg, notifier, mon = _setup(tmp_path)          # notifications has no flap_grace -> auto
+    now = datetime.datetime.now()
+    db.append(_iso(now), 5.0, 0.0, "TempProbe-FRIDGE")  # fresh reading -> raw online
+    mon._offline_seeded = True
+    mon._offline_states = {"TempProbe-FRIDGE": {
+        "committed": "offline", "raw": "offline", "online_since": None, "flaps": 2}}
+    events = mon._check_offline()
+    assert [e for e in events if e["kind"] == "online"] == []          # recovery withheld
+    assert mon._offline_states["TempProbe-FRIDGE"]["committed"] == "offline"
+
+
+def test_recover_holds_config_modes(tmp_path):
+    db, cfg, notifier, mon = _setup(tmp_path)
+    windows = {"p": 750.0, "q": 300.0}
+    base = cfg.get("notifications") or {}
+    assert mon._recover_holds(windows) == windows                     # auto: mirror each window
+    cfg.update({"notifications": {**base, "flap_grace_sec": 120}})
+    assert mon._recover_holds(windows) == {"p": 120, "q": 120}         # fixed for all probes
+    cfg.update({"notifications": {**base, "flap_grace_sec": 0}})
+    assert mon._recover_holds(windows) == {"p": 0, "q": 0}             # disabled
+
+
 def _event_cfg(tmp_path, enabled=True):
     cfg = Config(tmp_path / "c.json")
     cfg.update({
         "alert_thresholds": {"TempProbe-FRIDGE": {"max": 8}},
+        # flap_grace_sec=0 disables the back-online hold so these tests observe the
+        # raw online/offline transitions directly (damping is exercised separately).
         "notifications": {"enabled": enabled, "cooldown_sec": 1800,
-                          "notify_recovery": True},
+                          "notify_recovery": True, "flap_grace_sec": 0},
     })
     return cfg
 

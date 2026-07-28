@@ -56,6 +56,15 @@ def test_offline_alerts_default_and_override():
     assert build_notifications_config(*_form(), offline_alerts=False)["offline_alerts"] is False
 
 
+def test_flap_grace_blank_omits_key_and_number_stores_seconds():
+    # Blank/None -> key omitted so the monitor's auto default applies.
+    assert "flap_grace_sec" not in build_notifications_config(*_form())
+    assert "flap_grace_sec" not in build_notifications_config(*_form(), flap_grace_min="")
+    # A number is stored in seconds; 0 is kept (disables damping), not dropped.
+    assert build_notifications_config(*_form(), flap_grace_min=15)["flap_grace_sec"] == 900
+    assert build_notifications_config(*_form(), flap_grace_min=0)["flap_grace_sec"] == 0
+
+
 # --- Daily summary -----------------------------------------------------------
 
 def test_daily_summary_defaults_off():
