@@ -132,6 +132,20 @@
   .angle-add { font-family:var(--font-mono); font-size:11px; color:var(--faint); }
   .angle-cap { position:absolute; left:0; right:0; bottom:0; font-family:var(--font-mono); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; background:rgba(0,0,0,.6); color:#fff; padding:3px 0; text-align:center; }
   .angle-rm { position:absolute; top:4px; right:4px; width:24px; height:24px; border-radius:50%; border:none; background:rgba(0,0,0,.7); color:#fff; font-size:15px; line-height:1; cursor:pointer; padding:0; z-index:2; }
+  .angle-zoom { position:absolute; top:4px; left:4px; min-width:24px; height:24px; padding:0 5px; border-radius:12px; background:rgba(0,0,0,.55); color:#fff; font-size:12px; line-height:24px; text-align:center; z-index:2; pointer-events:none; }
+
+  /* Full-size scan preview (verify calibration before submitting) */
+  .scan-modal { position:fixed; inset:0; z-index:200; background:rgba(6,10,13,.93); display:flex; flex-direction:column; padding:16px; }
+  .scan-modal[hidden] { display:none; }
+  .scan-modal-bar { display:flex; align-items:center; gap:12px; color:#e9f1f7; font-family:var(--font-mono); font-size:13px; }
+  .scan-modal-bar .grow { flex:1; }
+  .scan-modal-close { background:transparent; border:1px solid rgba(255,255,255,.3); color:#fff; border-radius:6px; padding:6px 12px; cursor:pointer; font-family:var(--font-mono); font-size:13px; }
+  .scan-stage { flex:1; display:flex; align-items:center; justify-content:center; min-height:0; margin:12px 0; }
+  .scan-stage img { max-width:100%; max-height:100%; object-fit:contain; border-radius:6px; background:#0f1417; }
+  .scan-info { color:#cdd9e2; font-family:var(--font-mono); font-size:12.5px; line-height:1.7; max-height:26vh; overflow:auto; }
+  .scan-info .ok { color:#3ecf8e; } .scan-info .warn { color:var(--warn); }
+  .scan-actions { display:flex; gap:10px; margin-top:12px; flex-wrap:wrap; }
+  .scan-actions .btn { color:#e9f1f7; border-color:rgba(255,255,255,.35); background:transparent; }
   .hint { font-family:var(--font-mono); font-size:12px; color:var(--slate); margin:9px 0 0; }
   .note { font-family:var(--font-mono); font-size:13px; margin:14px 0 0; min-height:1.3em; color:var(--slate); }
   .note.err { color:var(--warn); }
@@ -259,7 +273,7 @@
 
         <div class="field">
           <label>Photos of the part <span class="req">*</span></label>
-          <p class="hint" style="margin:0 0 12px">Tap an angle to take or choose a photo — add whichever ones show the part and the damage. At least one is required. A ruler or coin in the shot helps a lot.</p>
+          <p class="hint" style="margin:0 0 12px">Tap an angle to take or choose a photo — add whichever ones show the part and the damage. At least one is required. A ruler or coin in the shot helps a lot. Tap a filled tile to preview it full-size and check the scan.</p>
           <!-- Tiles (with their hidden file inputs) are built in JS; accept has no capture
                attr so mobile offers BOTH the camera and the photo library. -->
           <div class="angles" id="angleGrid"></div>
@@ -592,7 +606,15 @@
     input.type = "file"; input.accept = "image/*,.heic,.heif"; input.id = "ph-" + slot.key;
     input.setAttribute("aria-label", slot.label + " photo");
     var lab = document.createElement("label");
-    lab.className = "angle-inner"; lab.setAttribute("for", input.id);
+    lab.className = "angle-inner";
+    // Clicks are JS-routed (no native for=) so a FILLED tile opens a full-size preview to
+    // verify the scan/calibration, while an EMPTY tile opens the camera / file picker.
+    // (The hidden input stays keyboard-focusable, so add/replace is still reachable.)
+    lab.addEventListener("click", function (e) {
+      e.preventDefault();
+      if (photos[slot.key]) openPreview(slot.key);
+      else input.click();
+    });
     tile.appendChild(input); tile.appendChild(lab);
     grid.appendChild(tile);
 
@@ -613,19 +635,68 @@
     return { slot: slot, tile: tile, lab: lab };
   });
 
+  // ---- Full-size scan preview (verify the calibration ran cleanly before submitting) ----
+  var scanModal = null;
+  function escHtml(s){ return String(s).replace(/[&<>]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]; }); }
+  function previewInfo(p) {
+    if (!p.measured) {
+      return "Uploaded photo — not measured in CamScan. Check it clearly shows the part and, if you can, a ruler or coin for scale.";
+    }
+    var sc = p.scale || {};
+    var head = sc.calibrated
+      ? '<span class="ok">✓ Calibrated</span>' + (sc.perspective ? ' <span class="ok">· tilt-corrected</span>' : '')
+      : '<span class="warn">⚠ No scale was set — these measurements are in pixels, not mm. Re-open CamScan and set a scale.</span>';
+    var mtxt = ((p.measurements) || []).map(function (m) { return m && (m.text || m.label); }).filter(Boolean);
+    var body = mtxt.length
+      ? '<br>Measurements:<br>' + mtxt.map(function (t) { return "• " + escHtml(t); }).join("<br>")
+      : '<br>No measurements were marked on this view.';
+    return head + body;
+  }
+  function closePreview(){ if (scanModal) scanModal.hidden = true; }
+  function openPreview(key) {
+    var p = photos[key]; if (!p) return;
+    if (!scanModal) {
+      scanModal = document.createElement("div");
+      scanModal.className = "scan-modal"; scanModal.hidden = true;
+      scanModal.innerHTML =
+        '<div class="scan-modal-bar"><b class="scan-title"></b><span class="grow"></span>' +
+          '<button type="button" class="scan-modal-close">Close ✕</button></div>' +
+        '<div class="scan-stage"><img alt="Scan preview"></div>' +
+        '<div class="scan-info"></div>' +
+        '<div class="scan-actions">' +
+          '<button type="button" class="btn ghost scan-replace">Replace photo</button>' +
+          '<button type="button" class="btn ghost scan-remove">Remove</button>' +
+        '</div>';
+      document.body.appendChild(scanModal);
+      scanModal.addEventListener("click", function (e) { if (e.target === scanModal) closePreview(); });
+      scanModal.querySelector(".scan-modal-close").addEventListener("click", closePreview);
+      document.addEventListener("keydown", function (e) { if (scanModal && !scanModal.hidden && e.key === "Escape") closePreview(); });
+    }
+    scanModal.querySelector(".scan-title").textContent = (p.angle || LABEL[key] || key) + " — preview";
+    scanModal.querySelector(".scan-stage img").src = p.url;
+    scanModal.querySelector(".scan-info").innerHTML = previewInfo(p);
+    scanModal.querySelector(".scan-replace").onclick = function () { closePreview(); var inp = document.getElementById("ph-" + key); if (inp) inp.click(); };
+    scanModal.querySelector(".scan-remove").onclick = function () { if (p.url) URL.revokeObjectURL(p.url); delete photos[key]; render(); closePreview(); };
+    scanModal.hidden = false;
+  }
+
   function render() {
     tiles.forEach(function (t) {
       var p = photos[t.slot.key];
       t.tile.classList.toggle("filled", !!p);
-      var old = t.tile.querySelector(".angle-rm");
-      if (old) old.remove();
+      var oldRm = t.tile.querySelector(".angle-rm"); if (oldRm) oldRm.remove();
+      var oldZoom = t.tile.querySelector(".angle-zoom"); if (oldZoom) oldZoom.remove();
       t.lab.innerHTML = "";
       if (p) {
-        var img = document.createElement("img"); img.src = p.url; img.alt = t.slot.label + " photo";
+        var img = document.createElement("img"); img.src = p.url; img.alt = t.slot.label + " photo"; img.title = "Tap to preview";
         var cap = document.createElement("span"); cap.className = "angle-cap"; cap.textContent = p.angle || t.slot.label;
         t.lab.appendChild(img); t.lab.appendChild(cap);
+        // Magnifier cue that the filled tile opens a preview — purely visual
+        // (pointer-events:none), so the tap falls through to the label's preview handler.
+        var zoom = document.createElement("span"); zoom.className = "angle-zoom"; zoom.textContent = "🔍"; zoom.setAttribute("aria-hidden", "true");
+        t.tile.appendChild(zoom);
         // The remove button is a sibling of the <label>, not a child — otherwise a tap on it
-        // would also fire the label and reopen the file picker.
+        // would also fire the label and open the preview.
         var rm = document.createElement("button");
         rm.type = "button"; rm.className = "angle-rm"; rm.textContent = "×";
         rm.setAttribute("aria-label", "Remove the " + t.slot.label + " photo");
@@ -743,7 +814,8 @@
         var blob;
         try { blob = dataUrlToBlob(v.image); } catch (e) { dropped++; return; }
         if (photos[key] && photos[key].url) URL.revokeObjectURL(photos[key].url);
-        photos[key] = { blob: blob, name: key + ".jpg", url: URL.createObjectURL(blob), angle: v.label || LABEL[key] };
+        photos[key] = { blob: blob, name: key + ".jpg", url: URL.createObjectURL(blob), angle: v.label || LABEL[key],
+                        measured: true, scale: v.scale || null, measurements: (v.measurements || []) };
         added++;
       });
       render();
