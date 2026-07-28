@@ -22,6 +22,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_FILES = 6;
 const MAX_FILE_BYTES = 8 * 1024 * 1024;    // per photo
 const MAX_TOTAL_BYTES = 20 * 1024 * 1024;  // all photos combined
+const MAX_JOB_BYTES = 15 * 1024 * 1024;    // reloadable CamScan job bundle (JSON w/ raw images)
 const RATE_LIMIT = 5;                      // submissions per IP per minute
 
 function json(body, status) {
@@ -190,7 +191,7 @@ function stripMetadata(bytes, mime) {
 
 /* ---------------------------------------------------------------- email ---- */
 
-async function notify(env, record, photos) {
+async function notify(env, record, photos, jobBundle) {
   if (!env.RESEND_API_KEY || !env.QUOTE_NOTIFY_TO) return false;
 
   const rows = [
@@ -218,8 +219,16 @@ async function notify(env, record, photos) {
     escapeHtml(record.description || "(no description given)") + "</div>" +
     '<p style="color:#666;font-size:13px;margin:16px 0 4px">Angles attached:</p>' +
     '<ul style="margin:0 0 8px 18px;padding:0">' + photoList + "</ul>" +
+    (jobBundle
+      ? '<p style="color:#666;font-size:13px;margin-top:10px">📐 <b>job.camscan.json</b> attached — open it in CamScan (⤓ Load job) to reopen the measured trace with scale intact and export a DXF.</p>'
+      : "") +
     '<p style="color:#666;font-size:13px;margin-top:12px">Reply straight to this email — it goes to the shop.</p>' +
     "</div>";
+
+  const attachments = photos.map(function (p) {
+    return { filename: p.filename, content: toBase64(p.bytes) };
+  });
+  if (jobBundle) attachments.push({ filename: jobBundle.filename, content: toBase64(jobBundle.bytes) });
 
   const body = {
     from: env.QUOTE_FROM || "Datum Labs <thomas.allen@datumlaboratories.com>",
@@ -227,9 +236,7 @@ async function notify(env, record, photos) {
     reply_to: record.email,
     subject: "Part quote — " + record.shop + " (" + photos.length + " photo" + (photos.length === 1 ? "" : "s") + ")",
     html: html,
-    attachments: photos.map(function (p) {
-      return { filename: p.filename, content: toBase64(p.bytes) };
-    }),
+    attachments: attachments,
   };
 
   try {
@@ -299,6 +306,16 @@ export async function onRequestPost({ request, env }) {
   try { const a = form.get("angles"); if (a) angles = JSON.parse(a); } catch (e) { angles = []; }
   if (!Array.isArray(angles)) angles = [];
 
+  // Optional reloadable CamScan job bundle — opaque JSON the embedded tool hands off so the
+  // shop's measured trace can be reopened and refined later. Pass-through; we never parse it.
+  let jobBundle = null;
+  {
+    const jf = form.get("camscan_job");
+    if (jf && typeof jf.arrayBuffer === "function" && jf.size > 0 && jf.size <= MAX_JOB_BYTES) {
+      jobBundle = { filename: "job.camscan.json", bytes: new Uint8Array(await jf.arrayBuffer()) };
+    }
+  }
+
   let total = 0;
   const photos = [];
   for (let i = 0; i < uploads.length; i++) {
@@ -339,6 +356,7 @@ export async function onRequestPost({ request, env }) {
     photos: photos.map(function (p) {
       return { filename: p.filename, angle: p.angle, mime: p.mime, size: p.size, exif_stripped: p.exif_stripped };
     }),
+    camscan_job: jobBundle ? { filename: jobBundle.filename, size: jobBundle.bytes.length } : null,
   };
 
   // Archive the full photos in R2 when it's bound; the email carries them either way.
@@ -351,6 +369,11 @@ export async function onRequestPost({ request, env }) {
           httpMetadata: { contentType: p.mime },
         });
       }));
+      if (jobBundle) {
+        await env.QUOTE_PHOTOS.put(prefix + jobBundle.filename, jobBundle.bytes, {
+          httpMetadata: { contentType: "application/json" },
+        });
+      }
       record.photo_prefix = prefix;
       archived = true;
     } catch (e) {
@@ -358,7 +381,7 @@ export async function onRequestPost({ request, env }) {
     }
   }
 
-  const emailed = await notify(env, record, photos);
+  const emailed = await notify(env, record, photos, jobBundle);
   record.emailed = emailed;
 
   let stored = false;

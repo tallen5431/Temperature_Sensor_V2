@@ -102,6 +102,14 @@ server-side for JPEG, PNG and WebP. HEIC/AVIF that arrive un-transcoded pass thr
 metadata intact (stripping them needs a full ISO-BMFF parser); each stored record carries an
 `exif_stripped` flag per photo so you can see which is which.
 
+**Reloadable CamScan job:** when a quote comes through the embedded CamScan tool, the handoff
+includes a reloadable bundle (raw image + calibration + editable trace per view). The page
+forwards it as a `camscan_job` form field (JSON, ≤15 MB); the Function attaches it to the
+notification email as **`job.camscan.json`** and archives it to R2 (when bound) alongside the
+photos. Download that file and use CamScan's **⤓ Load job** to reopen the shop's measured trace —
+scale and annotations intact — refine it, and export a DXF. It's an opaque pass-through here; the
+schema is owned by CamScan (see its `INTEGRATION.md §3`).
+
 ### Optional measuring tool (CamScan)
 
 The page has a **"Measure it yourself (optional)"** section (`#measure`) that points shops at
