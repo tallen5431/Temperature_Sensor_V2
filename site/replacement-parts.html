@@ -4,17 +4,65 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔧</text></svg>">
-<title>Replacement Parts for Repair Shops — Datum Labs</title>
-<meta name="description" content="Discontinued part? Send a photo. I reverse-engineer and 3D print replacement housings, brackets, gears, clips and knobs. Quote in 24 hours, parts ship in 3–5 business days. First simple part free.">
+<title>Custom &amp; Replacement 3D Printed Parts — Datum Labs</title>
+<meta name="description" content="Discontinued or broken part? Send a photo — I reverse-engineer and 3D print custom replacements: knobs, clips, gears, brackets, housings and more. From $29, free quote in 24 hours.">
+<meta name="keywords" content="3D printed replacement part, discontinued part, obsolete part, custom 3D printing, reverse engineer part, replacement knob, replacement clip, replacement gear, appliance part">
 <link rel="canonical" href="https://datumlaboratories.com/replacement-parts">
-<meta property="og:title" content="Replacement Parts for Repair Shops — Datum Labs">
-<meta property="og:description" content="Send a photo of the broken part. I model it, print it, and ship it. Quote in 24 hours.">
+<meta property="og:title" content="Custom &amp; Replacement 3D Printed Parts — Datum Labs">
+<meta property="og:description" content="Send a photo of the broken or discontinued part — I reverse-engineer and 3D print a replacement. Custom parts from your photo or file, from $29. Free quote in 24 hours.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://datumlaboratories.com/replacement-parts">
 <meta property="og:site_name" content="Datum Labs">
 <meta property="og:image" content="https://datumlaboratories.com/og-image.jpg">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="https://datumlaboratories.com/og-image.jpg">
+
+<!-- Structured data: helps search engines understand the service + can surface an FAQ rich result. -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Service",
+  "name": "Custom & Replacement 3D Printed Parts",
+  "serviceType": "3D printed replacement part fabrication and reverse engineering",
+  "url": "https://datumlaboratories.com/replacement-parts",
+  "description": "Reverse-engineered and 3D printed replacement parts for discontinued and obsolete items — knobs, clips, gears, brackets, housings and more — plus general print-from-your-file services.",
+  "provider": {
+    "@type": "Organization",
+    "name": "Datum Labs",
+    "url": "https://datumlaboratories.com",
+    "email": "thomas.allen@datumlaboratories.com"
+  },
+  "areaServed": "US",
+  "offers": {
+    "@type": "AggregateOffer",
+    "priceCurrency": "USD",
+    "lowPrice": "29",
+    "highPrice": "250"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    { "@type": "Question", "name": "Can you make a part that is no longer available?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes. I reverse-engineer and 3D print discontinued and obsolete plastic parts from a photo or your measurements — knobs, clips, gears, brackets, housings, bezels and more." } },
+    { "@type": "Question", "name": "What do you need to quote a replacement part?",
+      "acceptedAnswer": { "@type": "Answer", "text": "A clear photo of the broken original with something for scale (a coin or ruler), plus the equipment make and model and the old part number if you have them. That is enough to start." } },
+    { "@type": "Question", "name": "How much does a custom 3D printed part cost?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Simple parts like clips, knobs and spacers start at $29; most reverse-engineered parts run $75 to $250. If you send your own 3D file it is material plus $15. Every job is quoted free before you commit." } },
+    { "@type": "Question", "name": "How long does it take?",
+      "acceptedAnswer": { "@type": "Answer", "text": "You get a fixed price and a ship date within one business day, and approved parts ship in 3 to 5 business days." } },
+    { "@type": "Question", "name": "Are 3D printed replacement parts strong enough?",
+      "acceptedAnswer": { "@type": "Answer", "text": "For most non-structural plastic parts, yes — I print in durable PLA, PETG or carbon-fiber PETG to match the original. I will tell you honestly if a part should be metal or is not a good fit for printing, such as load-bearing, pressure-holding or food-contact parts." } },
+    { "@type": "Question", "name": "Can you print my own 3D file or design a part from scratch?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Both. Send a ready STL or STEP and I will print it — any part, not just replacements — or I will design one from your requirements if there is no original to copy." } },
+    { "@type": "Question", "name": "Do I have to be a repair shop?",
+      "acceptedAnswer": { "@type": "Answer", "text": "No. I make parts for repair shops, restorers, hobbyists and anyone who needs a discontinued or custom part." } }
+  ]
+}
+</script>
 <style>
   :root {
     --paper:#F5F6F4; --surface:#FFFFFF; --raised:#FBFCFA; --ink:#12181C; --slate:#59636B;
@@ -161,6 +209,15 @@
   .price-card .k { font-family:var(--font-mono); font-size:11px; letter-spacing:0.12em; text-transform:uppercase; color:var(--signal); margin-bottom:10px; }
   .price-card .v { font-size:27px; font-weight:730; letter-spacing:-0.02em; margin-bottom:8px; }
   .price-card p { margin:0; color:var(--slate); font-size:14.5px; }
+
+  /* FAQ (accordion; content stays in the DOM for crawlers) */
+  .faq { max-width:760px; }
+  .faq details { border-bottom:1px solid var(--line); }
+  .faq summary { cursor:pointer; list-style:none; padding:16px 0; font-size:17px; font-weight:650; color:var(--ink); display:flex; justify-content:space-between; align-items:center; gap:12px; }
+  .faq summary::-webkit-details-marker { display:none; }
+  .faq summary::after { content:"+"; font-family:var(--font-mono); color:var(--signal); font-size:20px; line-height:1; }
+  .faq details[open] summary::after { content:"–"; }
+  .faq details p { margin:0 0 18px; color:var(--slate); font-size:15.5px; }
 
   footer { padding:40px 0; border-top:1px solid var(--line); }
   .foot-inner { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; }
@@ -369,6 +426,26 @@
         <a href="#quote" id="measureBtn" class="btn ghost" target="_blank" rel="noopener">Open the measuring tool →</a>
       </div>
       <p class="hint" id="measureNote" style="margin-top:12px;">CamScan is a free browser tool — no install, no account. It runs right on this page.</p>
+    </div>
+  </section>
+
+  <!-- ============ 6b. FAQ — visible copy mirrors the FAQPage JSON-LD in <head>
+       (search engines want the answers on the page, not only in structured data) ============ -->
+  <section id="faq">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow">Common questions</p>
+        <h2>Questions, answered.</h2>
+      </div>
+      <div class="faq">
+        <details><summary>Can you make a part that's no longer available?</summary><p>Yes. I reverse-engineer and 3D print discontinued and obsolete plastic parts from a photo or your measurements — knobs, clips, gears, brackets, housings, bezels and more.</p></details>
+        <details><summary>What do you need to quote a replacement part?</summary><p>A clear photo of the broken original with something for scale (a coin or ruler), plus the equipment make and model and the old part number if you have them. That's enough to start.</p></details>
+        <details><summary>How much does a custom 3D printed part cost?</summary><p>Simple parts like clips, knobs and spacers start at $29; most reverse-engineered parts run $75–250. Send your own 3D file and it's material + $15. Every job is quoted free before you commit.</p></details>
+        <details><summary>How long does it take?</summary><p>You get a fixed price and a ship date within one business day, and approved parts ship in 3–5 business days.</p></details>
+        <details><summary>Are 3D printed replacement parts strong enough?</summary><p>For most non-structural plastic parts, yes — I print in durable PLA, PETG or carbon-fiber PETG to match the original. I'll tell you honestly if a part should be metal or isn't a good fit for printing (load-bearing, pressure-holding or food-contact parts).</p></details>
+        <details><summary>Can you print my own 3D file, or design a part from scratch?</summary><p>Both. Send a ready STL or STEP and I'll print it — any part, not just replacements — or I'll design one from your requirements if there's no original to copy.</p></details>
+        <details><summary>Do I have to be a repair shop?</summary><p>No. I make parts for repair shops, restorers, hobbyists and anyone who needs a discontinued or custom part.</p></details>
+      </div>
     </div>
   </section>
 
