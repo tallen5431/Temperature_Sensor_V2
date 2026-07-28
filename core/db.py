@@ -296,10 +296,11 @@ class Database:
         """Return readings within a rolling window as a DataFrame.
 
         When the window contains more than ``max_points`` rows the result is
-        uniformly downsampled in SQL (``id % stride``) so the dashboard stays
-        responsive even with millions of historical readings.  Statistics are
-        computed separately on the full window via :meth:`window_stats`, so
-        downsampling only affects plot density, never the reported min/max/avg.
+        downsampled in SQL — *per probe*, against each probe's own row count — so
+        the dashboard stays responsive even with millions of historical readings.
+        Statistics are computed separately on the full window via
+        :meth:`window_stats`, so downsampling only affects plot density, never the
+        reported min/max/avg.
         """
         conn = self._conn()
         cutoff = self._cutoff(window_seconds)
@@ -310,25 +311,32 @@ class Database:
         if total == 0:
             return pd.DataFrame(columns=["timestamp", "temperature_c", "temperature_f", "probe_id"])
 
-        stride = max(1, (total + max_points - 1) // max_points)
-        if stride > 1:
-            # Downsample by per-probe ROW POSITION, not by `id % stride`. Primary
-            # keys are not contiguous (multiple writers interleave, delete_probe/
-            # purge leave gaps), so `id % stride` biases the sample per probe and
-            # can select ZERO rows (blank chart) or drop entire probes. Numbering
-            # each probe's rows newest-first and keeping every stride-th one means
-            # rn=1 (the live tip) is always kept, every probe is represented, and
-            # the result is never empty. Point count stays near max_points (a
-            # multi-probe window can exceed it by up to one point per probe —
-            # bounded by the probe-registry cap and harmless for the chart).
+        if total > max_points:
+            # Downsample PER PROBE against each probe's OWN row count — NOT by a
+            # single global stride sized from the total across all probes. A global
+            # stride lets one high-rate probe (e.g. an always-on ~1 Hz logger)
+            # inflate the divisor and decimate every low-rate probe with it: a
+            # 5-minute probe then renders as a few points hours apart at the
+            # week/month zoom, even though its own data is dense. Sizing the stride
+            # from each probe's COUNT keeps a low-rate probe at full resolution
+            # while still capping a high-rate one at ~max_points.
+            #
+            # Sampling is by per-probe ROW POSITION, not `id % stride`: primary
+            # keys are not contiguous (interleaved writers, delete_probe/purge
+            # gaps), so residue-class sampling biases per probe and can select ZERO
+            # rows. Numbering each probe newest-first keeps rn=1 (the live tip) and
+            # guarantees every probe is represented (never a blank chart). Total
+            # points are bounded by num_probes x max_points (the probe registry
+            # caps num_probes), which the chart renders comfortably.
             sql = (
                 "SELECT timestamp, temperature_c, temperature_f, probe_id FROM ("
                 "  SELECT ts AS timestamp, epoch, id, temperature_c, temperature_f, probe_id,"
-                "         ROW_NUMBER() OVER (PARTITION BY probe_id ORDER BY epoch DESC, id DESC) AS rn"
+                "         ROW_NUMBER() OVER (PARTITION BY probe_id ORDER BY epoch DESC, id DESC) AS rn,"
+                "         COUNT(*)    OVER (PARTITION BY probe_id) AS pcount"
                 f"  FROM readings {where}"
-                ") WHERE (rn - 1) % ? = 0 ORDER BY epoch ASC, id ASC"
+                ") WHERE (rn - 1) % max(1, (pcount + ? - 1) / ?) = 0 ORDER BY epoch ASC, id ASC"
             )
-            rows = conn.execute(sql, params + (stride,)).fetchall()
+            rows = conn.execute(sql, params + (max_points, max_points)).fetchall()
         else:
             sql = f"SELECT {_SELECT_COLS} FROM readings {where} ORDER BY epoch ASC"
             rows = conn.execute(sql, params).fetchall()

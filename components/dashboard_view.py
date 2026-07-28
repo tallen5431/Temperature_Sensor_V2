@@ -35,6 +35,27 @@ PROBE_PRESENCE_WINDOW = 7 * 86400  # 7 days
 PROBE_COLORS =["#17b3cc", "#ef8354", "#9b8cf0", "#38c172", "#e5c04b", "#ec6a7a",
                 "#4d9de0", "#b57edc", "#45cbb0", "#f0a94e", "#7f8ea3", "#e05a8a"]
 
+
+def _probe_color_map(db):
+    """Stable ``probe_id -> colour`` mapping that does NOT depend on the selected
+    time range.
+
+    Colours are assigned by the probe id's position in the SORTED list of probes
+    seen in the fixed 7-day presence window — not by first-appearance order within
+    the chosen range. First-appearance order is what made a probe change colour
+    when switching Last 24 h / Last Week / Last Month (each range starts at a
+    different reading, so a different probe came first), which is confusing. Keying
+    off the range-independent presence set instead means each probe keeps one
+    colour across every range. Falls back to an empty map on error; callers then
+    use positional colours as before.
+    """
+    try:
+        lp = db.latest_per_probe(window_seconds=PROBE_PRESENCE_WINDOW)
+        pids = sorted(str(p) for p in lp["probe_id"].tolist() if str(p).strip())
+    except Exception:
+        return {}
+    return {pid: PROBE_COLORS[i % len(PROBE_COLORS)] for i, pid in enumerate(pids)}
+
 # Shared font stack for Plotly figures — matches assets/theme.css (system fonts,
 # no webfont dependency) so charts read as part of the same UI.
 FONT_STACK = ("-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, "
@@ -819,13 +840,18 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
                                        format="ISO8601", errors="coerce")
             probe_ids = list(df["probe_id"].unique())
             multi = len([p for p in probe_ids if str(p).strip()]) > 1
+            # Range-independent colour per probe so switching Last 24 h / Week /
+            # Month never reshuffles the palette; positional index is only the
+            # fallback for a probe not in the presence set (map lookup misses).
+            color_map = _probe_color_map(db)
             for i, pid in enumerate(probe_ids):
                 chunk = df[df["probe_id"] == pid]
                 y = chunk["temperature_c"].apply(lambda x: _convert(x, temp_unit))
+                color = color_map.get(str(pid)) or PROBE_COLORS[i % len(PROBE_COLORS)]
                 fig.add_trace(go.Scatter(
                     x=chunk["_dt"], y=y, mode="lines",
                     name=_friendly_name(cfg, pid) if str(pid).strip() else _unit_symbol(temp_unit),
-                    line=dict(color=PROBE_COLORS[i % len(PROBE_COLORS)], width=2),
+                    line=dict(color=color, width=2),
                 ))
             y_all = df["temperature_c"].apply(lambda x: _convert(x, temp_unit))
             pad = (y_all.max() - y_all.min()) * 0.1 if y_all.max() > y_all.min() else 5
