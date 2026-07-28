@@ -663,6 +663,15 @@
     keys.forEach(function (k) { fd.append("photos", photos[k].blob, photos[k].name); angles.push(photos[k].angle || LABEL[k]); });
     fd.append("angles", JSON.stringify(angles));
 
+    // CamScan's CAD-ready data for the views it measured (DXF + dimension CSV + geometry),
+    // aligned by angle. Omitted entirely for photos the customer added by hand.
+    var cad = keys.map(function (k) {
+      var c = photos[k].cs || {};
+      return { angle: photos[k].angle || LABEL[k], dxf: c.dxf || null, csv: c.csv || null,
+               geometry: c.geometry || null, measurements: c.measurements || null };
+    }).filter(function (e) { return e.dxf || e.csv || e.geometry || (e.measurements && e.measurements.length); });
+    if (cad.length) fd.append("measurements", JSON.stringify(cad));
+
     submit.disabled = true;
     say("Sending " + keys.length + " photo" + (keys.length === 1 ? "" : "s") + "…");
 
@@ -743,7 +752,11 @@
         var blob;
         try { blob = dataUrlToBlob(v.image); } catch (e) { dropped++; return; }
         if (photos[key] && photos[key].url) URL.revokeObjectURL(photos[key].url);
-        photos[key] = { blob: blob, name: key + ".jpg", url: URL.createObjectURL(blob), angle: v.label || LABEL[key] };
+        photos[key] = {
+          blob: blob, name: key + ".jpg", url: URL.createObjectURL(blob), angle: v.label || LABEL[key],
+          // CAD-ready data captured by CamScan for this view — travels with the request.
+          cs: { dxf: v.dxf || null, csv: v.csv || null, geometry: v.geometry || null, measurements: v.measurements || null }
+        };
         added++;
       });
       render();

@@ -22,6 +22,8 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_FILES = 6;
 const MAX_FILE_BYTES = 8 * 1024 * 1024;    // per photo
 const MAX_TOTAL_BYTES = 20 * 1024 * 1024;  // all photos combined
+const MAX_DATA_BYTES = 1024 * 1024;        // per DXF/CSV text blob
+const MAX_MEAS_BYTES = 6 * 1024 * 1024;    // the whole measurements JSON field
 const RATE_LIMIT = 5;                      // submissions per IP per minute
 
 function json(body, status) {
@@ -190,8 +192,10 @@ function stripMetadata(bytes, mime) {
 
 /* ---------------------------------------------------------------- email ---- */
 
-async function notify(env, record, photos) {
+async function notify(env, record, photos, measures, dataFiles) {
   if (!env.RESEND_API_KEY || !env.QUOTE_NOTIFY_TO) return false;
+  measures = measures || [];
+  dataFiles = dataFiles || [];
 
   const rows = [
     ["Shop", record.shop],
@@ -210,12 +214,31 @@ async function notify(env, record, photos) {
            escapeHtml(p.filename) + "</li>";
   }).join("");
 
+  // Dimension table per measured view, so the numbers are readable without opening the DXF.
+  const dimBlocks = measures.filter(function (e) {
+    return (e.measurements && e.measurements.length) || e.dxf;
+  }).map(function (e) {
+    const rows2 = (e.measurements || []).map(function (m) {
+      return '<tr><td style="padding:2px 14px 2px 0;color:#666">' + escapeHtml(m.label || "") +
+             '</td><td style="padding:2px 0"><b>' + escapeHtml(m.text || "") + "</b></td></tr>";
+    }).join("");
+    return '<div style="margin:6px 0 12px"><div style="font-weight:600;margin-bottom:3px">' +
+           escapeHtml(e.angle || "View") +
+           (e.dxf ? ' <span style="color:#0E94AB;font-weight:400">· DXF attached</span>' : "") + "</div>" +
+           (rows2 ? '<table style="border-collapse:collapse">' + rows2 + "</table>"
+                  : '<span style="color:#999">(no dimensions marked)</span>') + "</div>";
+  }).join("");
+  const measHtml = dimBlocks
+    ? '<p style="color:#666;font-size:13px;margin:16px 0 4px">Measured with CamScan (import the DXFs; measurements.json has the geometry):</p>' + dimBlocks
+    : "";
+
   const html =
     '<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;font-size:15px;line-height:1.6">' +
     '<h2 style="margin:0 0 14px">Part quote request — ' + escapeHtml(record.shop) + "</h2>" +
     '<table style="border-collapse:collapse;margin-bottom:16px">' + rows + "</table>" +
     '<div style="background:#f5f6f4;border-left:3px solid #0E94AB;padding:12px 16px;white-space:pre-wrap">' +
     escapeHtml(record.description || "(no description given)") + "</div>" +
+    measHtml +
     '<p style="color:#666;font-size:13px;margin:16px 0 4px">Angles attached:</p>' +
     '<ul style="margin:0 0 8px 18px;padding:0">' + photoList + "</ul>" +
     '<p style="color:#666;font-size:13px;margin-top:12px">Reply straight to this email — it goes to the shop.</p>' +
@@ -229,7 +252,9 @@ async function notify(env, record, photos) {
     html: html,
     attachments: photos.map(function (p) {
       return { filename: p.filename, content: toBase64(p.bytes) };
-    }),
+    }).concat(dataFiles.map(function (d) {
+      return { filename: d.filename, content: toBase64(d.bytes) };
+    })),
   };
 
   try {
@@ -299,6 +324,24 @@ export async function onRequestPost({ request, env }) {
   try { const a = form.get("angles"); if (a) angles = JSON.parse(a); } catch (e) { angles = []; }
   if (!Array.isArray(angles)) angles = [];
 
+  // Optional CAD-ready data from CamScan: one entry per measured view, each with a DXF, a
+  // dimension CSV, structured geometry, and the measurement list. Built into the packet below.
+  let measures = [];
+  try { const m = form.get("measurements"); if (m && m.length <= MAX_MEAS_BYTES) measures = JSON.parse(m); } catch (e) { measures = []; }
+  if (!Array.isArray(measures)) measures = [];
+  measures = measures.slice(0, MAX_FILES).map(function (e) {
+    e = e || {};
+    return {
+      angle: clip(e.angle, 24),
+      dxf: (typeof e.dxf === "string" && e.dxf.length <= MAX_DATA_BYTES) ? e.dxf : null,
+      csv: (typeof e.csv === "string" && e.csv.length <= MAX_DATA_BYTES) ? e.csv : null,
+      geometry: (e.geometry && typeof e.geometry === "object") ? e.geometry : null,
+      measurements: Array.isArray(e.measurements) ? e.measurements.slice(0, 60).map(function (m) {
+        return { label: clip(m && m.label, 60), text: clip(m && m.text, 80) };
+      }) : []
+    };
+  });
+
   let total = 0;
   const photos = [];
   for (let i = 0; i < uploads.length; i++) {
@@ -324,6 +367,27 @@ export async function onRequestPost({ request, env }) {
     });
   }
 
+  // Assemble the CAD-ready attachments from CamScan's measurement data: a DXF + a dimension
+  // CSV per measured view, plus one combined measurements.json (geometry for solid/CAD gen).
+  const usedNames = {};
+  function dataName(angle, ext) {
+    let base = String(angle || "view").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "view";
+    let n = base + "." + ext, i = 2;
+    while (usedNames[n]) { n = base + "-" + (i++) + "." + ext; }
+    usedNames[n] = 1;
+    return n;
+  }
+  const dataFiles = [];
+  measures.forEach(function (e) {
+    if (e.dxf) dataFiles.push({ filename: dataName(e.angle, "dxf"), mime: "application/dxf", bytes: new TextEncoder().encode(e.dxf) });
+    if (e.csv) dataFiles.push({ filename: dataName(e.angle, "csv"), mime: "text/csv", bytes: new TextEncoder().encode(e.csv) });
+  });
+  const hasMeas = measures.some(function (e) { return e.dxf || e.csv || e.geometry || (e.measurements && e.measurements.length); });
+  if (hasMeas) {
+    const combined = measures.map(function (e) { return { angle: e.angle, geometry: e.geometry, measurements: e.measurements }; });
+    dataFiles.push({ filename: "measurements.json", mime: "application/json", bytes: new TextEncoder().encode(JSON.stringify(combined)) });
+  }
+
   const id = (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : String(Math.random()).slice(2);
   const ts = new Date().toISOString();
   const record = {
@@ -339,9 +403,12 @@ export async function onRequestPost({ request, env }) {
     photos: photos.map(function (p) {
       return { filename: p.filename, angle: p.angle, mime: p.mime, size: p.size, exif_stripped: p.exif_stripped };
     }),
+    measured_views: measures.map(function (e) { return { angle: e.angle, dims: (e.measurements || []).length, dxf: !!e.dxf }; }),
+    data_files: dataFiles.map(function (d) { return d.filename; }),
   };
 
-  // Archive the full photos in R2 when it's bound; the email carries them either way.
+  // Archive the full photos AND the CAD data files in R2 when it's bound; the email carries
+  // them either way.
   let archived = false;
   if (env.QUOTE_PHOTOS) {
     try {
@@ -350,7 +417,11 @@ export async function onRequestPost({ request, env }) {
         return env.QUOTE_PHOTOS.put(prefix + p.filename, p.bytes, {
           httpMetadata: { contentType: p.mime },
         });
-      }));
+      }).concat(dataFiles.map(function (d) {
+        return env.QUOTE_PHOTOS.put(prefix + d.filename, d.bytes, {
+          httpMetadata: { contentType: d.mime },
+        });
+      })));
       record.photo_prefix = prefix;
       archived = true;
     } catch (e) {
@@ -358,7 +429,7 @@ export async function onRequestPost({ request, env }) {
     }
   }
 
-  const emailed = await notify(env, record, photos);
+  const emailed = await notify(env, record, photos, measures, dataFiles);
   record.emailed = emailed;
 
   let stored = false;
