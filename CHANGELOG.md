@@ -11,6 +11,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Offline flap damping for weak-Wi-Fi probes.** A probe on a spotty link (e.g.
+  freezer Wi-Fi through a metal door) that drops, lands one reading, then drops
+  again used to fire an *offline* + *back online* pair every cycle — the exact
+  "flapping (15×)" churn the Recent-events feed already coalesced, but which the
+  notifications did not. Connectivity now gets the same damping the temperature
+  path has always had: the drop is reported once, but the **back-online** alert is
+  *held* until the probe has reported steadily for a confirmation window, so a
+  brief blip no longer clears the outage. The eventual single back-online message
+  notes when the link was unstable and how many times it dropped. A new
+  **Confirm back-online after** setting (`notifications.flap_grace_sec`) controls
+  it: blank/`null` = auto (self-tunes to each probe's own offline window), a number
+  pins the hold in minutes, and `0` disables damping (the previous
+  report-on-first-reading behaviour). Pure-function core in
+  `core.alerts.evaluate_offline` (new `recover_hold_sec`), wired through the alert
+  monitor, config schema and Settings page.
 - **Decoupled upload interval — hub + Devices-tab setting.** A per-probe **Upload
   Interval** now sits next to Read Interval on the Devices tab: leave it equal to
   the read interval to send every reading, or set it LONGER to log at high rate but

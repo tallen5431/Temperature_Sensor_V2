@@ -187,3 +187,20 @@ def test_probe_upload_intervals_is_a_dict():
     cfg2, warns = normalize_config({"probe_upload_intervals": "notadict"})
     assert cfg2["probe_upload_intervals"] == {}   # reset, with a warning
     assert any("probe_upload_intervals" in w for w in warns)
+
+
+def test_flap_grace_sec_normalization():
+    # null / absent -> left as "auto" (the monitor self-tunes the hold per probe).
+    clean, _ = normalize_config({"notifications": {"flap_grace_sec": None}})
+    assert clean["notifications"]["flap_grace_sec"] is None
+    clean, _ = normalize_config({"notifications": {}})
+    assert "flap_grace_sec" not in clean["notifications"]
+    # A valid value is coerced to a non-negative int (0 disables damping).
+    clean, _ = normalize_config({"notifications": {"flap_grace_sec": "900"}})
+    assert clean["notifications"]["flap_grace_sec"] == 900
+    clean, _ = normalize_config({"notifications": {"flap_grace_sec": -5}})
+    assert clean["notifications"]["flap_grace_sec"] == 0
+    # Garbage is dropped back to auto (key removed) with a warning, never pinned.
+    clean, warns = normalize_config({"notifications": {"flap_grace_sec": "soon"}})
+    assert "flap_grace_sec" not in clean["notifications"]
+    assert any("flap_grace_sec" in w for w in warns)

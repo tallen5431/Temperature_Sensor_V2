@@ -192,6 +192,25 @@ class AlertMonitor(threading.Thread):
         except (TypeError, ValueError):
             return 0.5
 
+    def _recover_holds(self, windows: dict) -> dict:
+        """Per-probe back-online confirmation window (see ``evaluate_offline``).
+
+        Read from ``notifications.flap_grace_sec``: absent/None self-tunes to each
+        probe's own offline window (a probe is trusted "back" once it has been
+        steady for as long as it took to call it offline — damps a spotty link
+        without extra tuning); a positive number pins the hold for every probe;
+        ``0`` disables damping (recovery reported on the first fresh reading).
+        """
+        conf = self.cfg.get("notifications", {}) or {}
+        raw = conf.get("flap_grace_sec")
+        if raw is None:
+            return dict(windows)
+        try:
+            sec = max(0, int(raw))
+        except (TypeError, ValueError):
+            return dict(windows)
+        return {pid: sec for pid in windows}
+
     def _check_offline(self) -> list:
         last_epochs = self.db.last_reading_epoch_per_probe(window_seconds=OFFLINE_MONITOR_WINDOW_SEC)
         # Synthetic demo probes stop "reporting" the moment demo mode is turned
@@ -203,7 +222,8 @@ class AlertMonitor(threading.Thread):
         # offline between wakes — the same rule every UI surface uses.
         windows = {pid: probe_fresh_window(self.cfg, pid) for pid in last_epochs}
         events, self._offline_states = evaluate_offline(
-            last_epochs, self._offline_states, offline_after_sec=windows)
+            last_epochs, self._offline_states, offline_after_sec=windows,
+            recover_hold_sec=self._recover_holds(windows))
         # The first cycle just records current state so we don't emit a burst of
         # "offline" for probes that were already silent when the hub started.
         if not self._offline_seeded:

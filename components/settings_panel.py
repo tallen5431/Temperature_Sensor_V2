@@ -75,6 +75,18 @@ NotificationSettings = dbc.Card(dbc.CardBody([
 
     dbc.Row([
         dbc.Col([
+            html.Small("Confirm back-online after (minutes)", className="text-muted d-block"),
+            dbc.Input(id="notif-flap-grace-min", type="number", min=0, step=1,
+                      placeholder="auto"),
+            html.Small("Hold the “back online” alert until a probe has reported steadily "
+                       "for this long — stops a spotty link (e.g. weak freezer Wi-Fi) from "
+                       "flapping offline/online. Blank = auto (match the offline window); "
+                       "0 = off.", className="text-muted"),
+        ], md=6),
+    ], className="g-2 mt-1"),
+
+    dbc.Row([
+        dbc.Col([
             html.Small("Rate alert (°C rise)", className="text-muted d-block"),
             dbc.Input(id="notif-rate-alert", type="number", min=0, step=0.5, value=0),
             html.Small("0 = off — catches a failing freezer early.",
@@ -227,11 +239,14 @@ def _err(msg):
 def build_notifications_config(enabled, cooldown_min, recovery, email_enabled, host, port,
                                tls, user, sender, to, webhook_enabled, url, password,
                                offline_alerts=True, existing_password="",
-                               daily_summary_enabled=False, daily_summary_hour=8):
+                               daily_summary_enabled=False, daily_summary_hour=8,
+                               flap_grace_min=None):
     """Turn raw Settings form values into a notifications config dict.
 
     Pure and module-level so it can be unit-tested.  A blank password means
     "keep the stored one"; cooldown is taken in minutes and stored as seconds.
+    ``flap_grace_min`` blank/None omits the key (auto flap damping); a number is
+    stored as ``flap_grace_sec`` (0 disables damping).
     """
     try:
         cooldown_sec = max(60, int(float(cooldown_min)) * 60)
@@ -245,7 +260,7 @@ def build_notifications_config(enabled, cooldown_min, recovery, email_enabled, h
         summary_hour = min(23, max(0, int(float(daily_summary_hour))))
     except (TypeError, ValueError):
         summary_hour = 8
-    return {
+    conf = {
         "enabled": bool(enabled),
         "cooldown_sec": cooldown_sec,
         "notify_recovery": bool(recovery),
@@ -263,6 +278,14 @@ def build_notifications_config(enabled, cooldown_min, recovery, email_enabled, h
         "webhook": {"enabled": bool(webhook_enabled), "url": (url or "").strip()},
         "daily_summary": {"enabled": bool(daily_summary_enabled), "hour": summary_hour},
     }
+    # Blank -> omit the key entirely so the monitor's "auto" default applies; a
+    # number (including 0, which disables damping) is stored as seconds.
+    if flap_grace_min is not None and str(flap_grace_min).strip() != "":
+        try:
+            conf["flap_grace_sec"] = max(0, int(float(flap_grace_min)) * 60)
+        except (TypeError, ValueError):
+            pass
+    return conf
 
 
 def build_mqtt_config(enabled, host, port, username, password, base_topic, discovery,
@@ -311,6 +334,7 @@ def register_settings_callbacks(app, cfg):
         Output("notif-rate-window", "value"),
         Output("daily-summary-enabled", "value"),
         Output("daily-summary-hour", "value"),
+        Output("notif-flap-grace-min", "value"),
         Input("settings-loaded", "n_intervals"),
     )
     def _load(_n):
@@ -330,6 +354,11 @@ def register_settings_callbacks(app, cfg):
             summary_hour = min(23, max(0, int(summary.get("hour", 8))))
         except (TypeError, ValueError):
             summary_hour = 8
+        fg = n.get("flap_grace_sec")
+        try:
+            flap_grace_min = None if fg is None else max(0, int(fg) // 60)
+        except (TypeError, ValueError):
+            flap_grace_min = None
         return (
             bool(n.get("enabled", False)),
             int(n.get("cooldown_sec", 1800) or 1800) // 60,
@@ -350,6 +379,7 @@ def register_settings_callbacks(app, cfg):
             rate_window,
             bool(summary.get("enabled", False)),
             summary_hour,
+            flap_grace_min,
         )
 
     @app.callback(
@@ -498,18 +528,21 @@ def register_settings_callbacks(app, cfg):
         State("notif-rate-window", "value"),
         State("daily-summary-enabled", "value"),
         State("daily-summary-hour", "value"),
+        State("notif-flap-grace-min", "value"),
         prevent_initial_call=True,
     )
     def _save(_n, enabled, cooldown_min, recovery, offline_enabled, offline_after_min,
               email_enabled, host, port, tls, user, sender, to, webhook_enabled, url, password,
-              hysteresis, rate_alert, rate_window, summary_enabled, summary_hour):
+              hysteresis, rate_alert, rate_window, summary_enabled, summary_hour,
+              flap_grace_min):
         try:
             existing = ((cfg.get("notifications", {}) or {}).get("email", {}) or {}).get("password", "")
             notif = build_notifications_config(
                 enabled, cooldown_min, recovery, email_enabled, host, port, tls, user,
                 sender, to, webhook_enabled, url, password,
                 offline_alerts=offline_enabled, existing_password=existing,
-                daily_summary_enabled=summary_enabled, daily_summary_hour=summary_hour)
+                daily_summary_enabled=summary_enabled, daily_summary_hour=summary_hour,
+                flap_grace_min=flap_grace_min)
             updates = {"notifications": notif}
             try:
                 updates["offline_after_sec"] = max(60, int(float(offline_after_min)) * 60)

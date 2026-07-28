@@ -19,6 +19,7 @@
     "cooldown_sec": 1800,
     "notify_recovery": true,
     "offline_alerts": true,
+    "flap_grace_sec": null,
     "email": {
       "enabled": false,
       "smtp_host": "",

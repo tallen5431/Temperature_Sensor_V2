@@ -127,6 +127,16 @@ longer than *Offline after* (default 5 minutes), and again when it comes back �
 so a dead or unplugged probe doesn't go unnoticed. Toggle it under
 Settings → Notifications.
 
+**Flap damping (weak Wi-Fi):** a probe on a spotty link — freezer Wi-Fi through a
+metal door, say — can drop out, land one reading, and drop again, which would
+otherwise fire an *offline* + *back online* pair every few minutes. The hub damps
+this: the drop is reported once, but the **back-online** alert is held until the
+probe has reported *steadily* for the **Confirm back-online after** window, so a
+brief blip doesn't clear the outage. When it finally recovers, the single
+back-online message notes if the link was unstable and how many times it dropped.
+Leave the field **blank for auto** (it matches each probe's offline window),
+set minutes to pin it, or **0 to switch damping off** (`notifications.flap_grace_sec`).
+
 **Calibration:** if a probe reads slightly high or low, enter a **Calibration Offset (°C)**
 in its Edit dialog — it's added to every reading at ingest, so stored data and alerts
 are corrected.

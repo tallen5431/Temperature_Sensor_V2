@@ -207,6 +207,20 @@ def normalize_config(raw: Any) -> Tuple[Dict[str, Any], Warnings]:
             _fix_bool(notif, key, default, warns, label=f"notifications.{key}")
         _fix_number(notif, "cooldown_sec", 1800, 1, True, warns)
 
+        # Back-online confirmation window for flap damping. ``null`` (or absent)
+        # means "auto" — self-tune to each probe's offline window — so it is left
+        # untouched; a present value must be an int >= 0 (0 disables damping). A
+        # garbage value is dropped back to auto rather than silently pinned.
+        if "flap_grace_sec" in notif and notif["flap_grace_sec"] is not None:
+            n, ok = _to_number(notif["flap_grace_sec"], 0, True)
+            if not ok:
+                warns.append(
+                    f"notifications.flap_grace_sec={notif['flap_grace_sec']!r} is not a "
+                    "number; using auto")
+                notif.pop("flap_grace_sec", None)
+            else:
+                notif["flap_grace_sec"] = n
+
         email = notif.get("email")
         if "email" in notif and not isinstance(email, dict):
             warns.append("notifications.email must be an object; resetting")

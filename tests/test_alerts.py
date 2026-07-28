@@ -104,8 +104,9 @@ def test_offline_transition_and_recovery():
     kinds = {e["probe_id"]: e["kind"] for e in events}
     assert kinds["p1"] == "offline"
     assert "p2" not in kinds  # p2 started online; no transition emitted
-    assert states == {"p1": "offline", "p2": "online"}
-    # p1 reports again -> back online
+    assert states["p1"]["committed"] == "offline"
+    assert states["p2"]["committed"] == "online"
+    # p1 reports again -> back online (no recovery hold -> immediate, legacy default)
     events2, states2 = evaluate_offline({"p1": now, "p2": now}, states, now=now, offline_after_sec=300)
     assert {e["probe_id"]: e["kind"] for e in events2} == {"p1": "online"}
 
@@ -145,11 +146,71 @@ def test_evaluate_offline_per_probe_thresholds():
         now=now, offline_after_sec=thr)
     kinds = {e["probe_id"]: e["kind"] for e in events}
     assert kinds == {"fast": "offline", "unmapped": "offline"}  # sleepy still fresh
-    assert states == {"fast": "offline", "sleepy": "online", "unmapped": "offline"}
+    assert {pid: s["committed"] for pid, s in states.items()} == {
+        "fast": "offline", "sleepy": "online", "unmapped": "offline"}
     # The same sleepy probe silent past its own window does go offline.
     events2, _ = evaluate_offline({"sleepy": now - 1600}, {"sleepy": "online"},
                                   now=now, offline_after_sec=thr)
     assert [e["kind"] for e in events2] == ["offline"]
+
+
+def test_offline_recover_hold_collapses_flapping():
+    # A probe on a spotty link: one genuine drop, then it lands the odd reading
+    # and goes quiet again. With a recovery hold the whole episode is ONE offline
+    # and ONE confirmed back-online (that counts the drops) — not a pair per cycle.
+    off, hold = 300, 600
+    ev, st = evaluate_offline({"p": 0}, {}, now=1000,
+                              offline_after_sec=off, recover_hold_sec=hold)
+    assert [e["kind"] for e in ev] == ["offline"]                 # genuine drop reported
+    # A reading lands (blip) — held, not yet reported back online.
+    ev, st = evaluate_offline({"p": 1000}, st, now=1000,
+                              offline_after_sec=off, recover_hold_sec=hold)
+    assert ev == []
+    # Silent again before the hold elapses — still one open outage, counted a flap.
+    ev, st = evaluate_offline({"p": 1000}, st, now=1400,
+                              offline_after_sec=off, recover_hold_sec=hold)
+    assert ev == [] and st["p"]["committed"] == "offline" and st["p"]["flaps"] == 1
+    # Reading lands again and now stays up; the hold has not elapsed on this cycle.
+    ev, st = evaluate_offline({"p": 1450}, st, now=1450,
+                              offline_after_sec=off, recover_hold_sec=hold)
+    assert ev == []
+    # Steady past the hold -> exactly one confirmed recovery carrying the flap count.
+    ev, st = evaluate_offline({"p": 2100}, st, now=2100,
+                              offline_after_sec=off, recover_hold_sec=hold)
+    assert len(ev) == 1 and ev[0]["kind"] == "online" and ev[0]["flaps"] == 1
+    assert st["p"]["committed"] == "online"
+
+
+def test_offline_recover_hold_zero_is_immediate():
+    # hold defaults to 0 -> legacy behaviour: recovery reported on the first reading.
+    ev, st = evaluate_offline({"p": 0}, {}, now=1000, offline_after_sec=300)
+    assert [e["kind"] for e in ev] == ["offline"]
+    ev, st = evaluate_offline({"p": 1000}, st, now=1000, offline_after_sec=300)
+    assert [e["kind"] for e in ev] == ["online"]
+    assert "flaps" not in ev[0]              # a clean recovery carries no flap count
+
+
+def test_evaluate_offline_hold_accepts_per_probe_mapping():
+    # Each probe can carry its own hold, like offline_after_sec does.
+    st0 = {"a": {"committed": "offline", "raw": "offline", "online_since": None, "flaps": 0},
+           "b": {"committed": "offline", "raw": "offline", "online_since": None, "flaps": 0}}
+    holds = {"a": 1000, "b": 100}
+    ev, st = evaluate_offline({"a": 5000, "b": 5000}, st0, now=5000,
+                              offline_after_sec=300, recover_hold_sec=holds)
+    assert ev == []                          # online_since only just set for both
+    ev2, _ = evaluate_offline({"a": 5200, "b": 5200}, st, now=5200,
+                              offline_after_sec=300, recover_hold_sec=holds)
+    assert {e["probe_id"]: e["kind"] for e in ev2} == {"b": "online"}  # only b cleared its hold
+
+
+def test_format_event_online_reports_instability():
+    subj, msg = format_event({"probe_id": "p", "kind": "online", "flaps": 3}, {"p": "Freezer"})
+    assert "unstable" in subj.lower() and "3" in msg
+    # A single/clean recovery stays plain.
+    subj2, _ = format_event({"probe_id": "p", "kind": "online", "flaps": 1}, {"p": "Freezer"})
+    assert "unstable" not in subj2.lower()
+    subj3, _ = format_event({"probe_id": "p", "kind": "online"}, {"p": "Freezer"})
+    assert "back online" in subj3.lower()
 
 
 def test_evaluate_rate_triggers_and_cooldown():
