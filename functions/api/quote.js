@@ -205,13 +205,20 @@ async function notify(env, record, photos) {
            "</td><td style=\"padding:4px 0\"><b>" + escapeHtml(r[1]) + "</b></td></tr>";
   }).join("");
 
+  const photoList = photos.map(function (p) {
+    return '<li style="margin:2px 0"><b>' + escapeHtml(p.angle || "Photo") + "</b> — " +
+           escapeHtml(p.filename) + "</li>";
+  }).join("");
+
   const html =
     '<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;font-size:15px;line-height:1.6">' +
     '<h2 style="margin:0 0 14px">Part quote request — ' + escapeHtml(record.shop) + "</h2>" +
     '<table style="border-collapse:collapse;margin-bottom:16px">' + rows + "</table>" +
     '<div style="background:#f5f6f4;border-left:3px solid #0E94AB;padding:12px 16px;white-space:pre-wrap">' +
     escapeHtml(record.description || "(no description given)") + "</div>" +
-    '<p style="color:#666;font-size:13px;margin-top:18px">Photos attached. Reply straight to this email — it goes to the shop.</p>' +
+    '<p style="color:#666;font-size:13px;margin:16px 0 4px">Angles attached:</p>' +
+    '<ul style="margin:0 0 8px 18px;padding:0">' + photoList + "</ul>" +
+    '<p style="color:#666;font-size:13px;margin-top:12px">Reply straight to this email — it goes to the shop.</p>' +
     "</div>";
 
   const body = {
@@ -287,6 +294,11 @@ export async function onRequestPost({ request, env }) {
   if (!uploads.length) return json({ ok: false, error: "no_photos" }, 422);
   if (uploads.length > MAX_FILES) return json({ ok: false, error: "too_many" }, 422);
 
+  // Optional per-photo angle labels (Top/Front/Back/…), aligned to the photos order.
+  let angles = [];
+  try { const a = form.get("angles"); if (a) angles = JSON.parse(a); } catch (e) { angles = []; }
+  if (!Array.isArray(angles)) angles = [];
+
   let total = 0;
   const photos = [];
   for (let i = 0; i < uploads.length; i++) {
@@ -299,9 +311,12 @@ export async function onRequestPost({ request, env }) {
     const kind = sniff(raw);
     if (!kind) return json({ ok: false, error: "bad_type" }, 415);
 
+    const angle = clip(angles[i], 24);
+    const slug = angle ? angle.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") : "";
     const cleaned = stripMetadata(raw, kind.mime);
     photos.push({
-      filename: "photo-" + (i + 1) + "." + kind.ext,
+      filename: "photo-" + (i + 1) + (slug ? "-" + slug : "") + "." + kind.ext,
+      angle: angle,
       mime: kind.mime,
       bytes: cleaned.bytes,
       size: cleaned.bytes.length,
@@ -322,7 +337,7 @@ export async function onRequestPost({ request, env }) {
     ref: request.headers.get("referer") || "",
     country: (request.cf && request.cf.country) || "",
     photos: photos.map(function (p) {
-      return { filename: p.filename, mime: p.mime, size: p.size, exif_stripped: p.exif_stripped };
+      return { filename: p.filename, angle: p.angle, mime: p.mime, size: p.size, exif_stripped: p.exif_stripped };
     }),
   };
 

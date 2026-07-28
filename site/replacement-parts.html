@@ -118,16 +118,20 @@
   .field input::placeholder, .field textarea::placeholder { color:var(--faint); }
   .field input:focus-visible, .field textarea:focus-visible { outline:2px solid var(--signal); outline-offset:1px; }
 
-  .drop { border:2px dashed var(--line-strong); border-radius:10px; background:var(--paper); padding:26px 18px; text-align:center; cursor:pointer; display:block; }
-  .drop:hover, .drop:focus-within { border-color:var(--signal); background:var(--signal-soft); }
-  .drop .icon { font-size:30px; line-height:1; }
-  .drop .big { font-size:17px; font-weight:650; margin:10px 0 4px; }
-  .drop .small { font-size:14px; color:var(--slate); margin:0; }
-  .drop input[type=file] { position:absolute; width:1px; height:1px; opacity:0; overflow:hidden; }
-  .thumbs { display:flex; flex-wrap:wrap; gap:10px; margin-top:14px; }
-  .thumb { position:relative; width:78px; height:78px; border-radius:6px; overflow:hidden; border:1px solid var(--line-strong); background:var(--raised); }
-  .thumb img { width:100%; height:100%; object-fit:cover; display:block; }
-  .thumb button { position:absolute; top:2px; right:2px; width:22px; height:22px; border-radius:50%; border:none; background:rgba(0,0,0,.68); color:#fff; font-size:14px; line-height:1; cursor:pointer; padding:0; }
+  /* Guided angle capture — one tile per orientation */
+  .angles { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+  @media (max-width:440px){ .angles { grid-template-columns:repeat(2,1fr); } }
+  .angle-tile { position:relative; aspect-ratio:1/1; }
+  .angle-tile input[type=file] { position:absolute; width:1px; height:1px; opacity:0; overflow:hidden; }
+  .angle-inner { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; width:100%; height:100%; border:2px dashed var(--line-strong); border-radius:10px; background:var(--paper); cursor:pointer; text-align:center; overflow:hidden; }
+  .angle-inner:hover, .angle-tile input[type=file]:focus-visible + .angle-inner { border-color:var(--signal); background:var(--signal-soft); }
+  .angle-tile.filled .angle-inner { border-style:solid; border-color:var(--signal); }
+  .angle-inner img { width:100%; height:100%; object-fit:cover; display:block; }
+  .angle-icon { font-size:24px; line-height:1; }
+  .angle-lab { font-family:var(--font-mono); font-size:12.5px; font-weight:600; color:var(--ink); }
+  .angle-add { font-family:var(--font-mono); font-size:11px; color:var(--faint); }
+  .angle-cap { position:absolute; left:0; right:0; bottom:0; font-family:var(--font-mono); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; background:rgba(0,0,0,.6); color:#fff; padding:3px 0; text-align:center; }
+  .angle-rm { position:absolute; top:4px; right:4px; width:24px; height:24px; border-radius:50%; border:none; background:rgba(0,0,0,.7); color:#fff; font-size:15px; line-height:1; cursor:pointer; padding:0; z-index:2; }
   .hint { font-family:var(--font-mono); font-size:12px; color:var(--slate); margin:9px 0 0; }
   .note { font-family:var(--font-mono); font-size:13px; margin:14px 0 0; min-height:1.3em; color:var(--slate); }
   .note.err { color:var(--warn); }
@@ -313,16 +317,11 @@
         </div>
 
         <div class="field">
-          <label for="qPhotos">Photos of the part <span class="req">*</span></label>
-          <!-- accept="image/*" (no capture attr) so mobile offers BOTH the camera and the
-               photo library — forcing capture="environment" would remove the library option. -->
-          <label class="drop" for="qPhotos">
-            <input type="file" id="qPhotos" name="photos" accept="image/*,.heic,.heif" multiple required>
-            <div class="icon" aria-hidden="true">📷</div>
-            <p class="big" id="dropTitle">Take a photo or choose files</p>
-            <p class="small">Up to 6 images. A ruler or coin next to the part helps a lot.</p>
-          </label>
-          <div class="thumbs" id="thumbs"></div>
+          <label>Photos of the part <span class="req">*</span></label>
+          <p class="hint" style="margin:0 0 12px">Tap an angle to take or choose a photo — add whichever ones show the part and the damage. At least one is required. A ruler or coin in the shot helps a lot.</p>
+          <!-- Tiles (with their hidden file inputs) are built in JS; accept has no capture
+               attr so mobile offers BOTH the camera and the photo library. -->
+          <div class="angles" id="angleGrid"></div>
           <p class="hint" id="photoHint">JPG, PNG, WebP or HEIC. Resized on your phone before upload, so it works on bad signal.</p>
         </div>
 
@@ -419,51 +418,35 @@
 (function () {
   "use strict";
 
-  var MAX_FILES = 6;
   var MAX_BYTES = 8 * 1024 * 1024;   // per original file, pre-resize
   var MAX_DIM   = 1600;              // longest edge after resize
   var QUALITY   = 0.82;
 
+  // One capture tile per angle. Guides the shop through the shots that actually help a
+  // quote, and each photo carries its angle label through to the request record.
+  var SLOTS = [
+    { key: "top",    label: "Top" },
+    { key: "front",  label: "Front" },
+    { key: "back",   label: "Back" },
+    { key: "left",   label: "Left" },
+    { key: "right",  label: "Right" },
+    { key: "detail", label: "Detail" }
+  ];
+  var LABEL = {};
+  SLOTS.forEach(function (s) { LABEL[s.key] = s.label; });
+
   var form    = document.getElementById("quoteForm");
-  var input   = document.getElementById("qPhotos");
-  var thumbs  = document.getElementById("thumbs");
+  var grid    = document.getElementById("angleGrid");
   var note    = document.getElementById("qNote");
   var submit  = document.getElementById("qSubmit");
   var success = document.getElementById("qSuccess");
-  var title   = document.getElementById("dropTitle");
-  if (!form) return;
+  if (!form || !grid) return;
 
-  var picked = [];   // [{ blob, name, url }]
+  var photos = {};   // key -> { blob, name, url }
 
   function say(msg, isErr) {
     note.textContent = msg;
     note.className = isErr ? "note err" : "note";
-  }
-
-  function refresh() {
-    thumbs.innerHTML = "";
-    picked.forEach(function (p, i) {
-      var d = document.createElement("div");
-      d.className = "thumb";
-      var img = document.createElement("img");
-      img.src = p.url;
-      img.alt = "Selected photo " + (i + 1);
-      var x = document.createElement("button");
-      x.type = "button";
-      x.textContent = "×";
-      x.setAttribute("aria-label", "Remove photo " + (i + 1));
-      x.addEventListener("click", function () {
-        URL.revokeObjectURL(p.url);
-        picked.splice(i, 1);
-        refresh();
-      });
-      d.appendChild(img);
-      d.appendChild(x);
-      thumbs.appendChild(d);
-    });
-    title.textContent = picked.length
-      ? picked.length + (picked.length === 1 ? " photo ready" : " photos ready") + " — tap to add more"
-      : "Take a photo or choose files";
   }
 
   // Re-encode through a canvas: shrinks the file for slow connections AND drops all
@@ -476,50 +459,74 @@
       var img = new Image();
       img.onload = function () {
         var w = img.naturalWidth, h = img.naturalHeight;
-        if (!w || !h) { URL.revokeObjectURL(url); resolve({ blob: file, name: file.name }); return; }
+        if (!w || !h) { URL.revokeObjectURL(url); resolve({ blob: file }); return; }
         var scale = Math.min(1, MAX_DIM / Math.max(w, h));
         var canvas = document.createElement("canvas");
         canvas.width = Math.round(w * scale);
         canvas.height = Math.round(h * scale);
         canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
         URL.revokeObjectURL(url);
-        canvas.toBlob(function (blob) {
-          if (!blob) { resolve({ blob: file, name: file.name }); return; }
-          resolve({ blob: blob, name: file.name.replace(/\.[^.]+$/, "") + ".jpg" });
-        }, "image/jpeg", QUALITY);
+        canvas.toBlob(function (blob) { resolve({ blob: blob || file }); }, "image/jpeg", QUALITY);
       };
-      img.onerror = function () {
-        URL.revokeObjectURL(url);
-        resolve({ blob: file, name: file.name });   // e.g. HEIC on Chrome/Firefox
-      };
+      img.onerror = function () { URL.revokeObjectURL(url); resolve({ blob: file }); };
       img.src = url;
     });
   }
 
-  input.addEventListener("change", function () {
-    var files = Array.prototype.slice.call(input.files || []);
-    input.value = "";                      // let the same file be re-picked later
-    if (!files.length) return;
+  // Build a tile (+ its hidden file input) per slot once; render() just swaps content.
+  var tiles = SLOTS.map(function (slot) {
+    var tile = document.createElement("div");
+    tile.className = "angle-tile";
+    var input = document.createElement("input");
+    input.type = "file"; input.accept = "image/*,.heic,.heif"; input.id = "ph-" + slot.key;
+    input.setAttribute("aria-label", slot.label + " photo");
+    var lab = document.createElement("label");
+    lab.className = "angle-inner"; lab.setAttribute("for", input.id);
+    tile.appendChild(input); tile.appendChild(lab);
+    grid.appendChild(tile);
 
-    var room = MAX_FILES - picked.length;
-    if (room <= 0) { say("That's the limit of " + MAX_FILES + " photos.", true); return; }
-    var over = files.length > room;
-    files = files.slice(0, room);
-
-    var tooBig = files.filter(function (f) { return f.size > MAX_BYTES; });
-    files = files.filter(function (f) { return f.size <= MAX_BYTES; });
-
-    say("Preparing photos…");
-    Promise.all(files.map(prepare)).then(function (out) {
-      out.forEach(function (o) {
-        picked.push({ blob: o.blob, name: o.name, url: URL.createObjectURL(o.blob) });
+    input.addEventListener("change", function () {
+      var f = (input.files || [])[0];
+      input.value = "";                    // allow re-picking the same file later
+      if (!f) return;
+      if (f.size > MAX_BYTES) { say("The " + slot.label + " photo is over 8 MB — try a smaller one.", true); return; }
+      say("Preparing the " + slot.label + " photo…");
+      prepare(f).then(function (o) {
+        if (photos[slot.key]) URL.revokeObjectURL(photos[slot.key].url);
+        photos[slot.key] = { blob: o.blob, name: slot.key + ".jpg", url: URL.createObjectURL(o.blob) };
+        render();
+        say("Added " + slot.label + ". Add other angles if they help.");
       });
-      refresh();
-      if (tooBig.length) say(tooBig.length + " photo(s) were over 8 MB and were skipped.", true);
-      else if (over) say("Added the first " + room + " — " + MAX_FILES + " photos max.", true);
-      else say("Looks good. Add more angles if you have them.");
     });
+
+    return { slot: slot, tile: tile, lab: lab };
   });
+
+  function render() {
+    tiles.forEach(function (t) {
+      var p = photos[t.slot.key];
+      t.tile.classList.toggle("filled", !!p);
+      var old = t.tile.querySelector(".angle-rm");
+      if (old) old.remove();
+      t.lab.innerHTML = "";
+      if (p) {
+        var img = document.createElement("img"); img.src = p.url; img.alt = t.slot.label + " photo";
+        var cap = document.createElement("span"); cap.className = "angle-cap"; cap.textContent = t.slot.label;
+        t.lab.appendChild(img); t.lab.appendChild(cap);
+        // The remove button is a sibling of the <label>, not a child — otherwise a tap on it
+        // would also fire the label and reopen the file picker.
+        var rm = document.createElement("button");
+        rm.type = "button"; rm.className = "angle-rm"; rm.textContent = "×";
+        rm.setAttribute("aria-label", "Remove the " + t.slot.label + " photo");
+        rm.addEventListener("click", function () { URL.revokeObjectURL(p.url); delete photos[t.slot.key]; render(); });
+        t.tile.appendChild(rm);
+      } else {
+        t.lab.innerHTML = '<span class="angle-icon" aria-hidden="true">📷</span>' +
+          '<span class="angle-lab">' + t.slot.label + '</span><span class="angle-add">Add</span>';
+      }
+    });
+  }
+  render();
 
   form.addEventListener("submit", function (e) {
     e.preventDefault();
@@ -531,7 +538,9 @@
     if (!name)  { say("Add your name so I know who I'm replying to.", true); return; }
     if (!shop)  { say("Add your shop name.", true); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { say("That email doesn't look right — I can't send the quote without it.", true); return; }
-    if (!picked.length) { say("At least one photo is required — it's what I quote from.", true); return; }
+
+    var keys = SLOTS.map(function (s) { return s.key; }).filter(function (k) { return photos[k]; });
+    if (!keys.length) { say("Add at least one photo — it's what I quote from.", true); return; }
 
     var fd = new FormData();
     fd.append("name", name);
@@ -539,10 +548,12 @@
     fd.append("email", email);
     fd.append("phone", document.getElementById("qPhone").value.trim());
     fd.append("description", document.getElementById("qDesc").value.trim());
-    picked.forEach(function (p) { fd.append("photos", p.blob, p.name); });
+    var angles = [];
+    keys.forEach(function (k) { fd.append("photos", photos[k].blob, photos[k].name); angles.push(LABEL[k]); });
+    fd.append("angles", JSON.stringify(angles));
 
     submit.disabled = true;
-    say("Sending " + picked.length + " photo(s)…");
+    say("Sending " + keys.length + " photo" + (keys.length === 1 ? "" : "s") + "…");
 
     fetch("/api/quote", { method: "POST", body: fd })
       .then(function (r) { return r.json().catch(function () { return {}; }); })
@@ -554,8 +565,8 @@
         } else {
           submit.disabled = false;
           var map = {
-            no_photos: "No photos came through — try picking them again.",
-            too_many: "Too many photos — " + MAX_FILES + " max.",
+            no_photos: "No photos came through — try adding them again.",
+            too_many: "Too many photos — 6 max.",
             too_large: "Those photos are too large to send. Try fewer at a time.",
             bad_type: "One of those files isn't an image I can read.",
             invalid_email: "That email doesn't look right."
