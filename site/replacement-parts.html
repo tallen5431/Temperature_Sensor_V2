@@ -181,8 +181,9 @@
   <div class="wrap bar-inner">
     <a class="brand" href="/"><span class="mk">Datum Labs</span><span class="by">Setpoint &amp; custom builds</span></a>
     <nav class="top">
-      <a href="/services" class="hide-sm">Services</a>
-      <a href="/about" class="hide-sm">About</a>
+      <a href="#how" class="hide-sm">How it works</a>
+      <a href="#pricing" class="hide-sm">Pricing</a>
+      <a href="#measure" class="hide-sm">Measure</a>
       <a href="#quote" class="btn signal" style="padding:9px 16px;min-height:0;">Get a quote</a>
     </nav>
   </div>
@@ -195,9 +196,10 @@
     <div class="wrap">
       <p class="eyebrow">Datum Labs · For repair shops</p>
       <h1>The part is discontinued. I'll make you a new one.</h1>
-      <p class="lede">Reverse-engineered and 3D printed replacements for parts you can't buy anymore. Send a photo of the broken original, the old part number, or your own measurements — whatever you have.</p>
+      <p class="lede">Reverse-engineered and 3D printed replacements for parts you can't buy anymore. Snap a few photos of the broken original from your phone — that's all it takes to get a fixed-price quote.</p>
       <div class="cta-row">
-        <a href="#quote" class="btn signal">Send a photo, get a quote →</a>
+        <a href="#quote" class="btn signal">Send photos for a quote →</a>
+        <a href="#how" class="btn ghost">See how it works</a>
       </div>
       <div class="trustbar">
         <span><b>First simple part free</b></span>
@@ -208,33 +210,7 @@
     </div>
   </section>
 
-  <!-- ============ 2. Capability demo ============ -->
-  <section id="work">
-    <div class="wrap">
-      <div class="sec-head">
-        <p class="eyebrow">Capability demo</p>
-        <h2>Broken part in, printed part out.</h2>
-        <p>A demonstration of the process end to end — a broken original, measured, modelled, and reprinted. This is a demo build, not a customer job; real shop work will replace it here as it comes in.</p>
-      </div>
-
-      <!-- Demo case. Drop three images into site/parts/ and swap each placeholder .shot
-           for e.g. <div class="shot"><img src="/parts/demo-broken.jpg" alt="…"
-           loading="lazy" width="800" height="600"></div>. Copy this .case block to add more. -->
-      <div class="cases">
-        <div class="case">
-          <div class="shots">
-            <div class="shot"><span class="step">1 · Broken</span><p class="ph">Photo slot<br>broken original</p></div>
-            <div class="shot"><span class="step">2 · Measured</span><p class="ph">Photo slot<br>CamScan / CAD</p></div>
-            <div class="shot"><span class="step">3 · Printed</span><p class="ph">Photo slot<br>finished part</p></div>
-          </div>
-          <h3>Demo build — measured and reprinted</h3>
-          <p>A sample part carried from broken original to finished replacement, to show the process. Your part follows the same three steps.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ============ 3. Process ============ -->
+  <!-- ============ 2. Process ============ -->
   <section id="how">
     <div class="wrap">
       <div class="sec-head">
@@ -249,49 +225,14 @@
     </div>
   </section>
 
-  <!-- ============ 3b. Optional: measure it yourself (CamScan) ============ -->
-  <section id="measure">
-    <div class="wrap">
-      <div class="sec-head">
-        <p class="eyebrow">Optional · Tighter quotes</p>
-        <h2>Want to measure it yourself?</h2>
-        <p>A clear photo is all I need to start. But for the most exact quote, you can measure the part right in your browser with CamScan — a free tool I built, no install or account. Lay a coin or ruler in the shot for scale, mark the edges and holes, and send the annotated image with your photos.</p>
-      </div>
-      <div class="cta-row">
-        <a href="#quote" id="measureBtn" class="btn signal" target="_blank" rel="noopener">Open the measuring tool →</a>
-      </div>
-      <p class="hint" id="measureNote" style="margin-top:12px;">CamScan is a free browser tool — no install, no account.</p>
-    </div>
-  </section>
-
-  <!-- ============ 4. What I make ============ -->
-  <section id="what">
-    <div class="wrap">
-      <div class="sec-head">
-        <p class="eyebrow">What I make</p>
-        <h2>Obsolete plastic, mostly.</h2>
-      </div>
-      <div class="makes">
-        <span>Housings &amp; covers</span>
-        <span>Brackets &amp; mounts</span>
-        <span>Gears</span>
-        <span>Clips &amp; latches</span>
-        <span>Knobs &amp; handles</span>
-        <span>Bezels &amp; trim</span>
-        <span>Spacers &amp; bushings</span>
-        <span>Jigs &amp; fixtures</span>
-      </div>
-      <p class="makes-note">If the original was injection-moulded plastic and the manufacturer stopped making it, it's probably in scope. I'll tell you straight when printing isn't the right answer rather than sell you a part that will fail — load-bearing metal, gas-wetted, and food-contact parts are the usual no.</p>
-    </div>
-  </section>
-
-  <!-- ============ 5. Quote form — THE conversion point ============ -->
+  <!-- ============ 3. Quote form — THE conversion point (kept high so the page doubles
+       as a simple "send me your part" hand-off you can give a shop directly) ============ -->
   <section id="quote">
     <div class="wrap">
       <div class="sec-head">
         <p class="eyebrow">Get a quote</p>
-        <h2>Upload a photo of the part.</h2>
-        <p>One screen, no login. I read every one myself and reply within one business day.</p>
+        <h2>Send photos of the part.</h2>
+        <p>One screen, no login. Add a shot from each angle, tell me what it is, and I'll reply with a fixed price and a ship date within one business day — I read every one myself.</p>
       </div>
 
       <form class="form" id="quoteForm" novalidate enctype="multipart/form-data">
@@ -342,6 +283,42 @@
     </div>
   </section>
 
+  <!-- ============ 4. Optional: measure it yourself (CamScan) ============ -->
+  <section id="measure">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow">Optional · Tighter quotes</p>
+        <h2>Want to measure it yourself?</h2>
+        <p>A clear photo is all I need to start. But for the most exact quote, you can measure the part right in your browser with CamScan — a free tool I built, no install or account. Lay a coin or ruler in the shot for scale, mark the edges and holes, and send the annotated image with your photos.</p>
+      </div>
+      <div class="cta-row">
+        <a href="#quote" id="measureBtn" class="btn signal" target="_blank" rel="noopener">Open the measuring tool →</a>
+      </div>
+      <p class="hint" id="measureNote" style="margin-top:12px;">CamScan is a free browser tool — no install, no account.</p>
+    </div>
+  </section>
+
+  <!-- ============ 5. What I make ============ -->
+  <section id="what">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow">What I make</p>
+        <h2>Obsolete plastic, mostly.</h2>
+      </div>
+      <div class="makes">
+        <span>Housings &amp; covers</span>
+        <span>Brackets &amp; mounts</span>
+        <span>Gears</span>
+        <span>Clips &amp; latches</span>
+        <span>Knobs &amp; handles</span>
+        <span>Bezels &amp; trim</span>
+        <span>Spacers &amp; bushings</span>
+        <span>Jigs &amp; fixtures</span>
+      </div>
+      <p class="makes-note">If the original was injection-moulded plastic and the manufacturer stopped making it, it's probably in scope. I'll tell you straight when printing isn't the right answer rather than sell you a part that will fail — load-bearing metal, gas-wetted, and food-contact parts are the usual no.</p>
+    </div>
+  </section>
+
   <!-- ============ 6. Pricing anchor + turnaround + free first part ============ -->
   <section id="pricing">
     <div class="wrap">
@@ -365,6 +342,32 @@
           <div class="k">New shops</div>
           <div class="v">First part free</div>
           <p>Your first part is on me if it's simple geometry — a clip, knob, spacer, bracket or cover. I'll tell you honestly when a part doesn't qualify before doing any work.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 7. Capability demo (proof — stays at the bottom until real job photos replace the placeholders) ============ -->
+  <section id="work">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow">Capability demo</p>
+        <h2>Broken part in, printed part out.</h2>
+        <p>A demonstration of the process end to end — a broken original, measured, modelled, and reprinted. This is a demo build, not a customer job; real shop work will replace it here as it comes in.</p>
+      </div>
+
+      <!-- Demo case. Drop three images into site/parts/ and swap each placeholder .shot
+           for e.g. <div class="shot"><img src="/parts/demo-broken.jpg" alt="…"
+           loading="lazy" width="800" height="600"></div>. Copy this .case block to add more. -->
+      <div class="cases">
+        <div class="case">
+          <div class="shots">
+            <div class="shot"><span class="step">1 · Broken</span><p class="ph">Photo slot<br>broken original</p></div>
+            <div class="shot"><span class="step">2 · Measured</span><p class="ph">Photo slot<br>CamScan / CAD</p></div>
+            <div class="shot"><span class="step">3 · Printed</span><p class="ph">Photo slot<br>finished part</p></div>
+          </div>
+          <h3>Demo build — measured and reprinted</h3>
+          <p>A sample part carried from broken original to finished replacement, to show the process. Your part follows the same three steps.</p>
         </div>
       </div>
     </div>
