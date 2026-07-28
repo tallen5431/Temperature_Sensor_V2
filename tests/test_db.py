@@ -260,6 +260,37 @@ def test_export_csv_filters(db):
     assert rows(end_epoch=start - 1) == 1  # only the 3-days-ago row
 
 
+def test_end_epoch_keeps_final_second_subsecond_rows(db):
+    """A fractional end-of-day bound must keep the final second's ms rows.
+
+    Regression: ``fetch_readings``/export truncated ``end_epoch`` with ``int()``,
+    so a ``to=YYYY-MM-DD`` filter — which resolves to ``…23:59:59.999999`` — cut
+    the bound back to ``…59`` and silently dropped ``23:59:59.001–.999`` on
+    probes that log sub-second timestamps. Both the JSON read path and the shared
+    export ``WHERE`` builder are exercised.
+    """
+    db.append("2026-07-28T12:00:00.000", 9.0, 48.2, "p")
+    db.append("2026-07-28T23:59:59.000", 10.0, 50.0, "p")
+    db.append("2026-07-28T23:59:59.500", 11.0, 51.8, "p")   # sub-second, final second
+    db.append("2026-07-29T00:00:00.000", 12.0, 53.6, "p")   # next day — must stay excluded
+
+    day = datetime.datetime(2026, 7, 28)
+    start = day.timestamp()
+    end = day.replace(hour=23, minute=59, second=59, microsecond=999999).timestamp()
+
+    # JSON read API keeps the .500 row and still excludes the next day.
+    got = sorted(r["timestamp"]
+                 for r in db.fetch_readings(start_epoch=start, end_epoch=end, probe_id="p"))
+    assert got == ["2026-07-28T12:00:00.000",
+                   "2026-07-28T23:59:59.000",
+                   "2026-07-28T23:59:59.500"]
+
+    # Export path (CSV / xlsx / count all share _export_where).
+    assert db.count_readings(start_epoch=start, end_epoch=end, probe_id="p") == 3
+    buf = io.StringIO()
+    assert db.export_csv(buf, start_epoch=start, end_epoch=end, probe_id="p") == 3
+
+
 def test_export_friendly_csv_shape(db):
     db.append("2026-07-21T22:45:36.267", -18.5, -1.3, "Setpoint-000079", humidity=55.0)
     buf = io.StringIO()

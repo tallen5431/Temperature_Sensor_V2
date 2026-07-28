@@ -490,9 +490,13 @@ class Database:
         if cutoff is not None:
             clauses.append("epoch >= ?"); params_list.append(cutoff)
         if start_epoch is not None:
-            clauses.append("epoch >= ?"); params_list.append(int(start_epoch))
+            clauses.append("epoch >= ?"); params_list.append(float(start_epoch))
         if end_epoch is not None:
-            clauses.append("epoch <= ?"); params_list.append(int(end_epoch))
+            # float(), not int(): a `to=YYYY-MM-DD` filter resolves to the
+            # fractional end-of-day epoch (…23:59:59.999999) so that
+            # `epoch <= bound` keeps the final second's millisecond rows. int()
+            # truncated the bound to …59 and silently dropped 23:59:59.001–.999.
+            clauses.append("epoch <= ?"); params_list.append(float(end_epoch))
         if probe_id:
             clauses.append("probe_id = ?"); params_list.append(probe_id)
         where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
@@ -642,9 +646,13 @@ class Database:
         if cutoff is not None:
             clauses.append("epoch >= ?"); params_list.append(cutoff)
         if start_epoch is not None:
-            clauses.append("epoch >= ?"); params_list.append(int(start_epoch))
+            clauses.append("epoch >= ?"); params_list.append(float(start_epoch))
         if end_epoch is not None:
-            clauses.append("epoch <= ?"); params_list.append(int(end_epoch))
+            # float(), not int(): a `to=YYYY-MM-DD` filter resolves to the
+            # fractional end-of-day epoch (…23:59:59.999999) so that
+            # `epoch <= bound` keeps the final second's millisecond rows. int()
+            # truncated the bound to …59 and silently dropped 23:59:59.001–.999.
+            clauses.append("epoch <= ?"); params_list.append(float(end_epoch))
         if probe_id:
             clauses.append("probe_id = ?"); params_list.append(probe_id)
         where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
