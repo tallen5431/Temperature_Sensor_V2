@@ -297,27 +297,7 @@
     </div>
   </section>
 
-  <!-- ============ 4. Optional: measure it yourself (CamScan) ============ -->
-  <section id="measure">
-    <div class="wrap">
-      <div class="sec-head">
-        <p class="eyebrow">Optional · Tighter quotes</p>
-        <h2>Want to measure it yourself?</h2>
-        <p>A clear photo is all I need to start — but if you want the tightest quote, measure the part right in your browser with CamScan, a free tool I built (no install, no account). It opens right here on the page and hands the measured photos straight to the form below.</p>
-      </div>
-      <div class="steps">
-        <div class="step-card"><div class="n">1</div><h3>Set the scale</h3><p>Lay a printed marker — or a coin, card, or ruler — flat beside the part. CamScan finds it and corrects for camera tilt automatically, so the millimetres come out true.</p></div>
-        <div class="step-card"><div class="n">2</div><h3>Measure each angle</h3><p>Pick the view — Top, Front or Side — then mark the edges, holes and gaps right on the photo. Use “Add another photo” for each angle you want to capture.</p></div>
-        <div class="step-card"><div class="n">3</div><h3>Send it to your quote</h3><p>Hit Review &amp; Submit and the annotated, measured photos drop straight into the form below — no re-uploading. Then just add your details and send.</p></div>
-      </div>
-      <div class="cta-row" style="margin-top:24px;">
-        <a href="#quote" id="measureBtn" class="btn signal" target="_blank" rel="noopener">Open the measuring tool →</a>
-      </div>
-      <p class="hint" id="measureNote" style="margin-top:12px;">CamScan is a free browser tool — no install, no account. It runs right on this page.</p>
-    </div>
-  </section>
-
-  <!-- ============ 5. What I make ============ -->
+  <!-- ============ 4. What I make ============ -->
   <section id="what">
     <div class="wrap">
       <div class="sec-head">
@@ -338,7 +318,7 @@
     </div>
   </section>
 
-  <!-- ============ 6. Pricing anchor + turnaround + free first part ============ -->
+  <!-- ============ 5. Pricing anchor + turnaround + free first part ============ -->
   <section id="pricing">
     <div class="wrap">
       <div class="sec-head">
@@ -366,8 +346,32 @@
     </div>
   </section>
 
-  <!-- ============ 7. Capability demo (proof — stays at the bottom until real job photos replace the placeholders) ============ -->
-  <section id="work">
+  <!-- ============ 6. Optional: measure it yourself (CamScan) — a secondary, power-user path,
+       so its CTA is a ghost button (the bright "signal" style is reserved for sending the quote) ============ -->
+  <section id="measure">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow">Optional · Tighter quotes</p>
+        <h2>Want to measure it yourself?</h2>
+        <p>A clear photo is all I need to start — but if you want the tightest quote, measure the part right in your browser with CamScan, a free tool I built (no install, no account). It opens right here on the page and drops the measured photos straight into your quote form — no re-uploading.</p>
+      </div>
+      <div class="steps">
+        <div class="step-card"><div class="n">1</div><h3>Set the scale</h3><p>Lay a printed marker — or a coin, card, or ruler — flat beside the part. CamScan finds it and corrects for camera tilt automatically, so the millimetres come out true.</p></div>
+        <div class="step-card"><div class="n">2</div><h3>Measure each angle</h3><p>Pick the view — Top, Front or Side — then mark the edges, holes and gaps right on the photo. Use “Add another photo” for each angle you want to capture.</p></div>
+        <div class="step-card"><div class="n">3</div><h3>Send it to your quote</h3><p>Hit Review &amp; Submit and the annotated, measured photos drop straight into your quote form — no re-uploading. Then just add your details and send.</p></div>
+      </div>
+      <div class="cta-row" style="margin-top:24px;">
+        <a href="#quote" id="measureBtn" class="btn ghost" target="_blank" rel="noopener">Open the measuring tool →</a>
+      </div>
+      <p class="hint" id="measureNote" style="margin-top:12px;">CamScan is a free browser tool — no install, no account. It runs right on this page.</p>
+    </div>
+  </section>
+
+  <!-- ============ 7. Capability demo — HIDDEN until real photos exist ============
+       Empty "Photo slot" boxes read as unfinished on a live page, so this is hidden for now.
+       To bring it back: drop your demo-part shots (e.g. the wrench + marker) into site/parts/,
+       swap each placeholder .shot div for an <img>, then delete the `hidden` attribute below. -->
+  <section id="work" hidden>
     <div class="wrap">
       <div class="sec-head">
         <p class="eyebrow">Capability demo</p>
