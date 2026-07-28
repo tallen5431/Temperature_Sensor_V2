@@ -150,13 +150,16 @@ Some facts must match the rest of the repo and the live listing when they change
 - **Replacement-part pricing (tiered)** — **print-from-your-file** (material + $15),
   **simple replacement** ($29–60), **reverse-engineered** ($75–250, most ~$120), **design from
   scratch** (quoted). Plus **$25 minimum**, **quote in 24 h**, **ships in 3–5 business days**,
-  **first simple part free for repair shops**. The numbers live in the hero trust bar ("from $29")
-  and the pricing cards on `replacement-parts.html`, in `docs/ETSY_EBAY_LISTINGS.md`, **and in the
-  cold outreach email** — change them together or they'll contradict each other. Marketplace
-  (Etsy/eBay) prices should run ~10–15 % above these to cover platform fees.
+  **first simple part free for repair shops**. The numbers appear in the hero trust bar ("from $29")
+  and the pricing cards on `replacement-parts.html` **and across all the go-to-market copy** —
+  `docs/ETSY_EBAY_LISTINGS.md`, `docs/OUTREACH_EMAIL.md`, and `docs/COMMUNITY_POSTS.md`. Change them
+  together or they'll contradict each other. Marketplace (Etsy/eBay) prices should run ~10–15 %
+  above these to cover platform fees.
 - **General print services** — the "Print from your file" tier and the "What I make" note invite
-  general 3D-print jobs (send an STL), not only replacements. `docs/ETSY_EBAY_LISTINGS.md` has the
-  made-to-order marketplace copy.
+  general 3D-print jobs (send an STL), not only replacements.
+- **Go-to-market collateral** lives in `docs/`: `ETSY_EBAY_LISTINGS.md` (made-to-order marketplace
+  copy), `OUTREACH_EMAIL.md` (cold email to repair shops), `COMMUNITY_POSTS.md` (Reddit / Facebook).
+  All point back to `datumlaboratories.com/replacement-parts`.
 
 ## Related (auto-deployed elsewhere — not this site)
 
