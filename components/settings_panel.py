@@ -7,7 +7,7 @@ running alert monitor and notifier pick up changes without a restart.
 from __future__ import annotations
 
 import dash_bootstrap_components as dbc
-from dash import Input, Output, State, html, dcc, no_update
+from dash import Input, Output, State, html, dcc
 
 from core.notifications import Notifier
 from core.alerts import format_event

@@ -785,24 +785,30 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
         gauge = _make_gauge(_friendly_name(cfg, focus_pid), focus_c,
                             focus_lo, focus_hi, temp_unit, suffix)
 
-        # --- Windowed series for the graph (filtered to the focused probe) ---
-        # Stats first: in the overview their COUNT covers the whole window, so
-        # a provably-empty window skips window_df entirely — including the
-        # duplicate COUNT it runs internally to size its downsampling stride.
-        # (Focus mode can't reuse the count: its stats are probe-filtered but
-        # window_df's scan is not.)
+        # --- Windowed series for the graph (focus mode filters to one probe) ---
+        # Stats first: a provably-empty window skips window_df entirely —
+        # including the duplicate COUNT it runs internally to size its
+        # downsampling stride. window_df now takes the same probe_id, so in focus
+        # mode its scan AND its stride track the focused probe's own volume (not
+        # the global all-probe count, which used to decimate a quiet probe to a
+        # point or two). The SQL filter also removes the old post-filter step.
         stats = db.window_stats(window_seconds=window, probe_id=focus)
         filtered_points = stats["count"]
-        if focus is None and time_range != "all" and not filtered_points:
+        if time_range != "all" and not filtered_points:
             df = pd.DataFrame(columns=["timestamp", "temperature_c",
                                        "temperature_f", "probe_id"])
         else:
-            df = db.window_df(window_seconds=window)
-        if focus is not None and not df.empty:
-            df = df[df["probe_id"] == focus]
-        # "all" renders the same figure for filtered and total, so skip the extra
-        # full-table COUNT(*) scan on every 5s tick in that view.
-        total_points = filtered_points if time_range == "all" else db.count()
+            df = db.window_df(window_seconds=window, probe_id=focus)
+        # "all" renders the same figure for filtered and total; otherwise the
+        # "of Y" denominator is scoped to match the numerator — the focused
+        # probe's own all-time total in focus mode, the whole store in overview —
+        # so a quiet focused probe never reads "Showing 20 of 60,020".
+        if time_range == "all":
+            total_points = filtered_points
+        elif focus is not None:
+            total_points = db.count_readings(probe_id=focus)
+        else:
+            total_points = db.count()
 
         # --- Graph ---
         fig = go.Figure()

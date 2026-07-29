@@ -338,6 +338,31 @@ def test_migration_collapses_byte_identical_duplicates(tmp_path):
     assert db.count() == 1                              # idempotent: no new row
 
 
+def test_window_df_focus_stride_uses_focused_probe_count(db):
+    # Regression: window_df sized the downsample stride from the GLOBAL all-probe
+    # COUNT, so drilling into a quiet probe alongside a chatty one decimated the
+    # quiet probe's line to a point or two. With probe_id set, the stride derives
+    # from the focused probe's own count and the scan is filtered in SQL.
+    base = datetime.datetime(2026, 1, 1, 12, 0, 0)
+    chatty = [((base + datetime.timedelta(milliseconds=i)).isoformat(timespec="milliseconds"),
+               20.0, 68.0, "A") for i in range(5000)]
+    quiet = [((base + datetime.timedelta(seconds=i)).isoformat(timespec="seconds"),
+              4.0, 39.2, "B") for i in range(12)]
+    db.bulk_insert(chatty)
+    db.bulk_insert(quiet)
+
+    # Focused on the quiet probe: all 12 of its rows survive (its own count is
+    # well under max_points) and only its rows are returned.
+    focused = db.window_df(max_points=100, probe_id="B")
+    assert list(focused["probe_id"].unique()) == ["B"]
+    assert len(focused) == 12
+
+    # Contrast: in the global view B is decimated by A's volume (stride >> 1).
+    b_in_global = db.window_df(max_points=100)
+    b_in_global = b_in_global[b_in_global["probe_id"] == "B"]
+    assert len(b_in_global) < 12
+
+
 def test_export_friendly_csv_shape(db):
     db.append("2026-07-21T22:45:36.267", -18.5, -1.3, "Setpoint-000079", humidity=55.0)
     buf = io.StringIO()

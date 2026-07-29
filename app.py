@@ -1,4 +1,3 @@
-import datetime
 import hmac
 import logging
 import os
@@ -8,7 +7,6 @@ import sys
 import tempfile
 from pathlib import Path
 
-import dash_bootstrap_components as dbc
 from dash import Dash, Input, Output
 from flask import Flask, Response, request
 
@@ -23,7 +21,7 @@ from core.audit import AUDIT
 from core.mqtt_publish import MQTT
 from core.version import HUB_VERSION, PRODUCT_NAME
 from probe_discovery import ProbeDiscovery
-from api.routes import create_api
+from api.routes import create_api, _parse_date_epoch
 from components.layout_main import LAYOUT, serve_page, register_all_callbacks
 from components.help_modal import register_help_callbacks
 
@@ -247,26 +245,16 @@ def metrics():
         discovered.discard(None)
     except Exception:
         discovered = set()
-    total = len(discovered | reporting) or len(reporting)
+    total = len(discovered | reporting)
     body = render_prometheus(HEALTH.snapshot(), LATEST.snapshot(), total, HUB_VERSION,
                              probes_online=len(reporting))
     return body, 200, {"Content-Type": "text/plain; version=0.0.4; charset=utf-8"}
 
 
-def _parse_date_epoch(s, end_of_day=False):
-    """Parse a hub-local ``YYYY-MM-DD`` (or full ISO) string to a unix epoch.
-    A bare date maps to the start (or, for ``end_of_day``, the last second) of
-    that day. Returns None for blank/invalid input so the filter is skipped."""
-    s = (s or "").strip()
-    if not s:
-        return None
-    try:
-        d = datetime.datetime.fromisoformat(s.replace("Z", ""))
-        if len(s) == 10 and end_of_day:  # bare date -> inclusive end of day
-            d = d.replace(hour=23, minute=59, second=59)
-        return int(d.timestamp())
-    except (ValueError, TypeError):
-        return None
+# _parse_date_epoch is imported from api.routes so the /download export and the
+# /api/readings JSON API share ONE date-bound implementation — a duplicate copy
+# here had already drifted (it truncated the fractional end-of-day bound and
+# dropped the final second's sub-second rows from exports).
 
 
 @server.route("/download/temperature_log.csv")

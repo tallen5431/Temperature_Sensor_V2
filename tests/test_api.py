@@ -65,6 +65,39 @@ def test_ingest_rejects_non_finite_and_out_of_range(tmp_path):
     assert db.count() == 1
 
 
+def test_non_object_json_body_is_4xx_not_500(tmp_path):
+    # Regression: a top-level JSON array/number/string reached `data.get(...)`
+    # before any dict guard and raised AttributeError -> HTTP 500. It must now be
+    # a clean 4xx from the normal validation path.
+    client, db, _ = _make_client(tmp_path)
+    for body in ([1, 2, 3], 5, "hello"):
+        assert client.post("/api/ingest", json=body).status_code == 400, body   # no temperature
+        assert client.post("/api/provision", json=body).status_code != 500, body
+    assert db.count() == 0
+
+
+def test_auth_survives_non_object_json_body(tmp_path):
+    # The token check reads a JSON body for a `token` field; a non-object body
+    # (no X-Token header) must fail auth with 401, not 500.
+    client, _, _ = _make_client(tmp_path, token="sekret")
+    assert client.post("/api/ingest", json=[1, 2, 3]).status_code == 401
+
+
+def test_health_stays_200_when_db_read_fails(tmp_path):
+    # /api/health is what monitors poll to detect trouble, so a momentarily
+    # locked/unreadable DB must degrade (readings=None) rather than 500.
+    client, db, _ = _make_client(tmp_path)
+
+    def boom():
+        raise RuntimeError("database is locked")
+
+    db.count = boom
+    r = client.get("/api/health")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["ok"] is True and body["readings"] is None
+
+
 def test_ingest_battery_pct_rides_along(tmp_path):
     # battery_pct rides along the ingest payload into the nullable battery_pct
     # column. Extraction lives in core.storage.extract_battery; on a build where

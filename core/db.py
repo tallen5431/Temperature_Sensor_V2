@@ -338,19 +338,31 @@ class Database:
             return None
         return int(time.time()) - int(window_seconds)
 
-    def window_df(self, window_seconds: Optional[int] = None, max_points: int = 6000) -> pd.DataFrame:
+    def window_df(self, window_seconds: Optional[int] = None, max_points: int = 6000,
+                  probe_id: Optional[str] = None) -> pd.DataFrame:
         """Return readings within a rolling window as a DataFrame.
 
         When the window contains more than ``max_points`` rows the result is
-        uniformly downsampled in SQL (``id % stride``) so the dashboard stays
-        responsive even with millions of historical readings.  Statistics are
-        computed separately on the full window via :meth:`window_stats`, so
+        uniformly downsampled in SQL (per-probe row position) so the dashboard
+        stays responsive even with millions of historical readings.  Statistics
+        are computed separately on the full window via :meth:`window_stats`, so
         downsampling only affects plot density, never the reported min/max/avg.
+
+        When ``probe_id`` is given, BOTH the row scan and the COUNT that sizes the
+        downsample stride are restricted to that probe — the dashboard's focus
+        mode must derive the stride from the FOCUSED probe's own volume, not the
+        global all-probe total, or a quiet probe gets decimated to a point or two
+        while a chatty neighbour dominates the count.
         """
         conn = self._conn()
         cutoff = self._cutoff(window_seconds)
-        where = "WHERE epoch >= ?" if cutoff is not None else ""
-        params: tuple = (cutoff,) if cutoff is not None else ()
+        clauses, params_list = [], []
+        if cutoff is not None:
+            clauses.append("epoch >= ?"); params_list.append(cutoff)
+        if probe_id:
+            clauses.append("probe_id = ?"); params_list.append(probe_id)
+        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        params: tuple = tuple(params_list)
 
         total = conn.execute(f"SELECT COUNT(*) AS n FROM readings {where}", params).fetchone()["n"]
         if total == 0:

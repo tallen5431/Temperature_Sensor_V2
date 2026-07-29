@@ -98,6 +98,16 @@ def _parse_date_epoch(s, end_of_day=False):
     except (ValueError, TypeError):
         return None
 
+def _json_body() -> dict:
+    """The request's parsed JSON as a dict, or ``{}`` for a missing, unparseable,
+    or non-object body. A top-level JSON array/number/string is not a valid
+    payload for these endpoints; coercing it to ``{}`` keeps ``.get()`` safe so a
+    malformed body takes the normal validation path (a clean 400/401) instead of
+    an unhandled ``AttributeError`` -> 500."""
+    data = request.get_json(silent=True)
+    return data if isinstance(data, dict) else {}
+
+
 # Config keys whose values must never be returned over the API.
 _SECRET_KEYS = ("provision_token", "server_token", "token", "secret", "password",
                 "api_key", "apikey")
@@ -193,8 +203,7 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
             return True
         tok = request.headers.get("X-Token") or request.args.get("token")
         if not tok and request.is_json:
-            data = request.get_json(silent=True) or {}
-            tok = data.get("token")
+            tok = _json_body().get("token")
         return bool(tok) and hmac.compare_digest(str(tok), TOKEN)
 
     def _online_timeout() -> int:
@@ -269,13 +278,17 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
     @bp.get("/health")
     def health():
         probes = _iter_probes()
+        try:
+            readings = db.count()
+        except Exception:
+            readings = None  # DB momentarily locked/unreadable — stay a 200 health surface
         return jsonify(
             ok=True,
             version=HUB_VERSION,
             product=PRODUCT_NAME,
             probes=len(probes),
             probes_online=sum(1 for p in probes if p["online"]),
-            readings=db.count(),
+            readings=readings,
             base=public_base(),
             time=datetime.datetime.now().isoformat(timespec="seconds"),
             **HEALTH.snapshot(),
@@ -417,7 +430,7 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
     def provision():
         if not _check_auth():
             return jsonify(ok=False, error="unauthorized"), 401
-        data = request.get_json(silent=True) or {}
+        data = _json_body()
         host = (data.get("host") or "").strip()
         try:
             port = int(data.get("port") or 80)
@@ -531,7 +544,7 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
             return jsonify(ok=False, error="unauthorized"), 401
         if request.content_length and request.content_length > MAX_INGEST_BYTES:
             return jsonify(ok=False, error="payload too large"), 413
-        data = request.get_json(silent=True) or {}
+        data = _json_body()
         probe_id = request.headers.get("X-Probe-ID") or (data.get("probe_id") or "")
         try:
             _store(data, request.remote_addr or "", probe_id)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 import logging
 import threading, time, socket
-from typing import Callable, Optional, Any
+from typing import Callable, Optional
 from provisioning import provision_probe, get_probe_status, clamp_resolution_bits
 from core.status import probe_fresh_window
 
