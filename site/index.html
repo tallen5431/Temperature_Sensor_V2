@@ -143,7 +143,6 @@
   nav.top { display: flex; gap: 26px; align-items: center; }
   nav.top a { font-family: var(--font-mono); font-size: 13px; letter-spacing: 0.02em; text-decoration: none; color: var(--slate); }
   nav.top a:hover { color: var(--ink); }
-  @media (max-width: 720px) { nav.top { display: none; } .mobile-nav { display: block; } }
 
   /* mobile menu (hamburger) — takes over from nav.top at <=720px */
   .mobile-nav { display: none; position: relative; }
@@ -154,6 +153,10 @@
   .mobile-menu a { font-family: var(--font-mono); font-size: 14px; text-decoration: none; color: var(--ink); padding: 11px 12px; border-radius: var(--radius); }
   .mobile-menu a:hover, .mobile-menu a:focus-visible { background: var(--signal-soft); outline: none; }
   .mobile-menu a.cta { color: var(--signal); }
+  /* Must come AFTER the .mobile-nav base rule above: at a matching viewport both
+     this and the base `display: none` apply with equal specificity, so source
+     order decides — declaring this last is what makes the override win. */
+  @media (max-width: 720px) { nav.top { display: none; } .mobile-nav { display: block; } }
 
   .btn {
     display: inline-flex; align-items: center; gap: 8px;

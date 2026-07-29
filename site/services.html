@@ -54,7 +54,20 @@
   nav.top { display:flex; gap:26px; align-items:center; }
   nav.top a { font-family:var(--font-mono); font-size:13px; letter-spacing:0.02em; text-decoration:none; color:var(--slate); }
   nav.top a:hover, nav.top a.active { color:var(--ink); }
-  @media (max-width:720px){ nav.top a.hide-sm { display:none; } }
+
+  /* mobile menu (hamburger) — takes over from nav.top at <=720px */
+  .mobile-nav { display:none; position:relative; }
+  .mobile-nav > summary { list-style:none; cursor:pointer; font-size:20px; line-height:1; padding:7px 11px; color:var(--ink); border:1px solid var(--line-strong); border-radius:var(--radius); user-select:none; }
+  .mobile-nav > summary::-webkit-details-marker { display:none; }
+  .mobile-nav[open] > summary { border-color:var(--signal); }
+  .mobile-menu { position:absolute; right:0; top:calc(100% + 12px); background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:8px; display:flex; flex-direction:column; gap:2px; min-width:210px; box-shadow:0 16px 44px -20px rgba(0,0,0,.55); z-index:60; }
+  .mobile-menu a { font-family:var(--font-mono); font-size:14px; text-decoration:none; color:var(--ink); padding:11px 12px; border-radius:var(--radius); }
+  .mobile-menu a:hover, .mobile-menu a:focus-visible { background:var(--signal-soft); outline:none; }
+  .mobile-menu a.cta { color:var(--signal); }
+  /* Must come AFTER the .mobile-nav base rule above: at a matching viewport both
+     this and the base `display:none` apply with equal specificity, so source
+     order decides — declaring this last is what makes the override win. */
+  @media (max-width:720px){ nav.top { display:none; } .mobile-nav { display:block; } }
 
   .btn { display:inline-flex; align-items:center; gap:8px; font-family:var(--font-mono); font-size:13px; letter-spacing:0.02em; padding:11px 18px; border-radius:var(--radius); text-decoration:none; border:1px solid var(--ink); background:var(--ink); color:var(--paper); cursor:pointer; transition:transform .12s ease, opacity .12s ease; }
   .btn:hover { transform:translateY(-1px); }
@@ -138,6 +151,16 @@
       <a href="/about">About</a>
       <a href="#contact" class="btn ghost" style="padding:8px 14px;">Contact</a>
     </nav>
+    <details class="mobile-nav">
+      <summary aria-label="Open menu">☰</summary>
+      <nav class="mobile-menu" aria-label="Menu">
+        <a href="/">Setpoint</a>
+        <a href="/services" class="active">Services</a>
+        <a href="/replacement-parts">Replacement parts</a>
+        <a href="/about">About</a>
+        <a href="#contact" class="cta">Contact</a>
+      </nav>
+    </details>
   </div>
 </header>
 
@@ -326,6 +349,15 @@
     });
   });
 })();
+
+// Close the mobile menu after a link is tapped (so an in-page jump doesn't
+// leave the dropdown covering the section you jumped to).
+document.querySelectorAll(".mobile-menu a").forEach(function (a) {
+  a.addEventListener("click", function () {
+    var d = document.querySelector(".mobile-nav");
+    if (d) d.removeAttribute("open");
+  });
+});
 </script>
 
 </body>
