@@ -190,6 +190,42 @@ def test_offline_recover_hold_zero_is_immediate():
     assert "flaps" not in ev[0]              # a clean recovery carries no flap count
 
 
+def test_offline_hold_absorbs_lone_blip_during_silence():
+    # Regression: a hold SHORTER than the offline window must still absorb a
+    # single stray reading. One reading keeps raw=="online" for a whole freshness
+    # window (age <= threshold) even while the probe is silent, so timing the
+    # confirm on wall-clock let a lone blip clear the outage and fire a spurious
+    # offline+back-online pair — the exact churn this feature suppresses. The
+    # confirm is anchored to reading-time span instead. threshold=300, hold=60.
+    off, hold = {"p": 300}, {"p": 60}
+    st, kinds = {}, []
+
+    def step(now, last_epoch):
+        nonlocal st
+        ev, st = evaluate_offline({"p": last_epoch}, st, now=now,
+                                  offline_after_sec=off, recover_hold_sec=hold)
+        kinds.extend(e["kind"] for e in ev)
+
+    # Steady 0..120, then silent: exactly one offline fires (~420).
+    for now in range(0, 130, 30):
+        step(now, min(now, 120))
+    for now in range(150, 700, 30):
+        step(now, 120)
+    assert kinds.count("offline") == 1 and "online" not in kinds
+    # One stray reading at 700, then silent again — must NOT clear the outage.
+    for now in range(700, 1100, 30):
+        step(now, 700)
+    assert "online" not in kinds, f"lone blip wrongly cleared the outage: {kinds}"
+    assert st["p"]["committed"] == "offline"
+    # Genuine recovery: readings actually spanning the hold -> one confirmed online.
+    online = []
+    for now in range(1200, 1330, 30):
+        ev, st = evaluate_offline({"p": now}, st, now=now,      # last_epoch tracks now
+                                  offline_after_sec=off, recover_hold_sec=hold)
+        online.extend(e["kind"] for e in ev)
+    assert online == ["online"] and st["p"]["committed"] == "online"
+
+
 def test_evaluate_offline_hold_accepts_per_probe_mapping():
     # Each probe can carry its own hold, like offline_after_sec does.
     st0 = {"a": {"committed": "offline", "raw": "offline", "online_since": None, "flaps": 0},

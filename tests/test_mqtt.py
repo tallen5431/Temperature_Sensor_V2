@@ -58,6 +58,48 @@ def test_start_disabled_by_config_does_nothing():
     assert pub.is_ready() is False
 
 
+class _RecordingClient:
+    def __init__(self):
+        self.published = []
+
+    def username_pw_set(self, *a, **k):
+        pass
+
+    def connect(self, *a, **k):
+        pass
+
+    def loop_start(self):
+        pass
+
+    def publish(self, topic, payload, retain=False):
+        self.published.append(topic)
+
+
+def test_start_coerces_null_topic_and_string_discovery_flag(monkeypatch):
+    # Regression: a hand-edited config with base_topic=null and a string
+    # discovery flag must not silently kill publishing. Null base_topic must
+    # fall back to "setpoint" (not None, which crashed every publish on
+    # None.rstrip()), and discovery_enabled="false" must read as False, not
+    # truthy. Uses a fake paho client so no broker is needed.
+    import paho.mqtt.client as mqtt_mod
+    fake = _RecordingClient()
+    monkeypatch.setattr(mqtt_mod, "Client", lambda *a, **k: fake)
+
+    pub = MqttPublisher()
+    pub.start(_FakeCfg({"mqtt": {"enabled": True, "host": "localhost",
+                                 "base_topic": None, "discovery_prefix": "",
+                                 "discovery_enabled": "false"}}))
+    assert pub.is_ready() is True
+    assert pub._base_topic == "setpoint"          # null -> default, not None
+    assert pub._discovery_prefix == "homeassistant"  # empty -> default
+    assert pub._discovery_enabled is False         # "false" -> off, not truthy
+
+    # Publishing now actually reaches the broker (would have silently crashed
+    # on None.rstrip() before), and no discovery entity is announced.
+    pub.publish_reading("Setpoint-1", 20.0, "Fridge")
+    assert fake.published == ["setpoint/Setpoint-1/state"]
+
+
 class _FakeClient:
     def loop_stop(self):
         pass

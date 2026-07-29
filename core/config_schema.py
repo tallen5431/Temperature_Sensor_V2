@@ -20,7 +20,10 @@ def _to_number(val: Any, minimum, integer: bool):
     """Return ``(value, ok)`` — ``ok`` is False when ``val`` is not a finite number."""
     try:
         n = float(val)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
+        # OverflowError: a JSON integer literal too large for a C double (~1e308)
+        # — float(huge_int) raises it, and it is NOT a ValueError subclass, so it
+        # would otherwise escape normalize_config's "never raises" contract.
         return None, False
     if math.isnan(n) or math.isinf(n):
         return None, False

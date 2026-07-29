@@ -38,6 +38,16 @@ def test_string_threshold_bounds_are_coerced_to_numbers():
     assert clean["alert_thresholds"]["default"]["min"] == -18  # negatives preserved
 
 
+def test_absurdly_large_integer_field_does_not_crash():
+    # Regression: a JSON integer literal too large for a C double makes
+    # float(int) raise OverflowError (not a ValueError), which used to escape
+    # normalize_config's "never raises" contract. It must instead be dropped to
+    # the default with a warning, like any other unusable number.
+    clean, warns = normalize_config({"interval_sec": 10 ** 400})
+    assert isinstance(clean["interval_sec"], (int, float))
+    assert warns  # the correction is reported
+
+
 def test_non_numeric_threshold_bound_is_dropped():
     clean, warns = normalize_config(
         {"alert_thresholds": {"p1": {"max": "hot"}, "p2": "nonsense"}})

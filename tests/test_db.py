@@ -291,6 +291,53 @@ def test_end_epoch_keeps_final_second_subsecond_rows(db):
     assert db.export_csv(buf, start_epoch=start, end_epoch=end, probe_id="p") == 3
 
 
+def _legacy_db(path, rows):
+    """Build a pre-idempotency DB: the readings table with the OLD non-unique
+    index, rows inserted directly so (probe_id, epoch) collisions are possible
+    (as the old whole-second-stamped path allowed). `rows` are
+    (ts, epoch, t_c, t_f, probe_id) tuples."""
+    import sqlite3
+    c = sqlite3.connect(str(path))
+    c.execute("""CREATE TABLE readings (id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts TEXT NOT NULL, epoch INTEGER NOT NULL, temperature_c REAL NOT NULL,
+        temperature_f REAL NOT NULL, probe_id TEXT NOT NULL DEFAULT '',
+        humidity_pct REAL, vpd_kpa REAL, battery_pct REAL)""")
+    c.execute("CREATE INDEX idx_readings_probe_epoch ON readings(probe_id, epoch)")
+    c.executemany("INSERT INTO readings (ts,epoch,temperature_c,temperature_f,probe_id) "
+                  "VALUES (?,?,?,?,?)", rows)
+    c.commit()
+    c.close()
+
+
+def test_migration_preserves_distinct_same_epoch_readings(tmp_path):
+    # Regression: two DISTINCT readings that merely share a whole-second epoch
+    # (old whole-second stamping of a sub-1s cadence) must BOTH survive the
+    # unique-index migration. The dedup used to keep only MIN(id) per
+    # (probe_id, epoch), silently deleting the second reading.
+    path = tmp_path / "legacy.db"
+    _legacy_db(path, [
+        ("2026-01-01T00:00:05", 1767225605, 4.0, 39.2, "P1"),
+        ("2026-01-01T00:00:05", 1767225605, 22.0, 71.6, "P1"),  # distinct temp, same epoch
+    ])
+    db = Database(path)  # opening runs _init_schema -> migration
+    temps = sorted(r["temperature_c"] for r in db.fetch_readings(probe_id="P1"))
+    assert temps == [4.0, 22.0]   # nothing deleted
+
+
+def test_migration_collapses_byte_identical_duplicates(tmp_path):
+    # A genuine replay (every column identical) IS collapsed to one row, and the
+    # UNIQUE index is then built so future replays are dropped by INSERT OR IGNORE.
+    path = tmp_path / "legacy.db"
+    _legacy_db(path, [
+        ("2026-01-01T00:00:05", 1767225605, 4.0, 39.2, "P1"),
+        ("2026-01-01T00:00:05", 1767225605, 4.0, 39.2, "P1"),  # exact duplicate
+    ])
+    db = Database(path)
+    assert db.count() == 1
+    db.append("2026-01-01T00:00:05", 4.0, 39.2, "P1")  # same instant again
+    assert db.count() == 1                              # idempotent: no new row
+
+
 def test_export_friendly_csv_shape(db):
     db.append("2026-07-21T22:45:36.267", -18.5, -1.3, "Setpoint-000079", humidity=55.0)
     buf = io.StringIO()

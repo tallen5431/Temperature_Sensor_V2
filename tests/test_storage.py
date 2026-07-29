@@ -118,6 +118,17 @@ def test_out_of_range_temperature_rejected(bad):
         normalize_payload({"temperature_c": bad})
 
 
+def test_out_of_range_fahrenheit_rejected_when_both_units_sent():
+    # Regression: a payload sending BOTH units could slip a garbage Fahrenheit
+    # value past the Celsius-only range gate and poison the temperature_f column.
+    # The F band (-76..302 F == -60..150 C) is now checked too.
+    with pytest.raises(ValueError):
+        normalize_payload({"temperature_c": 25.0, "temperature_f": 9999.0})
+    # A consistent both-units payload still passes unharmed.
+    _, c, f = normalize_payload({"temperature_c": 25.0, "temperature_f": 77.0})
+    assert c == 25.0 and f == 77.0
+
+
 @pytest.mark.parametrize("ok", [-60.0, -18.0, 0.0, 22.5, 85.0, 150.0])
 def test_in_band_temperature_accepted(ok):
     _, c, _ = normalize_payload({"temperature_c": ok})

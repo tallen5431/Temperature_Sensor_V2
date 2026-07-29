@@ -83,9 +83,18 @@ class MqttPublisher:
                         "(`pip install paho-mqtt`); MQTT publishing is off.")
             return
 
-        self._base_topic = m.get("base_topic", "setpoint")
-        self._discovery_prefix = m.get("discovery_prefix", "homeassistant")
-        self._discovery_enabled = bool(m.get("discovery_enabled", True))
+        # Defensive against a hand-edited config (this module's threat model):
+        # `or` — not a key-missing default — so a present-but-null or empty
+        # base_topic/prefix falls back instead of becoming None (which would
+        # crash every publish on None.rstrip() and silently disable the whole
+        # integration). discovery_enabled likewise honours a string "false"/"off"
+        # rather than reading any non-empty string as truthy via bool().
+        self._base_topic = m.get("base_topic") or "setpoint"
+        self._discovery_prefix = m.get("discovery_prefix") or "homeassistant"
+        de = m.get("discovery_enabled", True)
+        if isinstance(de, str):
+            de = de.strip().lower() not in ("0", "false", "no", "off", "")
+        self._discovery_enabled = bool(de)
         try:
             client = mqtt.Client()
             if m.get("username"):

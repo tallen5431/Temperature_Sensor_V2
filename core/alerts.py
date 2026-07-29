@@ -208,11 +208,17 @@ def evaluate_offline(last_epochs: Dict[str, int], states: dict,
         online_since = st["online_since"]
         flaps = st["flaps"]
 
-        # Maintain the continuous-online timer, and count a "flap" whenever the
-        # probe bounces back offline while an outage is still open (unconfirmed).
+        # Anchor the online streak to the epoch of its FIRST reading, and count a
+        # "flap" whenever the probe bounces back offline while an outage is still
+        # open (unconfirmed). online_since holds a reading epoch, not wall-clock:
+        # a single reading keeps raw=="online" for a whole freshness window
+        # (age <= threshold) even while the probe is silent, so timing the hold
+        # against `now` would let one blip clear the outage the moment enough
+        # wall-clock passed. Timing it against the newest reading's epoch instead
+        # requires the probe to have actually PRODUCED readings spanning the hold.
         if raw == "online":
             if online_since is None:
-                online_since = now
+                online_since = last_epoch
         else:  # raw offline
             if st["raw"] == "online" and committed == "offline":
                 flaps += 1
@@ -222,8 +228,10 @@ def evaluate_offline(last_epochs: Dict[str, int], states: dict,
             if raw == "offline":
                 committed, flaps = "offline", 0
                 events.append({"probe_id": probe_id, "kind": "offline", "age_sec": int(age)})
-        else:  # committed offline — hold the all-clear until it's steady
-            if raw == "online" and (now - online_since) >= hold:
+        else:  # committed offline — hold the all-clear until the probe has
+               # reported steadily: newest reading fresh AND readings now span
+               # the hold window (last_epoch advanced >= hold beyond streak start).
+            if raw == "online" and (last_epoch - online_since) >= hold:
                 committed = "online"
                 ev = {"probe_id": probe_id, "kind": "online", "age_sec": int(age)}
                 if flaps:

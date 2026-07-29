@@ -156,18 +156,35 @@ class Database:
                     "ON readings(probe_id, epoch)"
                 )
             except sqlite3.IntegrityError:
-                # A pre-existing database may already hold exact (probe_id, epoch)
-                # duplicates from the older non-idempotent path. Collapse them —
-                # keeping the earliest row, which is the same reading — so the
-                # unique index can be built. This removes only true duplicates.
+                # A pre-existing database from the older non-idempotent path may
+                # hold rows that share a (probe_id, epoch). Collapse ONLY
+                # byte-identical duplicates — every reading column equal — keeping
+                # the earliest id. Rows that share an epoch but differ in any
+                # value are DISTINCT measurements (old whole-second stamping of a
+                # sub-1 s cadence, before ms timestamps) and MUST be preserved:
+                # grouping on the full row, not just (probe_id, epoch), is what
+                # keeps this from silently deleting real readings.
                 conn.execute(
-                    "DELETE FROM readings WHERE id NOT IN "
-                    "(SELECT MIN(id) FROM readings GROUP BY probe_id, epoch)"
+                    "DELETE FROM readings WHERE id NOT IN ("
+                    " SELECT MIN(id) FROM readings GROUP BY probe_id, epoch, "
+                    " temperature_c, temperature_f, humidity_pct, vpd_kpa, battery_pct)"
                 )
-                conn.execute(
-                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_readings_probe_epoch_uniq "
-                    "ON readings(probe_id, epoch)"
-                )
+                try:
+                    conn.execute(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS idx_readings_probe_epoch_uniq "
+                        "ON readings(probe_id, epoch)"
+                    )
+                except sqlite3.IntegrityError:
+                    # Genuinely-distinct readings still collide on (probe_id,
+                    # epoch), so uniqueness cannot be enforced without discarding
+                    # real data. Keep the old NON-unique index instead: ingest
+                    # idempotency just doesn't apply retroactively to this legacy
+                    # DB (new readings carry ms-precision epochs and don't
+                    # collide), which is strictly better than losing history.
+                    conn.execute(
+                        "CREATE INDEX IF NOT EXISTS idx_readings_probe_epoch "
+                        "ON readings(probe_id, epoch)"
+                    )
             # Alert-lifecycle event log (threshold breach/recovery, probe
             # offline/online, rate-of-change) — powers the dashboard's recent
             # events feed without re-deriving history from raw readings.

@@ -148,6 +148,12 @@ def normalize_payload(payload: dict):
         raise ValueError("temperature must be a finite number")
     if not (-60.0 <= t_c <= 150.0):
         raise ValueError("temperature out of range (-60..150 C)")
+    # Gate the Fahrenheit value too (-60..150 C == -76..302 F exactly). When only
+    # one unit is sent the other is derived and always agrees, but a payload that
+    # sends BOTH could otherwise slip a garbage t_f (e.g. C=25, F=9999) past the
+    # C-only check and poison the temperature_f column, stats and exports.
+    if not (-76.0 <= t_f <= 302.0):
+        raise ValueError("temperature out of range (-76..302 F)")
 
     return ts, float(t_c), float(t_f)
 

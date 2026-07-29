@@ -88,6 +88,10 @@ def test_clock_format_12h_sets_graph_tickformatstops(tmp_path):
     # 12h explicitly overrides with AM/PM-bearing format strings.
     stops = fig_12h.layout.xaxis.tickformatstops
     assert stops and any("%p" in s.value for s in stops)
+    # Regression: NO tier may fall back to the 24-hour %H token in 12h mode — the
+    # sub-second tier used to, so a zoomed-in high-cadence chart mixed
+    # "14:30:05.1" ticks with "2:30:05 PM" hovers.
+    assert not any("%H" in s.value for s in stops)
 
 
 def test_build_dashboard_fahrenheit_unit(tmp_path):

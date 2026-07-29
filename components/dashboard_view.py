@@ -884,7 +884,7 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
         if clock_format == "12h":
             xaxis_kwargs["hoverformat"] = "%b %d, %I:%M:%S %p"
             xaxis_kwargs["tickformatstops"] = [
-                dict(dtickrange=[None, 1000], value="%H:%M:%S.%L"),
+                dict(dtickrange=[None, 1000], value="%I:%M:%S.%L %p"),
                 dict(dtickrange=[1000, 60000], value="%I:%M:%S %p"),
                 dict(dtickrange=[60000, 3600000], value="%I:%M %p"),
                 dict(dtickrange=[3600000, 86400000], value="%I:%M %p"),

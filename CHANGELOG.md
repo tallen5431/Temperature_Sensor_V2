@@ -11,13 +11,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`?to=YYYY-MM-DD` sub-second rows: the fix now actually reaches the query.**
+  The end-of-day bound was built as a fractional epoch (`…59.999999`) but the DB
+  layer cast it back with `int()` before the `epoch <= bound` compare, truncating
+  it to `…59` and re-dropping `23:59:59.001–.999` on the `to` date — in both the
+  JSON read API and every CSV/xlsx export. The bound is now passed through as a
+  float.
+- **MQTT no longer silently dies on a `null`/blank topic or a stringy flag.** A
+  hand-edited `mqtt.base_topic`/`discovery_prefix` of `null` (or `""`) used to
+  become `None` and crash every publish on `None.rstrip()` — a connected-but-mute
+  integration — because the key-missing default never applied to a present-null
+  value; it now falls back to the documented default. A string
+  `discovery_enabled: "false"` is likewise honored as off instead of read as
+  truthy by `bool()`.
+- **A huge integer in config.json no longer crashes the hub on load.** `float()`
+  of an integer literal larger than a C double (~1e308) raises `OverflowError`,
+  which is not a `ValueError` and escaped `normalize_config`'s "never raises"
+  contract; it is now caught and the field falls back to its default with a
+  warning.
+- **A garbage Fahrenheit value can no longer bypass the ingest range gate.** When
+  a payload sent both units, only Celsius was range-checked, so a bad
+  `temperature_f` (e.g. C=25, F=9999) reached the DB and poisoned the column,
+  stats and exports. The Fahrenheit band (`-76..302 F`) is now checked too.
+- **12-hour clock mode: consistent AM/PM at every zoom.** The graph's finest
+  (sub-second) tick tier was left in 24-hour `%H:%M:%S`, so a zoomed-in
+  high-cadence chart mixed `14:30:05.1` ticks with `2:30:05 PM` hovers.
 - **Ingest is now idempotent.** A `UNIQUE(probe_id, epoch)` index backs the
   readings table and both write paths use `INSERT OR IGNORE`, so a re-sent
   reading — a dropped ACK on a bulk `/api/ingest_csv` flush re-POSTs a whole
   chunk — can no longer create duplicate rows that inflate COUNT/AVG/min-max and
   exports. Timestamp-less bulk rows are receipt-stamped 1 ms apart so a chunk
-  isn't collapsed to one row; a pre-existing DB with exact `(probe_id, epoch)`
-  duplicates is de-duplicated in place when the index is built.
+  isn't collapsed to one row. A pre-existing DB is de-duplicated in place when
+  the index is built, collapsing **only byte-identical** rows — two distinct
+  readings that merely share a whole-second epoch (old whole-second stamping of a
+  sub-1 s cadence) are preserved, falling back to a non-unique index rather than
+  being silently deleted.
 - **Rate-of-change alert now uses the true window-old sample.** `_check_rate`
   took `fetch_readings(window)[0]`, but that caps to the most-recent N rows
   before reversing, so on a high-cadence probe (e.g. 0.5 s over a 60 min window)
