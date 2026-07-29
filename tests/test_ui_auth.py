@@ -3,7 +3,6 @@ logic wired in app.py (kept isolated to avoid app import side effects)."""
 import base64
 import hmac
 
-import pytest
 from flask import Flask, request, Response
 
 

@@ -1,7 +1,6 @@
 """Integration tests for the REST API blueprint (api.routes)."""
 import time
 
-import pytest
 from flask import Flask
 
 from api.routes import _is_safe_provision_target, create_api

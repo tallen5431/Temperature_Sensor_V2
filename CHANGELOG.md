@@ -11,6 +11,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Startup no longer wipes the entire history when the clock is wrong.**
+  `delete_future_readings()` runs on every hub start and deleted rows stamped
+  after `now + tolerance`. On hub hardware without a battery-backed RTC (a
+  Raspberry Pi) that boots to 1970/a stale date before NTP syncs, that low clock
+  made the **whole legitimate history** look "future" and removed it
+  irreversibly. The purge is now skipped when the wall clock is implausibly early
+  (before a 2025-01-01 trust floor); a trustworthy clock still purges genuine
+  future-stamped rows.
+- **A webhook URL's bearer token no longer leaks on a delivery error.**
+  requests/urllib3 render the host and the token-bearing path+query separately in
+  their exception text, so the whole-URL `str(e).replace(url, …)` scrub matched
+  nothing and the secret reached both the hub log and the Settings "Test" result.
+  The failure message is now built from the exception type and host only.
+- **Config secrets are no longer briefly world-readable.** The atomic-save temp
+  file was created with a plain `open()` (0o644 under the default umask) while
+  holding SMTP/webhook/provisioning secrets, and an already-loose `config.json`
+  was never re-secured on load. The temp file is now created `0o600` and an
+  existing file is `chmod`ed on load.
+- **CSV/Excel exports dropped the final second's sub-second rows.** `app.py`
+  carried its *own* copy of `_parse_date_epoch` that still truncated the
+  `?to=` end-of-day bound to `…59`, so `/download/temperature_log.csv` disagreed
+  with `/api/readings` for the same date range. The duplicate is gone; both paths
+  now share one implementation.
+- **Focus mode no longer over-decimates a quiet probe's chart.** `window_df`
+  sized its downsample stride from the **global** all-probe row count, so
+  drilling into a low-rate probe beside a chatty one drew its line from as few as
+  1–2 points while the UI truthfully reported "Showing 20". `window_df` now takes
+  a `probe_id` (stride and scan both scoped to the focused probe), and the
+  "of *N*" denominator is scoped to match.
+- **A malformed JSON body returns 400 instead of 500.** A top-level JSON
+  array/number/string reached `data.get(...)` before any dict guard on
+  `/api/ingest`, `/api/provision` and the token check, raising an unhandled
+  `AttributeError`. A shared `_json_body()` helper now coerces a non-object body
+  so it takes the normal validation path.
+- **`/api/health` stays a 200 health surface when the DB is busy.** Its
+  `db.count()` was unguarded, so a locked/unreadable SQLite file turned the very
+  endpoint monitors poll into a 500; it now degrades to `readings: null`.
+- **Website: mobile navigation and horizontal scrolling.** The hamburger menu was
+  dead on *every* page — `about`, `services` and `replacement-parts` never had
+  one (their headers simply hid links at ≤720 px), and on `index` the base
+  `display:none` was declared *after* the media-query override, so equal
+  specificity plus source order kept the button hidden at every width. Mobile
+  visitors could only navigate from the footer. Separately, the footer link row
+  could not wrap, giving `index`/`about`/`services` 87–183 px of horizontal
+  scroll on a phone, and the contact email overflowed a 320 px viewport. All four
+  pages now pass with no horizontal scroll at 320 px and 390 px.
 - **`?to=YYYY-MM-DD` sub-second rows: the fix now actually reaches the query.**
   The end-of-day bound was built as a fractional epoch (`…59.999999`) but the DB
   layer cast it back with `int()` before the `epoch <= bound` compare, truncating
