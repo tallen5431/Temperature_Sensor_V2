@@ -48,7 +48,7 @@ The **boards are NOT on this list** — the rev-1 carriers + ESP32-C3 SuperMinis
 | USB-UART adapter (CP2102/CH340, 3.3/5 V) | 3 | **$24** | Not needed for C3 kits, but required for the rev-2 UART header — buy now |
 | Powered USB hub (7-port, per-port power, ≥60 W) | 1 | **$35** | Flash several boards without brownout |
 | 2.4 GHz test AP / travel router | 1 | **$30** | QC needs a 2.4 GHz-only SSID (GL.iNet Mango/Beryl) |
-| Bench hub (Raspberry Pi 5 8 GB) | 1 | **$110** | Runs the dashboard on `:8080`. **Skip if you already have an always-on PC/Pi** |
+| Bench hub (Raspberry Pi 5 8 GB) | 1 | **$110** | Runs the dashboard on `:8088`. **Skip if you already have an always-on PC/Pi** |
 | Breadboard + Dupont jumper set | 1 | **$12** | Test rig / probe bring-up |
 | Protected 18650 cells + charger (bench only) | 2–4 + 1 | **$22** | Observe deep-sleep wake at QC; cells never ship in kits |
 | | | **≈ $251** (**$141** if you already have a Pi/PC) | |

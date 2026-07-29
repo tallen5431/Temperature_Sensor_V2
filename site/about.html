@@ -157,7 +157,9 @@
   .foot-inner { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:18px; }
   .fmk { font-weight:700; letter-spacing:-0.02em; }
   .fmk span { font-family:var(--font-mono); font-size:11px; color:var(--faint); text-transform:uppercase; letter-spacing:0.08em; display:block; font-weight:400; margin-top:2px; }
-  .foot-links { display:flex; gap:22px; font-family:var(--font-mono); font-size:12.5px; }
+  /* flex-wrap is required: without it this row cannot break and gives the page
+     horizontal scroll on a phone viewport. */
+  .foot-links { display:flex; flex-wrap:wrap; gap:22px; font-family:var(--font-mono); font-size:12.5px; }
   .foot-links a { color:var(--slate); text-decoration:none; }
   .foot-links a:hover { color:var(--ink); }
   .fineprint { font-family:var(--font-mono); font-size:11px; color:var(--faint); margin-top:20px; max-width:60em; line-height:1.7; }

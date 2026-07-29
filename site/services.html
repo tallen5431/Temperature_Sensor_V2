@@ -124,7 +124,9 @@
   .foot-inner { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:18px; }
   .fmk { font-weight:700; letter-spacing:-0.02em; }
   .fmk span { font-family:var(--font-mono); font-size:11px; color:var(--faint); text-transform:uppercase; letter-spacing:0.08em; display:block; font-weight:400; margin-top:2px; }
-  .foot-links { display:flex; gap:22px; font-family:var(--font-mono); font-size:12.5px; }
+  /* flex-wrap is required: without it this row cannot break and gives the page
+     horizontal scroll on a phone viewport. */
+  .foot-links { display:flex; flex-wrap:wrap; gap:22px; font-family:var(--font-mono); font-size:12.5px; }
   .foot-links a { color:var(--slate); text-decoration:none; }
   .foot-links a:hover { color:var(--ink); }
   .fineprint { font-family:var(--font-mono); font-size:11px; color:var(--faint); margin-top:20px; max-width:60em; line-height:1.7; }
@@ -248,7 +250,7 @@
       <div class="sec-head">
         <p class="eyebrow">Contact</p>
         <h2>Start a project.</h2>
-        <p>Tell me a bit about it and I'll get back to you. Prefer email? <a href="mailto:thomas.allen@datumlaboratories.com?subject=Project%20inquiry" style="color:var(--signal);text-decoration:none;">thomas.allen@datumlaboratories.com</a>.</p>
+        <p>Tell me a bit about it and I'll get back to you. Prefer email? <a href="mailto:thomas.allen@datumlaboratories.com?subject=Project%20inquiry" style="color:var(--signal);text-decoration:none;overflow-wrap:anywhere;">thomas.allen@datumlaboratories.com</a>.</p>
       </div>
       <form class="contact" id="contactForm" novalidate>
         <div class="row">
