@@ -11,7 +11,7 @@ services:
     restart: unless-stopped
     network_mode: host          # needed for mDNS discovery on the LAN
     volumes:
-      - ./data:/data            # temperature_log.csv, logs, config persist here
+      - ./data:/data            # temperature_log.db (SQLite), logs, config persist here
     environment:
       - PORT=8080
       # - SERVER_TOKEN=change-me        # pin the device token (else auto-generated)

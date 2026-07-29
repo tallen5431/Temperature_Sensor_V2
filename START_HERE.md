@@ -41,7 +41,7 @@ Ordered by dependency — each unblocks the next.
       a board.
 - [ ] **Order kit parts for 10** — DS18B20 probes + TP4056s are the 2–4-week long-lead items, order now;
       add a small fast Amazon backup of each. → [`docs/MATERIALS_AND_NEXT_STEPS.md`](docs/MATERIALS_AND_NEXT_STEPS.md), [`docs/BOM.md`](docs/BOM.md)
-- [ ] **Set up the bench hub** (`Start.sh` → dashboard on `:8080`) + a 2.4 GHz test Wi-Fi network.
+- [ ] **Set up the bench hub** (`Start.sh` → dashboard on `:8088`) + a 2.4 GHz test Wi-Fi network.
 - [ ] **Stand up the Stripe pre-order link** ($15 refundable deposit) and post it once (README banner +
       r/homelab + your contacts). → [`docs/PREORDER.md`](docs/PREORDER.md)
 - [ ] **Text your warmest restaurant contact** the pilot opener; line up two more. → [`docs/PILOT_OFFER.md`](docs/PILOT_OFFER.md)

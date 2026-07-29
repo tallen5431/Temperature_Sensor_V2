@@ -8,6 +8,8 @@
   "alert_freshness_sec": 600,
   "offline_after_sec": 300,
   "alert_hysteresis_c": 0.5,
+  "rate_alert_c": 0.0,
+  "rate_window_min": 10,
   "probe_names": {},
   "alert_thresholds": {},
   "calibration_offsets": {},
@@ -20,6 +22,10 @@
     "notify_recovery": true,
     "offline_alerts": true,
     "flap_grace_sec": null,
+    "daily_summary": {
+      "enabled": false,
+      "hour": 8
+    },
     "email": {
       "enabled": false,
       "smtp_host": "",

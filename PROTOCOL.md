@@ -1,7 +1,9 @@
 # Setpoint ⇄ Setpoint Protocol
 
 **Protocol version: `proto = 1`**
-Product: **Setpoint** (hub) / **Setpoint** (probe) · Software version: `2.0.0`
+Product: **Setpoint** (hub) / **Setpoint** (probe). This contract is versioned by
+`proto` (above), currently `1`; component software versions are tracked separately
+(hub: `core/version.py` → `HUB_VERSION`; firmware: `FW_VERSION`) and are not pinned here.
 
 This is the authoritative, versioned contract between Setpoint firmware and the
 Setpoint appliance. It is the single source of truth for the wire format: identity,
@@ -18,7 +20,7 @@ LAN-only (probe ⇄ hub, same subnet). There is no outbound telemetry and no acc
 
 | Term | Meaning |
 |------|---------|
-| **Hub** | Setpoint — Python/Flask+Dash app served by waitress on TCP **8080**. |
+| **Hub** | Setpoint — Python/Flask+Dash app served by waitress on the `PORT` env var: **8088** natively (`Start.sh`/`app.py` default), **8080** in the Docker image. |
 | **Probe** | Setpoint — ESP32 firmware, HTTP server on TCP **80**. |
 | **`proto`** | Integer protocol version. This document defines `proto = 1`. |
 | **Device token** | One shared secret per hub. Authenticates mutating hub endpoints **and** is provisioned onto probes, which echo it back as `X-Token`. |

@@ -141,7 +141,7 @@ set minutes to pin it, or **0 to switch damping off** (`notifications.flap_grace
 in its Edit dialog — it's added to every reading at ingest, so stored data and alerts
 are corrected.
 
-**Data retention & backup (Settings → Data Management):** keep readings for a fixed
+**Data retention & backup (Settings → Data & storage):** keep readings for a fixed
 number of days (`retention_days`, 0 = keep forever), and download a one-click SQLite
 **backup** (`/download/backup.db`) of the whole database.
 

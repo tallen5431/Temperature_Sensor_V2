@@ -11,7 +11,7 @@ The canonical, shipping firmware is the Arduino sketch
 offline buffer, NTP time). The former PlatformIO project (`platformio.ini` +
 `src/main.cpp`) has been removed; only the sketch is built now.
 
-- **MCU:** ESP32-WROOM-32E
+- **MCU:** ESP32-C3 SuperMini (WROOM-32/-32E works as a fallback build target)
 - **Toolchain:** Arduino (Arduino IDE or `arduino-cli`) — **not** PlatformIO
 - **Firmware version:** 2.7.0 · **Protocol:** 1
 - **Sensor:** DS18B20 (1-Wire) — the **only** sensor in the current firmware

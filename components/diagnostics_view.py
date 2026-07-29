@@ -1,7 +1,8 @@
 """Diagnostics page: a customer-readable health snapshot with one-click copy.
 
-The heavy lifting is in core.diagnostics.build_diagnostics (pure, tested); this
-module only renders it and wires a refresh + clipboard.
+The heavy lifting is in core.diagnostics.build_diagnostics (tested; it performs
+the reads — discovery, DB, disk, health snapshot); this module only renders its
+result and wires a refresh + clipboard.
 """
 import json
 import logging

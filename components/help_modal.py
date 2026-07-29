@@ -46,7 +46,7 @@ def _help_body():
                 html.P([html.B("Export…"), " on the Dashboard downloads a probe and date range as an ",
                         html.B("Excel-friendly CSV"), " (split date/time columns and friendly names), a "
                         "native ", html.B(".xlsx"), " workbook, or the ", html.B("raw CSV"), ". ",
-                        html.B("Settings → Data Management"), " sets how long to keep readings and offers a "
+                        html.B("Settings → Data & storage"), " sets how long to keep readings and offers a "
                         "one-click database ", html.B("backup"), "."], className="mb-1"),
             ]),
 
