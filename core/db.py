@@ -93,6 +93,13 @@ def iso_to_epoch(ts: str) -> float:
         return time.time()
 
 
+# A wall clock earlier than this is treated as not-yet-synced and is NOT trusted
+# for the destructive startup future-reading purge (see delete_future_readings).
+# 2025-01-01 UTC is safely before this software runs in production yet well after
+# the bad-clock values a dead/absent RTC boots to (1970/epoch-0, 2000, 2016).
+_CLOCK_TRUSTWORTHY_FLOOR_EPOCH = 1_735_689_600  # 2025-01-01T00:00:00Z
+
+
 class Database:
     def __init__(self, path: str | Path):
         self.path = str(path)
@@ -625,8 +632,19 @@ class Database:
         would draw the chart past 'now' and become the bogus 'latest' reading —
         masking a live threshold breach. Run once at startup so an existing
         database self-heals; new readings are clamped at ingest so none recur.
+
+        Guarded against an UNTRUSTWORTHY clock: this runs at startup, and hub
+        hardware without a battery-backed RTC (e.g. a Raspberry Pi) can boot to
+        1970/epoch-0 or a stale date before NTP syncs. Trusting that low clock
+        here would mark the entire legitimate history as "future" and delete it
+        irreversibly, so when the wall clock is implausibly early the purge is
+        skipped (real data is never at risk; the rare legacy-future cleanup just
+        waits for the clock to sync).
         """
-        cutoff = int(time.time()) + int(tolerance_sec)
+        now = int(time.time())
+        if now < _CLOCK_TRUSTWORTHY_FLOOR_EPOCH:
+            return 0
+        cutoff = now + int(tolerance_sec)
         conn = self._conn()
         with self._write_lock:
             cur = conn.execute("DELETE FROM readings WHERE epoch > ?", (cutoff,))

@@ -338,6 +338,27 @@ def test_migration_collapses_byte_identical_duplicates(tmp_path):
     assert db.count() == 1                              # idempotent: no new row
 
 
+def test_delete_future_readings_skips_untrusted_low_clock(db, monkeypatch):
+    # Regression: at startup on hardware without a battery-backed RTC the clock
+    # can read 1970/a stale date before NTP syncs. delete_future_readings must
+    # NOT then classify the whole real history as "future" and wipe it — but a
+    # trustworthy clock still purges a genuinely future-stamped row.
+    import core.db as dbmod
+    now = datetime.datetime.now()
+    for i in range(4):
+        db.append((now - datetime.timedelta(days=i)).isoformat(timespec="milliseconds"),
+                  4.0, 39.0, "P1")
+    monkeypatch.setattr(dbmod.time, "time",
+                        lambda: datetime.datetime(2016, 1, 1).timestamp())
+    assert db.delete_future_readings() == 0   # untrusted low clock -> no deletion
+    assert db.count() == 4
+    monkeypatch.undo()                         # clock trustworthy again
+    db.append((now + datetime.timedelta(hours=1)).isoformat(timespec="milliseconds"),
+              9.0, 48.0, "P1")
+    assert db.delete_future_readings() == 1    # genuine future row still purged
+    assert db.count() == 4
+
+
 def test_window_df_focus_stride_uses_focused_probe_count(db):
     # Regression: window_df sized the downsample stride from the GLOBAL all-probe
     # COUNT, so drilling into a quiet probe alongside a chatty one decimated the

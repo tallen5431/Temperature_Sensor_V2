@@ -1,6 +1,10 @@
 """Tests for the Config store: atomic writes, corrupt-file recovery, and the
 re-normalisation of programmatic writes (core.config)."""
 import json
+import os
+import stat
+
+import pytest
 
 from core.config import Config
 
@@ -11,6 +15,19 @@ def test_roundtrip_persists_and_reloads(tmp_path):
     c.update({"probe_names": {"p1": "Fridge"}})
     # A fresh instance reads back the persisted value.
     assert Config(p).get("probe_names") == {"p1": "Fridge"}
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX file modes")
+def test_config_file_is_owner_only(tmp_path):
+    # Regression: config.json holds provisioning/SMTP/webhook secrets, so it must
+    # be owner-only (0o600) after a save, and an already-loose file must be
+    # re-secured on load (not left world-readable across restarts).
+    p = tmp_path / "config.json"
+    Config(p).update({"provision_token": "sekret"})
+    assert stat.S_IMODE(os.stat(p).st_mode) == 0o600
+    os.chmod(p, 0o644)
+    Config(p)
+    assert stat.S_IMODE(os.stat(p).st_mode) == 0o600
 
 
 def test_save_is_atomic_no_tmp_left_behind(tmp_path):

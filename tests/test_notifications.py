@@ -15,6 +15,27 @@ def test_send_email_not_configured():
     assert ok is False and "not configured" in info
 
 
+def test_webhook_error_does_not_leak_url_secret(monkeypatch):
+    # Regression: a webhook URL can carry a bearer token in its path/query. On a
+    # connection error, requests/urllib3 embed that token in the exception text
+    # (host and path rendered separately), which the old whole-URL scrub missed,
+    # leaking it to the hub log AND the Settings UI. The reported info must name
+    # the host for diagnosis but never carry the token.
+    SECRET = "TOK_SECRET_123"
+    url = f"https://hooks.example.com/services/abc?token={SECRET}"
+
+    def boom(*a, **k):
+        raise N.requests.exceptions.ConnectionError(
+            "HTTPSConnectionPool(host='hooks.example.com', port=443): "
+            f"Max retries exceeded with url: /services/abc?token={SECRET}")
+
+    monkeypatch.setattr(N.requests, "post", boom)
+    ok, info = send_webhook({"url": url}, {"message": "x"})
+    assert ok is False
+    assert SECRET not in info
+    assert "hooks.example.com" in info
+
+
 def test_send_email_success(monkeypatch):
     sent = {}
 

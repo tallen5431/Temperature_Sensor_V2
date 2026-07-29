@@ -11,6 +11,7 @@ import smtplib
 import ssl
 from email.message import EmailMessage
 from typing import List, Tuple
+from urllib.parse import urlsplit
 
 import requests
 
@@ -74,10 +75,14 @@ def send_webhook(webhook_cfg: dict, event: dict) -> Tuple[bool, str]:
             return True, "sent"
         return False, f"HTTP {r.status_code}"
     except Exception as e:  # noqa: BLE001
-        # The webhook URL can carry a bearer token in its path/query and is
-        # treated as a secret elsewhere; scrub it from the error before logging
-        # or returning it (requests embeds the full URL in its exception text).
-        msg = str(e).replace(url, "<webhook-url>")
+        # The webhook URL can carry a bearer token in its path/query and is a
+        # secret. requests/urllib3 render the host and the token-bearing
+        # path+query SEPARATELY in their exception text (e.g. "...with url:
+        # /path?token=..."), so a whole-URL str(e).replace(url, ...) never
+        # matches and would leak the token to the log AND the Settings UI. Build
+        # the message from the exception type and host only — never echo str(e).
+        host = urlsplit(url).hostname or "the webhook host"
+        msg = f"{type(e).__name__} contacting {host}"
         log.warning("webhook send failed: %s", msg)
         return False, msg
 

@@ -35,6 +35,14 @@ class Config:
         self.data, _warnings = normalize_config(self.data)
         for w in _warnings:
             log.warning("config: %s", w)
+        # Re-secure an already-loose config.json (e.g. one left 0o644 by a crash
+        # in a prior save's replace->chmod window) so its secrets don't stay
+        # world-readable across restarts.
+        if self.path.exists():
+            try:
+                os.chmod(self.path, 0o600)
+            except OSError:
+                pass
 
     def _write_atomic(self, data: dict) -> None:
         """Persist config crash-safely: write a temp file in the same directory,
@@ -42,7 +50,11 @@ class Config:
         never leave a truncated config.json (which would reset every setting)."""
         payload = json.dumps(data, indent=2)
         tmp = self.path.with_name(self.path.name + ".tmp")
-        with open(tmp, "w", encoding="utf-8") as f:
+        # Create the temp already owner-only (0o600): it holds SMTP/webhook/token
+        # secrets, and a plain open() would leave it group/other-readable (0o644
+        # under the default umask) in the window before the rename+chmod.
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(payload)
             f.flush()
             os.fsync(f.fileno())
