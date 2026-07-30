@@ -144,6 +144,8 @@
   .shots { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
   .shot { position:relative; aspect-ratio:4/3; border-radius:6px; overflow:hidden; background:var(--raised); border:1px dashed var(--line-strong); display:flex; align-items:center; justify-content:center; text-align:center; }
   .shot img { width:100%; height:100%; object-fit:cover; display:block; }
+  /* The dashed border reads as "empty slot" — once a real photo is in, frame it solid. */
+  .shot:has(img) { border-style:solid; border-color:var(--line); }
   .shot .ph { font-family:var(--font-mono); font-size:10px; letter-spacing:0.06em; text-transform:uppercase; color:var(--faint); padding:6px; line-height:1.5; }
   .shot .step { position:absolute; top:6px; left:6px; font-family:var(--font-mono); font-size:9.5px; letter-spacing:0.08em; text-transform:uppercase; background:var(--ink); color:var(--paper); padding:3px 6px; border-radius:3px; opacity:.9; }
   .case h3 { font-size:17px; font-weight:680; margin:16px 0 5px; }
@@ -475,30 +477,47 @@
     </div>
   </section>
 
-  <!-- ============ 7. Capability demo — HIDDEN until real photos exist ============
-       Empty "Photo slot" boxes read as unfinished on a live page, so this is hidden for now.
-       To bring it back: drop your demo-part shots (e.g. the wrench + marker) into site/parts/,
-       swap each placeholder .shot div for an <img>, then delete the `hidden` attribute below. -->
+  <!-- ============ 7. Capability demo ============================================
+       WIRED to the carabiner demo shots. This section stays `hidden` until the
+       three image files actually exist in site/parts/ — a broken-image icon reads
+       worse than no section at all. To publish:
+         1. save the three photos into site/parts/ with exactly these names:
+              Carabiner-Scan.jpg              (CamScan measurement overlay)
+              Carabiner-Replica-CAD.jpg       (Fusion model)
+              Carabiner_3D_Print_Comparison.jpg (printed part beside the original)
+            ~1200 px wide, JPEG q80 — this page is built for mobile data.
+         2. delete the `hidden` attribute on the <section> below.
+       Copy the .case block to add further examples as real jobs come in. -->
   <section id="work" hidden>
     <div class="wrap">
       <div class="sec-head">
         <p class="eyebrow">Capability demo</p>
-        <h2>Broken part in, printed part out.</h2>
-        <p>A demonstration of the process end to end — a broken original, measured, modelled, and reprinted. This is a demo build, not a customer job; real shop work will replace it here as it comes in.</p>
+        <h2>Measured from photos. Modelled. Printed.</h2>
+        <p>A demonstration of the process end to end — an existing part measured from photographs, rebuilt in CAD, and printed. This is a demonstration build, not a customer job; real shop work will replace it here as it comes in.</p>
       </div>
 
-      <!-- Demo case. Drop three images into site/parts/ and swap each placeholder .shot
-           for e.g. <div class="shot"><img src="/parts/demo-broken.jpg" alt="…"
-           loading="lazy" width="800" height="600"></div>. Copy this .case block to add more. -->
       <div class="cases">
         <div class="case">
           <div class="shots">
-            <div class="shot"><span class="step">1 · Broken</span><p class="ph">Photo slot<br>broken original</p></div>
-            <div class="shot"><span class="step">2 · Measured</span><p class="ph">Photo slot<br>CamScan / CAD</p></div>
-            <div class="shot"><span class="step">3 · Printed</span><p class="ph">Photo slot<br>finished part</p></div>
+            <div class="shot">
+              <span class="step">1 · Measured</span>
+              <img src="/parts/Carabiner-Scan.jpg" loading="lazy" width="1200" height="900"
+                   alt="A carabiner photographed next to a printed calibration target, with the measuring tool overlaying outline dimensions in millimetres.">
+            </div>
+            <div class="shot">
+              <span class="step">2 · Modelled</span>
+              <img src="/parts/Carabiner-Replica-CAD.jpg" loading="lazy" width="1200" height="900"
+                   alt="The carabiner rebuilt as a 3D CAD model from the measured dimensions.">
+            </div>
+            <div class="shot">
+              <span class="step">3 · Printed</span>
+              <img src="/parts/Carabiner_3D_Print_Comparison.jpg" loading="lazy" width="1200" height="900"
+                   alt="The finished 3D-printed carabiner beside the original for comparison, matching in size and shape.">
+            </div>
           </div>
-          <h3>Demo build — measured and reprinted</h3>
-          <p>A sample part carried from broken original to finished replacement, to show the process. Your part follows the same three steps.</p>
+          <h3>Carabiner — measured from photos, rebuilt, printed</h3>
+          <p>No original drawings and nothing to trace: the part was measured from ordinary photographs against a calibration target, rebuilt in CAD to those dimensions, and printed. Same three steps your part goes through — which is why a clear photo with something for scale is all I need to start.</p>
+          <p class="note">Printed as a shape-and-fit demonstration. A printed carabiner is <b>not</b> load-bearing and is not a substitute for a rated climbing component.</p>
         </div>
       </div>
     </div>
