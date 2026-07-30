@@ -58,9 +58,10 @@ and medium severity, but a maker shipping to customers should plan to address th
 3. **Probe `/provision` is unauthenticated by default (firmware).** To keep zero-touch plug-and-play
    working, the probe accepts `/provision` (which sets its ingest `server_url`) without a secret
    unless one is stored. This means any LAN device can repoint a probe's readings. This is the same
-   trust boundary as discovery itself (any LAN host can act as a hub). **To lock a unit down**, store
-   a per-device provision secret (`X-Provision-Secret`, from the unit label/QR); the firmware then
-   enforces it. Consider enabling this for units on untrusted networks. Note the probe's HTTP surface
+   trust boundary as discovery itself (any LAN host can act as a hub). **There is currently no way to
+   lock this down on the probe** — a per-device provision secret (`X-Provision-Secret`) is a reserved,
+   unimplemented idea, not a setting you can switch on, so treat probe placement on a trusted network
+   as the control. Note the probe's HTTP surface
    is small (`GET /`, `/whoami`, `/status`; `POST /provision`); Wi-Fi credentials are entered only
    through the WiFiManager captive portal, which runs during SoftAP setup, not in station mode.
 

@@ -24,7 +24,7 @@ LAN-only (probe ⇄ hub, same subnet). There is no outbound telemetry and no acc
 | **Probe** | Setpoint — ESP32 firmware, HTTP server on TCP **80**. |
 | **`proto`** | Integer protocol version. This document defines `proto = 1`. |
 | **Device token** | One shared secret per hub. Authenticates mutating hub endpoints **and** is provisioned onto probes, which echo it back as `X-Token`. |
-| **Provision secret** | Per-unit secret printed on the probe's label/QR. Guards the probe's `/provision` endpoint. Distinct from the device token. |
+| **Provision secret** | **Reserved — not implemented in `proto = 1`.** A per-unit secret, intended to guard the probe's `/provision` endpoint in a future revision. No shipping firmware stores or checks one; see §4.1 and §12. Distinct from the device token. |
 
 **Compatibility rule:** the hub **warns, it does not crash**, on an unknown or
 mismatched `proto`. A probe advertising `proto` other than `1` is still listed and
@@ -96,7 +96,7 @@ interval. Persisted to NVS so it survives reboots.
 | Header | Required | Value |
 |--------|----------|-------|
 | `Content-Type` | yes | `application/json` |
-| `X-Provision-Secret` | **yes** | Per-unit provision secret from the label/QR. The probe MUST reject `/provision` without a valid secret (`401`). |
+| `X-Provision-Secret` | no — **reserved** | Reserved header name for a future per-unit secret. **Not implemented in `proto = 1`:** the shipping firmware accepts `/provision` from any host on the LAN, which is what makes zero-touch auto-provisioning work. A probe MUST NOT reject a request for lacking this header. See §12. |
 
 **Request body**
 
@@ -128,8 +128,8 @@ hub can confirm the applied value.
 > **Hub implementation note.** Setpoint's built-in auto-provisioner and the
 > `POST /api/provision` endpoint push `{server_url, token, interval_ms, resolution_bits}`
 > to the probe's `/provision` (trying the probe IP first, then its `.local` hostname).
-> The `X-Provision-Secret` is a per-unit secret held by the operator; supply it via
-> the provisioning caller for units that enforce it.
+> No provision secret is sent or required — no firmware revision enforces one (§4.1).
+> Anything on the LAN that can reach the probe can provision it.
 
 ### 4.2 `GET /whoami`
 
@@ -443,7 +443,7 @@ protocol nonetheless hardens against realistic local threats:
 | Rogue host poisoning the log | Mutating endpoints require the device token (`X-Token`); ingest is POST-only, so a drive-by `GET`/`<img>` cannot write. |
 | Sensor faults / bad data corrupting stats | Finite + `-60..150 °C` range validation (§6); firmware also suppresses fault codes at source (§8). |
 | Disk-fill / DoS | 64 KiB body cap (`413`); bulk CSV capped at 1000 rows/request. |
-| Unauthorized probe reconfiguration | Probe `/provision` requires the per-unit `X-Provision-Secret` from the label. |
+| Unauthorized probe reconfiguration | **Not mitigated in `proto = 1`.** `/provision` is deliberately unauthenticated so zero-touch provisioning works, so any LAN host can repoint a probe's ingest URL. Same trust boundary as discovery itself. Keep probes on a trusted LAN; see `SECURITY.md`. |
 | Spreadsheet formula injection via CSV export | Fields beginning with `= + - @` etc. are neutralized on write. |
 | Secret leakage | Token and SMTP password redacted in `GET /api/config`; the token is never in the CSV; the download route serves **only** `temperature_log.csv`. |
 | Identity spoofing / mix-ups | Deterministic MAC-derived `probe_id`; `id == X-Probe-ID` invariant reconciled at the hub. |

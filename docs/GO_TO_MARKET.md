@@ -140,7 +140,7 @@ and off-strategy.
 | **Niche YouTube / blog reviewers** | Secondary | Durable SEO + third-party trust; seed 2–3 review units. Slow but compounding; closes the solo-maker trust gap. |
 | **Kickstarter** (~8–10%, all-or-nothing) | Secondary | Only if you need launch capital/mainstream reach over audience fit. No fulfillment help. |
 | **Amazon** (8–15% + $39.99/mo + FBA) | **Avoid early** | FCC Part 15 for the WiFi radio, labeling, brand-registry hassle, price war vs cloud thermometers, thin margins. Revisit only for mainstream volume much later. |
-| **Etsy** (~20–25% w/ Offsite Ads) | Avoid | Wrong audience (craft/gift shoppers). |
+| **Etsy** (~12% baseline; ~27% on an ads-attributed order) | Secondary | Fees: $0.20 listing + 6.5% transaction (charged on item **and** shipping) + 3% + $0.25 processing ≈ **12%** of a $39 kit. **Offsite Ads** adds 15% (12% once you pass $10k/yr) but **only on orders that came from an offsite ad click** — and it is opt-out-able *until* you cross $10k/yr, after which enrolment is permanent. Audience skews craft/gift, but *Craft Supplies & Tools* is a genuine category for hand-built maker electronics. See [`ETSY_EBAY_LISTINGS.md`](ETSY_EBAY_LISTINGS.md). |
 | **eBay** | Avoid | Deal hunters, no brand/community value. Inventory clearance only. |
 
 ---

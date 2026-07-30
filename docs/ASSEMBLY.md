@@ -213,8 +213,10 @@ slide switch · header pins · JST connector · 18650 holder · USB-C cable ·
 quick-start card.
 
 <!--
-IMAGE MANIFEST: the photos above are not committed yet. Save each build photo to
-docs/images/assembly/ under the filename referenced in the ![](...) tags. The
-mapping (which of your shots → which filename, plus crop notes) is in
-docs/images/assembly/README.md.
+IMAGE MANIFEST: all 12 build photos are committed under docs/images/assembly/
+and every reference above resolves. To replace or add one, keep the existing
+NN-name.jpg numbering so the sequence stays readable, and update the mapping and
+crop notes in docs/images/assembly/README.md. Note that docs/images/assembly/**
+is in the deploy-flasher workflow's path filter, so touching these republishes
+the public flasher.
 -->

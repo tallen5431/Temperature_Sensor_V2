@@ -3,7 +3,14 @@
 Ready-to-paste copy for selling custom / replacement 3D-printed parts as **made-to-order**
 (no inventory needed — you print each job after it's ordered). Keep prices here in sync with
 the `replacement-parts.html` pricing tiers; marketplace prices should run ~10–15 % above the
-direct-site prices to cover fees (Etsy ≈ 10 % all-in, eBay ≈ 13 %).
+direct-site prices to cover fees.
+
+> **Etsy fees, precisely** (they are charged on the item **plus** shipping, which is the part most
+> calculators miss): $0.20 listing + 6.5 % transaction + 3 % + $0.25 processing — about **12 %** of a
+> $39 order shipped at $6. **Offsite Ads** adds **15 %** (dropping to 12 % once your shop passes
+> $10k in a 365-day window) but *only* on orders that arrive from an offsite ad click, taking those
+> to roughly **27 %**. Below $10k/yr you can opt out of Offsite Ads entirely; at $10k enrolment
+> becomes permanent. **eBay** is ≈ 13 % (final value fee + fixed per-order charge).
 
 > **You still need photos.** A listing can't be image-less. Use capability shots: sample
 > prints, the printer, close-ups of finished parts, and a before/after of a demo part
