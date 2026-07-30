@@ -102,6 +102,19 @@ Default names like `Setpoint-9A3F2C` are hard to remember. Give each probe a fri
 3. Type a name such as **"Kitchen fridge"** or **"Greenhouse"** into **Friendly Name**.
 4. Click **Save**. The new name appears everywhere, including in the exported spreadsheet.
 
+> **Why a setting can take a while to take effect.** The friendly name is stored on
+> the hub and applies instantly. Settings that live *on the probe* — the reading
+> interval and the sensor resolution — are different: a battery probe sleeps between
+> readings to save power, and it collects new settings when it next wakes up and
+> reports in. So if it reports once an hour, your change takes effect within the hour,
+> not immediately. The Devices page tells you the time to expect it by when you save.
+> While the probe is asleep the hub has no way to reach it, so it cannot confirm the
+> change has landed until the probe next reports — that is normal, not a fault.
+>
+> If you have switched **automatic provisioning off** in Settings, the hub stops
+> sending settings to probes altogether, and interval/resolution changes will **never**
+> reach them. The Devices page warns you when you save in that state.
+
 ---
 
 ## 9. Calibrate a probe (ice-bath, one-point)

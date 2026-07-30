@@ -11,6 +11,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The Devices page now says when a settings change will actually reach the
+  probe.** Config is delivered by the probe *pulling* it off an `/api/ingest`
+  reply, so on a long deep-sleep interval it lands on the next check-in, not on
+  Save — and because the hub cannot query a sleeping probe, it can never confirm
+  delivery. Previously the modal simply closed and the "will be applied on its
+  next check-in" note went only to the log, leaving no way to tell a slow
+  delivery from a broken one. Saving now reports the probe's reporting interval
+  and the time by which it should be running the new settings (a *full* interval
+  out — the probe may have checked in moments before Save), and says outright
+  that the hub cannot confirm until then. Probes reporting faster than once a
+  minute get a plain confirmation instead, since an ETA there is noise.
+- **Saving with `auto_provision` off now warns instead of failing silently.**
+  That switch makes the hub omit `config` from every ingest reply, so a change
+  saved against a sleeping probe reaches it *never* rather than late. The
+  behaviour is deliberate ("don't manage my probes") but had no UI or manual
+  coverage at all, so the save looked successful. The Devices page now says the
+  setting was stored on the hub but will not be sent, and points at the switch.
+
 - **Firmware v2.8.1 — bulk backlog drain + cold-boot rejoin (from the held 2.8.0
   work), plus long-sleep robustness.** `bufferFlush()` now drains an offline
   backlog to `POST /api/ingest_csv` in ~100-reading chunks instead of one POST per

@@ -69,6 +69,26 @@ def delta_unit_to_c(value, unit):
         return round(v * 5.0 / 9.0, 2)
     return v
 
+def _humanize_seconds(seconds):
+    """Render a reporting interval the way an operator would say it.
+
+    Intervals here span 0.5 s to hours, so a bare seconds count stops being
+    readable fast ("reports every 3600 s"). Pure and module-level so it can be
+    unit-tested alongside the conversion helpers above.
+    """
+    try:
+        s = float(seconds)
+    except (TypeError, ValueError):
+        return "a while"
+    if s < 60:
+        return f"{s:g} s"
+    if s < 3600:
+        m = s / 60.0
+        return f"{m:g} minute" + ("" if m == 1 else "s")
+    h = s / 3600.0
+    return f"{h:g} hour" + ("" if h == 1 else "s")
+
+
 DevicesLayout = html.Div([
     html.H4('Connected Probes'),
     # Mirror of the dashboard's unit picker. Only one page renders at a time, so
@@ -180,6 +200,12 @@ DevicesLayout = html.Div([
         ]),
     ], id='remove-confirm-modal', is_open=False),
     html.Div(id='device-remove-status', className='mt-3'),
+    # Filled by report_save_delivery(). A settings change is delivered by the
+    # probe PULLING it off an /api/ingest reply, so on a long deep-sleep interval
+    # it lands on the probe's next check-in, not on Save. Without this the modal
+    # just closes and the operator has no way to tell a slow delivery from a
+    # broken one -- the hub cannot query a sleeping probe to confirm.
+    html.Div(id='device-save-status', className='mt-3'),
 ])
 
 
@@ -682,3 +708,54 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
             log.exception('device removal failed')
             return False, dbc.Alert(f"Could not remove device: {e}", color='danger',
                                     dismissable=True, className='mb-0')
+
+    # --- Tell the operator WHEN a settings change will actually land ----------
+    # Deliberately a separate callback rather than a 13th Output on the
+    # open/close callback above: that one has twelve Outputs and a return in
+    # every branch, and widening its arity to add a status line is a lot of
+    # churn on the path that saves real settings. This only reads state.
+    @app.callback(
+        Output('device-save-status', 'children'),
+        Input('edit-probe-save', 'n_clicks'),
+        State('edit-probe-id-store', 'data'),
+        State('edit-probe-interval-input', 'value'),
+        prevent_initial_call=True,
+    )
+    def report_save_delivery(n_clicks, probe_id, interval_value):
+        if not n_clicks or not probe_id:
+            return no_update
+
+        # The off-switch wins over everything else: with auto_provision false the
+        # hub omits `config` from every /api/ingest reply, so a sleeping probe
+        # never receives this change at all. That is a deliberate "don't manage
+        # my probes" setting, but silently dropping the save is a trap -- say so.
+        if not cfg.get('auto_provision', True):
+            return dbc.Alert(
+                [html.Strong("Saved on the hub, but it will not reach the probe. "),
+                 "Automatic provisioning is switched off, so the hub does not send "
+                 "settings to probes. Turn it on in Settings, or configure this "
+                 "probe directly through its own setup page."],
+                color='warning', dismissable=True, className='mb-0')
+
+        try:
+            interval_sec = float(interval_value)
+        except (TypeError, ValueError):
+            interval_sec = float(cfg.get('probe_intervals', {}).get(
+                probe_id, cfg.get('interval_sec', 5) or 5) or 5)
+
+        # A probe that is awake most of the time picks the change up almost at
+        # once and a "check back later" note would just be noise.
+        if interval_sec < 60:
+            return dbc.Alert("✅ Saved. The probe applies this on its next reading.",
+                             color='success', dismissable=True, className='mb-0')
+
+        # Worst case is one full interval: the probe may have checked in just
+        # before Save, so it reads the new value on the check-in after that.
+        due = datetime.datetime.now() + datetime.timedelta(seconds=interval_sec)
+        return dbc.Alert(
+            [html.Strong("✅ Saved — the probe picks this up on its next check-in. "),
+             f"It reports every {_humanize_seconds(interval_sec)}, so expect it to be "
+             f"running the new settings by about {due.strftime('%H:%M')}. ",
+             html.Span("The probe is asleep between check-ins, so the hub cannot "
+                       "confirm delivery until then.", className='text-muted')],
+            color='info', dismissable=True, className='mb-0')
