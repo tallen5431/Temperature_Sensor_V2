@@ -146,8 +146,23 @@
   .shot img { width:100%; height:100%; object-fit:cover; display:block; }
   /* The dashed border reads as "empty slot" — once a real photo is in, frame it solid. */
   .shot:has(img) { border-style:solid; border-color:var(--line); }
+  /* object-fit:cover centre-crops anything that is not 4:3, which is fine for a
+     render with empty margin but destructive when the edges carry the evidence —
+     a dimension callout at the top, or one of two parts in a stacked comparison.
+     Mark those `whole`: fit the entire frame and let it letterbox on the tile. */
+  .shot.whole img { object-fit:contain; background:var(--raised); }
   .shot .ph { font-family:var(--font-mono); font-size:10px; letter-spacing:0.06em; text-transform:uppercase; color:var(--faint); padding:6px; line-height:1.5; }
   .shot .step { position:absolute; top:6px; left:6px; font-family:var(--font-mono); font-size:9.5px; letter-spacing:0.08em; text-transform:uppercase; background:var(--ink); color:var(--paper); padding:3px 6px; border-radius:3px; opacity:.9; }
+  /* Three across on a phone puts each shot at ~94 px — smaller than the step
+     badge sitting on it, and far too small to read a measurement overlay. The
+     images ARE the argument in this section, so stack them full-width. With one
+     column there is no row to align against, so the portrait shot drops the 4:3
+     tile and uses its own proportions rather than letterboxing into a stripe. */
+  @media (max-width:640px){
+    .shots { grid-template-columns:1fr; }
+    .shot.whole { aspect-ratio:auto; }
+    .shot.whole img { height:auto; }
+  }
   .case h3 { font-size:17px; font-weight:680; margin:16px 0 5px; }
   .case p { margin:0; color:var(--slate); font-size:14.5px; }
 
@@ -478,17 +493,14 @@
   </section>
 
   <!-- ============ 7. Capability demo ============================================
-       WIRED to the carabiner demo shots. This section stays `hidden` until the
-       three image files actually exist in site/parts/ — a broken-image icon reads
-       worse than no section at all. To publish:
-         1. save the three photos into site/parts/ with exactly these names:
-              Carabiner-Scan.jpg              (CamScan measurement overlay)
-              Carabiner-Replica-CAD.jpg       (Fusion model)
-              Carabiner_3D_Print_Comparison.jpg (printed part beside the original)
-            ~1200 px wide, JPEG q80 — this page is built for mobile data.
-         2. delete the `hidden` attribute on the <section> below.
+       LIVE — backed by the three carabiner photos in site/parts/. Keep any new
+       photo ~1200 px on its long edge at JPEG q80: this page is built for mobile
+       data, and the three images here are ~470 KB in total.
+       Add class="shot whole" to any photo whose edges carry information — the
+       4:3 tile centre-crops by default, which would eat a dimension callout at
+       the top or one of the two parts in a stacked before/after.
        Copy the .case block to add further examples as real jobs come in. -->
-  <section id="work" hidden>
+  <section id="work">
     <div class="wrap">
       <div class="sec-head">
         <p class="eyebrow">Capability demo</p>
@@ -499,19 +511,19 @@
       <div class="cases">
         <div class="case">
           <div class="shots">
-            <div class="shot">
+            <div class="shot whole">
               <span class="step">1 · Measured</span>
-              <img src="/parts/Carabiner-Scan.jpg" loading="lazy" width="1200" height="900"
+              <img src="/parts/Carabiner-Scan.jpg" loading="lazy" width="1078" height="948"
                    alt="A carabiner photographed next to a printed calibration target, with the measuring tool overlaying outline dimensions in millimetres.">
             </div>
             <div class="shot">
               <span class="step">2 · Modelled</span>
-              <img src="/parts/Carabiner-Replica-CAD.jpg" loading="lazy" width="1200" height="900"
+              <img src="/parts/Carabiner-Replica-CAD.jpg" loading="lazy" width="926" height="599"
                    alt="The carabiner rebuilt as a 3D CAD model from the measured dimensions.">
             </div>
-            <div class="shot">
+            <div class="shot whole">
               <span class="step">3 · Printed</span>
-              <img src="/parts/Carabiner_3D_Print_Comparison.jpg" loading="lazy" width="1200" height="900"
+              <img src="/parts/Carabiner_3D_Print_Comparison.jpg" loading="lazy" width="1074" height="1400"
                    alt="The finished 3D-printed carabiner beside the original for comparison, matching in size and shape.">
             </div>
           </div>
