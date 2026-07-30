@@ -402,3 +402,28 @@ def test_readings_include_slow_probe_beyond_flat_freshness(tmp_path):
     db.append((now - datetime.timedelta(seconds=700)).isoformat(timespec="milliseconds"),
               4.0, 39.2, "fast")
     assert "fast" not in mon._readings()
+
+
+def test_both_pruners_share_one_window(tmp_path):
+    # The alert monitor's hourly sweep used the flat probe_prune_after_sec while
+    # the provisioner scaled it, so the monitor would evict a deep-sleeping probe
+    # the provisioner was protecting. Both must use the same rule.
+    from core.status import probe_prune_window
+    from core.config import Config
+    from core.db import Database
+
+    cfg = Config(tmp_path / "c.json")
+    cfg.update({"probe_prune_after_sec": 3600, "probe_intervals": {"slow": 3600}})
+    expected = int(probe_prune_window(cfg))
+    assert expected > 3600           # scaled up for the hourly probe
+
+    seen = {}
+
+    class _Disc:
+        def prune_stale(self, seconds):
+            seen["after"] = seconds
+
+    mon = AlertMonitor(Database(tmp_path / "m.db"), cfg, discovery=_Disc())
+    mon._last_prune = 0
+    mon.maybe_prune_probes()
+    assert seen["after"] == expected

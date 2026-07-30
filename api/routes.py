@@ -609,7 +609,11 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
         # of a percent of the time, so a settings change could sit undelivered
         # indefinitely. This POST, by contrast, happens every wake and always
         # succeeds. Costs no extra radio time and older firmware ignores the key.
-        return jsonify(ok=True, config=desired_probe_config(cfg, probe_id))
+        # Look the override up under the SANITIZED id — that is the id the row was
+        # stored under and the one the Devices page writes overrides for, so using
+        # the raw header here would silently miss a per-probe setting.
+        return jsonify(ok=True,
+                       config=desired_probe_config(cfg, sanitize_probe_id(probe_id)))
 
     @bp.get("/ingest")
     def ingest_query():
@@ -676,7 +680,17 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
             if offset:
                 t_c += offset
                 t_f = (t_c * 9.0 / 5.0) + 32.0
-            valid.append((ts, t_c, t_f, pid))
+            # Carry the optional telemetry the live path stores, so a grow probe
+            # draining a backlog doesn't come back as temperature-only.
+            humidity = extract_humidity(row)
+            vpd = None
+            if humidity is not None:
+                try:
+                    leaf = (cfg.get("settings", {}) or {}).get("vpd_leaf_offset_c", 0.0)
+                    vpd = compute_vpd(t_c, humidity, leaf)
+                except Exception:  # noqa: BLE001 - VPD is derived; never fail a row
+                    vpd = None
+            valid.append((ts, t_c, t_f, pid, humidity, vpd, extract_battery(row)))
             prev = newest.get(pid)
             if prev is None or ts > prev[0]:
                 newest[pid] = (ts, t_c)

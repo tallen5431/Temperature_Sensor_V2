@@ -414,3 +414,32 @@ def test_unauthorized_is_counted_and_visible(tmp_path):
         client.post("/api/ingest", json={"temperature_c": 1.0, "probe_id": "p1"},
                     headers={"X-Token": "stale-token"})
     assert client.get("/api/health").get_json()["unauthorized"] == before + 3
+
+
+def test_bulk_drain_preserves_humidity_vpd_and_battery(tmp_path):
+    # A grow probe (SHT4x) draining a backlog used to come back temperature-only:
+    # the bulk path never extracted humidity/VPD/battery even though the live path
+    # does and PROTOCOL documents them, so an outage left a hole in exactly the
+    # data that niche buys the product for.
+    client, db, _ = _make_client(tmp_path)
+    r = client.post("/api/ingest_csv", json={"readings": [
+        {"timestamp": "2026-07-28T10:00:00.000", "temperature_c": 24.0,
+         "humidity_pct": 55.0, "battery_pct": 80, "probe_id": "grow1"},
+    ]})
+    assert r.get_json()["accepted"] == 1
+    row = db.latest_per_probe().iloc[0]
+    assert float(row["humidity_pct"]) == 55.0
+    assert row["vpd_kpa"] is not None and float(row["vpd_kpa"]) > 0
+    assert float(row["battery_pct"]) == 80.0
+
+
+def test_ingest_config_uses_sanitized_probe_id(tmp_path):
+    # The row is stored under the sanitized id and the Devices page writes
+    # overrides under it, so looking the config up with the raw header would
+    # silently miss a per-probe setting.
+    from core.config import Config
+    Config(tmp_path / "config.json").update({"probe_intervals": {"Setpoint-ABC123": 900}})
+    client, _, _ = _make_client(tmp_path)
+    body = client.post("/api/ingest", json={"temperature_c": 4.0},
+                       headers={"X-Probe-ID": "Setpoint-ABC123!!"}).get_json()
+    assert body["config"]["interval_ms"] == 900000

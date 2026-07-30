@@ -4,7 +4,7 @@ import threading, time, socket
 from typing import Callable, Optional
 from provisioning import (provision_probe, get_probe_status, desired_probe_config,
                           usable_server_base)
-from core.status import probe_fresh_window
+from core.status import probe_fresh_window, probe_prune_window
 
 log = logging.getLogger("hub.provisioner")
 
@@ -115,24 +115,14 @@ class AutoProvisioner(threading.Thread):
         # Evict probes that have been gone long enough that they should
         # no longer occupy the Devices list (bounds memory over time).
         try:
-            prune_after = 3600
-            if self.cfg is not None:
-                prune_after = int(self.cfg.get("probe_prune_after_sec", 3600) or 3600)
-                # Never prune a probe faster than it is expected to report. A
-                # deep-sleeping probe answers mDNS only during its brief wake, so
-                # its discovery entry is kept alive almost entirely by the
-                # last_seen that /api/ingest stamps on each post. With an interval
-                # at or beyond the flat 1 h default it would be evicted BETWEEN
-                # posts — dropping off the Devices grid and churning the
-                # provisioner's bookkeeping — so scale the floor to the slowest
-                # probe's own fresh window, the same rule every other surface uses.
-                try:
-                    windows = [probe_fresh_window(self.cfg, pid)
-                               for pid in ((self.cfg.get("probe_intervals") or {}).keys())]
-                    windows.append(probe_fresh_window(self.cfg, None))
-                    prune_after = max(prune_after, int(max(windows) * 2))
-                except Exception:  # noqa: BLE001 - config is user-editable
-                    pass
+            # Never prune a probe faster than it is expected to report: a
+            # deep-sleeping probe answers mDNS only during its brief wake, so its
+            # discovery entry is kept alive almost entirely by the last_seen that
+            # /api/ingest stamps on each post. Shared with the alert monitor's
+            # sweep so the two pruners cannot disagree (either one using the flat
+            # default would evict a slow probe the other was protecting).
+            prune_after = (int(probe_prune_window(self.cfg))
+                           if self.cfg is not None else 3600)
             self.discovery.prune_stale(prune_after)
         except Exception:
             pass

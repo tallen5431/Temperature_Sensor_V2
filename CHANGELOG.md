@@ -60,6 +60,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Bulk backlog drain lost humidity, VPD and battery.** The live path extracts
+  them but `/api/ingest_csv` never did, so a grow probe (SHT4x) reconnecting
+  after an outage came back temperature-only — a hole in exactly the data that
+  niche buys the product for. `bulk_insert` now carries the optional telemetry
+  (the 4-tuple form still works for the legacy-CSV migration).
+- **The two discovery pruners disagreed.** The alert monitor's hourly sweep still
+  used the flat `probe_prune_after_sec`, so it would evict a deep-sleeping probe
+  that the provisioner's scaled window was protecting. Both now call one shared
+  `core.status.probe_prune_window`.
+- **The ingest config reply looked up overrides with the raw `X-Probe-ID`.** The
+  reading is stored under the *sanitized* id and the Devices page writes
+  overrides under it, so a probe id needing sanitization silently missed its
+  per-probe interval/resolution.
 - **Silent data loss draining a backlog from a clock-skewed probe.** A probe
   whose clock ran ahead during the outage that filled its buffer replays rows
   stamped in the future. `normalize_payload` clamped each row to its own "now",

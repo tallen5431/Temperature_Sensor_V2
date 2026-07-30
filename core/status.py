@@ -125,3 +125,31 @@ def hub_status(probes: Iterable[Any], online_timeout: float,
     else:
         state = "waiting"
     return {"state": state, "online": online, "total": total, "readings": int(total_readings)}
+
+
+def probe_prune_window(cfg) -> float:
+    """Seconds a probe may be unseen before discovery may evict it.
+
+    Single source of truth shared by BOTH pruners — the auto-provisioner's cycle
+    and the alert monitor's hourly sweep. They must agree: a deep-sleeping probe
+    answers mDNS only during its brief wake, so its discovery entry is kept alive
+    almost entirely by the last_seen stamped on each ingest. If either pruner
+    used the flat ``probe_prune_after_sec`` default, a probe reporting at or
+    beyond that cadence would be evicted BETWEEN posts — dropping off the Devices
+    grid and churning the provisioner's bookkeeping — even though the other
+    pruner was correctly protecting it.
+
+    The floor is the configured value; the effective window is at least twice the
+    slowest probe's own fresh window.
+    """
+    try:
+        base = int(cfg.get("probe_prune_after_sec", 3600) or 3600)
+    except (TypeError, ValueError):
+        base = 3600
+    try:
+        windows = [probe_fresh_window(cfg, pid)
+                   for pid in ((cfg.get("probe_intervals") or {}).keys())]
+        windows.append(probe_fresh_window(cfg, None))
+        return max(base, max(windows) * 2)
+    except Exception:  # noqa: BLE001 - config is user-editable; never break pruning
+        return base

@@ -15,7 +15,7 @@ import time
 from core.alerts import HELD, evaluate, evaluate_offline, evaluate_rate, format_event
 from core.db import iso_to_epoch
 from core.notifications import Notifier, send_email
-from core.status import probe_fresh_window
+from core.status import probe_fresh_window, probe_prune_window
 
 log = logging.getLogger("hub.alert_monitor")
 
@@ -288,8 +288,9 @@ class AlertMonitor(threading.Thread):
             return
         self._last_prune = now
         try:
-            after = int(self.cfg.get("probe_prune_after_sec", 3600) or 3600)
-            self.discovery.prune_stale(after)
+            # Same rule the provisioner's pruner uses — a flat window here would
+            # evict a deep-sleeping probe between posts and undo that protection.
+            self.discovery.prune_stale(int(probe_prune_window(self.cfg)))
         except Exception as e:  # noqa: BLE001
             log.warning("probe prune failed: %s", e)
 

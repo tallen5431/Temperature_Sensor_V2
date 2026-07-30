@@ -262,7 +262,16 @@ class Database:
             pass  # an event is telemetry — never worth failing the caller over
 
     def bulk_insert(self, rows) -> int:
-        """Insert many ``(ts, t_c, t_f, probe_id)`` tuples in one transaction.
+        """Insert many readings in one transaction.
+
+        Accepts either ``(ts, t_c, t_f, probe_id)`` or the richer
+        ``(ts, t_c, t_f, probe_id, humidity, vpd, battery)`` — the short form is
+        kept so the legacy-CSV migration and existing callers are unaffected.
+        Carrying the optional telemetry matters for the bulk backlog drain: a
+        grow probe (SHT4x) that reconnects after an outage would otherwise have
+        every buffered humidity/VPD/battery value silently dropped, even though
+        the live path stores them, so an outage would leave a temperature-only
+        hole in exactly the data that niche buys the product for.
 
         Used for the legacy-CSV migration and the probe's bulk backlog drain
         (``/api/ingest_csv``) so importing tens of thousands of rows is a single
@@ -271,16 +280,28 @@ class Database:
         flush) does not duplicate already-stored readings.  Returns the number of
         rows actually inserted (replayed duplicates are skipped, not counted).
         """
-        params = [(str(ts), iso_to_epoch(ts), float(t_c), float(t_f), (pid or ""))
-                  for (ts, t_c, t_f, pid) in rows]
+        def _f(v):
+            try:
+                return float(v) if v is not None else None
+            except (TypeError, ValueError):
+                return None
+
+        params = []
+        for row in rows:
+            ts, t_c, t_f, pid = row[0], row[1], row[2], row[3]
+            hum, vpd, bat = (list(row[4:7]) + [None, None, None])[:3] if len(row) > 4 \
+                else (None, None, None)
+            params.append((str(ts), iso_to_epoch(ts), float(t_c), float(t_f),
+                           (pid or ""), _f(hum), _f(vpd), _f(bat)))
         if not params:
             return 0
         conn = self._conn()
         with self._write_lock:
             before = conn.total_changes
             conn.executemany(
-                "INSERT OR IGNORE INTO readings (ts, epoch, temperature_c, temperature_f, probe_id) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "INSERT OR IGNORE INTO readings (ts, epoch, temperature_c, temperature_f, "
+                "probe_id, humidity_pct, vpd_kpa, battery_pct) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 params,
             )
             conn.commit()
