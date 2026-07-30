@@ -9,6 +9,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Firmware v2.8.1 — bulk backlog drain + cold-boot rejoin (from the held 2.8.0
+  work), plus long-sleep robustness.** `bufferFlush()` now drains an offline
+  backlog to `POST /api/ingest_csv` in ~100-reading chunks instead of one POST per
+  reading, so a cold-soak backlog uploads in seconds with far less radio-on time
+  (transparent per-reading fallback on an older hub). A probe with saved
+  credentials now retries its network for a 60 s grace on cold boot and continues
+  **offline** rather than flipping to its own setup AP on a brief miss — the
+  "recharge hosts an AP and looks broken" bug — with an NVS-backed escape hatch
+  that opens the setup portal after three consecutive failed cold boots so a
+  moved or re-SSID'd probe is never stranded.
+
+### Changed
+
+- **Probe settings now reach a deep-sleeping probe.** Configuration was delivered
+  only by the hub *pushing* to the probe's `POST /provision`, but a sleeping probe
+  serves HTTP for ~3 s every Nth wake — on a long interval that is a fraction of a
+  percent of the time, so a change made in the dashboard could sit undelivered
+  indefinitely (the probe kept reporting on its old interval). `POST /api/ingest`
+  now returns the hub's desired `config` (`interval_ms`, `resolution_bits`) and the
+  firmware applies and persists it, so settings arrive on the probe's *own* next
+  post — every wake, at no extra radio cost. Both paths derive the value from one
+  shared helper so push and pull cannot disagree; `server_url`/`token` stay
+  push-only so a reply can never re-point a probe at another server. Backward
+  compatible in both directions.
+- **Disturbance-burst threshold scales with the reporting interval.** The 1 °C
+  trigger is calibrated against wakes a few seconds apart, but it compares against
+  the *previous wake* — so at a 15-minute cadence a fridge's normal compressor
+  swing crossed it routinely, firing a 20 s radio-on burst on ordinary operation.
+  The threshold now scales with wake spacing (capped at 4 °C) and bursting is
+  disabled entirely above a 5-minute interval, where a burst can no longer catch
+  the event that triggered it.
+- **NTP drift resync is time-based, not wake-count-based.** Resyncing every 30
+  *wakes* meant 2.5 minutes at a 5 s interval but 7.5 hours at 15 minutes and 30
+  hours at an hourly cadence — least often exactly when RTC drift is worst (the
+  board has no 32.768 kHz crystal and runs its RC oscillator cold in a freezer).
+  It now resyncs after 30 wakes **or** ~6 h elapsed, whichever comes first.
+- **Discovery pruning scales with the slowest probe's interval.** The flat 1 h
+  eviction would drop a probe reporting at or beyond hourly *between* posts,
+  removing it from the Devices grid and churning the provisioner's bookkeeping.
+- **The alert engine judges freshness per probe.** `_readings()` used the flat
+  `alert_freshness_sec` (600 s) while every other surface used
+  `probe_fresh_window`, so a probe on a 15-minute interval flickered in and out of
+  the alert engine (absent ~⅓ of ticks; ~⅚ at hourly) while the dashboard
+  correctly showed it online. Breach detection still worked — a fresh post is
+  always evaluated — but presence-dependent behaviour (cooldown re-notification
+  timing, HELD publication) was choppy. Both now use the same rule.
+
 ### Fixed
 
 - **Startup no longer wipes the entire history when the clock is wrong.**

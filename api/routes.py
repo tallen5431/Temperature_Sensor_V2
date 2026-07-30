@@ -8,7 +8,7 @@ from typing import Any, Callable, Dict, List, Tuple
 
 from flask import Blueprint, jsonify, request
 
-from provisioning import provision_probe, resolve_host
+from provisioning import provision_probe, resolve_host, desired_probe_config
 from core.diagnostics import build_diagnostics
 from core.storage import normalize_payload, extract_humidity, compute_vpd, sanitize_probe_id
 try:  # battery telemetry helper — may be absent on an older core.storage build
@@ -557,7 +557,14 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
             HEALTH.record_failure()
             log.exception("ingest write failed")
             return jsonify(ok=False, error="storage error"), 503
-        return jsonify(ok=True)
+        # Ride the hub's desired config home on the reply so a probe can PULL it.
+        # The auto-provisioner's push (POST /provision on the probe) only lands if
+        # it catches the probe awake, and a deep-sleeping probe serves its HTTP
+        # window for ~3 s every Nth wake — on a long interval that is a fraction
+        # of a percent of the time, so a settings change could sit undelivered
+        # indefinitely. This POST, by contrast, happens every wake and always
+        # succeeds. Costs no extra radio time and older firmware ignores the key.
+        return jsonify(ok=True, config=desired_probe_config(cfg, probe_id))
 
     @bp.get("/ingest")
     def ingest_query():

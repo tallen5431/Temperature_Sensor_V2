@@ -373,3 +373,32 @@ def test_daily_summary_disabled_or_no_email(tmp_path, monkeypatch):
     cfg.update({"notifications": notif})
     assert mon.maybe_daily_summary(now=datetime.datetime(2026, 7, 21, 9, 0)) is False
     assert sent == []
+
+
+def test_readings_include_slow_probe_beyond_flat_freshness(tmp_path):
+    # A deep-sleeping probe on a 15-min interval is "stale" by the flat
+    # alert_freshness_sec (600 s) for a third of every cycle, so it used to
+    # flicker in and out of the alert engine while the dashboard — which uses
+    # probe_fresh_window — correctly called it online. Freshness is now judged
+    # per probe, so the two agree.
+    import datetime
+    from core.config import Config
+    from core.db import Database
+
+    db = Database(tmp_path / "m.db")
+    cfg = Config(tmp_path / "c.json")
+    cfg.update({"alert_freshness_sec": 600, "probe_intervals": {"slow": 900}})
+
+    now = datetime.datetime.now()
+    # Reading is 700 s old: beyond the flat 600 s window, well inside this
+    # probe's own fresh window (max(300, 900 * 2.5) = 2250 s).
+    db.append((now - datetime.timedelta(seconds=700)).isoformat(timespec="milliseconds"),
+              -18.0, -0.4, "slow")
+    mon = AlertMonitor(db, cfg)
+    assert "slow" in mon._readings()
+
+    # A probe with no override still obeys the flat window: 700 s old and a
+    # 5 s interval -> fresh window is the 300 s floor -> genuinely stale.
+    db.append((now - datetime.timedelta(seconds=700)).isoformat(timespec="milliseconds"),
+              4.0, 39.2, "fast")
+    assert "fast" not in mon._readings()

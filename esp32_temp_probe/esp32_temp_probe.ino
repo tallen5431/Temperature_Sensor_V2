@@ -1,4 +1,18 @@
 // ESP32 + DS18B20 + WiFiManager + mDNS + OTA + WebServer
+// v2.8.1 — reliability + bulk drain: (a) the offline buffer now drains to the
+//           hub in bulk via POST /api/ingest_csv — one HTTP round-trip per
+//           ~FLUSH_CHUNK_ROWS readings instead of one per reading — so a
+//           several-hundred-KB cold-soak backlog uploads in seconds and the
+//           radio spends far less time on. Falls back transparently to the
+//           per-reading path on an older hub (404/405) or a non-standard server
+//           URL. The hub dedupes by (probe_id, timestamp), so a re-sent chunk
+//           (dropped ACK) is ignored, never duplicated. (b) cold-boot rejoin —
+//           a probe with saved credentials retries its network for a 60 s grace
+//           and then continues OFFLINE instead of flipping to its own setup AP
+//           on a brief miss (the recharge-hosts-an-AP bug); after
+//           COLD_FAIL_PORTAL_AFTER consecutive failed cold boots (a permanent
+//           network change, not a passing outage) it opens the setup portal once
+//           so the probe can be re-pointed without a USB re-flash.
 // v2.7.0 — reliability: (a) power-outage lockout fix — the captive portal now
 //           times out after PORTAL_TIMEOUT_S (180 s) instead of blocking
 //           forever, so a probe whose router reboots slower than it does after
@@ -115,7 +129,7 @@ inline void ledBlink(uint8_t n, uint16_t onMs = 60, uint16_t offMs = 120) {
 
 // ---------------- Identity --------------------------------------------------
 static const char* SENSOR_NAME = "Setpoint";
-static const char* FW_VERSION  = "2.7.0";
+static const char* FW_VERSION  = "2.8.1";
 
 // The setup SoftAP is intentionally OPEN (no password): it only exists during
 // first-time Wi-Fi setup and is torn down once the probe joins the home network,
@@ -144,6 +158,10 @@ static const char* FW_VERSION  = "2.7.0";
 static const uint32_t DEEP_SLEEP_MIN_MS   = 10000UL;  // 10 s
 static const uint32_t WEBSERVER_WINDOW_MS =  3000UL;  //  3 s
 static const uint32_t NTP_RESYNC_INTERVAL =    30UL;  // wakes since last successful sync
+// ...or this much elapsed time, whichever comes first (see ntpResyncDue). The
+// wake count alone means a slow interval resyncs almost never — exactly when
+// RTC drift is largest. 6 h bounds drift without adding meaningful radio time.
+static const uint32_t NTP_RESYNC_MAX_AGE_S = 6UL * 3600UL;
 
 // ---------------- Disturbance burst (freezer door / rapid change) -----------
 // In deep-sleep mode the probe is asleep between wakes, so a brief event (a
@@ -159,6 +177,17 @@ static const uint32_t NTP_RESYNC_INTERVAL =    30UL;  // wakes since last succes
 // disable and keep the plain fixed-interval deep-sleep behaviour.
 #define BURST_ON_DISTURBANCE  true
 static const float    BURST_DELTA_C   = 1.0f;     // °C change vs last wake that counts as a disturbance
+// BURST_DELTA_C is calibrated against CLOSE-TOGETHER wakes: at a few seconds
+// apart a 1 °C jump really is a door opening. The comparison is against the
+// PREVIOUS WAKE, so its meaning drifts as the interval grows — at 15 minutes a
+// fridge's normal compressor cycle swings well past 1 °C, and every one of those
+// would fire a 20 s radio-on burst, burning battery on routine operation. So
+// scale the threshold with the wake spacing, and above BURST_MAX_INTERVAL_MS
+// stop bursting altogether: at that cadence the probe has already conceded
+// event resolution, and a burst can no longer catch the event that caused it.
+static const uint32_t BURST_BASELINE_MS    =   5000UL;  // spacing BURST_DELTA_C assumes
+static const uint32_t BURST_MAX_INTERVAL_MS = 300000UL;  // 5 min — above this, burst is off
+static const float    BURST_DELTA_MAX_C    =   4.0f;    // never demand more than this
 static const uint32_t BURST_WINDOW_MS = 20000UL;  // stay awake/flushing this long after one
 static const uint32_t BURST_SAMPLE_MS =  1000UL;  // sample cadence during the burst
 // Battery guard: cap back-to-back bursts so a repeatedly-opened door (or a slow
@@ -178,6 +207,11 @@ static const uint32_t BURST_MAX_CONSECUTIVE = 3;
 static const uint32_t WIFI_CONNECT_MS         = 8000UL;
 static const uint32_t WIFI_FAIL_BACKOFF_AFTER = 3;
 static const uint32_t WIFI_FAIL_BACKOFF_EVERY = 4;
+// Cold-boot (power-on / recharge) grace to rejoin the SAVED network before the
+// probe gives up and continues offline. Longer than a deep-sleep wake attempt:
+// after a shared power outage the router is often still booting, and a probe
+// that flips to its own setup AP on a brief miss looks broken. Tunable.
+static const uint32_t WIFI_COLD_RECONNECT_MS  = 60000UL;
 
 // Captive-portal timeout (power-outage lockout guard). A cold boot whose saved
 // Wi-Fi is unreachable (e.g. after a power outage the router reboots slower
@@ -188,6 +222,19 @@ static const uint32_t WIFI_FAIL_BACKOFF_EVERY = 4;
 // loop() / on the next wake); with NO saved credentials the portal is simply
 // re-opened in a loop — there is nothing useful to run without them.
 static const uint32_t PORTAL_TIMEOUT_S = 180;
+
+// Field-recovery escape hatch. Continuing OFFLINE on a saved-network miss is
+// right for a transient outage (router still booting), but a PERMANENT change —
+// a new router, a changed SSID/password, or moving the probe to another house —
+// would otherwise strand it offline forever with no way to re-point it short of
+// a USB re-flash. So count consecutive cold boots whose saved network stayed
+// unreachable through the full grace window; after this many (a deliberate,
+// persistent condition — a healthy network reconnects and clears the count on
+// the first cold boot), open the setup portal ONCE so the user can reconfigure.
+// A single recharge or brief outage never reaches it, so the probe still won't
+// flip to its own AP on a passing miss. Recovery gesture, for the docs: power-
+// cycle the probe this many times to force setup mode.
+static const uint32_t COLD_FAIL_PORTAL_AFTER = 3;
 
 // The hub's auto-provisioner only needs to reach the probe occasionally, so the
 // 3 s HTTP window isn't held on every deep-sleep wake: it's served for the first
@@ -245,6 +292,10 @@ static const char*    BUFFER_FILE      = "/buf.csv";
 static const uint32_t BUFFER_MAX_BYTES = 1900UL * 1024UL;  // 1.9 MB cap
 static const uint32_t BUFFER_MIN_FREE  =    8UL * 1024UL;  // 8 KB FS headroom
 static const char*    BUF_POS_KEY = "buf_pos";
+// Consecutive cold boots whose saved Wi-Fi stayed unreachable (see
+// COLD_FAIL_PORTAL_AFTER). NVS-backed, not RTC, so it survives the full power
+// loss of a dead battery / recharge — the exact event this guards.
+static const char*    COLD_FAIL_KEY = "coldfail";
 // Flush checkpoint/budget: persist buf_pos every N successful uploads (plus
 // always when a flush stops or completes) instead of after every line — the
 // same resume guarantee at ~1/10th the NVS write wear. In deep-sleep mode one
@@ -253,6 +304,10 @@ static const char*    BUF_POS_KEY = "buf_pos";
 // for minutes; always-on mode has no cap (it can afford to finish the job).
 static const uint16_t FLUSH_CHECKPOINT_EVERY = 10;
 static const uint32_t FLUSH_BUDGET_MS        = 20000UL;
+// Readings per POST /api/ingest_csv chunk when draining the backlog in bulk
+// (one HTTP round-trip per chunk instead of one per reading). 100 lines is
+// ~5 KB — well under the hub's 64 KB body cap and its <=1000-row limit.
+static const uint16_t FLUSH_CHUNK_ROWS       = 100;
 
 // ---------------- RTC memory (survives deep sleep) --------------------------
 // These variables live in the ESP32 RTC slow-memory SRAM and retain their
@@ -404,6 +459,35 @@ void applyResolution(uint8_t bits) {
   g_convMs = convMsFor(bits);
 }
 
+// True when an NTP drift resync should be kicked on this connected wake.
+//
+// Counting WAKES alone scales exactly the wrong way: at a 5 s interval 30 wakes
+// is 2.5 minutes, but at 15 minutes it is 7.5 hours and at an hourly interval
+// 30 hours — so the longer we sleep (and the more the RTC drifts, especially on
+// a board with no 32.768 kHz crystal running its RC oscillator cold in a
+// freezer) the LESS often we would correct it. Trigger on whichever comes
+// first: the wake count, or roughly NTP_RESYNC_MAX_AGE_S of elapsed time,
+// derived from wakes x interval so it needs no extra RTC state.
+bool ntpResyncDue() {
+  if (rtc_wakesSinceSync >= NTP_RESYNC_INTERVAL) return true;
+  uint64_t elapsedMs = (uint64_t)rtc_wakesSinceSync * (uint64_t)cfg_interval;
+  return elapsedMs >= (uint64_t)NTP_RESYNC_MAX_AGE_S * 1000ULL;
+}
+
+// The disturbance threshold for the CURRENT wake spacing, or -1 when bursting is
+// disabled at this interval (see BURST_MAX_INTERVAL_MS). BURST_DELTA_C assumes
+// wakes ~BURST_BASELINE_MS apart; the further apart they are, the more the
+// temperature legitimately moves between them, so the bar rises with the square
+// root of the spacing (drift grows sub-linearly) and is capped so it stays
+// reachable by a real event.
+float burstDeltaC() {
+  if (cfg_interval > BURST_MAX_INTERVAL_MS) return -1.0f;      // off at long sleeps
+  float scale = sqrtf((float)cfg_interval / (float)BURST_BASELINE_MS);
+  if (scale < 1.0f) scale = 1.0f;
+  float d = BURST_DELTA_C * scale;
+  return d > BURST_DELTA_MAX_C ? BURST_DELTA_MAX_C : d;
+}
+
 uint32_t loadBufPos() {
   if (!prefs.begin("tscfg", true)) return 0;
   uint32_t pos = prefs.getUInt(BUF_POS_KEY, 0);
@@ -414,6 +498,19 @@ uint32_t loadBufPos() {
 void saveBufPos(uint32_t pos) {
   if (!prefs.begin("tscfg", false)) return;
   prefs.putUInt(BUF_POS_KEY, pos);
+  prefs.end();
+}
+
+uint32_t loadColdFail() {
+  if (!prefs.begin("tscfg", true)) return 0;
+  uint32_t n = prefs.getUInt(COLD_FAIL_KEY, 0);
+  prefs.end();
+  return n;
+}
+
+void saveColdFail(uint32_t n) {
+  if (!prefs.begin("tscfg", false)) return;
+  prefs.putUInt(COLD_FAIL_KEY, n);
   prefs.end();
 }
 
@@ -450,6 +547,52 @@ void bufferAppend(const String& ts, float tC, float tF) {
                 ts.c_str(), tC, freeBytes / 1024);
 }
 
+// Apply the hub's desired settings carried on an /api/ingest reply
+// (``{"ok":true,"config":{"interval_ms":…,"resolution_bits":…}}``).
+//
+// This is the PULL half of config delivery. The hub also pushes to our
+// /provision, but that only works if it catches us awake — and a deep-sleeping
+// probe serves HTTP for ~3 s every Nth wake, so on a long interval the push
+// almost never lands and a dashboard change would sit undelivered. Our own
+// ingest POST happens every wake and always succeeds, so we take the settings
+// from its reply instead. Deliberately limited to interval and resolution: the
+// server URL and token stay push-only, so a hub reply can never re-point a probe
+// at a different server.
+//
+// Only writes NVS when a value actually changes (flash wear), and re-evaluates
+// the deep-sleep mode with the same expression setup() uses so a probe switched
+// across the DEEP_SLEEP_MIN_MS boundary starts sleeping without a power cycle.
+bool applyHubConfig(const String& payload) {
+  StaticJsonDocument<320> doc;
+  if (deserializeJson(doc, payload)) return false;
+  JsonVariantConst c = doc["config"];
+  if (c.isNull()) return false;          // older hub — nothing to apply
+
+  bool changed = false;
+
+  uint32_t wantInterval = (uint32_t)(c["interval_ms"] | 0UL);
+  if (wantInterval >= 500UL && wantInterval != cfg_interval) {
+    cfg_interval = wantInterval;
+    changed = true;
+  }
+
+  uint8_t wantRes = (uint8_t)(c["resolution_bits"] | 0);
+  if (wantRes >= 9 && wantRes <= 12 && wantRes != cfg_res_bits) {
+    cfg_res_bits = wantRes;
+    applyResolution(cfg_res_bits);       // sensor + matching conversion wait
+    changed = true;
+  }
+
+  if (changed) {
+    saveConfig();
+    g_deepSleepMode = DEEP_SLEEP_ENABLED && (cfg_interval >= DEEP_SLEEP_MIN_MS);
+    Serial.printf("[Config] Applied from hub: interval=%lu ms, resolution=%u-bit, sleep=%s\n",
+                  (unsigned long)cfg_interval, cfg_res_bits,
+                  g_deepSleepMode ? "deep" : "modem");
+  }
+  return changed;
+}
+
 // POST a single reading with an explicit timestamp.  Returns true on HTTP 2xx.
 bool postWithTimestamp(const String& ts, float tC, float tF,
                        const String& pid) {
@@ -473,16 +616,57 @@ bool postWithTimestamp(const String& ts, float tC, float tF,
   httpc.addHeader("X-Probe-ID", pid);
 
   int code = httpc.POST((uint8_t*)body.c_str(), body.length());
+  bool ok = (code >= 200 && code < 300);
+  // Pull any config the hub wants us to run BEFORE closing the connection.
+  // This is the reliable direction: the hub's push to our /provision only lands
+  // if it catches us awake, and in deep sleep we serve HTTP for ~3 s every Nth
+  // wake — so on a long interval a settings change could never reach us. This
+  // reply arrives on every successful post, at no extra radio cost.
+  if (ok) {
+    String reply = httpc.getString();
+    httpc.end();
+    if (reply.length() && reply.length() < 512) applyHubConfig(reply);
+    return true;
+  }
   httpc.end();
-  return (code >= 200 && code < 300);
+  return false;
+}
+
+// The bulk-ingest URL derived from the single-reading server URL, or "" when it
+// can't be (a non-standard URL → the caller uses the per-reading path). The
+// hub's bulk route is the ingest URL + "_csv" (PROTOCOL.md §5.1).
+String batchUrl() {
+  return cfg_server_url.endsWith("ingest") ? cfg_server_url + "_csv" : String("");
+}
+
+// POST a chunk of raw buffer CSV lines ("ts,tC,tF,pid\n" each) to
+// /api/ingest_csv. Returns +1 on HTTP 2xx (chunk stored), -1 when the endpoint
+// is missing (404/405 — an older hub; the caller falls back to per-reading), and
+// 0 on any other/transient failure (leave the offset put and retry later).
+int postChunk(const String& url, const String& body) {
+  if (WiFi.status() != WL_CONNECTED || url.length() == 0) return 0;
+  HTTPClient httpc;
+  httpc.begin(url);
+  httpc.setTimeout(6000);
+  httpc.addHeader("Content-Type", "text/csv");
+  if (cfg_token.length())  httpc.addHeader("X-Token",    cfg_token);
+  if (g_probeId.length())  httpc.addHeader("X-Probe-ID", g_probeId);
+  int code = httpc.POST((uint8_t*)body.c_str(), body.length());
+  httpc.end();
+  if (code == 404 || code == 405) return -1;
+  return (code >= 200 && code < 300) ? 1 : 0;
 }
 
 // Upload every reading stored in the buffer file, then delete it.
-// Byte-offset of the next line is persisted in NVS every
-// FLUSH_CHECKPOINT_EVERY successful POSTs — and ALWAYS when the flush stops or
-// completes — so a mid-flush drop resumes with at most a few duplicates.
-// In deep-sleep mode a single wake's flush is capped at FLUSH_BUDGET_MS and
-// the backlog resumes from the checkpoint on the next wake.
+// Byte-offset of the next line is persisted in NVS on the batch path once per
+// chunk (~FLUSH_CHUNK_ROWS readings) and on the per-reading fallback every
+// FLUSH_CHECKPOINT_EVERY POSTs — and ALWAYS when the flush stops or completes —
+// so a mid-flush drop resumes from the last checkpoint. A resume may re-send the
+// last un-checkpointed chunk (a dropped ACK, or power lost before the checkpoint
+// commits), but the hub dedupes by (probe_id, timestamp) — every buffered line
+// carries a millisecond-precision stamp (bufferAppend refuses an empty one) —
+// so replays are ignored, not duplicated. In deep-sleep mode a single wake's
+// flush is capped at FLUSH_BUDGET_MS and resumes from the checkpoint next wake.
 void bufferFlush() {
   if (!LittleFS.exists(BUFFER_FILE)) return;
 
@@ -522,6 +706,14 @@ void bufferFlush() {
   bool budgetHit = false;
   unsigned long flushStart = millis();
 
+  // Prefer the bulk endpoint: one HTTP round-trip per ~100 readings instead of
+  // one per reading, so a cold-soak backlog drains in seconds and the radio
+  // spends far less time on. Fall back transparently to the per-reading path if
+  // the URL isn't the standard /api/ingest, or if the hub is too old to have the
+  // /api/ingest_csv route (a 404/405 on the first chunk this flush).
+  const String burl = batchUrl();
+  bool useBatch = (burl.length() > 0);
+
   while (f.available()) {
     http.handleClient();
 
@@ -535,6 +727,44 @@ void bufferFlush() {
       break;
     }
 
+    if (useBatch) {
+      // Accumulate up to FLUSH_CHUNK_ROWS raw buffer lines into one CSV body and
+      // POST the whole chunk. The hub parses/validates each line exactly like
+      // /api/ingest (skips malformed, rejects out-of-range), so we forward lines
+      // verbatim and only track the byte offset to resume from.
+      String   body;
+      int      rows     = 0;
+      uint32_t chunkEnd = pos;               // offset after the last line taken
+      while (rows < FLUSH_CHUNK_ROWS && f.available()) {
+        String line = f.readStringUntil('\n');
+        chunkEnd = f.position();
+        line.trim();
+        if (line.length() == 0) continue;    // skip blank; offset already advanced
+        body += line;
+        body += '\n';
+        rows++;
+      }
+      if (rows == 0) { pos = chunkEnd; break; }   // only blanks remained to EOF
+
+      int r = postChunk(burl, body);
+      if (r > 0) {                    // 2xx — chunk stored
+        pos = chunkEnd;
+        uploaded += rows;
+        saveBufPos(pos);             // one checkpoint per chunk (~100 readings)
+        Serial.printf("[Buffer] Batch uploaded %d  (total %d)\n", rows, uploaded);
+      } else if (r < 0) {            // hub has no /api/ingest_csv (404/405)
+        Serial.println("[Buffer] Hub lacks /api/ingest_csv — using per-reading path.");
+        useBatch = false;
+        f.seek(pos);                 // reprocess this chunk one reading at a time
+      } else {                        // transient failure — stop, resume from pos
+        failed++;
+        Serial.printf("[Buffer] Batch POST failed at offset %u — will retry later.\n", pos);
+        break;
+      }
+      continue;
+    }
+
+    // ── Per-reading fallback (older hub, or non-standard server URL) ──────────
     String line = f.readStringUntil('\n');
     line.trim();
     if (line.length() == 0) { pos = f.position(); continue; }
@@ -1081,53 +1311,92 @@ void setup() {
       }
     }
   } else {
-    // Cold boot: full WiFiManager flow (opens portal if no saved network)
+    // Cold boot (power-on / recharge). WiFiManager parameters are registered so
+    // the setup portal — opened ONLY when there are no saved credentials —
+    // carries the current values.
     WiFi.mode(WIFI_STA);
-    wm.setConnectTimeout(20);
-    // Finite portal timeout (power-outage lockout guard, see PORTAL_TIMEOUT_S):
-    // the old timeout of 0 blocked here FOREVER when the saved Wi-Fi was
-    // unreachable — every probe in the house died in the portal after a power
-    // outage the router took longer to recover from.
     wm.setConfigPortalTimeout(PORTAL_TIMEOUT_S);
     wm.setHostname(SENSOR_NAME);
-
-    // Register parameters exactly once
     wm.addParameter(&p_server);
     wm.addParameter(&p_token);
     wm.addParameter(&p_interval);
 
-    // Per-unit unique, OPEN setup AP (SSID == the probe id, e.g. Setpoint-9A3F2C).
-    // No password: the AP only exists during first-time setup and disappears once
-    // the probe joins the home Wi-Fi, so an open network keeps setup one-tap simple.
-    if (!wm.autoConnect(g_probeId.c_str())) {
-      if (wm.getWiFiIsSaved()) {
-        // Saved credentials, but no join and the portal timed out: power-outage
-        // recovery. Continue into normal operation OFFLINE — readings are
-        // buffered (once the clock is valid) and Wi-Fi keeps retrying in
-        // loop()'s watchdog (always-on) or on the next wake (deep sleep).
-        Serial.println("[WiFi] Saved network unreachable; portal timed out — continuing OFFLINE.");
-        WiFi.mode(WIFI_STA);
-        WiFi.begin();   // keep the STA retrying in the background meanwhile
+    if (wm.getWiFiIsSaved()) {
+      // A deployed probe with saved credentials must REJOIN its network, not flip
+      // to its own setup AP on a brief miss. After a shared power outage the
+      // router is often still booting when the probe wakes, so retry the saved
+      // network hard for a grace window before giving up — the old single 20 s
+      // autoConnect attempt was too short and left the probe hosting an AP
+      // instead of reconnecting.
+      Serial.printf("[WiFi] Cold boot, saved network — reconnecting (up to %lus)...\n",
+                    (unsigned long)(WIFI_COLD_RECONNECT_MS / 1000UL));
+      WiFi.setHostname(SENSOR_NAME);
+      WiFi.begin();
+      uint32_t t0 = millis();
+      while (WiFi.status() != WL_CONNECTED && millis() - t0 < WIFI_COLD_RECONNECT_MS) {
+        // (No http.handleClient() here: the web server isn't begun until after
+        // this block, and the probe has no IP while still associating, so there
+        // is nothing to serve — just wait for the association to complete.)
+        delay(250);
+      }
+      if (WiFi.status() == WL_CONNECTED) {
+        Serial.printf("[WiFi] Reconnected in %lu ms. IP: %s\n",
+                      millis() - t0, WiFi.localIP().toString().c_str());
+        g_wasConnected = true;
+        saveColdFail(0);   // network reachable — clear the consecutive-fail count
       } else {
-        // No credentials at all: nothing useful can run offline, so re-open the
-        // portal in a LOOP (each round bounded by PORTAL_TIMEOUT_S) until it is
-        // configured — never a single infinite hard-block.
-        while (WiFi.status() != WL_CONNECTED && !wm.getWiFiIsSaved()) {
-          Serial.println("[WiFi] No known network; opening portal.");
-          p_server.setValue(cfg_server_url.c_str(), cfg_server_url.length());
-          p_token.setValue (cfg_token.c_str(),      cfg_token.length());
-          char ibuf[12];
-          snprintf(ibuf, sizeof(ibuf), "%lu", (unsigned long)cfg_interval);
-          p_interval.setValue(ibuf, strlen(ibuf));
+        // Still unreachable after the grace. A transient miss (router still
+        // booting after a shared outage) must NOT flip the probe to its own setup
+        // AP, so the default is to continue OFFLINE and keep retrying: readings
+        // are buffered and Wi-Fi reconnects in loop()'s watchdog (always-on) or on
+        // the next wake (deep sleep), exactly like a mid-run outage. The STA is
+        // already retrying in the background from the WiFi.begin() above.
+        uint32_t coldFails = loadColdFail() + 1;
+        saveColdFail(coldFails);
+        if (coldFails >= COLD_FAIL_PORTAL_AFTER) {
+          // The saved network has been unreachable across this many consecutive
+          // cold boots — a persistent change (new router / SSID / relocation),
+          // not a passing outage. Open the setup portal ONCE so the probe can be
+          // re-pointed instead of being stranded offline until a USB re-flash.
+          // Bounded by PORTAL_TIMEOUT_S; returns whether or not anyone connects.
+          Serial.printf("[WiFi] Saved network unreachable on %u consecutive cold boots — "
+                        "opening setup portal for reconfiguration.\n", coldFails);
           startConfigPortal();
+          if (WiFi.status() == WL_CONNECTED) {
+            g_wasConnected = true;
+            saveColdFail(0);        // reconfigured/reconnected — clear the count
+          } else {
+            // No one reconfigured it; resume the background STA retry (the portal
+            // took the radio into AP mode) and leave the count set so the next
+            // cold boot offers setup again.
+            WiFi.mode(WIFI_STA);
+            WiFi.begin();
+          }
+        } else {
+          Serial.printf("[WiFi] Saved network still unreachable (cold-boot streak %u/%u) — "
+                        "continuing OFFLINE, will keep retrying.\n",
+                        coldFails, (unsigned)COLD_FAIL_PORTAL_AFTER);
         }
       }
-    }
-
-    if (WiFi.status() == WL_CONNECTED) {
-      Serial.print("[WiFi] Connected. IP: ");
-      Serial.println(WiFi.localIP());
-      g_wasConnected = true;
+    } else {
+      // No saved credentials: genuine first-time setup. Open the per-unit OPEN
+      // setup AP (SSID == the probe id, e.g. Setpoint-9A3F2C) in a LOOP, each
+      // round bounded by PORTAL_TIMEOUT_S, until configured — never a single
+      // infinite hard-block.
+      while (WiFi.status() != WL_CONNECTED && !wm.getWiFiIsSaved()) {
+        Serial.println("[WiFi] No known network; opening setup portal.");
+        p_server.setValue(cfg_server_url.c_str(), cfg_server_url.length());
+        p_token.setValue (cfg_token.c_str(),      cfg_token.length());
+        char ibuf[12];
+        snprintf(ibuf, sizeof(ibuf), "%lu", (unsigned long)cfg_interval);
+        p_interval.setValue(ibuf, strlen(ibuf));
+        startConfigPortal();
+      }
+      if (WiFi.status() == WL_CONNECTED) {
+        Serial.print("[WiFi] Connected. IP: ");
+        Serial.println(WiFi.localIP());
+        g_wasConnected = true;
+      }
     }
   }
 
@@ -1158,12 +1427,13 @@ void setup() {
         Serial.println(clockLooksValid() ? " OK" : " pending (async retries continue).");
       }
       ntpService(true);   // promote immediately if the sync already landed
-    } else if (rtc_wakesSinceSync >= NTP_RESYNC_INTERVAL) {
+    } else if (ntpResyncDue()) {
       // Clock is RTC-carried and a drift resync is due — kick it ASYNC. The
       // wake never waits on it; ntpService() zeroes the counter once the sync
       // completes (polled in loop() and again just before deep sleep).
-      Serial.printf("[NTP] Drift resync due (%u wakes since last sync).\n",
-                    (unsigned)rtc_wakesSinceSync);
+      Serial.printf("[NTP] Drift resync due (%u wakes / ~%lu s since last sync).\n",
+                    (unsigned)rtc_wakesSinceSync,
+                    (unsigned long)((uint64_t)rtc_wakesSinceSync * cfg_interval / 1000ULL));
       ntpKick();
     }
     ledBlink(3, 120, 120);
@@ -1304,8 +1574,10 @@ void loop() {
     // Disturbance detection for the deep-sleep burst: compare this reading to the
     // previous one carried across sleep in RTC memory. An abrupt change in either
     // direction (freezer door open = rise, compressor kick = fall) counts.
-    bool disturbance = BURST_ON_DISTURBANCE && rtc_lastReadingC > -900.0f
-                       && fabsf(tC - rtc_lastReadingC) >= BURST_DELTA_C;
+    const float burstDelta = burstDeltaC();
+    bool disturbance = BURST_ON_DISTURBANCE && burstDelta > 0.0f
+                       && rtc_lastReadingC > -900.0f
+                       && fabsf(tC - rtc_lastReadingC) >= burstDelta;
     rtc_lastReadingC = tC;
 
     if (connected) {

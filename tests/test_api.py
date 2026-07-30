@@ -318,3 +318,32 @@ def test_auth_required_when_token_set(tmp_path):
     # Wrong token -> rejected
     assert client.post("/api/ingest", json={"temperature_c": 20},
                        headers={"X-Token": "nope"}).status_code == 401
+
+
+def test_ingest_returns_desired_config_for_probe(tmp_path):
+    # A deep-sleeping probe is almost never reachable for the hub's PUSH to
+    # /provision (it serves HTTP ~3 s every Nth wake), so the ingest reply
+    # carries the desired config for the probe to PULL. Without this, a settings
+    # change made in the dashboard could never reach a long-interval probe.
+    client, _, _ = _make_client(tmp_path)
+    r = client.post("/api/ingest", json={"temperature_c": 4.0, "probe_id": "p1"})
+    assert r.status_code == 200
+    cfgblk = r.get_json()["config"]
+    assert cfgblk["interval_ms"] == 5000          # global interval_sec default
+    assert 9 <= cfgblk["resolution_bits"] <= 12
+
+
+def test_ingest_config_honours_per_probe_override(tmp_path):
+    # The per-probe override the Devices page writes must be what the probe is
+    # told — and it must match what the auto-provisioner would have pushed.
+    from provisioning import desired_probe_config
+    client, _, _ = _make_client(tmp_path)
+    from core.config import Config
+    cfg = Config(tmp_path / "config.json")
+    cfg.update({"probe_intervals": {"p1": 900}, "probe_resolutions": {"p1": 9}})
+
+    client2, _, _ = _make_client(tmp_path)   # rebuilt against the updated config
+    r = client2.post("/api/ingest", json={"temperature_c": 4.0, "probe_id": "p1"})
+    got = r.get_json()["config"]
+    assert got == desired_probe_config(cfg, "p1")      # push and pull agree
+    assert got["interval_ms"] == 900000 and got["resolution_bits"] == 9

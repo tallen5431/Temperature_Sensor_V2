@@ -2,7 +2,7 @@ from __future__ import annotations
 import logging
 import threading, time, socket
 from typing import Callable, Optional
-from provisioning import provision_probe, get_probe_status, clamp_resolution_bits
+from provisioning import provision_probe, get_probe_status, desired_probe_config
 from core.status import probe_fresh_window
 
 log = logging.getLogger("hub.provisioner")
@@ -117,6 +117,21 @@ class AutoProvisioner(threading.Thread):
             prune_after = 3600
             if self.cfg is not None:
                 prune_after = int(self.cfg.get("probe_prune_after_sec", 3600) or 3600)
+                # Never prune a probe faster than it is expected to report. A
+                # deep-sleeping probe answers mDNS only during its brief wake, so
+                # its discovery entry is kept alive almost entirely by the
+                # last_seen that /api/ingest stamps on each post. With an interval
+                # at or beyond the flat 1 h default it would be evicted BETWEEN
+                # posts — dropping off the Devices grid and churning the
+                # provisioner's bookkeeping — so scale the floor to the slowest
+                # probe's own fresh window, the same rule every other surface uses.
+                try:
+                    windows = [probe_fresh_window(self.cfg, pid)
+                               for pid in ((self.cfg.get("probe_intervals") or {}).keys())]
+                    windows.append(probe_fresh_window(self.cfg, None))
+                    prune_after = max(prune_after, int(max(windows) * 2))
+                except Exception:  # noqa: BLE001 - config is user-editable
+                    pass
             self.discovery.prune_stale(prune_after)
         except Exception:
             pass
@@ -190,24 +205,16 @@ class AutoProvisioner(threading.Thread):
                 self.discovery.update_probe_ip(key, new_ip)
                 host = new_ip
 
-            # Per-probe interval override from config, falling back to the
-            # live global default derived above
+            # Per-probe interval / resolution overrides. Derived by the SAME
+            # helper the ingest response uses to hand config back to a probe, so
+            # the push path and the pull path can never disagree about what this
+            # probe should be running.
             interval_ms = default_interval_ms
             resolution_bits = None
             if self.cfg is not None and probe_id:
-                try:
-                    interval_value = (self.cfg.get("probe_intervals") or {}).get(probe_id)
-                    if interval_value is not None:
-                        interval_ms = int(float(interval_value) * 1000)
-                except Exception:
-                    pass
-                # Per-probe DS18B20 resolution override, else the global default.
-                try:
-                    global_res = self.cfg.get("resolution_bits", 11)
-                    res_value = (self.cfg.get("probe_resolutions") or {}).get(probe_id, global_res)
-                    resolution_bits = clamp_resolution_bits(res_value)
-                except Exception:
-                    resolution_bits = None
+                desired_cfg = desired_probe_config(self.cfg, probe_id)
+                interval_ms = desired_cfg["interval_ms"]
+                resolution_bits = desired_cfg["resolution_bits"]
 
             host = (host or "").rstrip(".")
             if not host:

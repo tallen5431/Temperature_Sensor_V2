@@ -99,3 +99,48 @@ def provision_probe(base_host: str, port: int, server_base: str, token: str = ""
     except Exception as e:
         log.debug("provision %s exception: %s", ip, e)
     return False
+
+
+def desired_probe_config(cfg, probe_id: str) -> dict:
+    """The interval / sensor resolution the hub wants this probe to be running.
+
+    Single source of truth for "what should this probe be configured to",
+    shared by the two delivery paths so they can never drift apart:
+
+    * the auto-provisioner **pushes** it to the probe's ``POST /provision``, and
+    * ``POST /api/ingest`` returns it so a probe can **pull** it.
+
+    The pull path exists because push alone is unreliable for a deep-sleeping
+    probe: it only serves its HTTP window for a few seconds every Nth wake, so
+    on a long interval the hub almost never catches it awake and a settings
+    change could sit undelivered indefinitely. The probe's own ingest POST, by
+    contrast, happens every wake and always succeeds — so config rides home on
+    the reply, at zero extra radio cost.
+
+    Values mirror the provisioner: a per-probe ``probe_intervals`` override (in
+    seconds) else the global ``interval_sec``; a per-probe ``probe_resolutions``
+    override else the global ``resolution_bits``, clamped to the sensor's 9..12.
+    """
+    interval_ms = 5000
+    try:
+        interval_ms = int(float(cfg.get("interval_sec", 5) or 5) * 1000)
+    except (TypeError, ValueError):
+        pass
+    if probe_id:
+        try:
+            override = (cfg.get("probe_intervals") or {}).get(probe_id)
+            if override is not None:
+                interval_ms = int(float(override) * 1000)
+        except (TypeError, ValueError):
+            pass
+    interval_ms = max(500, interval_ms)   # the firmware's own floor
+
+    try:
+        global_res = cfg.get("resolution_bits", RES_BITS_DEFAULT)
+        res_value = (cfg.get("probe_resolutions") or {}).get(probe_id, global_res) \
+            if probe_id else global_res
+        resolution_bits = clamp_resolution_bits(res_value)
+    except Exception:  # noqa: BLE001 - config is user-editable; never break ingest
+        resolution_bits = clamp_resolution_bits(None)
+
+    return {"interval_ms": interval_ms, "resolution_bits": resolution_bits}

@@ -244,8 +244,25 @@ stored, and displayed entirely hub-side, so adding it required **no `proto` chan
 **Success** `200 OK`
 
 ```json
-{ "ok": true }
+{ "ok": true, "config": { "interval_ms": 300000, "resolution_bits": 11 } }
 ```
+
+**`config` — settings delivery back to the probe (hub ≥ 2.6.2, firmware ≥ 2.8.1).**
+The hub returns the settings it wants this probe (identified by `X-Probe-ID` or the
+body's `probe_id`) to be running. A probe SHOULD apply them and persist them, and
+MUST tolerate the key being absent — an older hub simply omits it.
+
+This exists because pushing to the probe's `POST /provision` (§4.1) is unreliable
+for a deep-sleeping probe: it serves its HTTP window for only a few seconds every
+Nth wake, so on a long interval the hub can rarely catch it awake and a settings
+change may never be delivered. The probe's own ingest POST happens every wake and
+always succeeds, so config rides home on the reply at no extra radio cost. The two
+paths derive the value from the same source, so they cannot disagree.
+
+Deliberately limited to `interval_ms` and `resolution_bits`. `server_url` and
+`token` remain push-only, so a hub reply can never re-point a probe at a different
+server. A probe MUST ignore an `interval_ms` below its own 500 ms floor and a
+`resolution_bits` outside 9..12.
 
 **Errors**
 

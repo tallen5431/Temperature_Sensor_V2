@@ -13,6 +13,7 @@ import threading
 import time
 
 from core.alerts import HELD, evaluate, evaluate_offline, evaluate_rate, format_event
+from core.db import iso_to_epoch
 from core.notifications import Notifier, send_email
 from core.status import probe_fresh_window
 
@@ -80,13 +81,41 @@ class AlertMonitor(threading.Thread):
 
     def _readings(self) -> dict:
         """Latest reading per probe, limited to recent data so we don't alert on
-        a stale value from a probe that has gone offline."""
-        freshness = int(self.cfg.get("alert_freshness_sec", 600) or 600)
-        df = self.db.latest_per_probe(window_seconds=freshness)
+        a stale value from a probe that has gone offline.
+
+        Freshness is judged PER PROBE. ``alert_freshness_sec`` (600 s) is a flat
+        global, but a deep-sleeping probe legitimately reports only every
+        interval — on a 15-minute cadence it is "stale" by that flat rule for a
+        third of every cycle, so it flickers in and out of the alert engine while
+        every other surface (dashboard, cards, offline detection) correctly calls
+        it online via ``probe_fresh_window``. Each probe now gets the larger of
+        the flat window and its own fresh window, so the alert engine agrees with
+        the rest of the hub instead of contradicting it.
+        """
+        flat = int(self.cfg.get("alert_freshness_sec", 600) or 600)
+        # Query wide enough to cover the slowest probe, then filter per probe.
+        try:
+            widest = max([flat] + [int(probe_fresh_window(self.cfg, pid))
+                                   for pid in ((self.cfg.get("probe_intervals") or {}).keys())]
+                         + [int(probe_fresh_window(self.cfg, None))])
+        except Exception:  # noqa: BLE001 - config is user-editable
+            widest = flat
+        df = self.db.latest_per_probe(window_seconds=widest)
+        now = time.time()
         out = {}
         for _, row in df.iterrows():
             pid = row["probe_id"]
             if pid is None or str(pid).strip() == "":
+                continue
+            try:
+                allowed = max(flat, float(probe_fresh_window(self.cfg, pid)))
+            except Exception:  # noqa: BLE001
+                allowed = flat
+            try:
+                age = now - iso_to_epoch(str(row["timestamp"]))
+            except Exception:  # noqa: BLE001 - a bad stamp shouldn't drop the probe
+                age = 0.0
+            if age > allowed:
                 continue
             try:
                 out[pid] = float(row["temperature_c"])

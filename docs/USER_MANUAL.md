@@ -175,13 +175,13 @@ Make sure the hub program (`Start.bat` / `Start.sh`) is still running. Look for 
 - Restart the probe by unplugging it for 10 seconds and plugging it back in.
 
 **A probe shows "stale" or "offline" on the dashboard.**
-Check its **power first**: is the light on? If it runs on a battery, check the battery level on its card and recharge if it's low. Then check **Wi-Fi** — did the router restart, or did the Wi-Fi name or password change? Once the probe is back, it carries on by itself. Battery probes even **back-fill the readings they saved up while out of reach**, so a gap on the chart usually fills itself in after they reconnect.
+Check its **power first**: is the light on? If it runs on a battery, check the battery level on its card and recharge if it's low. Then check **Wi-Fi** — did the router restart, or did the Wi-Fi name or password change? A **router restart or brief outage fixes itself**: the probe keeps trying its saved network and rejoins on its own (it will *not* jump to its own setup network over a passing hiccup), then battery probes **back-fill the readings they saved up while out of reach**, so a gap on the chart usually fills itself in. If you actually **changed your Wi-Fi name or password**, the probe can't rejoin the old network — put it back into setup mode (next answer).
 
-**The probe joined the wrong Wi-Fi (or my Wi-Fi changed).**
-No reset button needed. **Unplug the probe for 10 seconds and plug it back in.** When it can't reach a usable network, the **`Setpoint-XXXXXX`** setup network reappears within about 30 seconds — join it and repeat the setup steps (Sections 4–5) to pick the right Wi-Fi.
+**The probe joined the wrong Wi-Fi, or my Wi-Fi name/password changed.**
+No reset button needed. The probe now tries hard to rejoin the network it already knows, so a single restart won't kick it into setup mode — that's deliberate, so a rebooting router doesn't turn it into an open Wi-Fi network. To force setup mode, **power-cycle it three times** (unplug ~10 seconds and plug back in, three times; give each try up to a minute). On the third boot that can't reach the saved network, the **`Setpoint-XXXXXX`** setup network reappears — join it and repeat the setup steps (Sections 4–5) to pick the right Wi-Fi.
 
 **I can't find the `Setpoint-XXXXXX` setup network.**
-The probe only broadcasts its setup network when it isn't connected to a Wi-Fi it knows. Unplug it for 10 seconds and plug it back in, then look again — the setup network appears within about 30 seconds whenever the probe can't join a saved network.
+The probe only broadcasts its setup network during first-time setup, or after it fails to reach a saved network on **three power-cycles in a row** (see the previous answer). Power-cycle it a few more times — unplug ~10 seconds each time, allowing up to a minute per try — and look again; once it gives up on the saved network the setup network appears.
 
 **The setup page at http://192.168.4.1 doesn't load.**
 Confirm your phone is connected to the `Setpoint-XXXXXX` network (not your home Wi-Fi), then reload the page.

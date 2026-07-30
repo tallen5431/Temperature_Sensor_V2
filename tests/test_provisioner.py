@@ -159,3 +159,33 @@ def test_changed_interval_reprovisions_after_steady_state(monkeypatch):
     ap._run_cycle()
     assert len(provisions) == 2
     assert provisions[-1]["interval_ms"] == 2000
+
+
+def test_prune_window_scales_with_slowest_probe_interval():
+    # A deep-sleeping probe answers mDNS only during its brief wake, so its
+    # discovery entry survives mainly on the last_seen that /api/ingest stamps.
+    # With the flat 1 h default it would be evicted BETWEEN posts once the
+    # interval reaches an hour. The prune floor must scale with the probe's own
+    # fresh window instead.
+    class _Disc:
+        def __init__(self):
+            self.pruned_with = None
+
+        def list_probes(self):
+            return {}
+
+        def prune_stale(self, seconds):
+            self.pruned_with = seconds
+
+    disc = _Disc()
+    cfg = {"probe_prune_after_sec": 3600, "probe_intervals": {"slow": 3600}}
+    ap = AutoProvisioner(disc, lambda: "", cfg=cfg)
+    ap._run_cycle()
+    # slow probe fresh window = max(300, 3600*2.5) = 9000 s -> floor is 2x that
+    assert disc.pruned_with >= 9000, disc.pruned_with
+
+    # With only fast probes the flat default still applies (no inflation).
+    disc2 = _Disc()
+    ap2 = AutoProvisioner(disc2, lambda: "", cfg={"probe_prune_after_sec": 3600})
+    ap2._run_cycle()
+    assert disc2.pruned_with == 3600
