@@ -28,6 +28,16 @@ changes that *do* help (audit trail, serials, access control) are modest and sev
 Using a **pre-certified ESP32 module** (e.g. ESP32-WROOM-32E) carries the *intentional-radiator*
 approval, which saves the biggest cost — but the **finished product is still not exempt.**
 
+> ⚠️ **Rev 1 does not have that module, so it does not get that saving.** The rev-1 board sockets an
+> **ESP32-C3 SuperMini** — a bare `ESP32-C3FH4` SoC with a PCB trace antenna and **no modular FCC
+> grant**. With no grant to inherit, the *radio itself* owes full intentional-radiator testing
+> (~**$5,000–15,000+**), not the SDoC quoted below — see
+> [`STARTUP_CHECKLIST.md`](STARTUP_CHECKLIST.md) §"the FCC gotcha". **Everything in §1 and Phase 0b
+> assumes the rev-2 board** ([`PCB_REV2_MODULE.md`](PCB_REV2_MODULE.md)), which swaps in a
+> soldered-down `ESP32-C3-MINI-1` (FCC ID `2AC7Z-ESPC3MINI1`) for **zero firmware change**. Rev 2 is
+> a prerequisite for the cheap path, not a later refinement. Rev-1 boards remain fine for loaner
+> pilots, dev, and DIY kits.
+
 ### United States — FCC (do this first, for every market segment)
 
 | Requirement | What it takes | Effort / cost |
@@ -140,7 +150,11 @@ a *feature* to them, not a limitation — lead with it.
 
 ## 6. Staged roadmap (walk it in order)
 
-- **Phase 0 — clear the one gate.** FCC Part 15B **SDoC** on the finished host (budget $1–3k for a
+- **Phase 0a — build rev 2 first.** The SDoC path below is only available on a board that inherits a
+  modular grant, and **rev 1 does not** (bare `ESP32-C3FH4`, no grant — see the callout in §1). Swap
+  to the `ESP32-C3-MINI-1` per [`PCB_REV2_MODULE.md`](PCB_REV2_MODULE.md); the firmware is unchanged.
+  Skipping this doesn't make Phase 0b cheaper, it makes it impossible at the quoted price.
+- **Phase 0b — clear the one gate.** FCC Part 15B **SDoC** on the finished host (budget $1–3k for a
   multi-port hub), a US responsible party, and the "Contains FCC ID" + §15.19(a)(3) labeling.
   Confirm you stay inside the module's integration conditions + RF-exposure. *Unlocks the entire US
   low-bar market at minimum cost.*

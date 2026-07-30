@@ -89,8 +89,12 @@ If interest is thin, iterate the pitch *before* buying parts.
 
 ## Phase 1 — Clear the one legal gate (parallel with Phase 0; ~2–4 weeks, ~$1–3k)
 
-You may **not** legally sell a Wi-Fi device in the US without this. The pre-certified ESP32 module
-saves the big cost, but the finished unit still needs:
+You may **not** legally sell a Wi-Fi device in the US without this. A pre-certified ESP32 module
+saves the big cost — but **rev 1 doesn't have one.** The SuperMini is a bare `ESP32-C3FH4` with no
+modular grant, so this budget only holds **after** the rev-2 respin
+([`PCB_REV2_MODULE.md`](PCB_REV2_MODULE.md); zero firmware change). On rev-1 hardware the radio owes
+full intentional-radiator testing at ~$5,000–15,000+ instead — see
+[`STARTUP_CHECKLIST.md`](STARTUP_CHECKLIST.md). With the module in place, the finished unit still needs:
 
 - [ ] **FCC Part 15 Subpart B SDoC** — test the assembled unit as a Class B unintentional radiator,
       keep the signed test report. No FCC ID/fee, but you need a **US-located responsible party**.
