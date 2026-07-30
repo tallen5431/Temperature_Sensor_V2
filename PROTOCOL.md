@@ -301,11 +301,24 @@ Each reading is validated exactly like `/api/ingest` (§6: finite, `-60..150 °C
 timestamp normalisation, per-probe calibration). Invalid rows are skipped, not
 fatal — one corrupt line never rejects the rest of the chunk.
 
-**Response** `200`: `{ "ok": true, "accepted": <int>, "rejected": <int> }`.
+**Response** `200`: `{ "ok": true, "accepted": <int>, "rejected": <int>, "restamped": <int> }`.
 Errors mirror `/api/ingest` (`401` unauthorized, `413` too large / > 1000 rows,
-`400` unparseable body, `503` storage error). The probe advances its buffer
-checkpoint by `accepted`, so a mid-drain drop resumes with at most a few
-duplicates.
+`400` unparseable body, `503` storage error).
+
+- `accepted` — rows **newly stored**. Ingest is idempotent (`UNIQUE(probe_id,
+  epoch)` + `INSERT OR IGNORE`), so a re-sent chunk after a dropped ACK is
+  deduped and legitimately reports `accepted: 0`. **A probe MUST advance its
+  buffer checkpoint on the `200` itself, not on `accepted`** — treating
+  `accepted: 0` as failure would re-send the same chunk forever and never drain
+  the backlog.
+- `rejected` — rows the hub refused (malformed, or outside the §6 range band).
+  These will never be accepted, so they must not block the checkpoint either.
+- `restamped` — rows whose own timestamp was implausibly far in the future (a
+  probe whose clock drifted during the very outage that filled its buffer) and
+  which the hub therefore receipt-stamped on arrival, spread 1 ms apart. A
+  non-zero value means that chunk's chronology is drain-time, not
+  measurement-time — check the probe's clock. The spreading is what stops such a
+  chunk collapsing onto a single epoch and being discarded by the unique index.
 
 ---
 

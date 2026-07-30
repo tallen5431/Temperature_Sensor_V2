@@ -347,3 +347,70 @@ def test_ingest_config_honours_per_probe_override(tmp_path):
     got = r.get_json()["config"]
     assert got == desired_probe_config(cfg, "p1")      # push and pull agree
     assert got["interval_ms"] == 900000 and got["resolution_bits"] == 9
+
+
+def test_bulk_drain_future_stamps_are_restamped_not_collapsed(tmp_path):
+    # Data-loss regression: a probe whose clock ran ahead during the outage that
+    # filled its buffer drains rows stamped in the future. normalize_payload
+    # clamped each row to its own "now", so a 100-row chunk collapsed onto ~1 ms
+    # and UNIQUE(probe_id, epoch) silently dropped almost all of it — while the
+    # hub still answered 200, so the probe advanced its checkpoint and deleted
+    # the buffer. Such rows are now receipt-stamped 1 ms apart like
+    # timestamp-less rows, and the count is reported.
+    import datetime
+    client, db, _ = _make_client(tmp_path)
+    base = datetime.datetime.now() + datetime.timedelta(minutes=11)
+    csv = "\n".join(
+        f"{(base + datetime.timedelta(seconds=i)).isoformat(timespec='milliseconds')},"
+        f"{20 + i * 0.01:.2f},68.0,P1" for i in range(100))
+    r = client.post("/api/ingest_csv", data=csv, headers={"Content-Type": "text/csv"})
+    body = r.get_json()
+    assert body["accepted"] == 100 and body["restamped"] == 100
+    assert db.count() == 100
+
+    # A normally-stamped chunk is untouched and still deduped on replay.
+    past = datetime.datetime.now() - datetime.timedelta(hours=1)
+    csv2 = "\n".join(
+        f"{(past + datetime.timedelta(seconds=i)).isoformat(timespec='milliseconds')},"
+        f"5.0,41.0,P2" for i in range(10))
+    b2 = client.post("/api/ingest_csv", data=csv2,
+                     headers={"Content-Type": "text/csv"}).get_json()
+    assert b2["accepted"] == 10 and b2["restamped"] == 0
+    b3 = client.post("/api/ingest_csv", data=csv2,
+                     headers={"Content-Type": "text/csv"}).get_json()
+    assert b3["accepted"] == 0            # replay still deduped, not re-stamped
+    assert db.count() == 110
+
+
+def test_ingest_body_host_cannot_poison_discovery(tmp_path):
+    # SSRF: a body-supplied `host` became a discovery hostname, and the
+    # auto-provisioner would then resolve it and POST the hub's device token
+    # there. Only the transport peer address may be trusted.
+    client, _, disc = _make_client(tmp_path)
+    client.post("/api/ingest", json={"temperature_c": 20.0, "probe_id": "p1",
+                                     "host": "evil.example.com"})
+    assert "evil.example.com" not in str(disc.seen)
+
+
+def test_ingest_config_omitted_when_auto_provision_disabled(tmp_path):
+    # auto_provision=false means "the hub does not manage my probes". It gated
+    # only the background pusher, so the ingest reply kept overwriting a
+    # hand-configured probe with the hub's global interval, with no way to opt
+    # out. An omitted `config` key is a no-op on the probe.
+    from core.config import Config
+    Config(tmp_path / "config.json").update({"auto_provision": False})
+    client, _, _ = _make_client(tmp_path)
+    body = client.post("/api/ingest",
+                       json={"temperature_c": 4.0, "probe_id": "p1"}).get_json()
+    assert body["ok"] is True and "config" not in body
+
+
+def test_unauthorized_is_counted_and_visible(tmp_path):
+    # A stale device token made a probe 401 on every wake, invisibly. The count
+    # must surface so the cause is findable.
+    client, _, _ = _make_client(tmp_path, token="right-token")
+    before = client.get("/api/health").get_json().get("unauthorized", 0)
+    for _ in range(3):
+        client.post("/api/ingest", json={"temperature_c": 1.0, "probe_id": "p1"},
+                    headers={"X-Token": "stale-token"})
+    assert client.get("/api/health").get_json()["unauthorized"] == before + 3

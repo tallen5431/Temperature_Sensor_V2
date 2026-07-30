@@ -83,6 +83,14 @@ class HealthState:
         self.write_failures = 0
         self.last_write_ts: float | None = None
         self.last_failure_ts: float | None = None
+        # Rejected-for-auth count. A probe holding a stale device token (the hub
+        # regenerated it, or config.json was recreated) 401s on every wake and
+        # buffers forever. Without a counter that is indistinguishable from "hub
+        # down" on the probe and completely invisible on the hub — the Devices
+        # grid just shows it offline with no reason. Surfaced in /api/health and
+        # /api/diagnostics so the cause is findable.
+        self.unauthorized = 0
+        self.last_unauthorized_ts: float | None = None
 
     def record_write(self) -> None:
         with self._lock:
@@ -97,6 +105,13 @@ class HealthState:
         with self._lock:
             self.write_failures += 1
             self.last_failure_ts = time.time()
+
+    def record_unauthorized(self) -> int:
+        """Count one auth-rejected API request. Returns the running total."""
+        with self._lock:
+            self.unauthorized += 1
+            self.last_unauthorized_ts = time.time()
+            return self.unauthorized
 
     def snapshot(self, fresh_window_sec: float = 120) -> dict:
         """Health counters plus the derived ``healthy`` flag.
@@ -113,10 +128,15 @@ class HealthState:
             age = (time.time() - last) if last else None
             failing = (self.last_failure_ts is not None
                        and (last is None or self.last_failure_ts > last))
+            unauth_age = ((time.time() - self.last_unauthorized_ts)
+                          if self.last_unauthorized_ts else None)
             return {
                 "rows_written": self.rows_written,
                 "ingest_rejected": self.ingest_rejected,
                 "write_failures": self.write_failures,
+                "unauthorized": self.unauthorized,
+                "last_unauthorized_age_sec": (round(unauth_age, 1)
+                                              if unauth_age is not None else None),
                 "last_write_age_sec": round(age, 1) if age is not None else None,
                 "healthy": bool(last and age is not None and age < fresh_window_sec
                                 and not failing),

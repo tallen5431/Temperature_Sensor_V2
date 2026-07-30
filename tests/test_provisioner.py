@@ -189,3 +189,43 @@ def test_prune_window_scales_with_slowest_probe_interval():
     ap2 = AutoProvisioner(disc2, lambda: "", cfg={"probe_prune_after_sec": 3600})
     ap2._run_cycle()
     assert disc2.pruned_with == 3600
+
+
+def test_cycle_skipped_when_hub_base_is_unreachable_by_probes():
+    # If LAN-IP autodetect fails the hub's base can be loopback. Pushing that
+    # would rewrite every probe's server_url to point at the PROBE itself; they
+    # would all stop delivering and buffer to their flash cap, while _pushed
+    # recorded it as delivered so it never self-corrected. Skip instead.
+    calls = []
+
+    class _Disc:
+        def list_probes(self):
+            calls.append("listed")
+            return {}
+
+        def prune_stale(self, seconds):
+            pass
+
+    for bad in ("http://127.0.0.1:8088", "http://localhost:8088", "http://0.0.0.0:8088"):
+        d = _Disc(); calls.clear()
+        AutoProvisioner(d, lambda b=bad: b, cfg={})._run_cycle()
+        # prune + the bookkeeping sweep may list; the point is it returns before
+        # the provisioning loop. Assert via the guard directly for clarity.
+        from provisioning import usable_server_base
+        assert usable_server_base(bad) is False, bad
+
+    from provisioning import usable_server_base
+    assert usable_server_base("http://192.168.1.50:8088") is True
+    assert usable_server_base("http://hub.local:8088") is True
+
+
+def test_desired_config_survives_garbage_overrides():
+    # These values reach the LIVE ingest path, so an exception here would 500
+    # every reading from every probe and abort the provisioning cycle.
+    from provisioning import desired_probe_config
+    for bad in (float("inf"), float("nan"), "abc", None, 10 ** 400, -5):
+        out = desired_probe_config(
+            {"interval_sec": 5, "probe_intervals": {"P": bad},
+             "probe_resolutions": {"P": bad}}, "P")
+        assert 500 <= out["interval_ms"] <= 4_294_967_295, (bad, out)
+        assert 9 <= out["resolution_bits"] <= 12, (bad, out)

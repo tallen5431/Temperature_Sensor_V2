@@ -95,9 +95,10 @@ def iso_to_epoch(ts: str) -> float:
 
 # A wall clock earlier than this is treated as not-yet-synced and is NOT trusted
 # for the destructive startup future-reading purge (see delete_future_readings).
-# 2025-01-01 UTC is safely before this software runs in production yet well after
-# the bad-clock values a dead/absent RTC boots to (1970/epoch-0, 2000, 2016).
-_CLOCK_TRUSTWORTHY_FLOOR_EPOCH = 1_735_689_600  # 2025-01-01T00:00:00Z
+# Imported from core.storage, which uses the same floor to decide whether to trust
+# the hub's clock over a probe's timestamp on ingest — one definition so the two
+# guards can never disagree about when the clock became believable.
+from core.storage import CLOCK_TRUSTWORTHY_FLOOR_EPOCH as _CLOCK_TRUSTWORTHY_FLOOR_EPOCH
 
 
 class Database:

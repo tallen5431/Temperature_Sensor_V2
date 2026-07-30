@@ -10,7 +10,8 @@ from flask import Blueprint, jsonify, request
 
 from provisioning import provision_probe, resolve_host, desired_probe_config
 from core.diagnostics import build_diagnostics
-from core.storage import normalize_payload, extract_humidity, compute_vpd, sanitize_probe_id
+from core.storage import (normalize_payload, extract_humidity, compute_vpd,
+                          sanitize_probe_id, is_future_stamp)
 try:  # battery telemetry helper — may be absent on an older core.storage build
     from core.storage import extract_battery
 except ImportError:
@@ -97,6 +98,34 @@ def _parse_date_epoch(s, end_of_day=False):
         return int(d.timestamp())
     except (ValueError, TypeError):
         return None
+
+_UNAUTH_WARN_EVERY_SEC = 60.0
+_unauth_last_warn = [0.0, 0]     # [last warn monotonic, suppressed since]
+
+
+def _deny_unauthorized():
+    """Standard 401 response, counted and (rate-limited) logged.
+
+    A silent 401 is the worst failure mode at this seam: a probe whose device
+    token went stale posts, is rejected, buffers, and sleeps — every wake,
+    forever — while the hub showed nothing at all and the Devices grid just said
+    "offline". Counting it makes the cause visible in /api/health and
+    /api/diagnostics; the log line names the probe so it can be re-provisioned.
+    Rate-limited because a mis-tokened probe fleet could otherwise flood the log.
+    """
+    total = HEALTH.record_unauthorized()
+    now = time.monotonic()
+    _unauth_last_warn[1] += 1
+    if now - _unauth_last_warn[0] >= _UNAUTH_WARN_EVERY_SEC:
+        pid = sanitize_probe_id(request.headers.get("X-Probe-ID") or "")
+        log.warning("unauthorized API request from %s probe=%r (%d in the last "
+                    "%ds, %d total) — token mismatch; re-provision the probe",
+                    request.remote_addr, pid or "?", _unauth_last_warn[1],
+                    int(_UNAUTH_WARN_EVERY_SEC), total)
+        _unauth_last_warn[0] = now
+        _unauth_last_warn[1] = 0
+    return jsonify(ok=False, error="unauthorized"), 401
+
 
 def _json_body() -> dict:
     """The request's parsed JSON as a dict, or ``{}`` for a missing, unparseable,
@@ -308,7 +337,7 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
         thresholds, so it is gated by the device token like the write path.
         """
         if not _check_auth():
-            return jsonify(ok=False, error="unauthorized"), 401
+            return _deny_unauthorized()
         if isinstance(cfg, dict):
             return jsonify(_redact(cfg))
         if hasattr(cfg, "to_dict"):
@@ -332,7 +361,7 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
     def set_config():
         """Update config values and persist (auth required)."""
         if not _check_auth():
-            return jsonify(ok=False, error="unauthorized"), 401
+            return _deny_unauthorized()
         data = request.get_json(silent=True) or {}
         if not isinstance(data, dict):
             return jsonify(ok=False, error="invalid_json"), 400
@@ -423,13 +452,13 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
     def audit_verify():
         """Report tamper-evident audit-chain integrity (auth required)."""
         if not _check_auth():
-            return jsonify(ok=False, error="unauthorized"), 401
+            return _deny_unauthorized()
         return jsonify(AUDIT.verify())
 
     @bp.post("/provision")
     def provision():
         if not _check_auth():
-            return jsonify(ok=False, error="unauthorized"), 401
+            return _deny_unauthorized()
         data = _json_body()
         host = (data.get("host") or "").strip()
         try:
@@ -533,15 +562,22 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
                 pass
         if discovery and probe_id:
             try:
-                host = data.get("host") or remote_addr or ""
-                discovery.update_last_seen(probe_id, host=host, ip=remote_addr or "")
+                # Use ONLY the transport-observed peer address — never a `host`
+                # from the body. A body-supplied hostname lands in the discovery
+                # registry, and the auto-provisioner then resolves it and POSTs
+                # the hub's device token to whatever it points at, which would
+                # let any client that can reach /api/ingest exfiltrate the token
+                # to an off-LAN address (and hijack a real probe's entry by
+                # colliding on its id). The bulk path already did this correctly.
+                discovery.update_last_seen(probe_id, host=remote_addr or "",
+                                           ip=remote_addr or "")
             except Exception:
                 pass
 
     @bp.post("/ingest")
     def ingest():
         if not _check_auth():
-            return jsonify(ok=False, error="unauthorized"), 401
+            return _deny_unauthorized()
         if request.content_length and request.content_length > MAX_INGEST_BYTES:
             return jsonify(ok=False, error="payload too large"), 413
         data = _json_body()
@@ -557,6 +593,15 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
             HEALTH.record_failure()
             log.exception("ingest write failed")
             return jsonify(ok=False, error="storage error"), 503
+        # Respect the operator's off-switch. `auto_provision: false` means "do not
+        # let the hub manage my probes" — it gated only the background pusher, so
+        # this reply would have kept overwriting a probe configured by hand (via
+        # POST /api/provision or the captive portal) with the hub's global
+        # interval, and unlike the pusher there was no way to opt out. Omitting
+        # the key is a no-op on the probe (applyHubConfig ignores an absent
+        # `config`), so this is safe in both directions.
+        if not cfg.get("auto_provision", True):
+            return jsonify(ok=True)
         # Ride the hub's desired config home on the reply so a probe can PULL it.
         # The auto-provisioner's push (POST /provision on the probe) only lands if
         # it catches the probe awake, and a deep-sleeping probe serves its HTTP
@@ -584,7 +629,7 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
         # single-reading /ingest stays for live readings, so older firmware is
         # unaffected.
         if not _check_auth():
-            return jsonify(ok=False, error="unauthorized"), 401
+            return _deny_unauthorized()
         if request.content_length and request.content_length > MAX_INGEST_BYTES:
             return jsonify(ok=False, error="payload too large"), 413
         rows = _parse_batch(request)
@@ -597,15 +642,26 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
         valid = []        # (ts, t_c, t_f, probe_id) tuples for bulk_insert
         newest = {}       # probe_id -> (ts, t_c): most-recent accepted reading
         rejected = 0
-        # Receipt-stamp bulk rows that arrive WITHOUT a timestamp, spread 1 ms
-        # apart. Without this every timestamp-less row in a chunk would get the
-        # same millisecond stamp and all but the first would be silently dropped
-        # by the ingest UNIQUE(probe_id, epoch) index. (Rows carrying their own
-        # timestamp — every reading the firmware sends — are untouched.)
+        # Receipt-stamp bulk rows the hub must stamp itself, spread 1 ms apart.
+        # Two cases need this, and both are silent data loss without it, because
+        # every such row would otherwise land on the SAME millisecond and all but
+        # the first would be dropped by the UNIQUE(probe_id, epoch) index while
+        # the endpoint still answered 200 — so the probe advances its checkpoint
+        # and deletes the buffer it just lost:
+        #   1. a row with NO timestamp at all, and
+        #   2. a row stamped implausibly far in the FUTURE, which normalize_payload
+        #      would clamp to "now" independently per row. A probe whose clock ran
+        #      ahead during the very outage that filled its buffer drains a whole
+        #      backlog of such rows, so this is the common case, not a corner one.
         recv_base = datetime.datetime.now()
+        recv_now = recv_base.timestamp()
         synth = 0
+        restamped = 0
         for row in rows:
-            if not (row.get("timestamp") or row.get("ts")):
+            raw_ts = row.get("timestamp") or row.get("ts")
+            if not raw_ts or is_future_stamp(raw_ts, recv_now):
+                if raw_ts:
+                    restamped += 1
                 row = dict(row)
                 row["timestamp"] = (recv_base + datetime.timedelta(
                     milliseconds=synth)).isoformat(timespec="milliseconds")
@@ -653,6 +709,15 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
                         pass
         for _ in range(rejected):
             HEALTH.record_reject()
-        return jsonify(ok=True, accepted=accepted, rejected=rejected)
+        if restamped:
+            # Surface it: a probe whose clock ran ahead is silently having its
+            # chronology rewritten to drain time, and neither side would
+            # otherwise report anything. Also returned so the probe (and a
+            # support transcript) can see it happened.
+            log.warning("ingest_csv: re-stamped %d/%d future-dated row(s) from probe=%r "
+                        "— check the probe's clock (NTP) or the hub's",
+                        restamped, len(rows), header_pid or "?")
+        return jsonify(ok=True, accepted=accepted, rejected=rejected,
+                       restamped=restamped)
 
     return bp

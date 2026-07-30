@@ -2,7 +2,8 @@ from __future__ import annotations
 import logging
 import threading, time, socket
 from typing import Callable, Optional
-from provisioning import provision_probe, get_probe_status, desired_probe_config
+from provisioning import (provision_probe, get_probe_status, desired_probe_config,
+                          usable_server_base)
 from core.status import probe_fresh_window
 
 log = logging.getLogger("hub.provisioner")
@@ -152,6 +153,18 @@ class AutoProvisioner(threading.Thread):
 
         base = (self.public_base_func() or "").rstrip("/")
         if not base:
+            return
+        if not usable_server_base(base):
+            # LAN-IP autodetection failed (no default route, DHCP blip, bridged
+            # container), so `base` is loopback/unspecified. Pushing it would
+            # rewrite every probe's server_url to an address that points at the
+            # PROBE itself — they would all silently stop delivering and buffer
+            # until their flash cap, while `_pushed` recorded the config as
+            # delivered so it never self-corrected. Skip the cycle and leave the
+            # last working configuration in place.
+            log.warning("Skipping provisioning cycle: hub base %r is not reachable "
+                        "by probes (LAN-IP autodetect failed). Set PUBLIC_BASE="
+                        "http://<hub-lan-ip>:<port> to pin it.", base)
             return
 
         # Derive the fallback interval from live config every cycle (when a

@@ -21,6 +21,14 @@ import time
 # "latest" reading can mask a live threshold breach.
 _FUTURE_TOLERANCE_SEC = 120
 
+# A hub wall clock earlier than this is treated as not-yet-NTP-synced and is NOT
+# trusted for any decision that would discard or overwrite probe data. Hub
+# hardware without a battery-backed RTC (a Raspberry Pi) boots to 1970/epoch-0 or
+# a stale fake-hwclock date; 2025-01-01 UTC is safely before this software runs in
+# production yet well after those bad-clock values. Canonical here and imported by
+# core.db (delete_future_readings) so the two clock guards cannot drift apart.
+CLOCK_TRUSTWORTHY_FLOOR_EPOCH = 1_735_689_600  # 2025-01-01T00:00:00Z
+
 # A probe id is a short token. A real Setpoint sends "Setpoint-<HEX6>";
 # this bounds anything a buggy/malicious LAN client might POST so an arbitrary
 # value can never reach the database, the CSV export, or an MQTT topic.
@@ -104,13 +112,51 @@ def _clamp_future(ts: str) -> str:
     A reading can only measure the present, so a stamp far ahead of now means the
     probe's clock is wrong; trust the hub's clock instead. Past timestamps (e.g.
     buffered offline readings flushed on reconnect) are left untouched.
+
+    ...but only when the HUB's clock is itself trustworthy. This runs on every
+    ingest, and hub hardware without a battery-backed RTC (a Raspberry Pi) can
+    boot to 1970 or a stale date before NTP lands. With a clock that far behind,
+    every correct probe stamp looks "far in the future" and would be overwritten
+    with the hub's wrong time — destroying the good data in favour of the bad
+    clock. Worse, a whole replayed backlog then collapses onto near-identical
+    stamps and the UNIQUE(probe_id, epoch) index drops all but a couple of rows.
+    So below the trust floor we keep the probe's stamp: the probe only stamps a
+    reading once its own clock is NTP-valid, making it the better source.
     """
     try:
-        if datetime.datetime.fromisoformat(str(ts)).timestamp() > time.time() + _FUTURE_TOLERANCE_SEC:
+        now = time.time()
+        if now < CLOCK_TRUSTWORTHY_FLOOR_EPOCH:
+            return ts       # hub clock not yet synced — the probe's stamp wins
+        if datetime.datetime.fromisoformat(str(ts)).timestamp() > now + _FUTURE_TOLERANCE_SEC:
             return _local_iso_now()
     except Exception:
         pass
     return ts
+
+
+def is_future_stamp(raw_ts, now: float | None = None) -> bool:
+    """True when a raw ingest timestamp is implausibly ahead of the hub's clock.
+
+    Public counterpart to the clamp inside :func:`normalize_payload`, for callers
+    that must know a row WILL be clamped before it happens — notably the bulk
+    ``/ingest_csv`` drain, which has to re-stamp such rows itself (spread 1 ms
+    apart) instead of letting every row clamp independently to the same
+    millisecond and be swallowed by the UNIQUE(probe_id, epoch) index.
+
+    Returns ``False`` when the hub's own clock is below the trust floor: an
+    unsynced hub must never classify a correctly-stamped probe reading as
+    "future" (see :func:`_clamp_future`).
+    """
+    if not raw_ts:
+        return False
+    now = time.time() if now is None else now
+    if now < CLOCK_TRUSTWORTHY_FLOOR_EPOCH:
+        return False
+    try:
+        local = _to_local_naive(str(raw_ts))
+        return datetime.datetime.fromisoformat(local).timestamp() > now + _FUTURE_TOLERANCE_SEC
+    except Exception:
+        return False
 
 
 def normalize_payload(payload: dict):

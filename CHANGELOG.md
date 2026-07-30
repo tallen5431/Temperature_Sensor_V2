@@ -60,6 +60,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Silent data loss draining a backlog from a clock-skewed probe.** A probe
+  whose clock ran ahead during the outage that filled its buffer replays rows
+  stamped in the future. `normalize_payload` clamped each row to its own "now",
+  so a 100-row chunk collapsed onto the same millisecond and
+  `UNIQUE(probe_id, epoch)` discarded all but one or two — while `/api/ingest_csv`
+  still answered `200`, so the probe advanced its checkpoint and deleted the
+  buffer it had just lost. Measured: 100 rows in, **2 stored**; a 720-row hour-long
+  backlog lost 92 readings. Future-dated bulk rows are now receipt-stamped 1 ms
+  apart (the mechanism already used for timestamp-less rows), the count is
+  returned as `restamped` and logged, so the condition is no longer invisible.
+- **An unsynced hub clock no longer overwrites good probe timestamps.** The
+  ingest future-clamp trusted the hub's wall clock unconditionally — the same
+  clock the DB layer already refuses to trust. On a hub that boots before NTP
+  lands (a Pi with no RTC), every correctly-stamped reading looked "far in the
+  future" and was replaced with the hub's wrong time. The clamp now applies only
+  above the shared trust floor, which is defined once in `core.storage` and
+  imported by `core.db` so the two guards cannot drift.
+- **A body-supplied `host` on `/api/ingest` could exfiltrate the device token.**
+  It was written straight into the discovery registry, and the auto-provisioner
+  then resolved it and POSTed the hub's token to that address — bypassing the
+  SSRF guard on `/api/provision`, and letting a poisoned entry hijack a real
+  probe's id. Only the transport-observed peer address is trusted now (matching
+  what the bulk path already did).
+- **One bad per-probe config value no longer takes the fleet down.**
+  `probe_intervals`/`probe_resolutions` were unvalidated, and
+  `desired_probe_config` is now on the live ingest path — so `inf` (which
+  `json` parses from `1e400`) raised `OverflowError` on **every** reading from
+  **every** probe and aborted each provisioning cycle. All conversions are now
+  bounded and total.
+- **The hub no longer provisions probes with an unreachable loopback URL.** When
+  LAN-IP autodetection fails (no default route, DHCP blip, bridged container)
+  the base can be `127.0.0.1`; pushing it pointed every probe at *itself*, and
+  `_pushed` recorded the config as delivered so it never self-corrected. The
+  cycle is now skipped with a warning naming `PUBLIC_BASE`.
+- **`auto_provision: false` is honoured by the new config-pull.** The flag gated
+  only the background pusher, so the ingest reply kept overwriting a
+  hand-configured probe with the hub's global interval, with no way to opt out.
+- **A stale device token is now diagnosable.** A probe holding an old token 401'd
+  on every wake and buffered forever, while the hub recorded nothing at all and
+  the Devices grid just showed it offline. 401s are counted, surfaced in
+  `/api/health` and `/api/diagnostics`, and logged (rate-limited) with the probe id.
 - **Startup no longer wipes the entire history when the clock is wrong.**
   `delete_future_readings()` runs on every hub start and deleted rows stamped
   after `now + tolerance`. On hub hardware without a battery-backed RTC (a

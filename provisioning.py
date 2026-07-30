@@ -1,5 +1,7 @@
 from __future__ import annotations
+import ipaddress
 import logging
+from urllib.parse import urlsplit
 import requests, socket, threading
 from typing import Optional
 
@@ -121,19 +123,31 @@ def desired_probe_config(cfg, probe_id: str) -> dict:
     seconds) else the global ``interval_sec``; a per-probe ``probe_resolutions``
     override else the global ``resolution_bits``, clamped to the sensor's 9..12.
     """
+    # Every conversion below is defensive: config.json is user-editable and
+    # POST /api/config accepts arbitrary JSON, so a single bad value here (inf,
+    # NaN, a 400-digit integer, a string) must not escape. This helper is on the
+    # LIVE INGEST path now, so an exception would 500 every reading from every
+    # probe and abort the provisioning cycle — one typo would take the fleet
+    # down. OverflowError is caught explicitly: it is not a ValueError, and
+    # float('inf') -> int() raises exactly that.
     interval_ms = 5000
     try:
         interval_ms = int(float(cfg.get("interval_sec", 5) or 5) * 1000)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         pass
     if probe_id:
         try:
             override = (cfg.get("probe_intervals") or {}).get(probe_id)
             if override is not None:
                 interval_ms = int(float(override) * 1000)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             pass
-    interval_ms = max(500, interval_ms)   # the firmware's own floor
+    # Bound both ends: the firmware's 500 ms floor, and a ceiling that keeps the
+    # value inside the uint32 the probe stores it in (~49 days).
+    try:
+        interval_ms = max(500, min(int(interval_ms), 4_294_967_295))
+    except (TypeError, ValueError, OverflowError):
+        interval_ms = 5000
 
     try:
         global_res = cfg.get("resolution_bits", RES_BITS_DEFAULT)
@@ -144,3 +158,28 @@ def desired_probe_config(cfg, probe_id: str) -> dict:
         resolution_bits = clamp_resolution_bits(None)
 
     return {"interval_ms": interval_ms, "resolution_bits": resolution_bits}
+
+
+def usable_server_base(base: str) -> bool:
+    """True when ``base`` is an address a PROBE could actually reach.
+
+    The hub derives its own base URL by autodetecting a LAN IP. When that fails
+    (an air-gapped host with no default route, a DHCP blip, a bridge-networked
+    container) it can fall back to loopback — and provisioning a probe with
+    ``http://127.0.0.1:8088/api/ingest`` points the probe at *itself*. Every
+    reading then fails, the probe buffers until its 1.9 MB cap and starts
+    dropping data, and the hub records the config as successfully delivered so it
+    never re-pushes. Refusing to push a base the probe cannot reach keeps the
+    previous, working configuration in place instead.
+    """
+    try:
+        host = (urlsplit(str(base or "")).hostname or "").strip("[]")
+    except Exception:  # noqa: BLE001 - a malformed base is simply unusable
+        return False
+    if not host or host == "localhost" or host.endswith(".localhost"):
+        return False
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return True      # a real hostname — assume resolvable by the probe
+    return not (ip.is_loopback or ip.is_link_local or ip.is_unspecified)
