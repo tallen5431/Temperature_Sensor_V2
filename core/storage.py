@@ -134,6 +134,42 @@ def _clamp_future(ts: str) -> str:
     return ts
 
 
+def absolute_epoch(raw_ts) -> float | None:
+    """The exact POSIX epoch of a timestamp that carries explicit timezone info.
+
+    Readings are STORED as local-naive strings so every row shares one timezone,
+    but that conversion is lossy exactly once a year: during the DST fall-back
+    hour two distinct UTC instants an hour apart map to the same local wall time
+    (01:30 EDT and 01:30 EST are both "01:30"). Re-deriving the epoch from that
+    string then gives both readings the SAME epoch, which
+
+      * makes them collide on the ``UNIQUE(probe_id, epoch)`` ingest index, so
+        one is silently discarded, and
+      * interleaves the whole repeated hour when anything sorts by epoch — the
+        chart, the exports, the rate-of-change window.
+
+    The firmware always stamps in UTC (``nowIso()`` emits a trailing ``Z``), so
+    the unambiguous instant IS available on the wire — it just has to be carried
+    past the local-naive conversion instead of being recomputed from it.
+
+    Returns ``None`` for a naive stamp (nothing better is knowable) or an
+    unparseable one, in which case callers fall back to ``iso_to_epoch``.
+    """
+    s = str(raw_ts or "").strip()
+    if not s:
+        return None
+    has_z = s.endswith("Z")
+    sep = max(s.find("T"), s.find(" "))
+    has_offset = sep != -1 and (("+" in s[sep + 1:]) or ("-" in s[sep + 1:]))
+    if not (has_z or has_offset):
+        return None
+    try:
+        aware = datetime.datetime.fromisoformat(s.replace("Z", "+00:00"))
+        return aware.timestamp() if aware.tzinfo is not None else None
+    except Exception:
+        return None
+
+
 def is_future_stamp(raw_ts, now: float | None = None) -> bool:
     """True when a raw ingest timestamp is implausibly ahead of the hub's clock.
 

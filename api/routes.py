@@ -11,13 +11,16 @@ from flask import Blueprint, jsonify, request
 from provisioning import provision_probe, resolve_host, desired_probe_config
 from core.diagnostics import build_diagnostics
 from core.storage import (normalize_payload, extract_humidity, compute_vpd,
-                          sanitize_probe_id, is_future_stamp)
+                          sanitize_probe_id, is_future_stamp,
+                          absolute_epoch)
 try:  # battery telemetry helper — may be absent on an older core.storage build
     from core.storage import extract_battery
 except ImportError:
     def extract_battery(payload):
         return None
 from core.status import reporting_probe_ids
+from core.alerts import threshold_for
+from core.storage import threshold_breach
 from core.version import HUB_VERSION, PRODUCT_NAME
 from core.applog import HEALTH, get_logger
 from core.metrics import LATEST
@@ -549,7 +552,11 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
         battery = extract_battery(data)
 
         db.append(ts, t_c, t_f, probe_id=probe_id, humidity=humidity, vpd=vpd,
-                  battery=battery)
+                  battery=battery,
+                  # Carry the unambiguous instant when the probe sent one (it
+                  # stamps in UTC), so the DST fall-back hour doesn't collapse
+                  # two readings onto one epoch.
+                  epoch=absolute_epoch(data.get("timestamp") or data.get("ts")))
         HEALTH.record_write()
 
         if probe_id:
@@ -645,6 +652,7 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
         header_pid = request.headers.get("X-Probe-ID") or ""
         valid = []        # (ts, t_c, t_f, probe_id) tuples for bulk_insert
         newest = {}       # probe_id -> (ts, t_c): most-recent accepted reading
+        worst = {}        # probe_id -> (kind, t_c, limit, ts): worst backlog breach
         rejected = 0
         # Receipt-stamp bulk rows the hub must stamp itself, spread 1 ms apart.
         # Two cases need this, and both are silent data loss without it, because
@@ -676,6 +684,15 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
             except (ValueError, KeyError, TypeError):
                 rejected += 1
                 continue
+            # A buffer line truncated mid-write (a probe whose battery died while
+            # appending) still splits into 4 fields — the cut lands in the LAST
+            # one, the probe id — so it would be accepted as a real reading filed
+            # under a mangled id like "Setpo", inventing a phantom probe. A probe
+            # only ever drains its OWN buffer, so a row whose id disagrees with
+            # the request's X-Probe-ID is corrupt, not merely unexpected.
+            if header_pid and pid and pid != sanitize_probe_id(header_pid):
+                rejected += 1
+                continue
             offset = _calibration_offset(pid)
             if offset:
                 t_c += offset
@@ -690,10 +707,22 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
                     vpd = compute_vpd(t_c, humidity, leaf)
                 except Exception:  # noqa: BLE001 - VPD is derived; never fail a row
                     vpd = None
-            valid.append((ts, t_c, t_f, pid, humidity, vpd, extract_battery(row)))
+            valid.append((ts, t_c, t_f, pid, humidity, vpd, extract_battery(row),
+                          absolute_epoch(row.get("timestamp") or row.get("ts"))))
             prev = newest.get(pid)
             if prev is None or ts > prev[0]:
                 newest[pid] = (ts, t_c)
+            # Track the WORST excursion in this backlog per probe (see the
+            # backfill-breach block after the insert).
+            thr = threshold_for(cfg.get("alert_thresholds", {}) or {}, pid)
+            breach = threshold_breach(t_c, thr.get("min"), thr.get("max"))
+            if breach:
+                limit = thr.get("max") if breach == "high" else thr.get("min")
+                cur = worst.get(pid)
+                worse = cur is None or cur[0] != breach or (
+                    t_c > cur[1] if breach == "high" else t_c < cur[1])
+                if cur is None or worse:
+                    worst[pid] = (breach, t_c, limit, ts)
 
         accepted = 0
         if valid:
@@ -705,6 +734,24 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
                 return jsonify(ok=False, error="storage error"), 503
             for _ in range(accepted):
                 HEALTH.record_write()
+            # Backfilled breaches. The alert engine only ever evaluates each
+            # probe's LATEST reading, so a threshold excursion that happened
+            # entirely during an outage — the freezer that thawed while the hub
+            # was down, which is the single most important thing not to miss —
+            # was stored by this drain and then never alerted, because by the
+            # time the probe reconnected it was reading normally again. Record
+            # the worst excursion per probe in the event log (stamped at the time
+            # it actually occurred) so it shows up in Recent events and the
+            # history instead of vanishing. Deliberately NOT dispatched as a
+            # live notification: it is old news by definition, and this runs on a
+            # request thread.
+            for pid, (kind, t_c, limit, when) in worst.items():
+                try:
+                    db.record_event(kind, pid, temperature_c=t_c, limit=limit, ts=when)
+                    log.info("backfilled %s breach for probe=%r at %s (%.2f C)",
+                             kind, pid, when, t_c)
+                except Exception:  # noqa: BLE001 - telemetry must never fail ingest
+                    pass
             # Reflect current state ONCE per probe (its newest reading) in the
             # Prometheus registry + last-seen, rather than replaying the backlog.
             # MQTT is deliberately left to the live /ingest path so historical

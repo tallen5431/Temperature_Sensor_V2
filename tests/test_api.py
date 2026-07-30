@@ -460,3 +460,70 @@ def test_bulk_drain_accepts_clockless_buffer_lines(tmp_path):
     stamps = [r["timestamp"] for r in rows]
     assert stamps == sorted(stamps)          # distinct and in order
     assert len(set(stamps)) == 5             # not collapsed onto one instant
+
+
+def test_dst_fallback_hour_keeps_both_readings(tmp_path, monkeypatch):
+    # During the DST fall-back hour two UTC instants an hour apart map to the
+    # SAME local wall time. Re-deriving the epoch from that local-naive string
+    # gave them one epoch, so UNIQUE(probe_id, epoch) dropped one and everything
+    # that sorts by epoch interleaved the whole repeated hour. The probe stamps
+    # in UTC, so the unambiguous instant is carried through instead.
+    import os, time as _time
+    monkeypatch.setenv("TZ", "America/New_York")
+    try:
+        _time.tzset()
+    except AttributeError:                      # non-POSIX; nothing to assert
+        return
+    client, db, _ = _make_client(tmp_path)
+    for z, temp in (("2025-11-02T05:30:00.000Z", 4.0),      # 01:30 EDT
+                    ("2025-11-02T06:30:00.000Z", 9.0)):     # 01:30 EST, 1 h later
+        client.post("/api/ingest",
+                    json={"temperature_c": temp, "probe_id": "P1", "timestamp": z})
+    rows = db._conn().execute(
+        "SELECT ts, epoch, temperature_c FROM readings ORDER BY epoch").fetchall()
+    assert len(rows) == 2                                   # neither deduped away
+    assert rows[0]["ts"] == rows[1]["ts"]                   # same wall clock, correctly
+    assert abs(rows[1]["epoch"] - rows[0]["epoch"]) == 3600.0
+    assert [r["temperature_c"] for r in rows] == [4.0, 9.0]  # true order preserved
+    os.environ.pop("TZ", None)
+    _time.tzset()
+
+
+def test_bulk_rejects_truncated_line_under_mangled_probe_id(tmp_path):
+    # A buffer line cut mid-write by a dying battery still splits into 4 fields —
+    # the cut lands in the probe id — so it was stored as a real reading under a
+    # phantom probe like "Setpo". A probe only drains its own buffer, so a row
+    # disagreeing with X-Probe-ID is corrupt.
+    client, db, _ = _make_client(tmp_path)
+    csv = ("2026-07-30T12:00:00.000Z,20.5,68.9,Setpoint-000079\n"
+           "2026-07-30T12:00:05.000Z,20.6,69.1,Setpo")
+    body = client.post("/api/ingest_csv", data=csv,
+                       headers={"Content-Type": "text/csv",
+                                "X-Probe-ID": "Setpoint-000079"}).get_json()
+    assert body["accepted"] == 1 and body["rejected"] == 1
+    assert sorted({r["probe_id"] for r in db.fetch_readings()}) == ["Setpoint-000079"]
+
+
+def test_backlog_breach_is_recorded_even_though_probe_recovered(tmp_path):
+    # The alert engine only evaluates each probe's LATEST reading, so a breach
+    # that happened entirely during an outage — the freezer that thawed while the
+    # hub was down — was stored by the drain and never surfaced, because by
+    # reconnect time the probe read normally again.
+    import datetime
+    from core.config import Config
+    Config(tmp_path / "config.json").update(
+        {"alert_thresholds": {"Freezer": {"min": -30, "max": -15}}})
+    client, db, _ = _make_client(tmp_path)
+    base = datetime.datetime.now() - datetime.timedelta(hours=6)
+    temps = [-22, -20, -12, -5, -9, -18, -21, -22]      # thaw, then recovery
+    csv = "\n".join(
+        f"{(base + datetime.timedelta(minutes=10 * i)).isoformat(timespec='milliseconds')},"
+        f"{tc:.2f},{tc * 9 / 5 + 32:.2f},Freezer" for i, tc in enumerate(temps))
+    client.post("/api/ingest_csv", data=csv,
+                headers={"Content-Type": "text/csv", "X-Probe-ID": "Freezer"})
+    events = db.list_events(limit=10)
+    assert len(events) == 1
+    ev = events[0]
+    assert ev["kind"] == "high" and ev["probe_id"] == "Freezer"
+    assert float(ev["temperature_c"]) == -5.0        # the WORST excursion
+    assert float(ev["limit_c"]) == -15.0

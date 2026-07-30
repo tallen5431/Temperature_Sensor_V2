@@ -590,7 +590,16 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                                     log.info('Provisioned %s with interval=%s s, res=%s-bit',
                                              stored_probe_id, new_interval_sec, new_res_bits)
                                 else:
-                                    log.info('Could not reach %s — interval will apply on next auto-provision cycle', stored_probe_id)
+                                    # Not a failure: a deep-sleeping probe is
+                                    # unreachable almost all the time. The hub
+                                    # returns the desired config on every
+                                    # /api/ingest reply, so the probe applies it
+                                    # on its own next check-in without the hub
+                                    # ever having to catch it awake.
+                                    log.info('Could not reach %s now (likely asleep) — '
+                                             'the change will be applied on its next '
+                                             'check-in, within one reporting interval',
+                                             stored_probe_id)
                                 break
                     except Exception as e:
                         log.warning('Provision-on-save failed: %s', e)

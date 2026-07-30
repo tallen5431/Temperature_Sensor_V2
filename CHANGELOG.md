@@ -60,6 +60,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **DST fall-back no longer loses (or scrambles) an hour of readings.** Readings
+  are stored as local-naive strings, but the epoch was re-derived from that
+  string — and during the repeated hour two UTC instants an hour apart share one
+  wall time. They collided on `UNIQUE(probe_id, epoch)`, so one was discarded,
+  and everything that sorts by epoch (chart, exports, rate-of-change window)
+  interleaved the whole hour. The probe stamps in UTC, so the unambiguous instant
+  is now carried past the local conversion instead of being recomputed from it.
+  Verified: both readings stored, same displayed wall time, epochs 3600 s apart,
+  true chronological order preserved.
+- **A truncated buffer line is no longer stored as a phantom probe.** A line cut
+  mid-write by a dying battery still splits into four fields — the cut lands in
+  the probe id — so it was accepted as a real reading filed under a mangled id
+  like `Setpo`. A probe only ever drains its own buffer, so a row whose id
+  disagrees with the request's `X-Probe-ID` is now rejected as corrupt.
+- **A breach that happened entirely during an outage is no longer invisible.**
+  The alert engine only evaluates each probe's *latest* reading, so a freezer
+  that thawed while the hub was down — the single most important thing not to
+  miss — was stored by the backlog drain and then never surfaced, because by
+  reconnect time the probe read normally again. The drain now records the worst
+  excursion per probe in the event log, stamped at the time it actually
+  occurred, so it appears in Recent events and the history. Deliberately not
+  dispatched as a live notification: it is old news by definition.
 - **Firmware v2.8.2 — a probe with no clock no longer throws its readings away.**
   `nowIso()` returns nothing until NTP has synced, and `bufferAppend()`
   early-returned on an empty stamp — so on a **LAN with no internet**, the

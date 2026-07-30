@@ -215,8 +215,13 @@ class Database:
     # -- writes ----------------------------------------------------------------
     def append(self, ts: str, t_c: float, t_f: float, probe_id: str = "",
                humidity: float | None = None, vpd: float | None = None,
-               battery: float | None = None) -> None:
-        epoch = iso_to_epoch(ts)
+               battery: float | None = None, epoch: float | None = None) -> None:
+        # ``epoch`` lets the caller supply the TRUE instant when the incoming
+        # timestamp carried timezone info. Re-deriving it from the local-naive
+        # ``ts`` is ambiguous during the DST fall-back hour, where two readings an
+        # hour apart share one wall time — they would collide on
+        # UNIQUE(probe_id, epoch) and sort interleaved. See storage.absolute_epoch.
+        epoch = iso_to_epoch(ts) if epoch is None else float(epoch)
         conn = self._conn()
         with self._write_lock:
             conn.execute(
@@ -291,7 +296,12 @@ class Database:
             ts, t_c, t_f, pid = row[0], row[1], row[2], row[3]
             hum, vpd, bat = (list(row[4:7]) + [None, None, None])[:3] if len(row) > 4 \
                 else (None, None, None)
-            params.append((str(ts), iso_to_epoch(ts), float(t_c), float(t_f),
+            # Optional 8th element: the TRUE epoch, when the source timestamp
+            # carried timezone info (see append()/storage.absolute_epoch — the
+            # DST fall-back hour is otherwise ambiguous).
+            exact = row[7] if len(row) > 7 else None
+            epoch = iso_to_epoch(ts) if exact is None else float(exact)
+            params.append((str(ts), epoch, float(t_c), float(t_f),
                            (pid or ""), _f(hum), _f(vpd), _f(bat)))
         if not params:
             return 0
