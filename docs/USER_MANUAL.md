@@ -15,7 +15,7 @@ Welcome! Setpoint lets you watch the temperature of your fridge, freezer, fermen
 
 - A **Setpoint** sensor with a temperature probe on a lead.
 - A **USB power adapter** and cable.
-- A **label / QR sticker** on the unit. It shows the probe's name (like **Setpoint-9A3F2C**) and a **setup secret**. Keep this label — you'll use it during setup.
+- A **label / QR sticker** on the unit. It shows the probe's name (like **Setpoint-9A3F2C**), which is also the name of its setup Wi-Fi network, and a QR code to the setup page. There is **no password or secret** on the label — the setup network is open (Section 4). Keep the label anyway: the name on it is how you identify this probe on the dashboard and in support requests.
 
 ---
 
@@ -84,7 +84,7 @@ That's it — the hub found the probe and set it up for you automatically. Readi
 - **Export to a spreadsheet:** click **Export…** on the dashboard, pick a probe and (optionally) a date range, then choose a **format** and download:
     - **Excel-friendly CSV** (recommended) — opens straight into Excel or Google Sheets ready to work with: the **date** and **time** are in their own columns so you can sort and filter them like normal dates, each probe shows the **friendly name** you gave it, and the clutter columns are left out. This is the easiest choice for most people.
     - **Excel workbook (`.xlsx`)** — a real Excel file: double-click and the dates, times and temperatures are already the right types, with a frozen header row and filter buttons. (For very large date ranges, use a CSV instead — a single Excel sheet can't hold more than about a million rows.)
-    - **Raw CSV** — the complete, unabbreviated file (full ISO timestamps and every column, humidity/VPD included for grow-variant probes). Best if you feed the data into another program or re-import it later.
+    - **Raw CSV** — the complete, unabbreviated file (full ISO timestamps and every column; the humidity/VPD columns are present but stay empty until a humidity-capable probe exists — see Section 11). Best if you feed the data into another program or re-import it later.
   <br>Each row is one reading with the temperature in °C and °F and which probe it came from; every format also includes an exact **UTC** timestamp so the data stays correct across computers and daylight-saving changes.
 - **Home Assistant (MQTT):** if you use Home Assistant, open **Settings → Integrations**, switch on **Publish to MQTT**, enter your broker's address, and click **Save**. Each probe then appears in Home Assistant automatically (auto-discovery) — it's all done from the Settings page, with no configuration files to edit.
 - **Put it on your phone:** open the dashboard in your phone's browser — use the Setpoint PC's network address instead of `localhost`, for example `http://192.168.1.50:8088` — then choose your browser's **Add to Home Screen** option. The dashboard installs like an app and opens full-screen from its own icon.
@@ -150,16 +150,25 @@ Alerts are spaced out (debounced) so you aren't flooded with repeats — **"Re-a
 
 ---
 
-## 11. Humidity & VPD (grow variant)
+## 11. Humidity & VPD (not yet available)
 
-Some Setpoints ship with a **humidity sensor (SHT4x)** for grow tents and greenhouses — the "grow variant." These probes measure **temperature and humidity**, and the hub uses both to calculate **VPD**.
+> **No shipping Setpoint measures humidity today.** The grow variant described here is a
+> **planned** product, not one you can buy or build: firmware v2.8.2 has no SHT4x support and no
+> shipping unit is populated with the sensor (see [`BOM.md`](BOM.md)). The *hub* side is already
+> built and waiting — storage, dashboard readouts, VPD maths, CSV export, API and MQTT all handle
+> humidity the moment a probe reports it — which is why this section exists. Read it as a
+> description of what will happen when the hardware lands, not as a feature to look for on your
+> unit. If your probe shows no Humidity readout, nothing is wrong with it.
 
-- **Which probes report it:** only grow-variant probes (the ones with the humidity sensor). Standard temperature-only probes show temperature just as before.
-- **Where it shows:** when a probe reports humidity, its card on the dashboard adds a **Humidity** readout (in %) and a **VPD** readout (in kPa) next to the temperature.
+The planned grow variant adds a **humidity sensor (SHT4x)** for grow tents and greenhouses. Those
+probes will measure **temperature and humidity**, and the hub uses both to calculate **VPD**.
+
+- **Which probes will report it:** only grow-variant probes (the ones with the humidity sensor). Standard temperature-only probes — which is every unit shipping today — show temperature just as before.
+- **Where it will show:** when a probe reports humidity, its card on the dashboard adds a **Humidity** readout (in %) and a **VPD** readout (in kPa) next to the temperature.
 - **What VPD means (for growers):** VPD (vapour pressure deficit) rolls temperature and humidity into one number, in kPa, that describes how much "drying power" the air has for your plants — most growers aim to keep it in a target band for healthy transpiration.
 - **How VPD is worked out:** you don't set it up — the hub computes VPD automatically from each temperature + humidity reading. Growers who want the VPD to reflect leaf (not just air) temperature can apply a small **leaf-temperature offset** (about 2 °C is common) via an advanced hub setting; see the developer guide, [DEVELOPING.md](DEVELOPING.md).
 
-**Humidity and VPD alerts.** Today, alert limits are for **temperature** (Section 10). Humidity and VPD are measured, shown on the dashboard, saved in your history, included in the spreadsheet export, and published over the API and MQTT — but you can't yet set alert limits on them. Humidity and VPD alert thresholds are on the roadmap for a future update.
+**Humidity and VPD alerts.** Alert limits are for **temperature** only (Section 10). Once humidity hardware exists, its readings will be shown on the dashboard, saved in your history, included in the spreadsheet export, and published over the API and MQTT — but you can't yet set alert limits on them. Humidity and VPD alert thresholds are on the roadmap for a future update.
 
 ---
 
