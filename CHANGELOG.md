@@ -60,6 +60,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Firmware v2.8.2 — a probe with no clock no longer throws its readings away.**
+  `nowIso()` returns nothing until NTP has synced, and `bufferAppend()`
+  early-returned on an empty stamp — so on a **LAN with no internet**, the
+  deployment this product is explicitly sold for, the offline buffer never
+  engaged and every reading taken while the hub was unreachable was lost
+  outright. Clockless readings are now buffered with an empty stamp and
+  receipt-stamped by the hub on drain, 1 ms apart, so the values survive. Such a
+  backlog carries drain-time chronology rather than measurement-time; a probe
+  that has a clock is unaffected, since the RTC checkpoint keeps stamping
+  through an outage exactly as before. (The live path already handled this — the
+  hub stamped a timestamp-less POST — so only buffered readings were affected.)
 - **Bulk backlog drain lost humidity, VPD and battery.** The live path extracts
   them but `/api/ingest_csv` never did, so a grow probe (SHT4x) reconnecting
   after an outage came back temperature-only — a hole in exactly the data that

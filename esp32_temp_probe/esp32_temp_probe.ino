@@ -1,4 +1,13 @@
 // ESP32 + DS18B20 + WiFiManager + mDNS + OTA + WebServer
+// v2.8.2 — offline buffering no longer requires a synced clock. A probe whose
+//           NTP has never landed (a LAN with no internet — the local-first
+//           deployment this product is sold for) previously DROPPED every
+//           reading it could not stamp, so the offline buffer never engaged and
+//           the data was lost outright. Such readings are now buffered with an
+//           empty stamp and receipt-stamped by the hub on drain: the values
+//           survive, though that backlog carries drain-time chronology rather
+//           than measurement-time. A probe that HAS a clock is unaffected (the
+//           RTC checkpoint keeps stamping through an outage as before).
 // v2.8.1 — reliability + bulk drain: (a) the offline buffer now drains to the
 //           hub in bulk via POST /api/ingest_csv — one HTTP round-trip per
 //           ~FLUSH_CHUNK_ROWS readings instead of one per reading — so a
@@ -129,7 +138,7 @@ inline void ledBlink(uint8_t n, uint16_t onMs = 60, uint16_t offMs = 120) {
 
 // ---------------- Identity --------------------------------------------------
 static const char* SENSOR_NAME = "Setpoint";
-static const char* FW_VERSION  = "2.8.1";
+static const char* FW_VERSION  = "2.8.2";
 
 // The setup SoftAP is intentionally OPEN (no password): it only exists during
 // first-time Wi-Fi setup and is torn down once the probe joins the home network,
@@ -518,8 +527,21 @@ void saveColdFail(uint32_t n) {
 // Offline buffer
 // ============================================================================
 
+// ``ts`` MAY be empty. A probe whose clock has never synced (nowIso() returns ""
+// until g_timeValid) used to have its reading DROPPED here — which meant that on
+// a LAN with no internet access, where NTP never lands, the offline buffer never
+// engaged at all and every reading taken while the hub was unreachable was lost.
+// That is precisely the local-first / no-cloud deployment this product is sold
+// for, so it is the worst place to lose data.
+//
+// An empty stamp is written through as an empty leading CSV field; the hub
+// receipt-stamps such rows on arrival (spread 1 ms apart, exactly as it already
+// does for timestamp-less live posts), so the readings survive. The trade-off is
+// that a backlog drained this way carries DRAIN-time chronology rather than
+// measurement-time — values are correct, spacing is not. Preserving the values
+// beats discarding them; carrying a relative uptime offset so the spacing
+// survives too would need a buffer-format change on both sides.
 void bufferAppend(const String& ts, float tC, float tF) {
-  if (ts.length() == 0) return;
 
   if (LittleFS.exists(BUFFER_FILE)) {
     File f = LittleFS.open(BUFFER_FILE, "r");
@@ -1259,9 +1281,10 @@ void setup() {
   // ── Clock restore (BEFORE Wi-Fi — timestamps must not depend on the radio) ─
   // Restore the clock from the RTC checkpoint FIRST. The ESP32 RTC timer keeps
   // running through deep sleep, so a probe that wakes during a Wi-Fi / router
-  // outage still gets a valid timestamp — and can therefore BUFFER its readings
-  // to LittleFS instead of dropping them for want of a clock (bufferAppend()
-  // early-returns on an empty timestamp). The pre-sleep instant was saved to
+  // outage still carries a valid timestamp — so its buffered readings keep
+  // measurement-time chronology rather than falling back to the hub's
+  // receipt-stamping (which bufferAppend now relies on only when the clock has
+  // never synced at all). The pre-sleep instant was saved to
   // MILLISECOND precision; adding the programmed sleep length plus the
   // milliseconds since this boot started reconstructs "now" without the old
   // whole-second truncation that drifted the clock by up to ~1 s per wake.

@@ -443,3 +443,20 @@ def test_ingest_config_uses_sanitized_probe_id(tmp_path):
     body = client.post("/api/ingest", json={"temperature_c": 4.0},
                        headers={"X-Probe-ID": "Setpoint-ABC123!!"}).get_json()
     assert body["config"]["interval_ms"] == 900000
+
+
+def test_bulk_drain_accepts_clockless_buffer_lines(tmp_path):
+    # A probe whose NTP never synced (a LAN with no internet — the local-first
+    # deployment this product is sold for) buffers readings with an EMPTY
+    # timestamp field rather than dropping them. The hub must receipt-stamp
+    # those rows 1 ms apart so every reading survives and stays ordered.
+    client, db, _ = _make_client(tmp_path)
+    csv = "\n".join(f",{20.0 + i:.3f},{68.0 + i:.3f},Setpoint-NOCLK" for i in range(5))
+    body = client.post("/api/ingest_csv", data=csv,
+                       headers={"Content-Type": "text/csv"}).get_json()
+    assert body["accepted"] == 5 and body["rejected"] == 0
+    rows = db.fetch_readings(probe_id="Setpoint-NOCLK")
+    assert len(rows) == 5
+    stamps = [r["timestamp"] for r in rows]
+    assert stamps == sorted(stamps)          # distinct and in order
+    assert len(set(stamps)) == 5             # not collapsed onto one instant
