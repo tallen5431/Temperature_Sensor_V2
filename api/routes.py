@@ -18,7 +18,7 @@ try:  # battery telemetry helper — may be absent on an older core.storage buil
 except ImportError:
     def extract_battery(payload):
         return None
-from core.status import reporting_probe_ids
+from core.status import reporting_probe_ids, hub_health_window
 from core.alerts import threshold_for
 from core.storage import threshold_breach
 from core.version import HUB_VERSION, PRODUCT_NAME
@@ -327,7 +327,7 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
             readings=readings,
             base=public_base(),
             time=datetime.datetime.now().isoformat(timespec="seconds"),
-            **HEALTH.snapshot(),
+            **HEALTH.snapshot(hub_health_window(cfg)),
         )
 
     @bp.get("/diagnostics")

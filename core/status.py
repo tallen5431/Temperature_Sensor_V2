@@ -127,6 +127,36 @@ def hub_status(probes: Iterable[Any], online_timeout: float,
     return {"state": state, "online": online, "total": total, "readings": int(total_readings)}
 
 
+def hub_health_window(cfg) -> float:
+    """Seconds the newest successful write may age before the hub reads unhealthy.
+
+    ``HealthState.snapshot`` defaults to a flat 120 s, and its docstring invites
+    callers "monitoring slow-cadence probes" to pass an interval-aware bound
+    instead — but no caller did, so a deep-sleep deployment permanently
+    contradicted itself. One probe on a 600 s cadence writes once per 600 s, so
+    ``healthy`` was true for 120 s of every 600 and false for the other 480: the
+    Diagnostics page rendered "Needs attention" directly above its own probe
+    table listing that same probe "online", ``/api/health`` reported
+    ``healthy:false``, and ``setpoint_healthy`` flapped 1→0→1 on every scrape,
+    which is precisely the metric a Grafana alert would be wired to.
+
+    Same shape as :func:`probe_prune_window`: the configured floor, widened to
+    the slowest probe's own fresh window. A fast fleet keeps 120 s
+    responsiveness; a slow one stops crying wolf.
+    """
+    try:
+        base = float(cfg.get("health_fresh_sec", 120) or 120)
+    except (TypeError, ValueError):
+        base = 120.0
+    try:
+        windows = [probe_fresh_window(cfg, pid)
+                   for pid in ((cfg.get("probe_intervals") or {}).keys())]
+        windows.append(probe_fresh_window(cfg, None))
+        return max(base, max(windows))
+    except Exception:  # noqa: BLE001 - config is user-editable; never break health
+        return base
+
+
 def probe_prune_window(cfg) -> float:
     """Seconds a probe may be unseen before discovery may evict it.
 

@@ -13,7 +13,7 @@ import shutil
 from typing import Any, Dict, List, Optional
 
 from core.applog import HEALTH, PROCESS_START
-from core.status import reporting_probe_ids
+from core.status import reporting_probe_ids, hub_health_window
 
 
 def _int(v: Any, default: int) -> int:
@@ -99,7 +99,10 @@ def build_diagnostics(cfg, db, finder, public_base: str, version: str,
     webhook = notif.get("webhook", {}) or {}
 
     # --- System health: is the appliance actually recording, and is there room? --
-    health = HEALTH.snapshot()
+    # Interval-aware bound, not the flat 120 s default: a slow-cadence fleet
+    # writes less often than that and would render "Needs attention" directly
+    # above its own probe table showing those probes online.
+    health = HEALTH.snapshot(hub_health_window(cfg))
     db_path = getattr(db, "path", None)
     disk_free = None
     try:

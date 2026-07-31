@@ -11,6 +11,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The chart range selector could silence a live alert.** The alert banner and
+  the "needs attention" gauge share one latest-per-probe scan, and that scan was
+  scoped to the *selected chart range* rather than the probe-presence window.
+  Both consumers already gate each row on `_probe_fresh_window` — the
+  interval-aware "is this probe live?" test — so the query window was redundant
+  filtering that turned a view control into an alerting control: a probe on a 2 h
+  cadence whose last reading was 90 minutes old is still fresh (18000 s window)
+  and its card read "▲ HIGH", but selecting "Last Hour" dropped its row before
+  the freshness gate ran, so the banner showed nothing and the gauge picked a
+  different probe. Now scanned over `PROBE_PRESENCE_WINDOW`, which the per-probe
+  cards already query every tick, so it costs nothing new.
+- **Hub health is now judged on the same clock as the probes.** `/api/health`,
+  `/api/diagnostics` and `setpoint_healthy` all used `HealthState.snapshot()`'s
+  flat 120 s freshness bound, even though the parameter exists precisely so
+  callers "monitoring slow-cadence probes" can pass an interval-aware one. A
+  single probe on a 600 s cadence therefore reported `healthy:false` for 480 of
+  every 600 seconds — the Diagnostics page rendering "Needs attention" directly
+  above its own table listing that probe online, and `setpoint_healthy` flapping
+  1→0→1 on every scrape. New `core.status.hub_health_window` widens the bound to
+  the slowest probe's own fresh window (same shape as `probe_prune_window`), so
+  a deep-sleep deployment stops crying wolf while a fast fleet is unaffected.
+- **A fresh install no longer logs an ERROR traceback on every dashboard
+  refresh.** The empty-store case raised `ValueError("no data")` into the
+  catch-all handler, which logs with `log.exception`, so a hub that simply had
+  not been used yet wrote a stack trace roughly four times a minute per open tab
+  into the same rotating log that real field incidents must be diagnosable from.
+  It now returns the no-data state directly, shared with the failure handler so
+  the two cannot drift in arity.
+- **The `/metrics` latest-reading registry is now bounded.** `core.metrics.LATEST`
+  had no ceiling and was fed straight from the `X-Probe-ID` header, so every
+  distinct id added both a permanent entry and a permanent exposition series:
+  20 000 ids produced a 2.9 MB scrape response, making it a memory leak and a
+  scrape-amplification vector at once. Capped at 512 tracked probes, evicting the
+  stalest entry — eviction rather than refusal, because this map is "current
+  temperature per probe" and a real sensor must be able to displace noise.
+
 - **`setpoint_probes_total` counted only reporting probes, silently disarming the
   "a probe went quiet" alert.** `/metrics` read each discovered probe's id with
   `getattr(p, "probe_id", None)`, but the discovery registry stores `ProbeInfo`

@@ -12,12 +12,39 @@ import threading
 import time
 
 
+# Ceiling on tracked probes, mirroring probe_discovery._MAX_PROBES and
+# mqtt_publish._MAX_ANNOUNCED, and bounding the same exposure: a probe id is
+# whatever arrives in an X-Probe-ID header on the open-by-default ingest API and
+# sanitizes to 32 chars of [A-Za-z0-9_-], so its cardinality is effectively
+# unlimited. Every distinct id used to add a permanent entry here AND a
+# permanent series to /metrics: 20k ids produced a 2.9 MB scrape response, so
+# this was a memory leak and a scrape-amplification vector at once (Prometheus
+# pulls this every 15-30 s). Far above any real deployment.
+_MAX_TRACKED = 512
+
+
 class LatestReadings:
     """Thread-safe in-memory registry of the most recent reading per probe."""
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._data: dict[str, dict] = {}
+
+    def _evict_if_full(self) -> None:
+        """Drop the least-recently-updated entry when at the ceiling. Caller
+        holds the lock.
+
+        Evicts rather than refusing (the opposite of the MQTT announce cap, and
+        deliberately so): this map is "current temperature per probe", so a real
+        probe reporting for the first time must be able to displace the stalest
+        entry. Refusing would leave a genuine sensor permanently absent from
+        /metrics because noise got there first. The stalest entry is by
+        definition the least useful, and re-recording restores it.
+        """
+        if len(self._data) < _MAX_TRACKED:
+            return
+        oldest = min(self._data, key=lambda k: self._data[k].get("ts", 0.0))
+        self._data.pop(oldest, None)
 
     def record(self, probe_id: str, temp_c: float, ts_epoch: float | None = None,
                humidity: float | None = None, vpd: float | None = None) -> None:
@@ -29,6 +56,8 @@ class LatestReadings:
                 entry["humidity"] = float(humidity)
             if vpd is not None:
                 entry["vpd"] = float(vpd)
+            if probe_id not in self._data:
+                self._evict_if_full()
             self._data[probe_id] = entry
 
     def evict(self, probe_id: str) -> None:

@@ -713,11 +713,24 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
     focus = focus_probe if (focus_probe and focus_probe != "all") else None
     focus_ts = None  # the focused probe's OWN latest timestamp (for "Last Update")
 
+    def _no_data():
+        """The 14-tuple for 'nothing to plot yet'. Shared by the first-run path
+        and the failure handler so the two can never drift in arity."""
+        return (_empty_fig(), _empty_fig(), str(probes_online), "(no data)",
+                logging_status, "No signal", "No data available",
+                "N/A", "", "N/A", "", "N/A", "", [])
+
     try:
         if latest is None:
             latest = db.latest()
         if not latest:
-            raise ValueError("no data")
+            # An empty store is the NORMAL first-run state -- the onboarding card
+            # says "Waiting for your first reading". This used to raise into the
+            # handler below, which logs at ERROR with a traceback, so a hub that
+            # had simply not been used yet wrote a stack trace on every refresh
+            # (~4/min per open tab) into the same rotating log that real field
+            # incidents have to be diagnosable from. Return the state directly.
+            return _no_data()
 
         thresholds = cfg.get("alert_thresholds", {}) or {}
         if focus is not None:
@@ -745,14 +758,24 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
                 thr = thresholds.get(focus_pid, thresholds.get("default", {})) or {}
                 focus_lo, focus_hi = thr.get("min"), thr.get("max")
 
-        # One latest-per-probe scan over the window, shared by the worst-breach
-        # gauge picker and the alerts loop below (each previously ran its own
-        # identical query on every tick). None on failure or when neither
-        # consumer needs it (focused view with no thresholds configured).
+        # One latest-per-probe scan shared by the worst-breach gauge picker and
+        # the alerts loop below (each previously ran its own identical query on
+        # every tick). None on failure or when neither consumer needs it
+        # (focused view with no thresholds configured).
+        #
+        # Scanned over PROBE_PRESENCE_WINDOW, deliberately NOT the selected chart
+        # range. Both consumers already gate each row on _probe_fresh_window,
+        # which is the interval-aware "is this probe live?" test and the only one
+        # that should decide. Scoping the QUERY to the chart range as well made a
+        # view control silence a real alert: a probe on a 2 h cadence whose last
+        # reading is 90 min old is still fresh (18000 s window) and its card
+        # reads "▲ HIGH", but selecting "Last Hour" dropped its row here, so the
+        # banner showed nothing and the gauge picked a different probe. The cards
+        # already query at this window every tick, so this costs nothing new.
         latest_each = None
         if focus is None or thresholds:
             try:
-                latest_each = db.latest_per_probe(window_seconds=window)
+                latest_each = db.latest_per_probe(window_seconds=PROBE_PRESENCE_WINDOW)
             except Exception:
                 latest_each = None
 
@@ -1014,8 +1037,7 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
 
     except Exception:
         log.exception("dashboard update failed")
-        return (_empty_fig(), _empty_fig(), str(probes_online), "(no data)", logging_status,
-                "No signal", "No data available", "N/A", "", "N/A", "", "N/A", "", [])
+        return _no_data()
 
 
 # --- Callbacks ---------------------------------------------------------------

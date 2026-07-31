@@ -15,7 +15,7 @@ from core.logging_setup import configure_logging
 from core.mdns_advert import MdnsAdvert
 from core.metrics import LATEST, render_prometheus
 from core.secret_compare import constant_time_eq
-from core.status import reporting_probe_ids
+from core.status import reporting_probe_ids, hub_health_window
 from core.applog import HEALTH
 from core.audit import AUDIT
 from core.mqtt_publish import MQTT
@@ -266,7 +266,8 @@ def metrics():
     except Exception:
         discovered = set()
     total = len(discovered | reporting)
-    body = render_prometheus(HEALTH.snapshot(), LATEST.snapshot(), total, HUB_VERSION,
+    body = render_prometheus(HEALTH.snapshot(hub_health_window(cfg)), LATEST.snapshot(),
+                             total, HUB_VERSION,
                              probes_online=len(reporting))
     return body, 200, {"Content-Type": "text/plain; version=0.0.4; charset=utf-8"}
 
