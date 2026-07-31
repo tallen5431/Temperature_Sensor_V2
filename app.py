@@ -1,4 +1,3 @@
-import hmac
 import logging
 import os
 import re
@@ -15,6 +14,7 @@ from core.db import Database, migrate_csv_if_present, ExportTooLargeForXlsx
 from core.logging_setup import configure_logging
 from core.mdns_advert import MdnsAdvert
 from core.metrics import LATEST, render_prometheus
+from core.secret_compare import constant_time_eq
 from core.status import reporting_probe_ids
 from core.applog import HEALTH
 from core.audit import AUDIT
@@ -176,8 +176,13 @@ def _ui_auth_gate():
     if p.startswith("/api/") or p == "/metrics" or p.startswith("/assets/"):
         return None
     auth = request.authorization
-    if auth and hmac.compare_digest(auth.username or "", UI_AUTH_USER) \
-            and hmac.compare_digest(auth.password or "", UI_AUTH_PW):
+    # constant_time_eq, not hmac.compare_digest directly: compare_digest rejects
+    # non-ASCII str operands with TypeError, and BOTH sides here can be non-ASCII
+    # — the configured password (an accented character would 500 every request
+    # and lock the operator out for good) and the client-supplied one (any
+    # unauthenticated caller could turn its own 401 into a 500).
+    if auth and constant_time_eq(auth.username, UI_AUTH_USER) \
+            and constant_time_eq(auth.password, UI_AUTH_PW):
         return None
     return Response("Authentication required", 401,
                     {"WWW-Authenticate": f'Basic realm="{PRODUCT_NAME}"'})
@@ -237,12 +242,27 @@ def metrics():
     except Exception:
         reporting = set()
     try:
-        discovered = {
-            (p.get("properties", {}) or {}).get("id") if isinstance(p, dict)
-            else getattr(p, "probe_id", None)
-            for p in (finder.list_probes() or {}).values()
-        }
-        discovered.discard(None)
+        discovered = set()
+        for p in (finder.list_probes() or {}).values():
+            # Read the id the way every other consumer does (api/routes.py,
+            # core/diagnostics.py): properties["id"] first, then the flat
+            # attributes, then the name. The registry stores ProbeInfo
+            # dataclasses, which have NO probe_id field — the id lives in
+            # .properties — so reaching straight for getattr(p, "probe_id")
+            # returned None for every probe, leaving this set permanently empty
+            # and making setpoint_probes_total identical to
+            # setpoint_probes_online on every scrape. That silently disarms the
+            # one alert these two gauges exist to support:
+            # probes_total - probes_online > 0, i.e. "a probe I know about has
+            # stopped reporting".
+            props = (p.get("properties") if isinstance(p, dict)
+                     else getattr(p, "properties", None)) or {}
+            pid = (props.get("id")
+                   or (p.get("probe_id") or p.get("id") or p.get("name")
+                       if isinstance(p, dict)
+                       else getattr(p, "probe_id", None) or getattr(p, "name", None)))
+            if pid:
+                discovered.add(pid)
     except Exception:
         discovered = set()
     total = len(discovered | reporting)

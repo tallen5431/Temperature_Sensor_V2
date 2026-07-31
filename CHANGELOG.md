@@ -11,6 +11,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`setpoint_probes_total` counted only reporting probes, silently disarming the
+  "a probe went quiet" alert.** `/metrics` read each discovered probe's id with
+  `getattr(p, "probe_id", None)`, but the discovery registry stores `ProbeInfo`
+  dataclasses, which have no `probe_id` field — the id lives in
+  `.properties["id"]`. The expression returned `None` for every probe, so the
+  discovered set was always empty and `probes_total` equalled `probes_online` on
+  every scrape. `probes_total - probes_online > 0` — the one condition the two
+  gauges exist to express, and the obvious Grafana alert for a silent freezer
+  sensor — could therefore never fire, and `/metrics` disagreed with the
+  dashboard, which counts discovered probes correctly. Now uses the same
+  properties-first accessor as `api/routes.py` and `core/diagnostics.py`.
+- **Non-ASCII credentials returned HTTP 500 instead of 401, and could lock an
+  operator out of the dashboard permanently.** `hmac.compare_digest` accepts
+  `str` only when *both* operands are ASCII-only and raises `TypeError`
+  otherwise. Both operands can be non-ASCII here: the configured side
+  (`UI_PASSWORD` / `ui_auth.password` / `SERVER_TOKEN`, coerced to `str` by the
+  schema but never constrained to ASCII) and the client-supplied side (request
+  data). An operator whose password contained an accented character got a 500 on
+  the dashboard, every download and every Dash callback, with no way in through
+  the UI; separately, any unauthenticated client could turn its own 401 into a
+  500 by sending a non-ASCII password or `X-Token`. Comparison now happens on
+  UTF-8 bytes via `core.secret_compare.constant_time_eq`, which keeps the
+  constant-time property and fails closed.
+
 - **A mistyped per-probe setting no longer looks applied when it isn't.**
   `probe_intervals`, `probe_resolutions` and `calibration_offsets` were checked
   only for being objects; their inner values were never coerced, unlike

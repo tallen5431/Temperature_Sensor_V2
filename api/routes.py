@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import datetime
-import hmac
 import ipaddress
 import time
 from typing import Any, Callable, Dict, List, Tuple
@@ -10,6 +9,7 @@ from flask import Blueprint, jsonify, request
 
 from provisioning import provision_probe, resolve_host, desired_probe_config
 from core.diagnostics import build_diagnostics
+from core.secret_compare import constant_time_eq
 from core.storage import (normalize_payload, extract_humidity, compute_vpd,
                           sanitize_probe_id, is_future_stamp,
                           absolute_epoch)
@@ -236,7 +236,11 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
         tok = request.headers.get("X-Token") or request.args.get("token")
         if not tok and request.is_json:
             tok = _json_body().get("token")
-        return bool(tok) and hmac.compare_digest(str(tok), TOKEN)
+        # constant_time_eq rather than hmac.compare_digest: the latter raises
+        # TypeError on a non-ASCII str, so a hostile client could turn its own
+        # 401 into a 500 by sending a non-ASCII X-Token, and a hand-set
+        # SERVER_TOKEN with an accented character would 500 every probe's ingest.
+        return bool(tok) and constant_time_eq(tok, TOKEN)
 
     def _online_timeout() -> int:
         try:
