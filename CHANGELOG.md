@@ -11,6 +11,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An unknown-probe-id flood can no longer litter Home Assistant permanently.**
+  MQTT discovery announced one entity per `(probe, metric)` pair and remembered
+  them in an unbounded set. A probe id arrives as an `X-Probe-ID` header on the
+  open-by-default ingest API and sanitizes to 32 characters of `[A-Za-z0-9_-]`,
+  so its cardinality is effectively unlimited — the exposure `probe_discovery`
+  already bounds with `_MAX_PROBES`. Here it was worse than a memory leak:
+  discovery entities publish with `retain=True`, and a retained message outlives
+  the hub, a broker restart and the flood itself, so the phantom entities had to
+  be cleared by hand. Announcements are now capped (1536 pairs = 512 probes × 3
+  metrics, far past any real fleet) and the cap logs once. Readings keep
+  publishing past the cap — capping discovery must never cost a reading — and an
+  already-announced probe is never re-announced, since evicting to make room
+  would turn a bounded set into an unbounded stream of retained publishes.
+
 - **A wall clock that jumps forward can no longer delete the entire reading
   history.** `purge_older_than` deletes on `epoch < now - retention_days`, so it
   trusts the system clock. A clock reading far in the *past* was always harmless

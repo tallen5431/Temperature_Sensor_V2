@@ -19,6 +19,17 @@ from core.applog import get_logger
 
 log = get_logger("mqtt")
 
+# Ceiling on distinct (probe, metric) pairs we will announce to Home Assistant.
+# Mirrors probe_discovery._MAX_PROBES and exists for the same reason it does: a
+# probe id comes from an X-Probe-ID header on the open-by-default ingest API and
+# sanitizes to 32 chars of [A-Za-z0-9_-], so its cardinality is effectively
+# unbounded. Each NOVEL id publishes a discovery entity with retain=True, and a
+# retained message outlives the hub, the broker restart, and the flood itself --
+# so an id flood does not just grow this set, it permanently litters the user's
+# Home Assistant with phantom entities they must hand-clear. Far above any real
+# deployment (512 probes x 3 metrics).
+_MAX_ANNOUNCED = 1536
+
 
 def state_topic(base_topic: str, probe_id: str) -> str:
     return f"{base_topic.rstrip('/')}/{probe_id}/state"
@@ -71,6 +82,7 @@ class MqttPublisher:
         self._discovery_prefix = "homeassistant"
         self._discovery_enabled = True
         self._announced: set[str] = set()
+        self._announce_capped = False
 
     def start(self, cfg) -> None:
         m = (cfg.get("mqtt", {}) or {})
@@ -136,13 +148,30 @@ class MqttPublisher:
                 with self._lock:
                     for metric in metrics:
                         key = f"{probe_id}:{metric}"
-                        if key not in self._announced:
-                            client.publish(
-                                discovery_topic(self._discovery_prefix, probe_id, metric),
-                                json.dumps(discovery_payload(probe_id, friendly_name, self._base_topic, metric)),
-                                retain=True,
-                            )
-                            self._announced.add(key)
+                        if key in self._announced:
+                            continue
+                        # Stop announcing rather than evicting: eviction would let
+                        # an already-seen probe re-announce on its next reading,
+                        # turning a bounded set into an unbounded stream of
+                        # retained publishes -- worse than the leak it fixes.
+                        # Readings keep flowing below; only the HA entity is
+                        # skipped, and only past a count no real fleet reaches.
+                        if len(self._announced) >= _MAX_ANNOUNCED:
+                            if not self._announce_capped:
+                                self._announce_capped = True
+                                log.warning(
+                                    "MQTT discovery announcements capped at %d distinct "
+                                    "(probe, metric) pairs; new probes will publish "
+                                    "readings but will not appear in Home Assistant. "
+                                    "This usually means unknown probe ids are reaching "
+                                    "/api/ingest.", _MAX_ANNOUNCED)
+                            continue
+                        client.publish(
+                            discovery_topic(self._discovery_prefix, probe_id, metric),
+                            json.dumps(discovery_payload(probe_id, friendly_name, self._base_topic, metric)),
+                            retain=True,
+                        )
+                        self._announced.add(key)
             state = {"temperature_c": round(float(temp_c), 3), "probe_id": probe_id}
             if humidity is not None:
                 state["humidity_pct"] = round(float(humidity), 2)

@@ -284,7 +284,16 @@ class ProbeDiscovery:
 
     def update_last_seen(self, probe_id: str, host: str = "", ip: str = "") -> None:
         """Mark a probe as recently seen (called on ingest). If the probe is not
-        yet known via mDNS, register a minimal entry so it appears in the UI."""
+        yet known via mDNS, register a minimal entry so it appears in the UI.
+
+        An empty id is a no-op. Both current callers already check, but this was
+        the only mutator on the class without the guard its siblings
+        (``forget_probe``, and ``LATEST.record``/``evict`` next door) all carry --
+        and an unguarded call would register a nameless phantom probe keyed by
+        "" that shows as a blank card and counts toward the probe totals.
+        """
+        if not (probe_id or "").strip():
+            return
         with self._lock:
             for p in self._probes.values():
                 p_name = getattr(p, 'name', None) if not isinstance(p, dict) else p.get('name')
