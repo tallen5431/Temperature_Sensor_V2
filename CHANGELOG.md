@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A wall clock that jumps forward can no longer delete the entire reading
+  history.** `purge_older_than` deletes on `epoch < now - retention_days`, so it
+  trusts the system clock. A clock reading far in the *past* was always harmless
+  (the cutoff goes negative and matches nothing), but a clock reading far in the
+  *future* — a bad NTP answer, a VM resumed from a stale snapshot, a mistyped
+  date — put the cutoff beyond every stored reading, so the next hourly retention
+  sweep silently deleted everything, with no undo. `delete_future_readings`
+  already guarded the mirror case; this side had no guard at all. Retention now
+  declines to run when the cutoff is at or past the newest reading held, on the
+  principle that trimming the tail must never empty the store. The one legitimate
+  case this also declines — a hub offline for longer than its retention window —
+  resolves itself as soon as probes report again and the cutoff falls back behind
+  the newest epoch.
+
 ### Added
 
 - **The Devices page now says when a settings change will actually reach the

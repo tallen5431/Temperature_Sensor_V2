@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import csv as _csv
 import datetime
+import logging
 import sqlite3
 import threading
 import time
@@ -27,6 +28,8 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 import pandas as pd
+
+log = logging.getLogger("hub.db")
 
 # Columns exposed to the rest of the app.  ``timestamp`` is aliased from the
 # ``ts`` column so existing dashboard code keeps working unchanged.
@@ -646,12 +649,40 @@ class Database:
 
     # -- maintenance -----------------------------------------------------------
     def purge_older_than(self, days: int) -> int:
-        """Delete readings older than ``days`` days. Returns rows removed."""
+        """Delete readings older than ``days`` days. Returns rows removed.
+
+        Guarded against a wall clock that has jumped FORWARD, the mirror of the
+        risk :meth:`delete_future_readings` guards below. This deletes on
+        ``epoch < now - days``, so a clock reading far in the past is harmless
+        (the cutoff goes negative and nothing matches) but a clock reading far in
+        the future — a bad NTP answer, a VM resumed from a stale snapshot, a
+        mistyped date — puts the cutoff beyond every real reading and silently
+        deletes the entire history on the next hourly sweep. There is no undo.
+
+        The invariant that catches it without needing a trustworthy clock: a
+        retention sweep is meant to trim the tail, so it must never be the thing
+        that empties the store. If the cutoff is at or past the newest reading we
+        hold, the clock disagrees with the data and we decline rather than guess.
+
+        The one legitimate case this also declines is a hub that has been off
+        longer than the retention window, where every row genuinely is expired.
+        That resolves itself: once the probes report again the newest epoch is
+        current, the cutoff falls back behind it, and the stale rows purge on the
+        next sweep. Keeping data too long is recoverable; deleting it is not.
+        """
         if not days or int(days) <= 0:
             return 0
         cutoff = int(time.time()) - int(days) * 86400
         conn = self._conn()
         with self._write_lock:
+            newest = conn.execute("SELECT MAX(epoch) FROM readings").fetchone()[0]
+            if newest is not None and cutoff >= float(newest):
+                log.warning(
+                    "retention purge skipped: cutoff %d is at or past the newest "
+                    "reading (%s) — the system clock looks wrong, or the hub has "
+                    "been offline longer than the %d-day retention window. "
+                    "Nothing deleted.", cutoff, newest, int(days))
+                return 0
             cur = conn.execute("DELETE FROM readings WHERE epoch < ?", (cutoff,))
             conn.commit()
             return cur.rowcount
