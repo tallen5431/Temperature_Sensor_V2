@@ -133,6 +133,11 @@ def build_diagnostics(cfg, db, finder, public_base: str, version: str,
             "ingest_rejected": health["ingest_rejected"],
             "write_failures": health["write_failures"],
             "last_write_age_sec": health["last_write_age_sec"],
+            # HealthState documents this as surfaced here; it wasn't. A probe on
+            # a stale device token 401s on every wake and is otherwise
+            # indistinguishable from "hub down".
+            "unauthorized": health["unauthorized"],
+            "last_unauthorized_age_sec": health["last_unauthorized_age_sec"],
         },
         "retention_days": _int(cfg.get("retention_days", 0), 0),
         "notifications": {
@@ -140,5 +145,11 @@ def build_diagnostics(cfg, db, finder, public_base: str, version: str,
             "email": bool(email.get("enabled")),
             "webhook": bool(webhook.get("enabled")),
             "offline_alerts": bool(notif.get("offline_alerts")),
+            # Whether alerts are configured is not the same question as whether
+            # they are ARRIVING. A dead SMTP server leaves every flag above true
+            # while nothing reaches anyone, so report delivery beside intent.
+            "failed": health["notify_failures"],
+            "dropped": health["notify_dropped"],
+            "last_failure_age_sec": health["last_notify_failure_age_sec"],
         },
     }

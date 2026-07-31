@@ -13,6 +13,7 @@ import threading
 import time
 
 from core.alerts import HELD, evaluate, evaluate_offline, evaluate_rate, format_event
+from core.applog import HEALTH
 from core.db import iso_to_epoch
 from core.notifications import Notifier, send_email
 from core.status import probe_fresh_window, probe_prune_window
@@ -64,20 +65,40 @@ class AlertMonitor(threading.Thread):
             try:
                 self._notify_q.put_nowait(ev)
             except queue.Full:
+                HEALTH.record_notify_dropped()
                 log.warning("notification queue full; dropping %s alert for %s",
                             ev.get("kind"), ev.get("probe_id"))
         else:
-            self.notifier.dispatch(ev)
+            self._send(ev)
+
+    def _send(self, ev: dict) -> None:
+        """Dispatch to the channels and COUNT anything that did not get through.
+
+        Notifier.dispatch reports a dead channel by returning ``ok=False`` rather
+        than raising — send_email/send_webhook catch their own errors — so a
+        bare try/except sees a clean run and the operator is never told. That is
+        the failure this counter exists for: the dashboard still shows the
+        breach and the event log still records it, so an undelivered alert looks
+        exactly like a delivered one.
+        """
+        try:
+            results = self.notifier.dispatch(ev) or []
+        except Exception as e:  # noqa: BLE001 - a channel error must not kill the worker
+            HEALTH.record_notify_failure()
+            log.warning("notification dispatch error: %s", e)
+            return
+        failed = [ch for ch, ok, _ in results if not ok]
+        if failed:
+            HEALTH.record_notify_failure(len(failed))
+            log.warning("notification for %s not delivered via %s",
+                        ev.get("probe_id"), ", ".join(failed))
 
     def _dispatch_loop(self) -> None:
         while True:
             ev = self._notify_q.get()
             if ev is None:  # sentinel from stop()
                 return
-            try:
-                self.notifier.dispatch(ev)
-            except Exception as e:  # noqa: BLE001 - a channel error must not kill the worker
-                log.warning("notification dispatch error: %s", e)
+            self._send(ev)
 
     def _readings(self) -> dict:
         """Latest reading per probe, limited to recent data so we don't alert on

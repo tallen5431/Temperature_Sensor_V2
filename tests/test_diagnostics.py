@@ -57,8 +57,14 @@ def test_build_counts_online_and_offline():
     assert d["database"]["readings"] == 42
     assert d["database"]["newest_reading"] == "2026-06-09T00:00:00"
     assert d["retention_days"] == 7
-    assert d["notifications"] == {"enabled": True, "email": True,
-                                  "webhook": False, "offline_alerts": True}
+    # Config intent. Asserted key-by-key rather than by whole-dict equality so
+    # adding a field to the block doesn't fail an unrelated test.
+    notif = d["notifications"]
+    assert (notif["enabled"], notif["email"], notif["webhook"],
+            notif["offline_alerts"]) == (True, True, False, True)
+    # Delivery reality, reported alongside intent: every flag above can be true
+    # while a dead SMTP server means nothing actually arrives.
+    assert set(notif) >= {"failed", "dropped", "last_failure_age_sec"}
     assert d["server"]["base"] == "http://hub:8088"
     assert d["version"] == "2.2.1"
 

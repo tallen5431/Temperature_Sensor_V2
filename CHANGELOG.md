@@ -11,6 +11,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An alert that never reached anyone is no longer invisible.** Notifications
+  could be lost two ways and neither surfaced: a channel failure (SMTP down,
+  webhook 500, bad credentials) and a dropped event when the dispatch queue
+  filled. Both only wrote a log line, while the dashboard still showed the breach
+  and the event log still recorded it — so an undelivered alert looked exactly
+  like a delivered one, which in an alerting product is the worst possible
+  failure mode. The channel case was the easy one to miss: `Notifier.dispatch`
+  reports a dead channel by *returning* `ok=False` rather than raising (each
+  channel catches its own errors), so the existing `try/except` around it saw a
+  clean run. `HEALTH` now counts `notify_failures` and `notify_dropped`
+  separately — one is a broken channel, the other is back-pressure — and both
+  appear in `GET /api/health` and `GET /api/diagnostics` beside the
+  is-it-configured flags, because whether alerts are *configured* is a different
+  question from whether they are *arriving*.
+- **`/api/diagnostics` now reports the `unauthorized` counter** it already
+  claimed to. `HealthState` documented it as "surfaced in /api/health and
+  /api/diagnostics"; only the former was true. A probe holding a stale device
+  token 401s on every wake and is otherwise indistinguishable from a probe whose
+  hub is down.
+
 - **An unknown-probe-id flood can no longer litter Home Assistant permanently.**
   MQTT discovery announced one entity per `(probe, metric)` pair and remembered
   them in an unbounded set. A probe id arrives as an `X-Probe-ID` header on the

@@ -91,6 +91,17 @@ class HealthState:
         # /api/diagnostics so the cause is findable.
         self.unauthorized = 0
         self.last_unauthorized_ts: float | None = None
+        # Notifications that never reached anyone. Alerting is the product's
+        # promise, so a silently-undelivered alert is its worst failure: the
+        # dashboard still shows the breach, the event log still records it, and
+        # the operator reasonably concludes they were told. Two distinct causes,
+        # counted separately because they mean different things — `failed` is a
+        # channel problem (SMTP down, webhook 500, bad credentials), `dropped` is
+        # back-pressure, the dispatch queue filling because sends are slower than
+        # events arrive. Surfaced in /api/health and /api/diagnostics.
+        self.notify_failures = 0
+        self.notify_dropped = 0
+        self.last_notify_failure_ts: float | None = None
 
     def record_write(self) -> None:
         with self._lock:
@@ -113,6 +124,20 @@ class HealthState:
             self.last_unauthorized_ts = time.time()
             return self.unauthorized
 
+    def record_notify_failure(self, n: int = 1) -> None:
+        """Count notification(s) a channel accepted but failed to deliver."""
+        if n <= 0:
+            return
+        with self._lock:
+            self.notify_failures += n
+            self.last_notify_failure_ts = time.time()
+
+    def record_notify_dropped(self) -> None:
+        """Count one event discarded because the dispatch queue was full."""
+        with self._lock:
+            self.notify_dropped += 1
+            self.last_notify_failure_ts = time.time()
+
     def snapshot(self, fresh_window_sec: float = 120) -> dict:
         """Health counters plus the derived ``healthy`` flag.
 
@@ -130,6 +155,8 @@ class HealthState:
                        and (last is None or self.last_failure_ts > last))
             unauth_age = ((time.time() - self.last_unauthorized_ts)
                           if self.last_unauthorized_ts else None)
+            notify_age = ((time.time() - self.last_notify_failure_ts)
+                          if self.last_notify_failure_ts else None)
             return {
                 "rows_written": self.rows_written,
                 "ingest_rejected": self.ingest_rejected,
@@ -137,6 +164,10 @@ class HealthState:
                 "unauthorized": self.unauthorized,
                 "last_unauthorized_age_sec": (round(unauth_age, 1)
                                               if unauth_age is not None else None),
+                "notify_failures": self.notify_failures,
+                "notify_dropped": self.notify_dropped,
+                "last_notify_failure_age_sec": (round(notify_age, 1)
+                                                if notify_age is not None else None),
                 "last_write_age_sec": round(age, 1) if age is not None else None,
                 "healthy": bool(last and age is not None and age < fresh_window_sec
                                 and not failing),
