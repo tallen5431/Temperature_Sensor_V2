@@ -79,10 +79,22 @@ def _help_body():
                     html.Li(["Probe stale or offline? Check power/battery first, then Wi-Fi. "
                              "Battery probes back-fill their buffered readings when they "
                              "reconnect, so no data is lost."]),
-                    html.Li(["Probe joined the wrong Wi-Fi? Unplug the probe for 10 seconds "
-                             "and plug it back in — the ", html.B("Setpoint-XXXXXX"),
-                             " setup network reappears within ~30 seconds so you can pick "
-                             "the right one."]),
+                    # Accurate to the shipping firmware: with saved credentials a
+                    # cold boot retries the saved network for a 60 s grace, and the
+                    # setup portal opens only after COLD_FAIL_PORTAL_AFTER (3)
+                    # CONSECUTIVE failed boots. If the wrong network is still in
+                    # range the probe rejoins it and clears the counter, so the
+                    # setup AP never appears no matter how many times you
+                    # power-cycle. There is no forget-Wi-Fi gesture, so the only
+                    # recovery is to take that network away first.
+                    html.Li(["Probe joined the wrong Wi-Fi? While that network is still "
+                             "in range the probe keeps rejoining it, so power-cycling "
+                             "alone will not bring the setup network back. Switch the "
+                             "wrong network off (or move the probe out of its range), "
+                             "then power-cycle the probe ", html.B("three times"),
+                             ", giving it about a minute each time. The ",
+                             html.B("Setpoint-XXXXXX"), " setup network then reappears "
+                             "and you can pick the right one."]),
                 ], className="mb-1"),
             ]),
 
