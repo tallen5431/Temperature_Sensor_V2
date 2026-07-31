@@ -11,6 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A mistyped per-probe setting no longer looks applied when it isn't.**
+  `probe_intervals`, `probe_resolutions` and `calibration_offsets` were checked
+  only for being objects; their inner values were never coerced, unlike
+  `alert_thresholds`. Nothing crashed — every consumer already defends itself and
+  falls back — which was the problem: the misconfiguration was silent, while the
+  Devices card rendered the *raw* config value. Hand-editing an interval to
+  `"30s"` produced a card reading "Interval: 30s s" while the probe carried on at
+  the global interval. All three are now coerced at load with a warning (values
+  clamped to their valid range, unparseable entries dropped), so the stored
+  config, the value actually in effect, and the value displayed agree. Quoted
+  numbers (`"1800"`) are accepted silently — only a real value change warns.
+
 - **An alert that never reached anyone is no longer invisible.** Notifications
   could be lost two ways and neither surfaced: a channel failure (SMTP down,
   webhook 500, bad credentials) and a dropped event when the dispatch queue

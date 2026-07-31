@@ -150,6 +150,42 @@ def normalize_config(raw: Any) -> Tuple[Dict[str, Any], Warnings]:
                     else:
                         entry[bound] = n
 
+    # Coerce the per-probe scalar maps the same way. Every CONSUMER of these
+    # already defends itself (desired_probe_config and _calibration_offset both
+    # swallow a bad value and fall back), so an uncoerced entry does not crash
+    # anything -- which is exactly the problem. It is silently ignored, while the
+    # Devices card renders the RAW config value: hand-edit an interval to "30s"
+    # and the card reads "Interval: 30s s" while the probe keeps running the
+    # global interval. Correcting it here makes the stored config, the value in
+    # effect, and the value displayed agree, and tells the operator what changed
+    # instead of leaving a setting that looks applied but is not.
+    for key, minimum, allow_negative in (("probe_intervals", 0.5, False),
+                                         ("probe_resolutions", 9, False),
+                                         ("calibration_offsets", None, True)):
+        table = cfg.get(key)
+        if not isinstance(table, dict):
+            continue
+        for pid, raw in list(table.items()):
+            if raw is None:
+                del table[pid]
+                continue
+            n, ok = _to_number(raw, None if allow_negative else minimum,
+                               key == "probe_resolutions")
+            if not ok:
+                warns.append(f"{key}[{pid!r}]={raw!r} is not a number; dropping")
+                del table[pid]
+            else:
+                # Warn only when the VALUE moved (a clamp), not when the type
+                # merely tightened ("1800" -> 1800.0) -- matching _fix_number, so
+                # a config written with quoted numbers doesn't flood the log.
+                try:
+                    changed = float(raw) != float(n)
+                except (TypeError, ValueError):
+                    changed = True
+                if changed:
+                    warns.append(f"{key}[{pid!r}]={raw!r} adjusted to {n}")
+                table[pid] = n
+
     # --- ui_auth / metrics / settings / mqtt subtrees --------------------------
     # These reach app.py / consumers unguarded; a wrong-typed value (e.g. a
     # numeric ui_auth.username) would crash startup. Coerce them like the rest.
