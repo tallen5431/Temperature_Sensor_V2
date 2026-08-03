@@ -1,7 +1,32 @@
-# site/ — datumlaboratories.com (marketing landing page)
+# site/ — datumlaboratories.com
 
-Source of record for the **public marketing/landing page at `datumlaboratories.com`**
-(hero, specs, "three ways to run", and the reserve/waitlist section).
+Source of record for the **public site at `datumlaboratories.com`**. It is no longer a single
+landing page; the pages below each serve a different visitor, and which offer they carry is
+deliberate.
+
+| Page | Serves | Primary call to action |
+|---|---|---|
+| `index.html` | Product overview, all audiences | DIY kit ($39, Tindie) |
+| `pilot.html` | **Restaurant owners — the highest-value offer available today** | Book the free 30-day loaner pilot |
+| `walk-in-cooler.html` | Restaurants searching for cooler/freezer monitoring | Book the pilot (kit demoted to secondary) |
+| `freezer-alarm.html` | Consumers/prosumers searching freezer & fridge terms | DIY kit |
+| `field-test.html` | Sceptical technical buyers — trust asset | Read, then kit |
+| `roi-calculator.html` | Kitchen operators pricing the risk | Walk-in cooler / pilot |
+| `services.html` | Contracting clients | Start a project |
+| `replacement-parts.html` | Repair customers (its own funnel, with quote form) | Free quote |
+| `about.html` | Anyone checking who is behind it | — |
+| `404.html` | — | `noindex` |
+
+**Two rules that are load-bearing:**
+
+1. **Assembled units may not be offered for sale** until the FCC Part 15B SDoC is complete. The
+   kit and the *loaner* pilot are what may be marketed today. Any copy implying an assembled unit
+   is purchasable is a compliance problem, not just a wording one — see `docs/COMPLIANCE.md`.
+2. **`pilot.html` and `docs/PILOT_OFFER.md` carry the same offer** and a customer may read both.
+   Change them together.
+
+Extensionless URLs (`/pilot`, `/freezer-alarm`) are used by every canonical, internal link and
+sitemap entry. `_redirects` makes that explicit rather than relying on a Cloudflare Pages default.
 
 ## Deploy model
 

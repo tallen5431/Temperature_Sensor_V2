@@ -47,7 +47,12 @@ The designated first storefront. Copy is paste-ready in [docs/TINDIE_LISTING.md]
 | 6 | **Local in-person kit sales** (homelab/maker meetup, brewery, greenhouse) | 1–3 weeks | $39–49 cash | RSVP to the nearest homelab/Home Assistant meetup; set up Square/Stripe Tap-to-Pay |
 | 7 | **Sponsorship** (README slot, sponsor-a-feature bounty) | 3–8 weeks | $25–500+ | Tag 2–3 roadmap items (syslog/SNMP, rack grouping) as "sponsorable" with a price |
 
-> **Honest exclusion:** *Selling assembled probes to restaurants* is the eventual high-value sale (~$80–90/probe), but it is **6–12+ weeks out and gated** by rev-2 + FCC SDoC. Don't shortcut it by selling a rev-1 assembled unit. It's where the pilot deposits *convert* — after the respin, not now.
+> **Honest exclusion (updated):** *Selling assembled probes* is the high-value sale (~$80–90/probe).
+> **The rev-2 respin is done and bench-verified**, so the remaining gate is the Part 15B SDoC on the
+> finished unit in its enclosure (~$300–1,500), plus a US entity to be the responsible party and the
+> "Contains FCC ID" label. Until that certificate exists, still don't sell an assembled unit — but the
+> blocker is now weeks and hundreds of dollars, not months and thousands. This is where pilot deposits
+> convert.
 
 ---
 

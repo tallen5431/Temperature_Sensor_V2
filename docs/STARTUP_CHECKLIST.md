@@ -20,7 +20,11 @@ the **expensive** FCC path as-is:
   assembled units would owe **full intentional-radiator FCC testing** (like a full FCC ID:
   **~$5,000–15,000+**) — a non-starter for a small batch.
 
-**Action — respin rev 2 around a pre-certified module** (`ESP32-C3-MINI-1`, or `-WROOM-02`). Same
+**Status: DONE.** Rev 2 is built and bench-verified on the shipping firmware. What follows
+is kept as the rationale for *why* it was necessary, and as the spec if a future board is laid
+out. The remaining gate is the Part 15B SDoC, not the respin.
+
+**Action (completed) — respin rev 2 around a pre-certified module** (`ESP32-C3-MINI-1`, or `-WROOM-02`). Same
 ESP32-C3 chip, **zero firmware change**, and you get the cheap SDoC path **plus** a real
 "Contains FCC ID: 2AC7Z-ESPC3MINI1" label. Note the module is a **surface-mount castellated part**,
 not a header-pluggable board — so this is a genuine board redesign (solder the module down instead of
@@ -77,7 +81,10 @@ DIY kits.
       intent from a few restaurants? If yes → Phase 2. If no → fix the pitch before spending on FCC.
 
 ### Phase 2 — Clear the gate, then sell assembled (once demand is real)
-- [ ] **Resolve the module question** (see gotcha) — respin to a pre-certified module if needed.
+- [x] **Resolve the module question** (see gotcha) — rev 2 respun to the pre-certified
+      `ESP32-C3-MINI-1` (FCC ID `2AC7Z-ESPC3MINI1`) and bench-verified.
+- [ ] **Part 15B SDoC** on the finished rev-2 unit *in its enclosure* — the remaining gate before
+      assembled units may be sold. Freeze the case first; the test covers the product as shipped.
 - [ ] **FCC Part 15B SDoC** on the finished unit at an accredited lab; keep the signed report.
 - [ ] **Label** each unit: "Contains FCC ID: [module ID]" + the §15.19(a)(3) statement.
 - [ ] Sell **assembled** units — direct/B2B to restaurants (full margin), homelab assembled on Tindie.

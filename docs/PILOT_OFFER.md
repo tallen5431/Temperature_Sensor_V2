@@ -1,5 +1,8 @@
 # Cold-Storage Monitoring — 30-Day Pilot Offer
 
+> **Keep this in step with `site/pilot.html`** — the public page carries the same offer and
+> the same caveats, and a customer may well read both.
+>
 > **Maker note (delete before sending):** This is a one-page offer to hand or email a
 > restaurant contact to validate demand **before** you spend on FCC or inventory. Fill in
 > the `[BRACKETED]` fields, keep it to one page, and treat these first units as **loaner /
@@ -25,7 +28,7 @@ and by then the load is gone. A single failure can spoil **$2,000–$10,000+** o
 lost prep and the scramble to re-stock. Most kitchens still check temps by hand on a clipboard,
 which means nobody is watching the hours when failures actually happen.
 
-### What we'll install (at no cost to you)
+### What we'll install (monitoring free for the 30 days)
 
 - A small **monitoring hub** (free software) on a back-office computer you already keep on.
 - **[N] wireless temperature probes** — one in each unit you want covered (walk-in cooler,
@@ -62,7 +65,14 @@ which means nobody is watching the hours when failures actually happen.
 
 ### The terms
 
-- **30 days, free, no obligation.** No contract. If it's not useful, we pull it out and that's that.
+- **30 days of monitoring, free, no obligation.** No contract. If it's not useful, we pull it out
+  and that's that, and you owe nothing for the trial.
+- The probes are **loaner equipment on evaluation** — they stay our property for the 30 days and are
+  not sold to you. (This is also what keeps the arrangement clean while FCC authorisation for the
+  assembled unit is in progress.)
+- **Quoted separately, up front, and only if you want them:** a dedicated mini-PC if you'd rather
+  not use your own machine, and the install itself if you want the cable routing and probe
+  placement done for you rather than doing it yourselves.
 - At the end, if you want to keep it, we'll quote a simple **buy-the-probes-once** price with
   **no subscription and no monthly fee** — the software stays free.
 
