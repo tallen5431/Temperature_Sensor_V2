@@ -15,12 +15,11 @@
     Setpoint hub — the landing page for the QR on cards + the 3D-embossed case.
     Served at the Pages site root (custom domain: setpoint.datumlaboratories.com).
     The flasher lives at /flash/, the build guide at /guide.html.
-    "Store" points to the live Tindie store. BLOCKING before wide launch: add
-    support@datumlaboratories.com as an ALIAS IN ZOHO MAIL (the domain's MX points at
-    Zoho). Do not use Cloudflare Email Routing — it takes over MX and would break
-    thomas.allen@datumlaboratories.com.
-    Every shipped legal doc (WARRANTY, RETURNS, SUPPORT, PRIVACY, SECURITY, EULA) now
-    points at that address, so until the alias exists it bounces.
+    "Store" points to the live Tindie store. support@datumlaboratories.com is a Zoho Mail
+    alias on the main mailbox and resolves, which is what the Support links here and every
+    shipped legal doc (WARRANTY, RETURNS, SUPPORT, PRIVACY, SECURITY, EULA) depend on.
+    Do NOT enable Cloudflare Email Routing on this domain — it takes over MX from Zoho and
+    would break thomas.allen@datumlaboratories.com.
   -->
   <style>
     :root {

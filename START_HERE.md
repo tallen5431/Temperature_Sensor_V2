@@ -20,11 +20,11 @@ own PC (no cloud/account/subscription). Two versions — **Portable** (battery, 
 - [x] **1. ~~Start the Datum Laboratories LLC filing~~** — filed in Georgia **2026-08-03**, $100,
       certificate pending ~7 business days. **Next:** free **EIN** at IRS.gov the day it lands, then a
       business bank account.
-- [ ] **2. ~~Buy a domain~~ (done — `datumlaboratories.com`) — turn on the `support@` alias.**
-      Every shipped legal doc now points at `support@datumlaboratories.com` and it does not resolve yet.
-      Add it as an **alias in Zoho Mail** on the existing mailbox — free, no DNS change, ~2 min.
-      **Not** Cloudflare Email Routing: the domain's MX points at Zoho, and Email Routing would
-      seize MX and break `thomas.allen@datumlaboratories.com`.
+- [x] **2. ~~Buy a domain + turn on the `support@` alias~~** — `datumlaboratories.com` is live and
+      `support@datumlaboratories.com` is an **alias on the Zoho mailbox** (2026-08-03), so every
+      shipped legal doc, the label spec and the root `LICENSE` now point at a working address.
+      *(It stays a Zoho alias — never enable Cloudflare Email Routing on this domain: it seizes MX
+      and would break `thomas.allen@datumlaboratories.com`.)*
 - [ ] **3. Compile the firmware** (no board needed) — proves the toolchain:
   ```
   arduino-cli core install esp32:esp32
@@ -39,9 +39,9 @@ Ordered by dependency — each unblocks the next.
 
 - [ ] **~~Form the LLC~~ (filed 2026-08-03) → EIN → business bank account.** First, because your bank,
       Stripe payouts, and FCC "responsible party" all depend on it. → [`docs/STARTUP_CHECKLIST.md`](docs/STARTUP_CHECKLIST.md)
-- [ ] **~~Register the domain~~ (done) — stand up the `support@` alias.** Every shipping doc now points at
-      `support@datumlaboratories.com`; the alias itself does not exist yet, so the address currently
-      bounces. Do this before printing a label or publishing a listing.
+- [x] **~~Register the domain + stand up the `support@` alias~~** — both done. Every shipping doc,
+      the label spec and the root `LICENSE` point at `support@datumlaboratories.com`, now a live Zoho
+      alias. Send one test from an outside address to confirm delivery before printing a label.
 - [ ] **USPTO knockout search** on "Setpoint" (Class 9) + "Datum Labs" at uspto.gov. If it's crowded,
       rename before printing brand stock.
 - [ ] **Install the flash toolchain + compile** (today's action #3). Only the *upload* step later needs
@@ -54,8 +54,9 @@ Ordered by dependency — each unblocks the next.
 - [ ] **Text your warmest restaurant contact** the pilot opener; line up two more. → [`docs/PILOT_OFFER.md`](docs/PILOT_OFFER.md)
 - [ ] **Pull 2–3 product-liability insurance quotes** (CGL $1M/$2M + products). You bind before the
       first kitchen install, not now.
-- [ ] **Edit [`docs/WARRANTY.md`](docs/WARRANTY.md) + [`docs/RETURNS.md`](docs/RETURNS.md)** with the LLC
-      name + real support URL; confirm the liability cap. Ships in every kit and pilot.
+- [x] **~~Edit [`docs/WARRANTY.md`](docs/WARRANTY.md) + [`docs/RETURNS.md`](docs/RETURNS.md)~~** — both
+      now name **Datum Laboratories LLC**, the Kennesaw address and `support@datumlaboratories.com`.
+      **Still to confirm before shipping:** the liability cap reads as intended. Ships in every kit and pilot.
 
 ---
 
