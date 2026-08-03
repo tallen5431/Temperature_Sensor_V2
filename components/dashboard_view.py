@@ -926,15 +926,37 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
         _axis = dict(gridcolor="rgba(255,255,255,0.06)",
                      zerolinecolor="rgba(255,255,255,0.10)",
                      linecolor="rgba(255,255,255,0.12)")
+        # Margins are deliberately generous rather than minimal, and the y-axis
+        # tick format is pinned. Both exist to stop the plot area moving while
+        # the user zooms.
+        #
+        # Plotly's margin.autoexpand recomputes the plot rectangle whenever a
+        # tick label changes width. Zooming does exactly that: the y labels gain
+        # decimals ("-18" -> "-18.38" -> "-18.395") and the last x label
+        # lengthens ("12:50" -> "12:05:00"), so the chart's left and right edges
+        # slide under the cursor. Measured in Chromium at 900x360, that was 13-20 px
+        # of left-edge travel and 14 px (24 h clock) to 24 px (12 h, whose
+        # "12:05:00 PM" is the widest label the tickformatstops can produce).
+        #
+        # Larger margins alone do not fix the y side: there is always one more
+        # decimal a deeper zoom can add, and it still moved 7 px at l=84. Pinning
+        # tickformat to two decimals does fix it, because every label is then the
+        # same width at every zoom level. Two decimals is also the honest
+        # precision here -- the DS18B20 resolves 0.0625 C, so a third decimal is
+        # noise. l=72 clears "-112.00" (a deep freezer in F) plus the axis title;
+        # r=48 clears half of "12:05:00 PM" overhanging the final tick.
+        # Verified 0 px of travel across C/F, room/freezer/deep-freezer, both
+        # clock formats, and y-zooms down to 0.008 units.
         fig.update_layout(
-            margin=dict(t=24, b=20, l=0, r=10), template="plotly_dark",
+            margin=dict(t=24, b=20, l=72, r=48), template="plotly_dark",
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
             font=dict(family=FONT_STACK, color="#9db0be", size=12),
             xaxis={**_axis, **xaxis_kwargs, "title": "Time"},
             # No explicit range: autorange (fed by the anchor trace above) fits
             # the data + bands by default, and uirevision keeps the user's zoom
             # across refreshes because the axis spec no longer changes each tick.
-            yaxis={**_axis, "title": "Temp " + _unit_symbol(temp_unit)},
+            yaxis={**_axis, "title": "Temp " + _unit_symbol(temp_unit),
+                   "tickformat": ".2f"},
             hovermode="x unified", showlegend=multi,
             # Preserve the user's zoom/pan across the 5s auto-refresh: while
             # uirevision is unchanged Plotly keeps the interacted view instead of

@@ -488,3 +488,33 @@ def test_focus_stays_on_probe_with_no_in_range_data(tmp_path):
     assert len(out[1].data) == 0        # no A data in the last hour -> empty graph
     assert "Freezer" in out[6]          # range info stays scoped to A
     assert out[7] == "N/A"              # stats are A's own (none in range)
+
+
+def test_graph_layout_is_zoom_stable(tmp_path):
+    """The plot rectangle must not move while the user zooms.
+
+    Plotly's margin.autoexpand re-measures the plot area whenever a tick label
+    changes width, and zooming changes both: the y labels gain decimals and the
+    final x label lengthens. With the old tight margins (l=0, r=10) and a free
+    y tick format, that dragged the chart's edges 13-20 px (left) and 14-24 px
+    (right) as the user zoomed — measured in Chromium at 900x360.
+
+    Two things hold it still, and both must stay:
+      * generous fixed margins, so autoexpand has slack it never needs to claim;
+      * a pinned 2-decimal y tick format, so every label is the same width at
+        every zoom depth. Margins alone cannot fix the y side — there is always
+        one more decimal a deeper zoom can add.
+    """
+    db = Database(tmp_path / "d.db")
+    cfg = Config(tmp_path / "c.json")
+    _seed(db)
+    for unit in ("celsius", "fahrenheit"):
+        for clock in ("24h", "12h"):
+            fig = build_dashboard(db, cfg, FakeFinder(), "24h", unit, "all",
+                                  clock_format=clock)[1]
+            m = fig.layout.margin
+            assert m.l >= 72, f"left margin {m.l} too tight ({unit}/{clock})"
+            assert m.r >= 48, f"right margin {m.r} too tight ({unit}/{clock})"
+            assert fig.layout.yaxis.tickformat == ".2f", (
+                f"y tickformat must be pinned ({unit}/{clock}); a free format "
+                "widens labels as the user zooms and drags the plot area left")
