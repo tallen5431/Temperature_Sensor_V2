@@ -13,7 +13,7 @@
 <meta property="og:url" content="https://datumlaboratories.com/">
 <meta property="og:site_name" content="Datum Labs">
 <meta property="og:image" content="https://datumlaboratories.com/og-image.jpg">
-<meta property="og:image:alt" content="A finished Setpoint Wi-Fi temperature probe with waterproof stainless sensor and an 18650 cell.">
+<meta property="og:image:alt" content="A Setpoint kit laid out: carrier board with ESP32-C3 and TP4056 charger, waterproof stainless probe on its lead, and an 18650 cell in its holder.">
 <meta name="twitter:image" content="https://datumlaboratories.com/og-image.jpg">
 <title>Wi-Fi Temperature Sensor &amp; Alarm with Email Alerts — Setpoint</title>
 <script type="application/ld+json">
@@ -250,6 +250,10 @@
   .tier.feature { border-color: var(--signal); box-shadow: 0 0 0 1px var(--signal); }
   .tier .badge { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--signal); margin-bottom: 12px; }
   .tier h3 { font-size: 22px; font-weight: 700; }
+  .kit-shot { margin: 16px 0 4px; }
+  .kit-shot img { width: 100%; height: auto; border-radius: 8px; display: block;
+                  border: 1px solid var(--line); background: var(--raised); }
+  .kit-shot figcaption { font-size: 12.5px; color: var(--faint); margin-top: 8px; line-height: 1.5; }
   .tier .price { font-family: var(--font-mono); font-size: 34px; font-weight: 600; margin: 16px 0 4px; letter-spacing: -0.02em; }
   .tier .price small { font-size: 14px; color: var(--faint); font-weight: 400; }
   .tier .pfor { color: var(--slate); font-size: 14px; margin-bottom: 20px; min-height: 40px; }
@@ -534,6 +538,11 @@
           <h3>DIY Kit</h3>
           <div class="price">$39</div>
           <div class="pfor">Solder it yourself, flash it, make it yours. Bring your own cell.</div>
+          <figure class="kit-shot">
+            <img src="/product-kit.jpg" width="991" height="1000" loading="lazy" decoding="async"
+                 alt="A built Setpoint kit laid out: the carrier board with its ESP32-C3 and TP4056 charger, the waterproof stainless DS18B20 probe on its lead, and an 18650 cell in its holder.">
+            <figcaption>An assembled kit. Yours arrives as these parts, plus the cable and quick-start card &mdash; the cell is the one thing you supply.</figcaption>
+          </figure>
           <ul>
             <li>Bare carrier board + parts</li>
             <li>Open firmware, flash in browser</li>
