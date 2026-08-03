@@ -273,8 +273,14 @@ prototype to product:
 
 ## Licensing
 
-Setpoint and its Setpoint firmware are **proprietary** — see
-**[LICENSE](LICENSE)** (all rights reserved). They are built on open-source
+The split is deliberate:
+
+| Part | License | Why |
+|---|---|---|
+| **Probe firmware** (`esp32_temp_probe/`, `firmware/`) | **MIT** — [`esp32_temp_probe/LICENSE`](esp32_temp_probe/LICENSE) | The product's core promise is that your hardware can't be bricked by us. That promise is only real if you can read, build and reflash the firmware yourself. |
+| **Hub software** (everything else) | **Proprietary** — [`LICENSE`](LICENSE), all rights reserved | Licensed to end users under [`docs/EULA.md`](docs/EULA.md), which grants a perpetual right to run it on machines you own. |
+
+Both are built on open-source
 components, each under its own license, catalogued in
 **[THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md)** (regenerate with
 `python packaging/gen_third_party_licenses.py`). Everything bundled is permissive
@@ -284,9 +290,9 @@ product on top of them provided you carry the source offer in
 `THIRD-PARTY-LICENSES.md` and keep the components replaceable (the packaged hub is
 a PyInstaller *onedir* build, so they are).
 
-> Before selling: replace the `[COPYRIGHT HOLDER]` / `[CONTACT EMAIL]` placeholders
-> in `LICENSE`, and have an attorney review it and the end-user EULA (`docs/EULA.md`).
-> This repo's files are a solid starting point, not legal advice.
+> Before selling: have an attorney review `LICENSE`, the MIT grant on the firmware, and
+> the end-user EULA (`docs/EULA.md`). This repo's files are a solid starting point, not
+> legal advice.
 
 ---
 

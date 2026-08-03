@@ -1,14 +1,18 @@
-PROPRIETARY SOFTWARE LICENSE
+PROPRIETARY SOFTWARE LICENSE — Setpoint hub software
 
-Copyright (c) 2026 [COPYRIGHT HOLDER]. All rights reserved.
+Copyright (c) 2026 Datum Laboratories LLC. All rights reserved.
 
-  ▸ ACTION REQUIRED: replace "[COPYRIGHT HOLDER]" above with your legal name
-    or company, and "[CONTACT EMAIL]" below, before you distribute this software.
+  ▸ SCOPE: this file covers the Setpoint HUB SOFTWARE only.
+    The probe firmware is released separately under the MIT License —
+    see esp32_temp_probe/LICENSE and firmware/LICENSE. Nothing in this file
+    restricts your rights under that MIT grant.
 
 1. Definitions.
-   "Software" means the source code, firmware, build scripts, documentation,
-   and other materials in this repository authored by the copyright holder,
-   EXCLUDING the third-party components identified in THIRD-PARTY-LICENSES.md.
+   "Software" means the source code, build scripts, documentation, and other
+   materials in this repository authored by the copyright holder, EXCLUDING
+   (a) the probe firmware in esp32_temp_probe/ and firmware/, which is licensed
+   to you under the MIT License, and (b) the third-party components identified
+   in THIRD-PARTY-LICENSES.md.
 
 2. Ownership.
    The Software is the proprietary property of the copyright holder and is
@@ -41,8 +45,8 @@ Copyright (c) 2026 [COPYRIGHT HOLDER]. All rights reserved.
    Compiled or packaged copies of the Software distributed to end users
    (including the standalone executable produced by the build in packaging/) are
    licensed to those end users under a separate End User License Agreement
-   (EULA), not under this file. An EULA is not included here; have one prepared
-   before selling the product.
+   (EULA), not under this file. The EULA is docs/EULA.md and ships with the
+   product.
 
 7. No warranty.
    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
@@ -55,10 +59,10 @@ Copyright (c) 2026 [COPYRIGHT HOLDER]. All rights reserved.
    ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
    DEALINGS IN THE SOFTWARE.
 
-For licensing inquiries: [CONTACT EMAIL]
+For licensing inquiries: support@datumlaboratories.com
 
 ----------------------------------------------------------------------------
-This is a starting template, not legal advice. Before selling the product,
-have an attorney review this license and prepare an end-user EULA. See
-THIRD-PARTY-LICENSES.md for the open-source components bundled with the product
-and the obligations they carry (notably the LGPL components).
+Not legal advice. Have an attorney review this license and docs/EULA.md before
+selling the product. See THIRD-PARTY-LICENSES.md for the open-source components
+bundled with the product and the obligations they carry (notably the LGPL
+components).

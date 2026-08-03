@@ -56,8 +56,9 @@ replace it or remove it, at no cost, because that is the arrangement. See
 
 This warranty does **not** cover:
 
-- **Software.** The hub software is provided "as is" under the MIT License and the EULA;
-  it carries no warranty. This document covers hardware only.
+- **Software.** The hub software is provided "as is" under the EULA, and the probe
+  firmware "as is" under the MIT License; neither carries a warranty. This document
+  covers hardware only.
 - **Accidental or physical damage** — drops, crushing, cut cables, insertion of the wrong
   connector, or a cracked enclosure.
 - **Liquid immersion or moisture damage** beyond the unit's rating. The stainless probe

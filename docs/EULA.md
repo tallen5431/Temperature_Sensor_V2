@@ -12,9 +12,14 @@ running the Software, you agree to these terms.
 You bought a Setpoint appliance, and the Software that runs it is yours to use.
 We grant you a perpetual, non-exclusive right to install and run the Software on
 computers you own or control, for as many probes as you like, for your own
-monitoring purposes. You may make backup copies. The Software is licensed under
-the MIT License (see the `LICENSE` file), so you are also free to inspect,
-modify, and self-host it.
+monitoring purposes. You may make backup copies. It is always yours to self-host:
+it runs on your machine, and nothing we do can take it away from you.
+
+The hub Software itself is **proprietary** — we license it to you under this
+agreement rather than releasing it (see the `LICENSE` file). **The probe firmware
+is different: it is open source under the MIT License** (`esp32_temp_probe/LICENSE`),
+so you are free to read it, build it, modify it, and reflash your probes. That is
+the part that guarantees your hardware can never be bricked by us.
 
 ## 2. Local-first, no cloud
 

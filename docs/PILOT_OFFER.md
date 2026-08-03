@@ -4,8 +4,8 @@
 > the same caveats, and a customer may well read both.
 >
 > **Maker note (delete before sending):** This is a one-page offer to hand or email a
-> restaurant contact to validate demand **before** you spend on FCC or inventory. Fill in
-> the `[BRACKETED]` fields, keep it to one page, and treat these first units as **loaner /
+> restaurant contact to validate demand **before** you spend on FCC or inventory. Fill in the remaining
+> per-send fields (`[Restaurant / contact name]`, `[date]`, `[phone]`), keep it to one page, and treat these first units as **loaner /
 > evaluation** units (not a sale) so you stay clean on FCC until your SDoC is done. Positioning
 > is **loss prevention**, never HACCP/health-code compliance.
 >
@@ -18,7 +18,7 @@
 ## Setpoint, by Datum Labs — free 30-day walk-in & freezer monitoring pilot
 
 **For:** [Restaurant / contact name]
-**From:** [Your name], Datum Labs — [email] · [phone]
+**From:** Thomas Allen, Datum Laboratories LLC — thomas.allen@datumlaboratories.com · [phone]
 **Date:** [date]
 
 ### The problem we're solving
@@ -78,6 +78,6 @@ which means nobody is watching the hours when failures actually happen.
 
 ### Next step
 
-Reply to **[email]** or call **[phone]** and we'll schedule a 30-minute install this week.
+Reply to **thomas.allen@datumlaboratories.com** or call **[phone]** and we'll schedule a 30-minute install this week.
 
-_— [Your name], Datum Labs_
+_— Thomas Allen, Datum Laboratories LLC_
