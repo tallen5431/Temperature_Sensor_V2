@@ -7,13 +7,26 @@ build and why. Pin assignments referenced here come from `firmware/src/protocol.
 [ASSEMBLY.md](ASSEMBLY.md) for the wiring. The shipping firmware is the sketch
 `esp32_temp_probe/esp32_temp_probe.ino`.
 
-> **Board:** the rev-1 unit is the **ESP32-C3 SuperMini** (USB-C native). The firmware now targets it —
-> the status LED is auto-selected to **GPIO8, active-low** when built for the C3 (it falls back to a
-> WROOM's GPIO2 active-high for that board), and GPIO8 is kept boot-safe (it's a strapping pin held
-> high at reset). DS18B20 stays on **GPIO5 + 4.7 kΩ pull-up**. Build/flash with FQBN
-> `esp32:esp32:esp32c3`.
+> **Two boards ship, and which one you hold decides what you may sell.**
+>
+> | | Rev 1 — **ESP32-C3 SuperMini** (socketed) | Rev 2 — **`ESP32-C3-MINI-1`** (soldered) |
+> |---|---|---|
+> | Radio | bare `ESP32-C3FH4` + trace antenna, **no modular grant** | pre-certified module, **FCC ID `2AC7Z-ESPC3MINI1`** |
+> | Sell as a **DIY kit** | ✅ yes | ✅ yes |
+> | Sell **assembled** | ❌ no — would owe ~$5–15k full intentional-radiator testing | ✅ **after** a ~$300–1,500 Part 15B SDoC |
+> | Use it for | kits, loaner pilots, dev | the assembled SKU |
+>
+> **Rev 2 is built and bench-verified on the shipping firmware.** It is not yet legal to sell
+> assembled: the SDoC comes first, and it tests the finished product **in its enclosure**, so
+> freeze the case before testing. See [`REV2_BUILD_GUIDE.md`](REV2_BUILD_GUIDE.md) and
+> [`COMPLIANCE.md`](COMPLIANCE.md).
+>
+> **Firmware is identical across both** — same image, no build flag. The status LED is
+> auto-selected to **GPIO8, active-low** on the C3 (falling back to a WROOM's GPIO2 active-high),
+> and GPIO8 is kept boot-safe (a strapping pin held high at reset). DS18B20 stays on
+> **GPIO5 + 4.7 kΩ pull-up**. Build/flash with FQBN `esp32:esp32:esp32c3`.
 
-- **Firmware target:** ESP32-C3 (SuperMini), firmware **v2.8.2**, protocol v1 (FQBN `esp32:esp32:esp32c3`).
+- **Firmware target:** ESP32-C3 (rev-1 SuperMini or rev-2 `ESP32-C3-MINI-1`), firmware **v2.8.2**, protocol v1 (FQBN `esp32:esp32:esp32c3`).
 - **Sensor:** DS18B20 (waterproof probe) on **GPIO5** with a 4.7 kΩ pull-up to
   3V3. This is the **only** sensor the current firmware supports.
 - **Status LED:** GPIO8 (the C3 SuperMini's on-board LED, **active-low**), so no external LED is

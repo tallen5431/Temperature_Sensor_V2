@@ -101,3 +101,33 @@ mistakes before you spend money.
 
 **Do the rev-2 respin only when pilots prove people will pay** — until then, rev-1 kits + pilots cost
 you nothing and teach you the same lessons.
+
+---
+
+## 5. Designing the enclosure (do this BEFORE the SDoC)
+
+The Part 15B SDoC tests the **finished product as it ships** — board, cable, probe lead and
+enclosure together. Certifying a bare board and then putting it in a case invalidates the
+result, so the case is a *prerequisite* to testing, not a follow-up. Freeze the design, build
+the unit you intend to sell, then test that.
+
+A 3D-printed case is fine here, with three constraints worth designing around from the start:
+
+**Keep the antenna end clear.** The `ESP32-C3-MINI-1`'s antenna is at the module edge. Do not
+run infill, a metal insert, a magnet or a battery directly across it, and keep the module edge
+at or near the wall of the case. Plain PLA/PETG is RF-transparent; **carbon-fibre filament is
+not** — CF-PETG is conductive enough to detune the antenna and will change the result you paid
+to test for. Use plain filament for any part over the radio.
+
+**The probe entry is the #1 field-failure point.** [`BOM.md`](BOM.md) flags strain relief as the
+top cause: pulling the lead must never load the solder joints. Design in a PG7 gland seat or a
+grommet plus an internal zip-tie anchor. For a walk-in or freezer install, the cable entry is
+also the condensation path — the pilot units run the **Fixed (USB) build with no cell**
+([`VERSIONS.md`](VERSIONS.md)), which removes the lithium from the cold, damp end of the problem.
+
+**Print orientation decides whether it survives.** Layer lines across the gland boss or the
+mounting ears are where a printed case cracks when someone yanks the probe. Orient so those
+features are loaded across layers, not along them.
+
+Once the case is frozen and a unit is built in it: SDoC → label ("Contains FCC ID:
+2AC7Z-ESPC3MINI1" + the §15.19(a)(3) statement) → then list assembled.
