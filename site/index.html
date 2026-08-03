@@ -484,7 +484,7 @@
           <div class="spec-row"><span class="k">Firmware update</span><span class="v">flash from browser</span></div>
 
           <h3 style="margin-top:38px;">Software &amp; compliance</h3>
-          <div class="spec-row"><span class="k">Dashboard</span><span class="v">self-hosted · Win/macOS</span></div>
+          <div class="spec-row"><span class="k">Dashboard</span><span class="v">self-hosted · Windows / Linux / macOS</span></div>
           <div class="spec-row"><span class="k">Alerts</span><span class="v">per-probe high / low</span></div>
           <div class="spec-row"><span class="k">Export</span><span class="v">CSV · date range</span></div>
           <div class="spec-row"><span class="k">Radio module</span><span class="v">pre-certified — assembled rev 2</span></div>
@@ -517,7 +517,7 @@
           <a href="#reserve" class="btn ghost">Reserve</a>
         </div>
         <div class="tier feature">
-          <div class="badge">Portable · most popular</div>
+          <div class="badge">Portable · not yet for sale</div>
           <h3>Setpoint Battery</h3>
           <div class="price">$69 <small>est.</small></div>
           <div class="pfor">Anywhere, wire-free — fridges, coolers, vehicles, remote rooms.</div>
@@ -585,7 +585,7 @@
         </details>
         <details>
           <summary>How accurate is it?</summary>
-          <p>±0.5&nbsp;°C typical, uncalibrated (you can add a per-probe offset in the app). Great for "is my rack, fridge, or freezer in range and trending safe" — it is not a certified, NIST-traceable, or medical instrument.</p>
+          <p>±0.5&nbsp;°C typical from −10 to +85&nbsp;°C, uncalibrated (you can add a per-probe offset in the app). Below −10&nbsp;°C — which includes a typical −18&nbsp;°C freezer — it is ±2&nbsp;°C: enough to tell you the freezer has failed, not enough to be a calibrated record. It is not a certified, NIST-traceable, or medical instrument.</p>
         </details>
         <details>
           <summary>Wi-Fi and setup?</summary>
@@ -609,7 +609,7 @@
     "mainEntity": [
       { "@type": "Question", "name": "Do I need a cloud account or a subscription?", "acceptedAnswer": { "@type": "Answer", "text": "No. Setpoint reports to a free app on your own machine over your local network — no account, no telemetry, nothing phoning home. The internet is only touched if you choose to let email alerts leave your network." } },
       { "@type": "Question", "name": "What computer do I need to run it?", "acceptedAnswer": { "@type": "Answer", "text": "Any always-on Windows or Linux machine you already keep on — a mini-PC, NAS, home server, or a Raspberry Pi. That local box is what stores your history and fires your alerts without a cloud. If you don't already leave a machine running, Setpoint isn't the right fit." } },
-      { "@type": "Question", "name": "How accurate is it?", "acceptedAnswer": { "@type": "Answer", "text": "Plus or minus 0.5 °C typical, uncalibrated (you can add a per-probe offset in the app). Great for whether your rack, fridge, or freezer is in range and trending safe — it is not a certified, NIST-traceable, or medical instrument." } },
+      { "@type": "Question", "name": "How accurate is it?", "acceptedAnswer": { "@type": "Answer", "text": "Plus or minus 0.5 °C typical from -10 to +85 °C, uncalibrated (you can add a per-probe offset in the app). Below -10 °C, which includes a typical -18 °C freezer, it is plus or minus 2 °C — enough to tell you the freezer has failed, which is what an alarm is for, but not enough to be a calibrated record. It is not a certified, NIST-traceable, or medical instrument." } },
       { "@type": "Question", "name": "Wi-Fi and setup?", "acceptedAnswer": { "@type": "Answer", "text": "2.4 GHz only (no 5 GHz). Setup happens on the device in your browser — join the probe's temporary network, pick yours, done. No phone app to install." } },
       { "@type": "Question", "name": "What about the battery?", "acceptedAnswer": { "@type": "Answer", "text": "The portable build runs on one 18650 cell (not included — lithium shipping rules) and recharges over USB-C. Or run it always-on from USB with no cell at all. The DIY kit is cell-not-included; add any reputable protected or flat-top 18650." } },
       { "@type": "Question", "name": "Is the firmware open?", "acceptedAnswer": { "@type": "Answer", "text": "Yes — read it, build it, and reflash it from your browser any time. You're never locked into a vendor or a server that can be switched off." } }
@@ -622,7 +622,7 @@
     <div class="wrap">
       <div class="waitlist">
         <h2>Get an assembled unit first.</h2>
-        <p>The DIY kit is <a href="https://www.tindie.com/products/datumlaboratories/setpoint-diy-kit-local-wi-fi-temperature-monitor/" target="_blank" rel="noopener" style="color:var(--signal);text-decoration:underline;">live on Tindie now</a>. Pre-built, pre-flashed <b>Setpoint USB &amp; Battery</b> units ship in a small first run of <b>20</b> — join the list for launch pricing and first dibs before they're gone.</p>
+        <p>The DIY kit is <a href="https://www.tindie.com/products/datumlaboratories/setpoint-diy-kit-local-wi-fi-temperature-monitor/" target="_blank" rel="noopener" style="color:var(--signal);text-decoration:underline;">live on Tindie now</a>. Pre-built, pre-flashed <b>Setpoint USB &amp; Battery</b> units are not on sale yet — they ship once FCC Part 15B testing is complete. Join the list and I'll tell you when, with launch pricing.</p>
         <form class="wl-form" id="wlForm" novalidate>
           <input type="email" id="wlEmail" placeholder="you@example.com" aria-label="Email address" required>
           <button type="submit" class="btn signal">Join the list</button>

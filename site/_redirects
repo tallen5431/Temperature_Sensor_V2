@@ -1,0 +1,13 @@
+# Extensionless URLs are load-bearing here: every <link rel="canonical">, every
+# internal href and every sitemap entry uses /freezer-alarm rather than
+# /freezer-alarm.html. That works today only because Cloudflare Pages resolves
+# it by default. Making it explicit means a hosting change (or a Pages default
+# change) cannot silently 404 all nine canonicals at once.
+/pilot            /pilot.html            200
+/walk-in-cooler   /walk-in-cooler.html   200
+/freezer-alarm    /freezer-alarm.html    200
+/field-test       /field-test.html       200
+/roi-calculator   /roi-calculator.html   200
+/services         /services.html         200
+/replacement-parts /replacement-parts.html 200
+/about            /about.html            200

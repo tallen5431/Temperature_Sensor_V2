@@ -205,7 +205,19 @@
 
   /* Guided angle capture — one tile per orientation */
   .angles { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
-  @media (max-width:440px){ .angles { grid-template-columns:repeat(2,1fr); } }
+  /* Hold the space before JS fills it. The grid ships EMPTY and its six 1:1
+     tiles are built in script, so without this the page renders it at zero
+     height and then jumps a full two rows when the script runs — shoving the
+     pricing section down the page. Cloudflare RUM measured that as a 0.256 CLS
+     against #pricing, i.e. "Poor". Aspect-ratio rather than a pixel height so
+     the reservation tracks the column width at every breakpoint: 3 columns of
+     squares over 2 rows is 3:2, and 2 columns over 3 rows is 2:3. :empty stops
+     applying the moment the tiles exist, so it constrains nothing afterwards. */
+  .angles:empty { aspect-ratio:3/2; }
+  @media (max-width:440px){
+    .angles { grid-template-columns:repeat(2,1fr); }
+    .angles:empty { aspect-ratio:2/3; }
+  }
   .angle-tile { position:relative; aspect-ratio:1/1; }
   .angle-tile input[type=file] { position:absolute; width:1px; height:1px; opacity:0; overflow:hidden; }
   .angle-inner { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; width:100%; height:100%; border:2px dashed var(--line-strong); border-radius:10px; background:var(--paper); cursor:pointer; text-align:center; overflow:hidden; }
