@@ -2,11 +2,8 @@
 
 _Last updated: 2026_
 
-> **Note for the maker/reseller:** Setpoint is a white-label product. Before you
-> ship, replace **Setpoint**/**Setpoint** with your product names, confirm
-> the return window and who pays return shipping fit your business and local law,
-> and update the support link (`https://example.com/support`) to match your
-> `branding` config.
+This policy is given by **Datum Laboratories LLC**, 1304 Cottonwood Court Northwest, Kennesaw,
+GA 30152, USA.
 
 We want you to be happy with your purchase. If something is not right, here is
 how returns and refunds work. This policy is for direct online consumer sales;
@@ -15,7 +12,7 @@ if you bought from a reseller, their policy may also apply.
 ## 30-day return window
 
 You may return most hardware within **30 days of delivery** for a refund or
-exchange. Contact us first at **https://example.com/support** to start a return —
+exchange. Contact us first at **support@datumlaboratories.com** to start a return —
 do not ship anything back without a return authorization.
 
 ## Condition of returned items
@@ -43,7 +40,7 @@ stored lives only on your PC (see `PRIVACY.md`).
 
 ## How to return
 
-1. **Start a return** at **https://example.com/support** within 30 days. Include
+1. **Start a return** at **support@datumlaboratories.com** within 30 days. Include
    your order number, the probe ID(s), and the reason (defective vs. change of
    mind). See `SUPPORT.md` for the full list of details to include.
 2. **Get a return authorization** and shipping instructions from us. Pack the
@@ -60,4 +57,4 @@ This policy is in addition to any rights you have under your local
 consumer-protection law, including any statutory right to return faulty goods.
 Nothing here limits a right that cannot be waived.
 
-Questions? Contact **https://example.com/support**.
+Questions? Contact **support@datumlaboratories.com**.

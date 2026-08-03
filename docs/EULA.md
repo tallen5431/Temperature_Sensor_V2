@@ -2,10 +2,6 @@
 
 _Last updated: 2026_
 
-> **Note for the maker/reseller:** Setpoint is a white-label product. Before you
-> ship, replace every occurrence of **Setpoint** below with your business or
-> product name, and fill in your support contact and hardware warranty terms.
-
 This End-User License Agreement ("Agreement") is a plain-language summary of the
 terms under which you may use the Setpoint hub software (the "Software") that
 ships with your Setpoint temperature-monitoring hardware. By installing or
@@ -57,5 +53,6 @@ If any part of this Agreement is unenforceable, the rest stays in effect. This
 Agreement is the entire agreement between you and us regarding the Software and
 supersedes any prior understanding on that subject.
 
-**Questions?** Contact your Setpoint support channel (replace with your
-`branding.support_url`).
+**Questions?** Contact **support@datumlaboratories.com**. The Software and the Setpoint
+hardware it ships with are supplied by **Datum Laboratories LLC**, 1304 Cottonwood Court Northwest,
+Kennesaw, GA 30152, USA.

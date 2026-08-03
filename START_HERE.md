@@ -17,8 +17,12 @@ own PC (no cloud/account/subscription). Two versions — **Portable** (battery, 
 
 ## ✅ Do these 3 today (everything else keys off them)
 
-- [ ] **1. Start the Datum Labs LLC filing** and get the free **EIN** at IRS.gov.
-- [ ] **2. Buy a domain** and turn on **`support@` / `hello@`** email.
+- [x] **1. ~~Start the Datum Laboratories LLC filing~~** — filed in Georgia **2026-08-03**, $100,
+      certificate pending ~7 business days. **Next:** free **EIN** at IRS.gov the day it lands, then a
+      business bank account.
+- [ ] **2. ~~Buy a domain~~ (done — `datumlaboratories.com`) — turn on the `support@` alias.**
+      Every shipped legal doc now points at `support@datumlaboratories.com` and it does not resolve yet.
+      Cloudflare Email Routing does it free in about two minutes.
 - [ ] **3. Compile the firmware** (no board needed) — proves the toolchain:
   ```
   arduino-cli core install esp32:esp32
@@ -31,10 +35,11 @@ own PC (no cloud/account/subscription). Two versions — **Portable** (battery, 
 
 Ordered by dependency — each unblocks the next.
 
-- [ ] **Form the LLC → EIN → business bank account.** First, because your bank, Stripe payouts, and
-      FCC "responsible party" all depend on it. → [`docs/STARTUP_CHECKLIST.md`](docs/STARTUP_CHECKLIST.md)
-- [ ] **Register the domain + `support@`.** Unblocks every shipping doc — then one find-replace swaps
-      each `example.com/support` placeholder. Do this before printing a label or publishing a listing.
+- [ ] **~~Form the LLC~~ (filed 2026-08-03) → EIN → business bank account.** First, because your bank,
+      Stripe payouts, and FCC "responsible party" all depend on it. → [`docs/STARTUP_CHECKLIST.md`](docs/STARTUP_CHECKLIST.md)
+- [ ] **~~Register the domain~~ (done) — stand up the `support@` alias.** Every shipping doc now points at
+      `support@datumlaboratories.com`; the alias itself does not exist yet, so the address currently
+      bounces. Do this before printing a label or publishing a listing.
 - [ ] **USPTO knockout search** on "Setpoint" (Class 9) + "Datum Labs" at uspto.gov. If it's crowded,
       rename before printing brand stock.
 - [ ] **Install the flash toolchain + compile** (today's action #3). Only the *upload* step later needs

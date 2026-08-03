@@ -26,7 +26,7 @@ Cap it at **25** so one buyer can't clear the batch, and so "founding batch" sta
 
 ## 1. Stripe Payment Link — field by field
 
-Create it under the **Datum Labs LLC** Stripe account (business bank + EIN attached).
+Create it under the **Datum Laboratories LLC** Stripe account (business bank + EIN attached).
 
 - **Product name:** `Setpoint Maker Kit — Founding Batch (pre-order)`
 - **Price:** `$15.00` one-time · label it **"Refundable founding deposit"**
@@ -159,7 +159,7 @@ it up in your kitchen free for 30 days, no strings — want me to bring one by t
 - [ ] **If you'll miss the window,** email the buyer, give a revised date, and offer **cancel for a
       full refund**. Silence is the violation, not a delay.
 - [ ] **Refund promptly** to the original payment method when asked (deposits are refundable by design).
-- [ ] **Identify the seller** (Datum Labs LLC) and a **working support email** — not a placeholder.
+- [ ] **Identify the seller** (Datum Laboratories LLC) and a **working support email** — not a placeholder.
 - [ ] **Link real Returns + Warranty** ([`RETURNS.md`](RETURNS.md) / [`WARRANTY.md`](WARRANTY.md), once
       you've swapped in the LLC name + real support URL).
 - [ ] **Sales tax:** enable Stripe Tax for your home state (direct sales are yours to remit; on Tindie

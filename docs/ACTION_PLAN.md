@@ -119,9 +119,9 @@ Rev-2 respin around the pre-certified **ESP32-C3-MINI-1** module (FCC ID `2AC7Z-
 ## Unified timeline
 
 ### This week (no FCC, ~$100–700, mostly your time)
-1. **Form Datum Labs LLC** (home state, $50–500) — it's your liability shield *and* your future FCC responsible party. Get the **EIN free at IRS.gov** (never pay a third party). Open a **business bank account** and run every dollar through it.
+1. ~~**Form Datum Laboratories LLC**~~ **FILED 2026-08-03** (Georgia, $100, certificate pending ~7 business days) — your liability shield *and* your FCC responsible party. **Next, in order:** free **EIN at IRS.gov** the day the certificate lands (never pay a third party), then a **business bank account**, then run every dollar through it and move the Tindie payout + W-9 onto the LLC/EIN. Georgia annual registration is due **Jan 1 – Apr 1** each year — missing it administratively dissolves the LLC and retroactively voids the shield.
 2. **Turn on no-inventory revenue:** stand up the Stripe pre-order link, Ko-fi + GitHub Sponsors, and a Gumroad PWYW hub download + paid setup call. These can earn within days.
-3. **Edit [docs/WARRANTY.md](WARRANTY.md)** — swap in "Setpoint"/"Datum Labs LLC" + address + real support URL; confirm the liability cap (limits total liability to hardware price, excludes consequential/spoiled-inventory damages, states "monitoring aid, not a certified/HACCP/life-safety device"). Ship it with **every kit and every pilot**.
+3. ~~**Edit [docs/WARRANTY.md](WARRANTY.md)** — swap in the entity + address + real support contact~~ **DONE** — WARRANTY, RETURNS, SUPPORT, PRIVACY, SECURITY and the EULA all name **Datum Laboratories LLC**, the Kennesaw address and `support@datumlaboratories.com`. **The alias itself still has to be created before anything ships.** Confirm the liability cap (limits total liability to hardware price, excludes consequential/spoiled-inventory damages, states "monitoring aid, not a certified/HACCP/life-safety device"). Ship it with **every kit and every pilot**.
 4. **Pull 2–3 product-liability insurance quotes** (CGL $1M/$2M *with products-completed-operations*, ~$400–1,200/yr). Prep the **W-9**. Register the **home-state sales-tax permit** at first sale.
 5. **Order kit parts for 10** and **set up the flashing PC + bench hub** (Track A1 pre-work).
 6. **Text your warmest restaurant contact** with the opener; line up the next two (Track A2).
@@ -209,7 +209,7 @@ Three revenue activities, three different gates. Only one touches the finished-p
 
 ## This week's top 5 do-now list
 
-- [ ] **1. Form Datum Labs LLC + get the free EIN + open a business bank account.** Your liability shield and future FCC responsible party. ($50–500, ~1 hour of forms.)
+- [x] **1. Form Datum Laboratories LLC** — filed 2026-08-03, $100, certificate pending. **Still to do:** free EIN at IRS.gov, then the business bank account.
 - [ ] **2. Put up the Stripe pre-order link for the Maker Kit** and post it once to your audience + restaurant contacts. First dollars in 2–5 days, zero inventory.
 - [ ] **3. Text your warmest restaurant contact the pilot opener** (and line up two more). Book a 30-min loaner install; the deposit + setup fee is your fastest B2B cash.
 - [ ] **4. Order kit parts for 10 and set up the flashing PC + bench hub** so you can build the moment boards land — and edit [docs/WARRANTY.md](WARRANTY.md) with real names + the liability cap to ship in every box.

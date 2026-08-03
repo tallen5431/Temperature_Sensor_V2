@@ -7,7 +7,7 @@
 > product** — the always-on, USB-powered, DS18B20 temperature probe aimed at homelab / server-room
 > buyers. The brand is set — product **Setpoint**, company **Datum Labs** ("Setpoint, by Datum
 > Labs"). Set your real **price**, drop in your
-> **photos** and **support link** (`https://example.com/support`), and confirm the spec numbers match
+> **photos**, keep the support contact as `support@datumlaboratories.com`, and confirm the spec numbers match
 > the exact unit you ship. Keep the "Honest specs" section — it prevents returns and builds trust with
 > technical buyers. Do not add "no subscription" as the headline (every competitor already claims it);
 > lead with **local / can't-be-bricked**._

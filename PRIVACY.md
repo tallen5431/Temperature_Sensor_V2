@@ -2,11 +2,6 @@
 
 _Last updated: 2026_
 
-> **Note for the maker/reseller:** Setpoint is a white-label product. Before you
-> ship, replace **Setpoint** with your product name and swap the support link
-> (`https://example.com/support`) for your own — it must match the `support_url`
-> in your `branding` config.
-
 **Short version: Setpoint does not collect your data. There is no cloud, no
 account, and no telemetry. Your temperature readings stay on your own PC.**
 
@@ -91,4 +86,7 @@ collect regardless of any change.
 
 ## Contact
 
-Questions about privacy? Reach us at **https://example.com/support**.
+Questions about privacy? Reach us at **support@datumlaboratories.com**.
+
+Setpoint is made by **Datum Laboratories LLC**, 1304 Cottonwood Court Northwest, Kennesaw,
+GA 30152, USA.

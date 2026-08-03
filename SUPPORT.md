@@ -2,19 +2,16 @@
 
 _Last updated: 2026_
 
-> **Note for the maker (delete before shipping):** the brand is set — **Setpoint, by Datum Labs**.
-> Before you ship, swap the **placeholder support contacts** below (`https://example.com/support`,
-> `support@example.com`) for your real ones and set the same `support_url` in your `branding` config.
-> Until you register a domain/support email, a working interim channel is this project's **GitHub
-> Issues** page.
-
 Need a hand? We are happy to help you get your temperature monitoring running.
 
 ## How to reach us
 
-- **Support site:** https://example.com/support
-- **Email:** support@example.com
+- **Email:** support@datumlaboratories.com
+- **Web:** https://datumlaboratories.com
 - **Hours:** we typically reply within one to two business days.
+
+Setpoint is made by **Datum Laboratories LLC**, 1304 Cottonwood Court Northwest, Kennesaw,
+GA 30152, USA.
 
 Please have your **order number / proof of purchase** and your **probe ID**
 (for example `Setpoint-9A3F2C`) ready — it speeds things up a lot.
@@ -48,9 +45,9 @@ wake it on demand. A **Fixed** (USB) probe answers continuously. (See `docs/VERS
 
 ## Reporting a bug
 
-Found a software bug? Report it through **https://example.com/support** (or, if
-you have the source, open an issue on the project's repository). A good report
-lets us reproduce the problem fast.
+Found a software bug? Email **support@datumlaboratories.com** (or, if you have the
+source, open an issue on the project's repository). A good report lets us reproduce
+the problem fast.
 
 **Please include:**
 

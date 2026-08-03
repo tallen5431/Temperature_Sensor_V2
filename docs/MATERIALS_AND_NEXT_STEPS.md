@@ -13,7 +13,7 @@ The plan's [top-5 do-now list](ACTION_PLAN.md#this-weeks-top-5-do-now-list) stil
 1. **Fix [BOM.md](BOM.md) to the ESP32-C3 SuperMini** (correct chip/price, IO5 pull-up, IO8 active-low LED, C3 firmware target) — do this **before** ordering, so the parts order is right and the docs stop contradicting the FCC premise.
 2. **Place the slow overseas order today** — DS18B20 probes + TP4056 boards are the 2–4 wk long-lead items. Add a small fast Amazon backup 5-pk of each so a slow shipment never blocks your first build.
 3. **Compile the firmware now — no board needed.** Run the full `arduino-cli` install + `arduino-cli compile --fqbn esp32:esp32:esp32c3` on `esp32_temp_probe/`. The FQBN/partition in `factory_flash.py` are documented-not-verified; a clean compile de-risks ~80% of the launch-day "toolchain gate" while boards are still in transit.
-4. **Register one domain + stand up `support@`/`hello@`** (~$12) and find-replace every `example.com/support` in the legal docs — *before* printing a single label or card (see Readiness Gate 2 and Consider #2).
+4. ~~**Register one domain + find-replace every `example.com/support` in the legal docs.**~~ **DONE** — `datumlaboratories.com` is live and every shipped doc now carries the real entity and contact. **Remaining:** stand up the `support@datumlaboratories.com` alias itself (Cloudflare Email Routing, free) — the docs already point at it, so it must resolve *before* printing a single label or card (see Readiness Gate 2).
 5. **Run a free USPTO knockout search** on "Setpoint" (Class 9) and "Datum Labs" before printing brand stock (Consider #3).
 6. Then execute the plan's top-5 in parallel (LLC/EIN/bank → Stripe deposit link → restaurant text → warranty edit → rev-2 KiCad), and buy the materials below.
 
@@ -139,7 +139,9 @@ DIY_KIT: *"Photos win Tindie."* Cheapest lever with the biggest conversion impac
 
 ### Gate 0 — Legal shell (no money into the business before this)
 
-- [ ] Form the **Datum Labs LLC** (home state, $50–500) — liability shield *and* future FCC responsible party.
+- [x] Form the **Datum Laboratories LLC** — liability shield *and* future FCC responsible party. Georgia
+      Articles of Organization filed **2026-08-03**, $100, awaiting the certificate. **Next:** free EIN at
+      IRS.gov the day it lands, then the business bank account.
 - [ ] Get the **EIN free at IRS.gov** — never pay a third party. Needed before the bank account and processor.
 - [ ] Open a **business bank account**; run every dollar through it (mixing funds pierces the shield).
 - [ ] Create the **Stripe/Gumroad account** under the LLC + EIN, payouts pointed at the business bank. (You can *collect* into a Stripe balance sooner, but can't withdraw without the bank account.)
@@ -156,13 +158,13 @@ DIY_KIT: *"Photos win Tindie."* Cheapest lever with the biggest conversion impac
 - [ ] **Stripe Payment Link:** honest name (`Setpoint Maker Kit — Founding Batch (pre-order, ships ~4 weeks)`), deposit $10–25, **cap payments at 25**, collect email + shipping address, custom field "how many probes (1/2/4)", quantity capped so one buyer can't clear the batch.
 - [ ] **Description + thank-you page restate:** the ~4-week window, "deposit fully refundable until your kit ships; if we can't ship in the window we'll notify you and you can cancel for a full refund," and what it is/isn't (kit you assemble · cell not included · ±0.5 °C typical, uncalibrated · 2.4 GHz Wi-Fi only · needs an always-on PC · loss-prevention aid, **NOT** a certified/NIST/HACCP instrument · monitoring stops in a power outage).
 - [ ] **FTC Mail-Order Rule:** state an honest window (or the law defaults to 30 days); if you'll miss it, **notify + offer cancel for full refund**; refund promptly to the original method. *(Verify the exact refund wording with a small-business attorney before publishing.)*
-- [ ] **Who you are:** Datum Labs LLC + a working support email; link the **real** Returns and Warranty (not `example.com/support`).
+- [ ] **Who you are:** Datum Laboratories LLC + `support@datumlaboratories.com`; link the **real** Returns and Warranty (both now carry the entity and address).
 - [ ] **Sales tax:** enable Stripe Tax for your home state or track manually. **Tindie remits for you; direct Stripe/Gumroad/in-person sales are yours** — you likely owe only your home state to start.
 - [ ] **Landing/waitlist page** separate from the Tindie listing: "Reserve a kit" → deposit link, plus a plain email-capture for the not-ready. **Log every reservation** (email + probe count + deposit y/n) into a CSV.
 
 ### Gate 2 — Box readiness (before any paid kit ships)
 
-- [ ] **Edit [WARRANTY.md](WARRANTY.md) and [RETURNS.md](RETURNS.md):** insert **Datum Labs LLC + address**, swap `https://example.com/support` for the real URL, confirm the **liability cap is intact** (total liability limited to hardware price, excludes consequential/spoiled-inventory damages, "monitoring aid, not a certified/HACCP/life-safety device"), and confirm the 30-day return window + who-pays-return-shipping. Ship both in **every kit and every pilot**.
+- [x] **Edit [WARRANTY.md](WARRANTY.md) and [RETURNS.md](RETURNS.md):** ~~insert **Datum Laboratories LLC + address**, swap `https://example.com/support` for the real URL~~ **DONE** — both now name the entity, the Kennesaw address and `support@datumlaboratories.com`. **Still confirm before shipping:** the **liability cap is intact** (total liability limited to hardware price, excludes consequential/spoiled-inventory damages, "monitoring aid, not a certified/HACCP/life-safety device"), and confirm the 30-day return window + who-pays-return-shipping. Ship both in **every kit and every pilot**.
 - [ ] **Start the batch serial-log CSV** with the exact [LABEL_TEMPLATE.md](LABEL_TEMPLATE.md) header: `serial,build_date,operator,mac,probe_id,ap_ssid,fw_version,test_wifi_ssid,temperature_c,ingest_ok,qc_result,notes`. One row per unit; `probe_id` unique in the file (a collision = duplicate ROM → quarantine both). **Keep it in a synced/versioned folder** (see Consider #5).
 - [ ] **Validate the QC gate:** flash + full [QC_CHECKLIST.md](QC_CHECKLIST.md) on **one** board end-to-end, and flash a **second** from the browser page, **before** unlocking batch mode. Then every unit runs the gate; **any FAIL stops the unit** (note the failing step, fix, re-run).
 - [ ] **Test every DS18B20 before bagging** — flash with that kit's probe connected; a dead probe reads **−127 / 85.0 / NaN**. Bag the tested probe **with its board** as a matched set.
@@ -190,7 +192,12 @@ The strategy docs are strong on FCC sequencing, margin, and the loaner motion. T
    match. The `#if` branch, pin value, and active-low drive levels were verified for both targets.
    → **Remaining action:** just do one **end-to-end flash of a real board** (FQBN `esp32:esp32:esp32c3`)
    as your launch-day toolchain gate and confirm the on-board LED blinks.
-2. **Every shipped legal doc still points at `example.com/support`, and there's no domain or business email.** WARRANTY, RETURNS, SUPPORT, PRIVACY all carry the placeholder; the public face is a personal Gmail. → **First action:** register a domain + `support@`/`hello@` forwarding (~$12), then one find-replace across the repo, before printing any label.
+2. **~~Every shipped legal doc still points at `example.com/support`~~ — FIXED.** `datumlaboratories.com`
+   is live, the LLC is filed, and WARRANTY, RETURNS, SUPPORT, PRIVACY, SECURITY and the EULA now carry
+   **Datum Laboratories LLC**, the Kennesaw address and `support@datumlaboratories.com`.
+   → **Remaining action:** the `support@` alias does not exist yet — the docs point at an address that
+   currently bounces. Stand it up (Cloudflare Email Routing is free) **before printing any label,
+   publishing the Tindie listing, or shipping a kit.**
 3. **No trademark clearance on "Setpoint"** — a dictionary word almost certainly crowded in USPTO Class 9 (measuring/monitoring instruments). → **First action:** run a free USPTO knockout search on "Setpoint" (Class 9) + "Datum Labs" this week; if crowded, rename before printing brand stock.
 4. **The launch is gated on a toolchain never even compiled — and compiling needs no board.** The FQBN/partition are documented-not-verified. → **First action:** run `arduino-cli compile --fqbn esp32:esp32:esp32c3` on `esp32_temp_probe/` today; only the upload step then needs hardware.
 5. **The batch serial-log CSV — your entire traceability/warranty spine — is a single unbacked file.** → **First action:** keep it in a git/cloud-synced folder and save after every build session.

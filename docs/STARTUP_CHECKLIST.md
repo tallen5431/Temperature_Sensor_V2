@@ -39,8 +39,9 @@ socketing the SuperMini), the biggest change left in your hardware.
 
 | Item | When | Rough cost | Notes |
 |---|---|---|---|
-| **LLC formation** | Now | **$50–500** | State filing fee; varies widely by state. |
-| **Registered agent** | Now | **$0–150/yr** | Be your own, or pay a service. |
+| **LLC formation** | ✅ Filed 2026-08-03 | **$100** | Georgia Articles of Organization, online. ($110 by mail.) ~7 business days; expedited tiers exist and are not worth it. |
+| **Annual registration** | Jan 1 – Apr 1, every year | **$50/yr** | Georgia. Miss it and the LLC is *administratively dissolved*, retroactively voiding the shield. Calendar it. |
+| **Registered agent** | ✅ Self | **$0** | Must be a street address **in Georgia** — no PO boxes. Own address = public record; a commercial agent (~$50–150/yr) buys privacy. |
 | **EIN (tax ID)** | Now | **Free** | Direct from IRS.gov — never pay a third party for this. |
 | **Business bank account** | Now | **$0–15/mo** | Keeps personal/business money separate (protects the LLC shield). |
 | **Product-liability insurance** (CGL $1M/occ, $2M agg + products) | Before selling | **~$400–1,200/yr** | Get broker quotes. B2B buyers ask for a Certificate of Insurance (COI). |
@@ -60,10 +61,16 @@ DIY kits.
 ## Order of operations (walk it top to bottom)
 
 ### Phase 0 — Set up the shell (this week, ~$100–700, no FCC needed)
-- [ ] **Form the LLC** in your state (or use a service) — this is **Datum Labs**, your house company
-      that umbrellas Setpoint (and future products). It also becomes your FCC "US responsible party."
-- [ ] **Get an EIN** free from IRS.gov.
+- [x] **Form the LLC** — **`Datum Laboratories LLC`**, Georgia, filed **2026-08-03**, certificate pending.
+      The house company that umbrellas Setpoint (and future products), and the FCC "US responsible party."
+      Trades as **Datum Labs**; invoicing under the short name would need a Cobb County trade-name filing,
+      so invoice under the full legal name instead. **This exact string must match the SDoC, the product
+      label, the insurance policy and the W-9 character for character.**
+- [ ] **Get an EIN** free from IRS.gov — the day the certificate lands, not before (a rejected name would
+      leave an EIN attached to an entity that does not exist). Online, Mon–Fri 7am–10pm ET.
 - [ ] **Open a business bank account**; run all business money through it (don't pierce the LLC shield).
+      Then move the **Tindie payout details and W-9 onto the LLC + EIN** so kit revenue stops landing
+      against your SSN.
 - [ ] **Get product-liability insurance quotes** (CGL $1M/$2M + products). You may not bind it until
       you sell, but have the number and a COI ready — procurement asks.
 - [ ] Keep your warranty's **liability cap** ([`WARRANTY.md`](WARRANTY.md)) intact — LLC + insurance +

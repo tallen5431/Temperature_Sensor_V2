@@ -78,9 +78,9 @@ and medium severity, but a maker shipping to customers should plan to address th
 ## Reporting a vulnerability
 
 Please report security issues privately rather than opening a public issue. Use GitHub's
-**Report a vulnerability** (Security → Advisories) on this repository, or email the maintainer
-(replace with your address before publishing): `security@example.com`. We aim to acknowledge within
-a few business days and will keep you updated on a fix.
+**Report a vulnerability** (Security → Advisories) on this repository, or email
+`support@datumlaboratories.com` with `SECURITY` in the subject line. We aim to acknowledge
+within a few business days and will keep you updated on a fix.
 
 When reporting, include the hub version (see the **Diagnostics** page or `GET /api/diagnostics` /
 `GET /api/health` → `version`), the firmware version, and steps to reproduce.

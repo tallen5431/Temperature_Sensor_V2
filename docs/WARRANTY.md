@@ -2,19 +2,9 @@
 
 _Last updated: 2026_
 
-> **BEFORE YOU SHIP — fill these three in and delete this box.** They appear in the
-> text below as the same bracketed tokens, so a find-and-replace does it:
->
-> | Token | Replace with | Must match |
-> |---|---|---|
-> | `[LEGAL ENTITY]` | e.g. `Datum Laboratories LLC` | The FCC responsible party on the SDoC, the product label, the insurance policy and the W-9 — **character for character** |
-> | `[BUSINESS ADDRESS]` | A real street address you will keep for years | The address on the compliance file. A label pointing somewhere you no longer control cannot be recalled |
-> | `[SUPPORT EMAIL]` | e.g. `support@datumlaboratories.com` | The address in the Tindie listing and on the quick-start card |
->
-> Ship this with **every kit and every pilot install** (`docs/ACTION_PLAN.md`).
-
-This limited warranty is given by **[LEGAL ENTITY]**, **[BUSINESS ADDRESS]**, and covers
-the physical **Setpoint** probe hardware you bought from us or an authorised reseller.
+This limited warranty is given by **Datum Laboratories LLC**, 1304 Cottonwood Court Northwest,
+Kennesaw, GA 30152, USA, and covers the physical **Setpoint** probe hardware you bought
+from us or an authorised reseller.
 
 **The hub is software, not hardware.** It is a free application you run on a computer
 you already own, so there is no hub device to warrant. If we supplied you a mini-PC as
@@ -107,7 +97,7 @@ waived.
 
 ## How to make a claim
 
-1. **Contact support** at **[SUPPORT EMAIL]** within the warranty period. Please include
+1. **Contact support** at **support@datumlaboratories.com** within the warranty period. Please include
    the information listed in `SUPPORT.md` — your order number or proof of purchase, the
    probe ID (for example `Setpoint-9A3F2C`), the firmware version, and a clear description
    of the fault.
