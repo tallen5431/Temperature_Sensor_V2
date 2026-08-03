@@ -49,7 +49,7 @@ pyinstaller --onefile --name Setpoint app.py
 ```
 
 (Bundle `config.example.json` and `assets/` alongside the binary.) Smoke-test the
-build: launch it, open http://localhost:8080, confirm the footer shows the new
+build: launch it, open http://localhost:8088, confirm the footer shows the new
 version and `GET /api/health` reports it.
 
 ## 6. Flash + QC the probe batch

@@ -102,7 +102,7 @@ interval. Persisted to NVS so it survives reboots.
 
 ```json
 {
-  "server_url": "http://192.168.1.50:8080/api/ingest",
+  "server_url": "http://192.168.1.50:8088/api/ingest",
   "token": "s3cr3t-device-token",
   "interval_ms": 5000,
   "resolution_bits": 11
@@ -148,7 +148,7 @@ hub can confirm the applied value.
   "uptime_s": 43120,
   "last_post_ok": true,
   "last_post_code": 200,
-  "server_url": "http://192.168.1.50:8080/api/ingest",
+  "server_url": "http://192.168.1.50:8088/api/ingest",
   "temperature_c": 4.2,
   "sensor_ok": true
 }

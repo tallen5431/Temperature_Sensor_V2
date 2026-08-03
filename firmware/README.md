@@ -176,7 +176,7 @@ setup, not by a custom endpoint.
 ## Ingest (probe → hub)
 
 Every `interval_ms` the probe reads the DS18B20 and POSTs to the provisioned
-`server_url` (the hub's ingest endpoint, e.g. `http://<hub>:8080/api/ingest`):
+`server_url` (the hub's ingest endpoint, e.g. `http://<hub>:8088/api/ingest`):
 
 ```
 POST /api/ingest
