@@ -97,8 +97,8 @@ tick each item below as the operator confirms it.
 - [ ] **5.3 Ice-bath 0 °C check (backs the "verified" claim).** Dip the stainless probe tip in the
       **stirred ice-water slush**, wait ~30 s to settle, and read it. Must be **0 °C ± 0.5 °C**.
       Record it as `ice_c` in the serial log. **Only a unit that passes this may be advertised as
-      "verified at 0 °C to within ±0.5 °C"** — otherwise claim only the datasheet "±0.5 °C typical,
-      uncalibrated." A reading outside ±0.5 °C: set a per-probe offset in the hub, or quarantine a
+      "verified at 0 °C to within ±0.5 °C"** — otherwise claim only the datasheet band: "±0.5 °C typical
+      from −10 to +85 °C, ±2 °C outside it, uncalibrated." A reading outside ±0.5 °C: set a per-probe offset in the hub, or quarantine a
       wildly-off probe as a possible counterfeit DS18B20 (its ROM — and thus the `probe_id` — may be
       untrustworthy too).
 

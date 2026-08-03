@@ -14,10 +14,13 @@
 - ✅ **Landing page:** restaurant-facing, claims verified — ready to show contacts.
 - ✅ **Rev-1 PCBs:** 50 boards ordered (bare-chip SuperMini). **Great for pilots, dev, and DIY kits;
   NOT sellable as assembled units** (no modular FCC grant).
-- ⏭️ **Not yet:** LLC, insurance, FCC SDoC, rev-2 (module) board, first paying customer.
+- ✅ **Done since:** **rev-2 board** built, flashed and bench-verified on shipping firmware;
+  **Datum Laboratories LLC** filed in Georgia 2026-08-03 (certificate pending).
+- ⏭️ **Not yet:** enclosure, FCC SDoC, insurance, first paying customer.
 
-**The gap to revenue is business/ops, not more code.** The product is ready; the next moves are
-validation, one legal gate, and one board respin.
+**The gap to revenue is business/ops, not more code.** The product is ready and the respin is done;
+what remains is **an enclosure, then one legal gate**. The enclosure comes first because the SDoC
+certifies the product *as it ships* — testing a bare board buys nothing.
 
 ---
 
@@ -39,11 +42,13 @@ No FCC needed yet.
 **Decision gate:** real deposits/intent from a few restaurants, or kit sales + "take my money"
 replies. If yes → Phase 2. If not → fix the pitch *before* spending on FCC or a respin.
 
-### Phase 2 — Certify + rev-2 (only once demand is real)
-Respin the board to the pre-certified **ESP32-C3-MINI-1** ([`REV2_BUILD_GUIDE.md`](REV2_BUILD_GUIDE.md)),
-order a small **JLCPCB PCBA** batch, get the **FCC Part 15B SDoC** (~$300–1,500), and label
-"Contains FCC ID: 2AC7Z-ESPC3MINI1." Now sell **assembled** units — direct/B2B to restaurants (full
-margin) and assembled homelab units on Tindie.
+### Phase 2 — Certify (the respin is already done)
+~~Respin the board to the pre-certified **ESP32-C3-MINI-1**~~ — **done and bench-verified**
+([`REV2_BUILD_GUIDE.md`](REV2_BUILD_GUIDE.md)). What remains: **freeze the enclosure**, order a small
+**JLCPCB PCBA** batch, get the **FCC Part 15B SDoC** (~$300–1,500) on the unit *in its case*, and
+label per [`LABEL_TEMPLATE.md`](LABEL_TEMPLATE.md) — "Contains FCC ID: 2AC7Z-ESPC3MINI1" + the
+§15.19(a)(3) statement + Datum Laboratories LLC as responsible party. Then sell **assembled** units —
+direct/B2B to restaurants (full margin) and assembled homelab units on Tindie.
 
 ### Phase 3 — Scale (after ~10+ real sales)
 Bigger batches (per-unit cost drops), add a per-unit **calibration option** (~$140) for food-service
@@ -148,6 +153,6 @@ exactly this pipe).
 
 ## The 30-second version
 
-**Rev-1 boards → DIY kits + free restaurant pilots (validate, ~$0). If they pay → LLC + rev-2 module
-board + FCC SDoC → sell assembled (restaurants direct, homelab on Tindie). Loan only later, for
-inventory.** You're one validation loop and one board respin from a real product.
+**Rev-1 boards → DIY kits + free restaurant pilots (validate, ~$0). LLC and the rev-2 module board are
+now done → enclosure → FCC SDoC → sell assembled (restaurants direct, homelab on Tindie). Loan only
+later, for inventory.** You're one enclosure and one lab test from a real product.

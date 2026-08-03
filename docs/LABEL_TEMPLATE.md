@@ -12,6 +12,61 @@ The label is the customer's only reference for setup, so it MUST be correct and
 legible. A non-technical buyer uses it to (a) find the setup Wi-Fi and (b) scan a
 QR to the setup page.
 
+> **Two different labels.** A **DIY kit** is a bag of components, not a finished
+> product, so it carries only the identity fields below — no FCC block. An
+> **assembled unit** is a finished product and legally may not ship without the
+> regulatory block in the next section. Do not mix them up: an assembled unit
+> missing the FCC text cannot lawfully be sold, and a kit carrying it is claiming
+> an authorisation that does not cover a bag of parts.
+
+---
+
+## Regulatory block — ASSEMBLED UNITS ONLY
+
+Required on every assembled unit before sale, and **not valid until the Part 15B
+SDoC test report is signed** ([`COMPLIANCE.md`](COMPLIANCE.md)). Three parts, all
+mandatory:
+
+**1. Module identification** — 47 CFR §15.19, the host carries the module's grant:
+
+```
+Contains FCC ID: 2AC7Z-ESPC3MINI1
+```
+
+**2. Compliance statement** — §15.19(a)(3), reproduce verbatim:
+
+```
+This device complies with part 15 of the FCC Rules. Operation is subject to
+the following two conditions: (1) This device may not cause harmful
+interference, and (2) this device must accept any interference received,
+including interference that may cause undesired operation.
+```
+
+**3. Responsible party** — §2.1077(a)(3). The SDoC names a US-located entity, and
+this must match the SDoC, the warranty, the insurance policy and the W-9
+**character for character**:
+
+```
+Datum Laboratories LLC
+1304 Cottonwood Court Northwest, Kennesaw, GA 30152, USA
+support@datumlaboratories.com
+```
+
+**Model number** — assign one per version and keep it stable; it identifies the
+unit the SDoC covers:
+
+| Version | Model number |
+|---|---|
+| Setpoint Portable (battery) | `SETPOINT-P-C3` |
+| Setpoint Fixed (USB) | `SETPOINT-F-C3` |
+| DIY kit (no FCC block) | `SETPOINT-DIY-C3` |
+
+**If the enclosure is too small for the full text**, FCC KDB 784748 permits an
+**e-label** or placement in the user manual — but the "Contains FCC ID" line and
+the responsible party should stay physically on the unit wherever possible, and
+the manual must then carry the §15.19(a)(3) statement. Decide this **before** the
+SDoC, because the lab tests the product as it ships.
+
 ---
 
 ## Fields on each label
@@ -40,14 +95,38 @@ Notes:
 
 Small 2-up thermal/laser label, roughly 50 × 25 mm. Adjust to your stock.
 
+**DIY kit** — identity only, no regulatory block:
+
 ```
 +------------------------------------------------------+
-|  Setpoint  •  Setpoint            [ ##### ]       |
+|  Setpoint  •  Datum Labs              [ ##### ]      |
 |                                       [ #QR# ]  <- scan to set up
-|  ID:   Setpoint-9A3F2C             [ ##### ]       |
+|  ID:   Setpoint-9A3F2C                [ ##### ]      |
 |                                                      |
-|  Setup Wi-Fi : Setpoint-9A3F2C   (open)           |
-|  host: Setpoint-9A3F2C.local                      |
+|  Setup Wi-Fi : Setpoint-9A3F2C   (open)              |
+|  host: Setpoint-9A3F2C.local                         |
++------------------------------------------------------+
+   fw 2.8.2 / proto 1        S/N: __________  QC:____
+```
+
+**Assembled unit** — the same identity fields plus the regulatory block. A
+larger label (or a second one on the underside) is usually needed:
+
+```
++------------------------------------------------------+
+|  Setpoint  •  Datum Labs              [ ##### ]      |
+|  Model: SETPOINT-P-C3                 [ #QR# ]       |
+|  ID:   Setpoint-9A3F2C                [ ##### ]      |
+|  Setup Wi-Fi : Setpoint-9A3F2C   (open)              |
++------------------------------------------------------+
+|  Contains FCC ID: 2AC7Z-ESPC3MINI1                   |
+|  This device complies with part 15 of the FCC Rules. |
+|  Operation is subject to the following two           |
+|  conditions: (1) This device may not cause harmful   |
+|  interference, and (2) this device must accept any   |
+|  interference received, including interference that  |
+|  may cause undesired operation.                      |
+|  Datum Laboratories LLC, Kennesaw, GA, USA           |
 +------------------------------------------------------+
    fw 2.8.2 / proto 1        S/N: __________  QC:____
 ```

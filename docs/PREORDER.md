@@ -57,7 +57,8 @@ What you'll get (ships ~4 weeks from order):
 • A printed quick-start card: power on → join the probe's Wi-Fi → watch it appear
 
 Honest specs (so there are no surprises):
-• Accuracy ±0.5 °C typical, uncalibrated (add a per-probe offset in the app)
+• Accuracy ±0.5 °C typical from −10 to +85 °C, ±2 °C outside that band (a freezer is in
+  the ±2 range), uncalibrated (add a per-probe offset in the app)
 • 2.4 GHz Wi-Fi only · needs a computer you leave on to run the free hub
 • Lithium cell NOT included (ship rules) — use any protected 18650
 • A loss-prevention / logging aid — NOT a certified, NIST-traceable, or HACCP/health-code
@@ -164,7 +165,7 @@ it up in your kitchen free for 30 days, no strings — want me to bring one by t
       you've swapped in the LLC name + real support URL).
 - [ ] **Sales tax:** enable Stripe Tax for your home state (direct sales are yours to remit; on Tindie
       the marketplace remits for you).
-- [ ] **Don't overstate:** keep "±0.5 °C typical, uncalibrated" and the "not a certified/HACCP
+- [ ] **Don't overstate:** keep "±0.5 °C typical from −10 to +85 °C, ±2 °C outside that band, uncalibrated" and the "not a certified/HACCP
       instrument" line anywhere you describe accuracy. Never imply a certification you don't hold.
 
 > Prerequisite (see [`MATERIALS_AND_NEXT_STEPS.md`](MATERIALS_AND_NEXT_STEPS.md) Gate 0–1): LLC + EIN +

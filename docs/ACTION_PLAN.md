@@ -47,7 +47,9 @@ The designated first storefront. Copy is paste-ready in [docs/TINDIE_LISTING.md]
 | 6 | **Local in-person kit sales** (homelab/maker meetup, brewery, greenhouse) | 1–3 weeks | $39–49 cash | RSVP to the nearest homelab/Home Assistant meetup; set up Square/Stripe Tap-to-Pay |
 | 7 | **Sponsorship** (README slot, sponsor-a-feature bounty) | 3–8 weeks | $25–500+ | Tag 2–3 roadmap items (syslog/SNMP, rack grouping) as "sponsorable" with a price |
 
-> **Honest exclusion (updated):** *Selling assembled probes* is the high-value sale (~$80–90/probe).
+> **Honest exclusion (updated):** *Selling assembled probes* is the high-value sale — **~$69 for a
+> 1-probe starter**, $109 for two, $189 for four ([`GO_TO_MARKET.md`](GO_TO_MARKET.md) is the pricing
+> ladder; [`BOM.md`](BOM.md) is the cost basis at ~$27 landed for the Portable build).
 > **The rev-2 respin is done and bench-verified**, so the remaining gate is the Part 15B SDoC on the
 > finished unit in its enclosure (~$300–1,500), plus a US entity to be the responsible party and the
 > "Contains FCC ID" label. Until that certificate exists, still don't sell an assembled unit — but the
@@ -190,7 +192,7 @@ Three revenue activities, three different gates. Only one touches the finished-p
 
 **Why rev-1 can't be sold assembled:** it's a *bare* ESP32-C3 chip + trace antenna with no modular grant — selling it finished would owe ~$5k–15k intentional-radiator testing. Rev-2 on the pre-certified module drops you to the cheap SDoC. Until rev-2 exists, you sell **kits and run loaner pilots** — that's the plan, not a limitation.
 
-**The honest disclaimer posture (a legal control, hold it everywhere):** advertise **"±0.5 °C typical, uncalibrated"** (resolution ≠ accuracy). Sell as a **loss-prevention / temperature-logging aid — explicitly NOT a certified, NIST-traceable, or HACCP/health-code compliance instrument**, and state it **does not replace required manual checks or official records**, and that **monitoring stops in a full power outage**. Never claim a certification you don't hold — that's how you manufacture liability you don't have. Stay out of VFC/vaccine, pharma GxP, and EN 12830 cold-chain entirely.
+**The honest disclaimer posture (a legal control, hold it everywhere):** advertise the **full band — "±0.5 °C typical from −10 to +85 °C, ±2 °C outside it, uncalibrated"** (resolution ≠ accuracy). Never publish only the ±0.5 half: a −18 °C freezer sits in the ±2 band, and freezer buyers are exactly who reads that number. Sell as a **loss-prevention / temperature-logging aid — explicitly NOT a certified, NIST-traceable, or HACCP/health-code compliance instrument**, and state it **does not replace required manual checks or official records**, and that **monitoring stops in a full power outage**. Never claim a certification you don't hold — that's how you manufacture liability you don't have. Stay out of VFC/vaccine, pharma GxP, and EN 12830 cold-chain entirely.
 
 **Sales tax, briefly:** you likely collect/remit **only in your home state** to start (far below other states' ~$100k/200-transaction economic-nexus thresholds). **Tindie collects and remits for you** as a marketplace facilitator — a real reason to lean on it early. Revisit with an accountant only as you approach an out-of-state threshold.
 

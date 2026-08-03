@@ -98,9 +98,11 @@ the battery, and the printed unit label/QR.
 | **Portable** (DS18B20, battery) | ~$19.20 | ~$8 (≈20 min @ $24/hr) | ~$27.20 | **$65** | ~58% |
 | **Fixed** (DS18B20, USB, no battery) | ~$14.50 | ~$7 | ~$21.50 | **$55** | ~61% |
 
-> These are *assembled-unit* maker prices (post-FCC). Today rev-1 sells as **DIY kits** at **$39 / $49**
-> ([`DIY_KIT.md`](DIY_KIT.md)) — the Fixed (no-battery) kit is the cheaper option to list alongside the
-> Portable one.
+> These are *assembled-unit* maker prices (post-FCC). Today rev-1 sells as **DIY kits**
+> ([`DIY_KIT.md`](DIY_KIT.md)), and that split is by **assembly effort, not by power version** — both
+> tiers include the battery parts: **$39 Maker Kit** (loose parts, buyer solders; this is the live
+> Tindie listing) and **$49 Plug-Together Kit** (headers and probe terminal pre-soldered, no iron
+> needed). A Fixed/no-battery kit is a *third* option that does not exist yet, not the $39 tier.
 
 Notes on pricing:
 - These are *single-unit maker* numbers. At batch scale (parts in 10s–100s,

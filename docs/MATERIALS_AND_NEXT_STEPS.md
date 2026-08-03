@@ -2,20 +2,26 @@
 
 This is the companion to [docs/ACTION_PLAN.md](ACTION_PLAN.md). The plan says **what to do** and in what order; this page says **what to buy**, **what must be true before money moves or a box ships**, and **what you might be missing**. It does not restate the strategy — for the revenue sequencing, margin math, and FCC gating, go to the plan. Sized for the first batch of **~13 units (10 DIY kits + 3 restaurant loaners)** plus spares, grounded in [BOM.md](BOM.md), [DIY_KIT.md](DIY_KIT.md), [QC_CHECKLIST.md](QC_CHECKLIST.md), [LABEL_TEMPLATE.md](LABEL_TEMPLATE.md), [PILOT_OFFER.md](PILOT_OFFER.md), [REV2_SCHEMATIC.md](REV2_SCHEMATIC.md), [WARRANTY.md](WARRANTY.md), and [STARTUP_CHECKLIST.md](STARTUP_CHECKLIST.md).
 
-> **Heads-up before you order or trust the parts list:** [BOM.md](BOM.md) is **stale** — item 1 still says *ESP32-WROOM-32E DevKitC*, firmware target *WROOM-32*, LED on GPIO2, pull-up on GPIO5. The actual rev-1 board is the **ESP32-C3 SuperMini** (Amazon `B0DFWG87JS`, per [STARTUP_CHECKLIST.md](STARTUP_CHECKLIST.md)): USB-C native, **4.7 kΩ pull-up on IO5**, **LED active-low on IO8**, IO2 left unconnected. A WROOM-32E is itself a pre-certified FCC module, so trusting the stale BOM would both buy the wrong chip **and** contradict the whole "rev-1 is a bare chip, can't sell assembled" premise your strategy rests on. **Fix BOM.md before you place the parts order** (see Do-next #1).
+> **Heads-up before you order:** [BOM.md](BOM.md) was stale (it named an *ESP32-WROOM-32E DevKitC*) and is **now correct** — item 1 is the **ESP32-C3 SuperMini** (Amazon `B0DFWG87JS`), USB-C native, **4.7 kΩ pull-up on IO5**, **LED active-low on IO8**, firmware target `esp32:esp32:esp32c3`. Trust it. The distinction still matters strategically: a WROOM-32E *is* a pre-certified FCC module, so the old BOM would have contradicted the "rev-1 is a bare chip, can't sell assembled" premise the whole plan rests on — that premise holds because the SuperMini carries a bare `ESP32-C3FH4`.
 
 ---
 
 ## Do-next, in order
 
-The plan's [top-5 do-now list](ACTION_PLAN.md#this-weeks-top-5-do-now-list) still holds — form the LLC, put up the Stripe link, text the restaurant, order parts + set up the flashing PC + edit the warranty, start rev-2 KiCad. This is the tighter critical-path ordering for *this* doc's concerns (buying, gates, and repo fixes), interleaved so nothing blocks the day boards land:
+Since this list was written, four of its items are done: the **LLC is filed** (Georgia, 2026-08-03,
+certificate pending), **rev-2 is built and bench-verified**, the **warranty and every shipped legal
+doc now name Datum Laboratories LLC**, and **BOM.md is corrected to the ESP32-C3 SuperMini**. What is
+left, in critical-path order for *this* doc's concerns (buying, gates, repo fixes):
 
-1. **Fix [BOM.md](BOM.md) to the ESP32-C3 SuperMini** (correct chip/price, IO5 pull-up, IO8 active-low LED, C3 firmware target) — do this **before** ordering, so the parts order is right and the docs stop contradicting the FCC premise.
+1. **Stand up the `support@datumlaboratories.com` alias** (Cloudflare Email Routing, free, ~2 min).
+   Six shipped documents, the product label spec and the root `LICENSE` all point at it and it does
+   not resolve yet. **Nothing ships until this is done.**
 2. **Place the slow overseas order today** — DS18B20 probes + TP4056 boards are the 2–4 wk long-lead items. Add a small fast Amazon backup 5-pk of each so a slow shipment never blocks your first build.
 3. **Compile the firmware now — no board needed.** Run the full `arduino-cli` install + `arduino-cli compile --fqbn esp32:esp32:esp32c3` on `esp32_temp_probe/`. The FQBN/partition in `factory_flash.py` are documented-not-verified; a clean compile de-risks ~80% of the launch-day "toolchain gate" while boards are still in transit.
-4. ~~**Register one domain + find-replace every `example.com/support` in the legal docs.**~~ **DONE** — `datumlaboratories.com` is live and every shipped doc now carries the real entity and contact. **Remaining:** stand up the `support@datumlaboratories.com` alias itself (Cloudflare Email Routing, free) — the docs already point at it, so it must resolve *before* printing a single label or card (see Readiness Gate 2).
-5. **Run a free USPTO knockout search** on "Setpoint" (Class 9) and "Datum Labs" before printing brand stock (Consider #3).
-6. Then execute the plan's top-5 in parallel (LLC/EIN/bank → Stripe deposit link → restaurant text → warranty edit → rev-2 KiCad), and buy the materials below.
+4. **Run a free USPTO knockout search** on "Setpoint" (Class 9) and "Datum Labs" before printing brand stock (Consider #3).
+5. **Design and freeze the enclosure.** This is now the critical path to assembled sales: the Part 15B SDoC certifies the product *as it ships*, so the case must exist before the lab test ([`PRODUCT_ROADMAP.md`](PRODUCT_ROADMAP.md) Phase 2).
+6. **EIN → business bank account** the day the LLC certificate lands, then move the Tindie payout and W-9 onto the LLC/EIN.
+7. Then buy the materials below.
 
 ---
 
@@ -156,7 +162,7 @@ DIY_KIT: *"Photos win Tindie."* Cheapest lever with the biggest conversion impac
 | Full pre-pay | $39 | Only for buyers happy to wait the honest window | Full FTC 30-day obligation attaches |
 
 - [ ] **Stripe Payment Link:** honest name (`Setpoint Maker Kit — Founding Batch (pre-order, ships ~4 weeks)`), deposit $10–25, **cap payments at 25**, collect email + shipping address, custom field "how many probes (1/2/4)", quantity capped so one buyer can't clear the batch.
-- [ ] **Description + thank-you page restate:** the ~4-week window, "deposit fully refundable until your kit ships; if we can't ship in the window we'll notify you and you can cancel for a full refund," and what it is/isn't (kit you assemble · cell not included · ±0.5 °C typical, uncalibrated · 2.4 GHz Wi-Fi only · needs an always-on PC · loss-prevention aid, **NOT** a certified/NIST/HACCP instrument · monitoring stops in a power outage).
+- [ ] **Description + thank-you page restate:** the ~4-week window, "deposit fully refundable until your kit ships; if we can't ship in the window we'll notify you and you can cancel for a full refund," and what it is/isn't (kit you assemble · cell not included · ±0.5 °C typical from −10 to +85 °C, ±2 °C outside that band, uncalibrated · 2.4 GHz Wi-Fi only · needs an always-on PC · loss-prevention aid, **NOT** a certified/NIST/HACCP instrument · monitoring stops in a power outage).
 - [ ] **FTC Mail-Order Rule:** state an honest window (or the law defaults to 30 days); if you'll miss it, **notify + offer cancel for full refund**; refund promptly to the original method. *(Verify the exact refund wording with a small-business attorney before publishing.)*
 - [ ] **Who you are:** Datum Laboratories LLC + `support@datumlaboratories.com`; link the **real** Returns and Warranty (both now carry the entity and address).
 - [ ] **Sales tax:** enable Stripe Tax for your home state or track manually. **Tindie remits for you; direct Stripe/Gumroad/in-person sales are yours** — you likely owe only your home state to start.

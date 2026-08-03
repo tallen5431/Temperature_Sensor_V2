@@ -104,7 +104,8 @@ don't solder" buyer — for a few minutes of header soldering you do in a batch.
   *"Flash it from your browser · runs on your own PC · no cloud, no subscription."*
 - **Photos win Tindie.** Shoot: the built unit (hero), the parts flat-lay, the dashboard on a laptop,
   and a probe-in-context (fridge/rack). One built unit — which you're making for pilots anyway — covers it.
-- **Honest specs** (±0.5 °C typical uncalibrated; 2.4 GHz; needs an always-on PC) — technical buyers
+- **Honest specs** (±0.5 °C typical from −10 to +85 °C, ±2 °C below that including a freezer,
+  uncalibrated; 2.4 GHz; needs an always-on PC) — technical buyers
   trust honesty and it prevents returns. (Copy is in [`TINDIE_LISTING.md`](TINDIE_LISTING.md).)
 - **Anchor the price:** ~$39 kit vs. a $149 Temp Stick — and the hub software is **free forever**.
 - **Upsell the architecture:** one hub → many probes. Offer a **2-probe** or **4-probe** kit; per-probe

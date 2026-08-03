@@ -164,7 +164,7 @@ and off-strategy.
 
 ### Demand signals to watch
 - Upvotes / "take my money" replies on a build-in-public post (the cheapest early read).
-- GitHub stars/forks/issues on the open firmware + hub repo.
+- GitHub stars/forks/issues on the repo (open-source firmware + the free hub).
 - Crowd Supply pre-launch subscriber count; landing-page email conversion %.
 - Tindie favorites and Shopify pre-order deposits (real WTP > survey "yes").
 - Volume/recency of forum threads asking for a "local, no-cloud, multi-probe temperature monitor,"

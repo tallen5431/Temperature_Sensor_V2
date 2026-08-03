@@ -110,9 +110,12 @@ _(The hub app is a free download — no disc, no account.)_
 
 ## FAQ
 
-**How accurate is it?** ±0.5 °C typical, uncalibrated — fine for "is my rack/closet within range and
-trending safe." You can set a per-probe calibration offset in the app to trim it to a reference
-thermometer. It is **not** a certified, NIST-traceable, or medical/lab instrument.
+**How accurate is it?** **±0.5 °C typical from −10 °C to +85 °C**, uncalibrated. **Below −10 °C —
+which includes a typical −18 °C freezer — it is ±2 °C.** Fine for "is my rack/closet within range and
+trending safe," and enough to tell you a freezer has failed; not precise enough to serve as a
+calibrated record at a frozen-storage threshold. You can set a per-probe calibration offset in the app
+to trim it to a reference thermometer. It is **not** a certified, NIST-traceable, or medical/lab
+instrument.
 
 **Does it need the internet or an account?** No. It talks only to the hub on your local network. No
 account, no cloud, no telemetry. Internet is only needed if you want *email* alerts to leave your LAN.
@@ -142,8 +145,9 @@ us.
 
 ## Honest claims (keep this)
 
-Setpoint is a general-purpose monitoring device. Stated accuracy (±0.5 °C typical) is the sensor's
-uncalibrated datasheet figure — resolution (0.0625 °C) is not accuracy. It is **not** a certified,
+Setpoint is a general-purpose monitoring device. Stated accuracy (±0.5 °C typical from −10 to +85 °C,
+±2 °C outside that band) is the sensor's uncalibrated datasheet figure — resolution (0.0625 °C) is not
+accuracy. It is **not** a certified,
 NIST-traceable, medical, food-safety, or regulatory-compliance instrument, and is not sold for those
 uses. Local alerting depends on power to the probe, your network, and the hub; pair it with a UPS if
 power-loss detection matters.

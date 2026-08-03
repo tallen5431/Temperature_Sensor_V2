@@ -23,8 +23,9 @@ Break these and the post reads like an ad and gets removed:
    outage. Say so, and mention a UPS. Never overclaim.
 4. **State the real requirement up front:** it needs an always-on PC/NAS on the same LAN. Saying
    this early filters out the wrong buyer instead of earning a refund later.
-5. **Accuracy honestly:** ±0.5 °C typical, uncalibrated (DS18B20 datasheet). 0.0625 °C is
-   *resolution*, not accuracy. 2.4 GHz Wi-Fi only.
+5. **Accuracy honestly:** ±0.5 °C typical from −10 to +85 °C, uncalibrated (DS18B20 datasheet);
+   **±2 °C below −10 °C, which includes a freezer.** 0.0625 °C is *resolution*, not accuracy.
+   2.4 GHz Wi-Fi only. Post the band, not just the good half — this crowd checks datasheets.
 6. **Disclose that you made it,** in the first line, every time.
 
 ---
@@ -45,8 +46,9 @@ If that bothers you, keep it on your LAN.
 
 Fair disclosure — I build one of these (Setpoint). It's an ESP32-C3 + DS18B20 probe that
 reports to a small hub app you run on your own PC/NAS; SQLite on your disk, Prometheus
-/metrics, MQTT + HA auto-discovery, CSV export, no account. The hub software is free
-and open, so you can point your own ESP32 at it without buying anything from me:
+/metrics, MQTT + HA auto-discovery, CSV export, no account. The firmware is open source
+(MIT) and the hub app is a free download, so you can point your own ESP32 at it without
+buying anything from me:
 github.com/tallen5431/Temperature_Sensor_V2
 
 Two honest catches: it needs an always-on machine on the same network, and LAN sensors
@@ -64,7 +66,7 @@ the person who recommends you in the next thread.
 Check each sub's self-promo rules first (many require a flair, a designated day, or a
 helpful-comment ratio). Post the photos: the unit, the dashboard, the rack install.
 
-**Title:** `I got tired of cloud thermometers, so I built a local-first rack temperature monitor (open firmware + hub)`
+**Title:** `I got tired of cloud thermometers, so I built a local-first rack temperature monitor (open firmware + free self-hosted hub)`
 
 ```
 I build embedded hardware, and I wanted rack/closet temperature monitoring that couldn't
@@ -89,14 +91,15 @@ Honest limitations, because this sub will find them anyway:
 - It needs an always-on PC/NAS on the same network. If you don't have one, this is the
   wrong tool.
 - 2.4 GHz Wi-Fi only.
-- ±0.5 °C typical, uncalibrated (DS18B20 datasheet). The 0.0625 °C figure you'll see is
-  resolution, not accuracy. There's a per-probe offset in the UI to trim against a
-  reference.
+- ±0.5 °C typical from −10 to +85 °C, uncalibrated (DS18B20 datasheet); ±2 °C below −10 °C,
+  so a −18 °C freezer is in the ±2 band. The 0.0625 °C figure you'll see is resolution, not
+  accuracy. There's a per-probe offset in the UI to trim against a reference.
 - It survives an internet or vendor outage, NOT a power outage — the sensor and your
   router die with the power. UPS the router and hub if it matters.
 
-The hub and firmware are open and free — if you already have an ESP32 and a DS18B20, you
-can run the whole thing without buying anything from me:
+The firmware is open source (MIT) and the hub app is free to download and run — if you
+already have an ESP32 and a DS18B20, you can run the whole thing without buying anything
+from me:
 github.com/tallen5431/Temperature_Sensor_V2
 
 I also sell it as a DIY kit for people who'd rather not source parts. Not linking it here
@@ -127,10 +130,12 @@ Setup is an ESP32-C3 + waterproof DS18B20 that POSTs to a small hub app on your 
 export, so you get long-term data independent of your recorder retention, and it publishes
 to MQTT for HA. There's also a Prometheus /metrics endpoint if you're scraping to Grafana.
 
-Firmware and hub are open and free — an existing ESP32 + DS18B20 works, nothing to buy:
+Firmware is open source (MIT), hub app is free — an existing ESP32 + DS18B20 works,
+nothing to buy:
 github.com/tallen5431/Temperature_Sensor_V2
 
-Caveats: 2.4 GHz only, ±0.5 °C typical uncalibrated (there's a per-probe offset to trim it),
+Caveats: 2.4 GHz only, ±0.5 °C typical uncalibrated from −10 to +85 °C and ±2 °C outside that
+band, so a freezer is in the ±2 range (there's a per-probe offset to trim it),
 and it needs the hub running on something always-on. A power cut takes down the sensor and
 router like any LAN device, so UPS anything you actually rely on.
 ```
@@ -165,13 +170,14 @@ Details this crowd tends to ask about:
   always-on over USB.
 - Deployment: Windows/Linux natively, or docker compose on a NAS.
 
-Honest specs: 2.4 GHz Wi-Fi only; ±0.5 °C typical, uncalibrated (DS18B20 datasheet —
+Honest specs: 2.4 GHz Wi-Fi only; ±0.5 °C typical from −10 to +85 °C and ±2 °C below that
+(a −18 °C freezer is in the ±2 band), uncalibrated (DS18B20 datasheet —
 0.0625 °C is resolution, not accuracy, and there's a per-probe offset to trim against your
 own reference). Needs an always-on machine on the same LAN. Survives internet/vendor
 outages, not power outages — UPS the router and hub for anything critical.
 
-Everything (hub + firmware + browser flasher) is open and free, so you can run it on an
-ESP32 you already own: github.com/tallen5431/Temperature_Sensor_V2
+The firmware is open source (MIT); the hub app and the browser flasher are free to use.
+So you can run it on an ESP32 you already own: github.com/tallen5431/Temperature_Sensor_V2
 
 Feedback welcome, especially on the provisioning flow and what you'd want from the alerting.
 ```
@@ -234,8 +240,8 @@ These appear across the go-to-market docs and the site — change them together 
 "Keep in sync by hand" in [`../site/README.md`](../site/README.md)):
 
 - **DIY kit price** — currently **$39**.
-- **Battery life** — "weeks," pending real bench numbers.
-- **Firmware version** — currently **2.7.0**.
-- **Accuracy claim** — ±0.5 °C typical, uncalibrated. Only a unit that passed the ice-bath
+- **Battery life** — do **not** claim "weeks." `site/field-test.html` states run-to-empty "was not exercised and remains pending," so say the hardware (USB-C, 18650, hard power switch) and leave runtime unstated until measured.
+- **Firmware version** — currently **2.8.2** (hub **2.6.2**).
+- **Accuracy claim** — ±0.5 °C typical from −10 to +85 °C, ±2 °C outside that band, uncalibrated. Post the whole band, never just the ±0.5 half. Only a unit that passed the ice-bath
   check in [`QC_CHECKLIST.md`](QC_CHECKLIST.md) §5.3 may be described as "verified at 0 °C to
   within ±0.5 °C."

@@ -71,7 +71,7 @@ so your readings never leave the building and your alerts keep working even when
 | Spec | Setpoint |
 |---|---|
 | Sensor | Maxim **DS18B20**, waterproof stainless probe (1 m lead) |
-| Accuracy | **±0.5 °C typical, uncalibrated** (add a per-probe offset in the app). Resolution 0.0625 °C is *not* accuracy. |
+| Accuracy | **±0.5 °C typical from −10 °C to +85 °C, uncalibrated; ±2 °C below −10 °C (includes a typical −18 °C freezer)** (add a per-probe offset in the app). Resolution 0.0625 °C is *not* accuracy. |
 | Connectivity | **2.4 GHz** Wi-Fi (no 5 GHz) |
 | Power | **Portable:** rechargeable 18650 via TP4056 charge/protect, deep-sleeps between reads (**cell not included**). **Fixed:** USB 5 V always-on, no battery. |
 | Probes per hub | Dozens — one hub covers a whole rack/site |
@@ -100,7 +100,7 @@ free hub. If you don't already leave a machine on 24/7, this isn't the right pic
 
 ### FAQ
 - **Needs internet/an account?** No — LAN only. Internet is only used if you want email alerts to leave your network.
-- **Accuracy?** ±0.5 °C typical, uncalibrated — great for "is my rack within range and trending safe." Not a certified/NIST/medical instrument.
+- **Accuracy?** ±0.5 °C typical from −10 to +85 °C; ±2 °C below that, including a typical freezer. Uncalibrated. Great for "is my rack within range and trending safe," and enough to tell you a freezer failed. Not a certified/NIST/medical instrument.
 - **Wi-Fi?** 2.4 GHz only. Setup is on-device (join the probe's temporary network, pick yours) — no phone app.
 - **Battery?** Runs on one **18650** (not included — lithium shipping rules). Add any reputable ~2500–3500 mAh flat-top or protected cell; the on-board TP4056 recharges it over USB-C. Or run it always-on from USB with no cell at all.
 - **Power loss?** Local alerts keep firing during a *WAN* outage, but nothing survives a full power loss — put your router/hub on a UPS if that's your risk.
