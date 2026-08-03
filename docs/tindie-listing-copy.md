@@ -4,9 +4,11 @@
 > the accuracy wording in `docs/WARRANTY.md` and `site/index.html`. If the accuracy band
 > changes in one place it must change in all four.
 >
-> **Do not put `support@datumlaboratories.com` in the Tindie support field until the
-> alias actually resolves.** Until then, Tindie's own *Ask a Question* / *Contact Store*
-> flow is the working channel and is what the copy below points at.
+> **Status: this copy is LIVE on the listing as of 2026-08-03.** Edit here first, then paste.
+>
+> `support@datumlaboratories.com` resolves (Zoho alias, delivery confirmed), so it is safe in
+> Tindie's support field — see the checklist in `docs/TINDIE_LISTING.md`. Tindie's own
+> *Ask a Question* / *Contact Store* flow stays available either way.
 
 ---
 
