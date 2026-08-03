@@ -13,7 +13,7 @@ certificate pending), **rev-2 is built and bench-verified**, the **warranty and 
 doc now name Datum Laboratories LLC**, and **BOM.md is corrected to the ESP32-C3 SuperMini**. What is
 left, in critical-path order for *this* doc's concerns (buying, gates, repo fixes):
 
-1. **Stand up the `support@datumlaboratories.com` alias** (Cloudflare Email Routing, free, ~2 min).
+1. **Stand up the `support@datumlaboratories.com` alias** — add `support@` as an **alias in Zoho Mail** (Admin Console → Users → your user → Mail Alias). Free, no DNS change, ~2 min. **Do NOT enable Cloudflare Email Routing** — it seizes the domain's MX and would kill `thomas.allen@datumlaboratories.com`.
    Six shipped documents, the product label spec and the root `LICENSE` all point at it and it does
    not resolve yet. **Nothing ships until this is done.**
 2. **Place the slow overseas order today** — DS18B20 probes + TP4056 boards are the 2–4 wk long-lead items. Add a small fast Amazon backup 5-pk of each so a slow shipment never blocks your first build.
@@ -202,7 +202,8 @@ The strategy docs are strong on FCC sequencing, margin, and the loaner motion. T
    is live, the LLC is filed, and WARRANTY, RETURNS, SUPPORT, PRIVACY, SECURITY and the EULA now carry
    **Datum Laboratories LLC**, the Kennesaw address and `support@datumlaboratories.com`.
    → **Remaining action:** the `support@` alias does not exist yet — the docs point at an address that
-   currently bounces. Stand it up (Cloudflare Email Routing is free) **before printing any label,
+   currently bounces. Add it as a **Zoho Mail alias** on the existing mailbox (not Cloudflare Email
+   Routing — the domain's MX points at Zoho and the two cannot both own it) **before printing any label,
    publishing the Tindie listing, or shipping a kit.**
 3. **No trademark clearance on "Setpoint"** — a dictionary word almost certainly crowded in USPTO Class 9 (measuring/monitoring instruments). → **First action:** run a free USPTO knockout search on "Setpoint" (Class 9) + "Datum Labs" this week; if crowded, rename before printing brand stock.
 4. **The launch is gated on a toolchain never even compiled — and compiling needs no board.** The FQBN/partition are documented-not-verified. → **First action:** run `arduino-cli compile --fqbn esp32:esp32:esp32c3` on `esp32_temp_probe/` today; only the upload step then needs hardware.

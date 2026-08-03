@@ -22,7 +22,9 @@ own PC (no cloud/account/subscription). Two versions — **Portable** (battery, 
       business bank account.
 - [ ] **2. ~~Buy a domain~~ (done — `datumlaboratories.com`) — turn on the `support@` alias.**
       Every shipped legal doc now points at `support@datumlaboratories.com` and it does not resolve yet.
-      Cloudflare Email Routing does it free in about two minutes.
+      Add it as an **alias in Zoho Mail** on the existing mailbox — free, no DNS change, ~2 min.
+      **Not** Cloudflare Email Routing: the domain's MX points at Zoho, and Email Routing would
+      seize MX and break `thomas.allen@datumlaboratories.com`.
 - [ ] **3. Compile the firmware** (no board needed) — proves the toolchain:
   ```
   arduino-cli core install esp32:esp32
