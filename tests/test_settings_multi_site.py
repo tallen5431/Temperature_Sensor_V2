@@ -134,3 +134,35 @@ def test_site_report_separates_forwarded_from_local(tmp_path):
     assert "atlanta" in r.stdout and "(local)" in r.stdout
     # The line that diagnoses two hubs fighting over one probe.
     assert "posting directly to THIS hub" in r.stdout
+
+
+def test_auto_provision_off_stops_the_provisioner_without_a_restart(tmp_path):
+    """Two hubs on one LAN take turns claiming the same probes. Turning the
+    switch off in Settings has to actually stop it — a flag only read at boot
+    would save, change nothing, and read as a broken control."""
+    from core.config import Config
+    from provisioner import AutoProvisioner
+
+    seen = []
+
+    class _Discovery:
+        def list_probes(self):
+            seen.append(1)
+            return {}
+
+    cfg = Config(tmp_path / "c.json")
+    p = AutoProvisioner(discovery=_Discovery(), public_base_func=lambda: "http://hub:8088",
+                        token="T", cfg=cfg)
+
+    p._run_cycle()
+    assert seen, "a cycle with auto_provision defaulted on must scan"
+
+    seen.clear()
+    cfg.update({"auto_provision": False})
+    p._run_cycle()
+    assert seen == [], "auto_provision:false must stop the cycle, no restart needed"
+
+    seen.clear()
+    cfg.update({"auto_provision": True})
+    p._run_cycle()
+    assert seen, "turning it back on must resume, also without a restart"

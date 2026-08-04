@@ -112,6 +112,16 @@ class AutoProvisioner(threading.Thread):
     def _run_cycle(self):
         """One provisioning pass over the discovery list (factored out of
         :meth:`run` so tests can drive cycles synchronously)."""
+        # Re-read the switch every cycle rather than only at boot. Turning
+        # "automatically configure probes" off in Settings has to actually stop
+        # the claiming — otherwise the setting saves, the hub keeps re-pointing
+        # probes at itself, and the operator concludes the switch does nothing.
+        # It matters most on a head-office hub, where leaving this on means HQ
+        # and a store hub on the same network take turns stealing each other's
+        # probes. cfg is optional (tests construct without one) — absent means
+        # the old always-on behaviour.
+        if self.cfg is not None and not self.cfg.get("auto_provision", True):
+            return
         # Evict probes that have been gone long enough that they should
         # no longer occupy the Devices list (bounds memory over time).
         try:

@@ -227,6 +227,22 @@ IntegrationsCard = dbc.Card(dbc.CardBody([
 ]), className="mb-3")
 
 
+ProbeManagementCard = dbc.Card(dbc.CardBody([
+    html.H5("Probes", className="card-title"),
+    dbc.Switch(id="auto-provision-enabled",
+               label="Automatically configure probes found on this network",
+               value=True),
+    html.Small(
+        "On by default: the hub finds probes over the network and points them at "
+        "itself, so a new probe just works. Turn it off if you configure probes by "
+        "hand, or on a head-office hub that only receives forwarded readings — two "
+        "hubs on one network with this on will take turns claiming the same probes.",
+        className="text-muted d-block mt-1"),
+    dbc.Button("Save", id="auto-provision-save", color="primary", className="mt-3"),
+    html.Div(id="auto-provision-status", className="mt-2"),
+]), className="mb-3")
+
+
 MultiSiteCard = dbc.Card(dbc.CardBody([
     html.H5("Multi-site", className="card-title"),
     html.P("Running more than one location? Each site keeps its own hub, its own "
@@ -282,7 +298,7 @@ MultiSiteCard = dbc.Card(dbc.CardBody([
 
 
 SettingsPanel = html.Div([NotificationSettings, IntegrationsCard,
-                          MultiSiteCard, DataManagement])
+                          ProbeManagementCard, MultiSiteCard, DataManagement])
 
 
 def _ok(msg):
@@ -517,6 +533,31 @@ def register_settings_callbacks(app, cfg, public_base_func=None):
     )
     def _toggle_mqtt(enabled):
         return bool(enabled)
+
+    # --- Probes (auto-provisioning) -------------------------------------------
+    @app.callback(
+        Output("auto-provision-enabled", "value"),
+        Input("settings-loaded", "n_intervals"),
+    )
+    def _load_auto_provision(_n):
+        return bool(cfg.get("auto_provision", True))
+
+    @app.callback(
+        Output("auto-provision-status", "children"),
+        Input("auto-provision-save", "n_clicks"),
+        State("auto-provision-enabled", "value"),
+        prevent_initial_call=True,
+    )
+    def _save_auto_provision(_n, enabled):
+        try:
+            cfg.update({"auto_provision": bool(enabled)})
+        except Exception as e:  # noqa: BLE001
+            return _err(f"Could not save: {e}")
+        # Takes effect on the provisioner's next cycle (~10 s) — no restart.
+        if enabled:
+            return _ok("Saved — the hub will configure probes it finds on this network.")
+        return _ok("Saved — the hub will stop claiming probes within about 10 seconds. "
+                   "Probes already pointed here keep reporting to it.")
 
     # --- Multi-site (upstream roll-up) ---------------------------------------
     @app.callback(
