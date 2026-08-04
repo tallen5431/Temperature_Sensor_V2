@@ -49,6 +49,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from dataclasses import dataclass
 
 log = logging.getLogger("hub.forwarder")
 
@@ -82,6 +83,14 @@ _BACKOFF_START = 5
 _BACKOFF_MAX = 300
 
 
+@dataclass(frozen=True)
+class _CycleResult:
+    """Outcome needed by the thread wrapper without rereading cycle config."""
+
+    readings_sent: int = 0
+    full_batch: bool = False
+
+
 def _cfg_block(cfg) -> dict:
     try:
         block = cfg.get("upstream") or {}
@@ -91,11 +100,12 @@ def _cfg_block(cfg) -> dict:
 
 
 def batch_size(block: dict) -> int:
-    """Rows per upstream request, clamped to the protocol's 1..1000.
+    """Rows (and events) per upstream request, clamped to the protocol's 1..1000.
 
-    Shared by the cycle that reads the batch and the pump that decides how long
-    to sleep afterwards — those two disagreeing is what made a configured batch
-    below the default drain a backlog at one batch per interval (see ``run``).
+    One definition, so the limit the cycle reads with and the limit it judges
+    "was this batch full?" against cannot drift — that pair disagreeing is what
+    made a configured batch below the default drain a backlog at one batch per
+    interval (see :class:`_CycleResult` and ``run``).
     """
     try:
         return max(1, min(int(block.get("batch") or DEFAULT_BATCH), MAX_BATCH))
@@ -196,17 +206,17 @@ class UpstreamForwarder(threading.Thread):
     def run_once(self) -> int:
         """Forward at most one batch. Returns rows accepted upstream (0 if idle)."""
         with self._cycle_lock:
-            return self._run_once_locked()
+            return self._run_once_locked().readings_sent
 
-    def _run_once_locked(self) -> int:
+    def _run_once_locked(self) -> _CycleResult:
         block = _cfg_block(self.cfg)
         if not block.get("enabled"):
-            return 0
+            return _CycleResult()
         url = ingest_url(block.get("url"))
         if not url:
             self.last_error = "No head-office address set."
             log.warning("upstream.enabled is set but upstream.url is empty; nothing to do")
-            return 0
+            return _CycleResult()
         site = str(block.get("site") or "").strip()
         if not site:
             # Without a site label HQ cannot tell this store's readings from any
@@ -214,7 +224,7 @@ class UpstreamForwarder(threading.Thread):
             # anonymous heap that no later migration can separate.
             self.last_error = "No site name set."
             log.warning("upstream.enabled is set but upstream.site is empty; refusing to forward")
-            return 0
+            return _CycleResult()
         batch = batch_size(block)
 
         last = self._cursor(_HWM_KEY)
@@ -224,7 +234,7 @@ class UpstreamForwarder(threading.Thread):
         if not rows and not events:
             self._backoff = 0
             self.last_error = ""
-            return 0
+            return _CycleResult()
 
         status = post_batch(url, str(block.get("token") or ""), site, rows, events)
         if 200 <= status < 300:
@@ -238,7 +248,10 @@ class UpstreamForwarder(threading.Thread):
             self.last_sent_epoch = time.time()
             log.info("forwarded %d readings, %d events to %s as site=%s",
                      len(rows), len(events), url, site)
-            return len(rows)
+            # Each cursor has its own limit. Either collection filling that
+            # limit means its cursor may have more work immediately available.
+            return _CycleResult(len(rows),
+                                len(rows) >= batch or len(events) >= batch)
 
         # 4xx means the request itself is wrong (bad token, malformed body).
         # Retrying identical bytes will not fix it, so keep the cursor and let the
@@ -247,7 +260,7 @@ class UpstreamForwarder(threading.Thread):
         self.last_error = _explain(status)
         log.warning("upstream POST %s -> %s; %d readings held, retrying in %ds",
                     url, status or "no response", len(rows), self._backoff)
-        return 0
+        return _CycleResult()
 
     def _cursor(self, key: str) -> int:
         try:
@@ -266,10 +279,11 @@ class UpstreamForwarder(threading.Thread):
         log.info("upstream forwarder started")
         while not self.stop_event.is_set():
             try:
-                sent = self.run_once()
+                with self._cycle_lock:
+                    result = self._run_once_locked()
             except Exception:  # noqa: BLE001 - a pump must not die on one bad cycle
                 log.exception("forwarder cycle failed")
-                sent = 0
+                result = _CycleResult()
                 self._backoff = min(_BACKOFF_MAX, (self._backoff or _BACKOFF_START) * 2)
             block = _cfg_block(self.cfg)
             try:
@@ -278,11 +292,15 @@ class UpstreamForwarder(threading.Thread):
                 interval = DEFAULT_INTERVAL_SEC
             # A full batch means there is more waiting — drain promptly instead of
             # sleeping a full interval per batch, or a big backlog takes hours.
-            # Compared against the CONFIGURED batch, not DEFAULT_BATCH: with
-            # upstream.batch set to anything below 500 a full batch could never
-            # reach the constant, so the fast-drain never engaged and a hub coming
-            # back from a long outage caught up at one batch per interval.
-            delay = self._backoff or (1 if sent >= batch_size(block) else max(5, interval))
+            # "Full" is decided by the cycle itself (see _CycleResult), for two
+            # reasons the caller cannot see. It compares against the CONFIGURED
+            # batch, not DEFAULT_BATCH — with upstream.batch below 500 a full
+            # batch could never reach the constant, so the fast-drain never
+            # engaged and a hub back from an outage caught up at one batch per
+            # interval. And it counts EITHER cursor: readings and events have
+            # separate limits, and an events-only backlog is not a corner case —
+            # offline events fire precisely when readings have stopped arriving.
+            delay = self._backoff or (1 if result.full_batch else max(5, interval))
             self.stop_event.wait(delay)
 
     def stop(self) -> None:

@@ -142,23 +142,13 @@ def test_stop_clears_the_announce_cap_flag():
     ("abc", 500),       # junk from a hand-edited config
 ])
 def test_batch_size_is_one_definition(configured, expected):
-    """The cycle that READS a batch and the pump that decides how long to sleep
-    have to agree on its size — they didn't, and the disagreement is what made a
-    non-default batch drain a backlog at one batch per interval."""
+    """One clamp for the row limit, whatever a hand-edited config holds.
+
+    The end-to-end behaviour this feeds — a full batch draining at one second
+    instead of a whole interval, for readings OR events — is driven through the
+    real ``run()`` loop in test_forwarder.py; this only pins the clamp itself.
+    """
     from core.forwarder import batch_size
 
     block = {} if configured is None else {"batch": configured}
     assert batch_size(block) == expected
-
-
-def test_a_full_batch_drains_fast_at_any_configured_size(tmp_path):
-    """A hub back from an outage must catch up in minutes, not hours. The
-    fast-drain test compared against the 500-row constant, so with
-    upstream.batch=100 a full batch could never reach it and every cycle slept
-    the full interval."""
-    from core.forwarder import batch_size
-
-    block = {"batch": 100, "interval_sec": 30}
-    sent = 100  # one full batch — there is certainly more waiting
-    delay = 1 if sent >= batch_size(block) else max(5, block["interval_sec"])
-    assert delay == 1, "a full batch must not sleep a whole interval"
