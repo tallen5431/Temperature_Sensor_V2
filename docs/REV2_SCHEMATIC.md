@@ -19,6 +19,11 @@
                                      [ESP32-C3-MINI-1]  EN net    LED(active-low) DS18B20 data
 ```
 
+> **Planning a respin?** [`REV3_NOTES.md`](REV3_NOTES.md) collects the changes worth making
+> before the SDoC is signed — charge-complete detection (TP4056 `STDBY` is no-connected here),
+> a battery-sense divider that switches on the hub's already-built battery UI, and the charge
+> current / enclosure thermal trade-off. All of it is free now and costly after the test.
+
 ## Net 1 — VIN (raw supply, ~3.0–4.2 V battery or 5 V USB)
 
 | From | To |

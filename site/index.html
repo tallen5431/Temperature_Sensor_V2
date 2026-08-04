@@ -396,7 +396,12 @@
         <canvas id="trace" aria-label="Live temperature trace crossing a setpoint threshold"></canvas>
         <div class="device-foot">
           <span>● LIVE · 2.4 GHz</span>
-          <span id="linkText">RSSI −52 dBm · BATT 87%</span>
+          <!-- Only show readouts the shipping product actually has. RSSI and
+               battery % were here, and neither reaches the hub: the ingest
+               payload is timestamp/temperature_c/temperature_f/probe_id, the
+               hub has no RSSI concept, and no board revision has a battery-sense
+               circuit. "Last reading" is on every real probe card. -->
+          <span id="linkText">UPDATED 4s AGO</span>
         </div>
       </div>
     </div>
@@ -808,14 +813,14 @@
     return c;
   }
 
-  var batt = 87;
   function tick() {
     t += 1;
     data.push(sample(t));
     data.shift();
-    if (t % 40 === 0) { batt = Math.max(11, batt - 1); }
-    var rssi = -50 - Math.round(6 + 5 * Math.sin(t * 0.05));
-    linkText.textContent = "RSSI " + rssi + " dBm · BATT " + batt + "%";
+    // Counts up to the read interval, then resets — the same "last reading"
+    // freshness every real probe card shows. Nothing here claims a readout the
+    // hardware cannot produce.
+    linkText.textContent = "UPDATED " + (t % 30) + "s AGO";
     draw();
   }
 
