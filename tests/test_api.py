@@ -527,3 +527,44 @@ def test_backlog_breach_is_recorded_even_though_probe_recovered(tmp_path):
     assert ev["kind"] == "high" and ev["probe_id"] == "Freezer"
     assert float(ev["temperature_c"]) == -5.0        # the WORST excursion
     assert float(ev["limit_c"]) == -15.0
+
+
+def test_backfill_logs_an_old_breach_but_not_the_newest_row(tmp_path):
+    """/ingest_csv records the worst excursion in a batch, because the alert
+    engine only ever evaluates a probe's LATEST reading and would miss a freezer
+    that thawed while the hub was down.
+
+    But it must NOT record one for the batch's newest row: the engine sees that
+    one and logs it live, so recording it here too double-logs the breach. This
+    was invisible while /ingest_csv only served probes draining a buffer — a
+    FORWARDING hub (multi-site) sends every batch through it, so on an HQ hub
+    every store breach landed in the event log twice.
+    """
+    db = Database(tmp_path / "api.db")
+    cfg = Config(tmp_path / "config.json")
+    cfg.update({"provision_token": "supersecret",
+                "alert_thresholds": {"default": {"min": 0.0, "max": 8.0}}})
+    app = Flask(__name__)
+    app.register_blueprint(create_api(cfg, db, FakeDiscovery(),
+                                      lambda: "http://hub:8088", ""))
+    client = app.test_client()
+
+    # A backlog whose breach is in the MIDDLE and whose newest row is in spec:
+    # the engine will never see the 12 C row, so backfill must log it.
+    client.post("/api/ingest_csv", json={"readings": [
+        {"timestamp": "2026-01-01T10:00:00", "temperature_c": 4.0, "probe_id": "P"},
+        {"timestamp": "2026-01-01T10:01:00", "temperature_c": 12.0, "probe_id": "P"},
+        {"timestamp": "2026-01-01T10:02:00", "temperature_c": 4.2, "probe_id": "P"},
+    ]})
+    p_events = [e for e in db.list_events(limit=20) if e["probe_id"] == "P"]
+    assert [e["kind"] for e in p_events] == ["high"], \
+        f"an excursion the engine cannot see must be logged, got {p_events}"
+
+    # A batch whose breach IS the newest row: the engine will evaluate it, so
+    # backfill must stay quiet rather than duplicating it.
+    client.post("/api/ingest_csv", json={"readings": [
+        {"timestamp": "2026-01-01T11:00:00", "temperature_c": 4.0, "probe_id": "Q"},
+        {"timestamp": "2026-01-01T11:01:00", "temperature_c": 13.0, "probe_id": "Q"},
+    ]})
+    q_events = [e for e in db.list_events(limit=20) if e["probe_id"] == "Q"]
+    assert q_events == [], f"newest-row breach must be left to the alert engine, got {q_events}"

@@ -756,6 +756,17 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
             # live notification: it is old news by definition, and this runs on a
             # request thread.
             for pid, (kind, t_c, limit, when) in worst.items():
+                # ...but ONLY for excursions the alert engine will not see. If the
+                # worst excursion IS this probe's newest row, the engine evaluates
+                # it on its next pass and logs it live, so recording it here too
+                # double-logs the same breach. That was invisible while
+                # /ingest_csv only ever served probes draining a buffer; a
+                # FORWARDING hub sends every batch through this endpoint, so on an
+                # HQ hub every single store breach was landing in the event log
+                # twice. Backfill exists for breaches that are already old news —
+                # those still get their entry.
+                if newest.get(pid) and newest[pid][0] == when:
+                    continue
                 try:
                     db.record_event(kind, pid, temperature_c=t_c, limit=limit, ts=when)
                     log.info("backfilled %s breach for probe=%r at %s (%.2f C)",
