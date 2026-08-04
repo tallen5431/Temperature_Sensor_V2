@@ -217,6 +217,29 @@ def normalize_config(raw: Any) -> Tuple[Dict[str, Any], Warnings]:
     if isinstance(settings, dict):
         _fix_number(settings, "vpd_leaf_offset_c", 0.0, None, False, warns)
 
+    # --- upstream (multi-site roll-up; see core/forwarder.py) ---------------
+    upstream = cfg.get("upstream")
+    if "upstream" in cfg and not isinstance(upstream, dict):
+        warns.append("upstream must be an object; resetting")
+        cfg["upstream"] = {}
+        upstream = cfg["upstream"]
+    if isinstance(upstream, dict):
+        _fix_bool(upstream, "enabled", False, warns, label="upstream.enabled")
+        for f in ("url", "token", "site"):
+            if f in upstream and upstream[f] is not None and not isinstance(upstream[f], str):
+                warns.append(f"upstream.{f} must be a string; coercing")
+                upstream[f] = str(upstream[f])
+        if "interval_sec" in upstream:
+            _fix_number(upstream, "interval_sec", 30, 5, True, warns)
+        if "batch" in upstream:
+            _fix_number(upstream, "batch", 500, 1, True, warns)
+            if upstream.get("batch", 1) > 1000:
+                # PROTOCOL.md §7 caps /ingest_csv at 1000 rows per request; a
+                # larger batch would be rejected wholesale every cycle and the
+                # backlog would never drain.
+                warns.append("upstream.batch above the 1000-row protocol cap; using 1000")
+                upstream["batch"] = 1000
+
     mqtt = cfg.get("mqtt")
     if "mqtt" in cfg and not isinstance(mqtt, dict):
         warns.append("mqtt must be an object; resetting")

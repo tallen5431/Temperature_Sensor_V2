@@ -149,7 +149,21 @@ class Database:
                     conn.execute(f"ALTER TABLE readings ADD COLUMN {col} REAL")
                 except sqlite3.OperationalError:
                     pass  # column already present
+            # ``site`` names which building a reading came from. Empty for every
+            # locally-ingested reading (the overwhelmingly common case, and what
+            # a single-site hub stays forever); set only on rows an upstream
+            # forwarder pushed here from another hub. TEXT, not REAL, so it gets
+            # its own ALTER — see core/forwarder.py and docs/MULTI_SITE.md.
+            try:
+                conn.execute("ALTER TABLE readings ADD COLUMN site TEXT NOT NULL DEFAULT \'\'")
+            except sqlite3.OperationalError:
+                pass
             conn.execute("CREATE INDEX IF NOT EXISTS idx_readings_epoch ON readings(epoch)")
+            # Small durable key/value scratchpad. The upstream forwarder keeps
+            # its high-water mark here so a hub restart neither re-sends the
+            # whole history nor silently skips the rows written while it was
+            # down. Deliberately generic — a second consumer beats a second table.
+            conn.execute("CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)")
             # One physical reading per (probe, instant): a UNIQUE index makes
             # ingest idempotent, so a re-sent bulk chunk (a dropped ACK on a
             # /ingest_csv flush) or a replayed single POST cannot create
@@ -218,7 +232,8 @@ class Database:
     # -- writes ----------------------------------------------------------------
     def append(self, ts: str, t_c: float, t_f: float, probe_id: str = "",
                humidity: float | None = None, vpd: float | None = None,
-               battery: float | None = None, epoch: float | None = None) -> None:
+               battery: float | None = None, epoch: float | None = None,
+               site: str = "") -> None:
         # ``epoch`` lets the caller supply the TRUE instant when the incoming
         # timestamp carried timezone info. Re-deriving it from the local-naive
         # ``ts`` is ambiguous during the DST fall-back hour, where two readings an
@@ -229,11 +244,12 @@ class Database:
         with self._write_lock:
             conn.execute(
                 "INSERT OR IGNORE INTO readings (ts, epoch, temperature_c, temperature_f, probe_id, "
-                "humidity_pct, vpd_kpa, battery_pct) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "humidity_pct, vpd_kpa, battery_pct, site) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (str(ts), epoch, float(t_c), float(t_f), probe_id or "",
                  (float(humidity) if humidity is not None else None),
                  (float(vpd) if vpd is not None else None),
-                 (float(battery) if battery is not None else None)),
+                 (float(battery) if battery is not None else None),
+                 site or ""),
             )
             conn.commit()
 
@@ -269,7 +285,7 @@ class Database:
         except Exception:
             pass  # an event is telemetry — never worth failing the caller over
 
-    def bulk_insert(self, rows) -> int:
+    def bulk_insert(self, rows, site: str = "") -> int:
         """Insert many readings in one transaction.
 
         Accepts either ``(ts, t_c, t_f, probe_id)`` or the richer
@@ -305,7 +321,7 @@ class Database:
             exact = row[7] if len(row) > 7 else None
             epoch = iso_to_epoch(ts) if exact is None else float(exact)
             params.append((str(ts), epoch, float(t_c), float(t_f),
-                           (pid or ""), _f(hum), _f(vpd), _f(bat)))
+                           (pid or ""), _f(hum), _f(vpd), _f(bat), site or ""))
         if not params:
             return 0
         conn = self._conn()
@@ -313,8 +329,8 @@ class Database:
             before = conn.total_changes
             conn.executemany(
                 "INSERT OR IGNORE INTO readings (ts, epoch, temperature_c, temperature_f, "
-                "probe_id, humidity_pct, vpd_kpa, battery_pct) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "probe_id, humidity_pct, vpd_kpa, battery_pct, site) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 params,
             )
             conn.commit()
@@ -946,6 +962,51 @@ class Database:
             n += 1
         wb.save(file_obj)
         return n
+
+
+
+    # ---- multi-site forwarding support (see core/forwarder.py) ---------------
+
+    def meta_get(self, key: str, default: str = "") -> str:
+        """Read a durable scratchpad value. Missing key -> ``default``."""
+        row = self._conn().execute("SELECT v FROM meta WHERE k = ?", (key,)).fetchone()
+        return row[0] if row else default
+
+    def meta_set(self, key: str, value: str) -> None:
+        conn = self._conn()
+        with self._write_lock:
+            conn.execute("INSERT INTO meta (k, v) VALUES (?, ?) "
+                         "ON CONFLICT(k) DO UPDATE SET v = excluded.v", (key, str(value)))
+            conn.commit()
+
+    def rows_after(self, after_id: int, limit: int = 500, local_only: bool = True):
+        """Readings with ``id > after_id``, oldest first, for upstream forwarding.
+
+        ``local_only`` skips rows that arrived here *from* another hub (site set),
+        which is what stops two hubs pointed at each other from ping-ponging the
+        same readings forever. A store hub only ever forwards its own.
+
+        Ordering by the autoincrement id — not epoch — is deliberate: it is the
+        insertion order, so a probe draining a backlog of old readings still gets
+        forwarded, where an epoch-based cursor would skip anything older than the
+        high-water mark.
+        """
+        sql = ("SELECT id, ts, epoch, temperature_c, temperature_f, probe_id, "
+               "humidity_pct, vpd_kpa, battery_pct FROM readings WHERE id > ?")
+        if local_only:
+            sql += " AND (site IS NULL OR site = '')"
+        sql += " ORDER BY id LIMIT ?"
+        return self._conn().execute(sql, (int(after_id), int(limit))).fetchall()
+
+    def max_reading_id(self) -> int:
+        row = self._conn().execute("SELECT MAX(id) FROM readings").fetchone()
+        return int(row[0]) if row and row[0] is not None else 0
+
+    def sites(self):
+        """Distinct non-empty site names present in the store, alphabetically."""
+        return [r[0] for r in self._conn().execute(
+            "SELECT DISTINCT site FROM readings WHERE site IS NOT NULL AND site != '' "
+            "ORDER BY site").fetchall()]
 
 
 def migrate_csv_if_present(db: "Database", csv_path: str | Path) -> int:

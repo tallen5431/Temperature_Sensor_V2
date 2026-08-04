@@ -444,6 +444,20 @@ def _start_background_services(port: int):
                            discovery=finder)
     monitor.start()
 
+    # Optional multi-site roll-up — off unless the `upstream` config block
+    # enables it. A store hub pushes a copy of its readings to an aggregating
+    # hub head office runs; nothing leaves the building otherwise, and the store
+    # keeps its own database either way. See core/forwarder.py, docs/MULTI_SITE.md.
+    try:
+        from core.forwarder import UpstreamForwarder
+        if (cfg.get("upstream") or {}).get("enabled"):
+            UpstreamForwarder(db, cfg).start()
+            log.info("Upstream forwarder started (site=%s -> %s)",
+                     (cfg.get("upstream") or {}).get("site") or "?",
+                     (cfg.get("upstream") or {}).get("url") or "?")
+    except Exception:  # noqa: BLE001 - roll-up is optional; never block startup
+        log.exception("upstream forwarder failed to start")
+
     # Optional MQTT publishing (Home Assistant auto-discovery) — off unless the
     # `mqtt` config block enables it.
     try:

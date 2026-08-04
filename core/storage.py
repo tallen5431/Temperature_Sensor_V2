@@ -46,6 +46,20 @@ def sanitize_probe_id(probe_id) -> str:
     return _PROBE_ID_STRIP.sub("", str(probe_id))[:32]
 
 
+def sanitize_site(site) -> str:
+    """Coerce a site name to a safe token, same charset and cap as a probe id.
+
+    ``site`` labels which building a reading came from. It is empty for every
+    locally-ingested reading and set only on rows a store hub forwarded to an
+    aggregating hub, so an HQ dashboard can tell six stores apart. Sanitised
+    rather than rejected for the same reason probe ids are: a bad label must not
+    cost a good temperature reading.
+    """
+    if not site:
+        return ""
+    return _PROBE_ID_STRIP.sub("", str(site))[:32]
+
+
 def _local_iso_now() -> str:
     """Current local machine time as a naive ISO 8601 string (no tz suffix).
 

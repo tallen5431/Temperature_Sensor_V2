@@ -11,7 +11,7 @@ from provisioning import provision_probe, resolve_host, desired_probe_config
 from core.diagnostics import build_diagnostics
 from core.secret_compare import constant_time_eq
 from core.storage import (normalize_payload, extract_humidity, compute_vpd,
-                          sanitize_probe_id, is_future_stamp,
+                          sanitize_probe_id, sanitize_site, is_future_stamp,
                           absolute_epoch)
 try:  # battery telemetry helper — may be absent on an older core.storage build
     from core.storage import extract_battery
@@ -556,7 +556,7 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
         battery = extract_battery(data)
 
         db.append(ts, t_c, t_f, probe_id=probe_id, humidity=humidity, vpd=vpd,
-                  battery=battery,
+                  battery=battery, site=sanitize_site(request.headers.get("X-Site")),
                   # Carry the unambiguous instant when the probe sent one (it
                   # stamps in UTC), so the DST fall-back hour doesn't collapse
                   # two readings onto one epoch.
@@ -731,7 +731,13 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
         accepted = 0
         if valid:
             try:
-                accepted = db.bulk_insert(valid)
+                # Batch-level site (X-Site), not per-row: a forwarding hub sends
+                # only its own readings, so one label per batch cannot disagree
+                # with itself, and it works for the CSV body format too. Empty
+                # for a probe posting directly — every reading on a single-site
+                # hub — which is what keeps those rows eligible to forward.
+                accepted = db.bulk_insert(
+                    valid, site=sanitize_site(request.headers.get("X-Site")))
             except Exception:
                 HEALTH.record_failure()
                 log.exception("batch ingest write failed")

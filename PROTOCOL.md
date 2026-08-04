@@ -224,6 +224,14 @@ Every `interval_ms`, the probe POSTs the latest good reading to the provisioned
   voltage outside the plausible cell band (2.5–5.0 V) is sensor junk, not a nearly
   full/empty cell, and is treated as "no battery reading". When `battery_pct` is
   present it takes precedence and `battery_v` is not consulted.
+- **`site`** is **optional** and is sent as the **`X-Site` header**, not a body field —
+  it labels a whole batch, not a row. It exists for multi-site roll-up: a store hub
+  forwarding its readings to an aggregating hub tags them with its own site name so
+  head office can tell six stores apart. A probe posting directly never sends it, and
+  every reading on a single-site hub therefore carries `site = ''`. Sanitised to
+  `[A-Za-z0-9_-]`, 32 chars, like `probe_id`. Rows that carry a site are **not**
+  forwarded onward, which is what stops two hubs pointed at each other from looping.
+  See [`docs/MULTI_SITE.md`](docs/MULTI_SITE.md).
 - Both battery fields are **ignored when absent or invalid** — like humidity, battery
   is never a reason to reject a good temperature (see §6). The derived percentage is
   stored per reading and surfaced in the hub UI and readings API; adding these
