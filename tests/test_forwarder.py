@@ -46,6 +46,21 @@ class _Capture:
         return self.status
 
 
+class _RecordingStop:
+    """Let ``run`` execute a fixed number of cycles and record its delays."""
+
+    def __init__(self, cycles):
+        self.cycles = cycles
+        self.delays = []
+
+    def is_set(self):
+        return len(self.delays) >= self.cycles
+
+    def wait(self, delay):
+        self.delays.append(delay)
+        return self.is_set()
+
+
 def test_ingest_url_normalises():
     assert ingest_url("http://h:8088") == "http://h:8088/api/ingest_csv"
     assert ingest_url("http://h:8088/") == "http://h:8088/api/ingest_csv"
@@ -163,6 +178,35 @@ def test_batch_is_capped_to_the_protocol_limit(store, monkeypatch):
     monkeypatch.setattr("core.forwarder.post_batch", cap)
     UpstreamForwarder(db, cfg).run_once()
     assert len(cap.calls[0]["ids"]) == 5     # all five, but the request cap held
+
+
+def test_non_default_full_batches_fast_drain_then_partial_batch_waits(store, monkeypatch):
+    db, cfg = store
+    cfg.set("upstream", {**cfg.get("upstream"), "batch": 2, "interval_sec": 30})
+    _seed(db, 5)
+    cap = _Capture(200)
+    monkeypatch.setattr("core.forwarder.post_batch", cap)
+    stop = _RecordingStop(cycles=3)
+
+    UpstreamForwarder(db, cfg, stop).run()
+
+    assert [call["ids"] for call in cap.calls] == [[1, 2], [3, 4], [5]]
+    assert stop.delays == [1, 1, 30]
+
+
+def test_event_only_full_batch_fast_drains(store, monkeypatch):
+    db, cfg = store
+    cfg.set("upstream", {**cfg.get("upstream"), "batch": 2, "interval_sec": 30})
+    for _ in range(3):
+        db.record_event("offline", "Setpoint-9A3F2C")
+    cap = _Capture(200)
+    monkeypatch.setattr("core.forwarder.post_batch", cap)
+    stop = _RecordingStop(cycles=2)
+
+    UpstreamForwarder(db, cfg, stop).run()
+
+    assert [call["event_ids"] for call in cap.calls] == [[1, 2], [3]]
+    assert stop.delays == [1, 30]
 
 
 def test_events_forward_alongside_readings(store, monkeypatch):
