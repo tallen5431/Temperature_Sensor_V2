@@ -1,8 +1,10 @@
 # Multi-site — how head office sees six stores
 
-> **Status: Rung 2 (forwarding) is implemented and testable.** The roll-up UI is
-> not built yet; HQ sees forwarded readings on the normal dashboard today.
-> Code: [`core/forwarder.py`](../core/forwarder.py). Tests: `tests/test_forwarder.py`.
+> **Status: implemented and testable end to end** — stores forward, and HQ's
+> dashboard has a store picker that scopes the whole page.
+> Code: [`core/forwarder.py`](../core/forwarder.py),
+> [`components/dashboard_view.py`](../components/dashboard_view.py).
+> Tests: `tests/test_forwarder.py`, `tests/test_multi_site_dashboard.py`.
 
 ## The question, and the trap
 
@@ -155,16 +157,66 @@ Write more readings on the store side and call `run_once()` again — only the n
 ones go. Stop the HQ hub mid-test and watch the cursor hold: nothing is lost, and
 it catches up when HQ returns.
 
+**4. Open HQ's dashboard** at <http://127.0.0.1:8098/>. A **Site** control now
+sits beside "Viewing" (it was hidden before the first forward arrived). Repeat
+step 2 with `"site": "marietta"` and different temperatures to get a second
+store, then switch between them: every number, card and series on the page should
+move together. If any one of them disagrees with the picker, that is a bug —
+`tests/test_multi_site_dashboard.py` pins each surface.
+
+---
+
+## The HQ dashboard
+
+A **Site** picker appears next to "Viewing" in the focus bar. It is populated
+from `Database.sites()`, so it stays **invisible on a hub no one forwards to** —
+which is every hub until a chain runs one. Single-site users never learn the
+control exists.
+
+Selecting a store scopes the entire page, not part of it:
+
+| | scoped to the selected store |
+|---|---|
+| Temperature chart | ✅ |
+| Min / Max / Average | ✅ |
+| "Showing X of Y data points" (both numbers) | ✅ |
+| Probe status cards | ✅ |
+| Per-probe statistics | ✅ |
+| Humidity / VPD cards | ✅ |
+| Current-temperature gauge | ✅ |
+| "Connected Probes" KPI | ✅ |
+| "Last Update" KPI | ✅ |
+| Recent events feed | ✅ |
+| "Viewing" probe dropdown | ✅ (and a focus the store no longer contains resets to *All probes*) |
+
+**Three things deliberately do not filter**, and each would be a bug if it did:
+
+- **Alerts.** A breach in Savannah is still a breach while head office is looking
+  at Atlanta. The alert scan and the banner stay hub-wide.
+- **`/metrics`, `/api/probes`, `/api/health`.** A Prometheus scrape wants the
+  hub, not whatever a browser tab happens to be showing. `reporting_probe_ids()`
+  takes an optional `site` only for the KPI; every machine-facing caller leaves it
+  unset.
+- **The footer's "N probes online".** It is a hub health indicator shared with
+  Devices, Settings and Diagnostics, none of which have a site context.
+
+Cards belonging to a forwarding store carry a `⌂ store` line. HQ's own probes get
+no badge, so a single-site hub's cards are byte-for-byte what they were.
+
+**Probe names are per hub.** `probe_names` lives in HQ's own `config.json`, so a
+forwarded probe shows its raw id (`Setpoint-9A3F2C`) until someone names it at
+HQ. Naming it in the store's hub does not carry across — only readings forward.
+
 ---
 
 ## What is not built yet
 
 Honest list, so nobody sells past it:
 
-- **No roll-up UI.** HQ sees forwarded probes on the normal dashboard, mixed in
-  with its own. `Database.sites()` exists for grouping; the dashboard does not use
-  it yet. Friendly names (`probe_names`) are the interim answer.
 - **No per-site alerting rules.** Alerts evaluate per probe as they always have.
+- **Sites are not renameable from the UI.** The label is whatever the store hub's
+  `upstream.site` says; changing it there makes HQ show a new store alongside the
+  old one until the old rows age out.
 - **No remote administration.** Changing a store's thresholds still means reaching
   that store's hub. See below.
 - **Site is sender-declared.** The token authenticates the store; the label is

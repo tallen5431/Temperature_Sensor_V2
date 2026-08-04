@@ -374,17 +374,26 @@ class Database:
         ).fetchone()
         return dict(row) if row else None
 
-    def last_reading_epoch_per_probe(self, window_seconds: Optional[int] = None) -> dict:
+    def last_reading_epoch_per_probe(self, window_seconds: Optional[int] = None,
+                                     site: Optional[str] = None) -> dict:
         """Map ``probe_id -> epoch of its most recent reading`` within the window.
 
         Used for offline detection: a probe whose newest reading is older than
         the offline threshold has gone silent.  The window bounds which probes
         are tracked, so long-retired probes drop out instead of alerting forever.
+
+        ``site`` narrows to one forwarding store on an HQ hub; ``None`` (the
+        default, and what offline detection passes) covers every site.
         """
         conn = self._conn()
         cutoff = self._cutoff(window_seconds)
-        where = "WHERE epoch >= ?" if cutoff is not None else ""
-        params: tuple = (cutoff,) if cutoff is not None else ()
+        clauses, params_list = [], []
+        if cutoff is not None:
+            clauses.append("epoch >= ?"); params_list.append(cutoff)
+        if site is not None:
+            clauses.append("site = ?"); params_list.append(site)
+        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        params: tuple = tuple(params_list)
         rows = conn.execute(
             f"SELECT probe_id, MAX(epoch) AS last_epoch FROM readings {where} GROUP BY probe_id",
             params,
@@ -397,7 +406,8 @@ class Database:
         return int(time.time()) - int(window_seconds)
 
     def window_df(self, window_seconds: Optional[int] = None, max_points: int = 6000,
-                  probe_id: Optional[str] = None) -> pd.DataFrame:
+                  probe_id: Optional[str] = None,
+                  site: Optional[str] = None) -> pd.DataFrame:
         """Return readings within a rolling window as a DataFrame.
 
         When the window contains more than ``max_points`` rows the result is
@@ -419,6 +429,8 @@ class Database:
             clauses.append("epoch >= ?"); params_list.append(cutoff)
         if probe_id:
             clauses.append("probe_id = ?"); params_list.append(probe_id)
+        if site:
+            clauses.append("site = ?"); params_list.append(site)
         where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
         params: tuple = tuple(params_list)
 
@@ -455,7 +467,8 @@ class Database:
                             columns=["timestamp", "temperature_c", "temperature_f", "probe_id"])
 
     def window_stats(self, window_seconds: Optional[int] = None,
-                     probe_id: Optional[str] = None) -> dict:
+                     probe_id: Optional[str] = None,
+                     site: Optional[str] = None) -> dict:
         """Accurate min/max/avg/count over the full (un-downsampled) window.
 
         When ``probe_id`` is given, the stats cover only that probe — used by the
@@ -469,6 +482,8 @@ class Database:
             clauses.append("epoch >= ?"); params_list.append(cutoff)
         if probe_id:
             clauses.append("probe_id = ?"); params_list.append(probe_id)
+        if site:
+            clauses.append("site = ?"); params_list.append(site)
         where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
         params: tuple = tuple(params_list)
 
@@ -496,18 +511,27 @@ class Database:
             "max_ts": max_ts["ts"] if max_ts else None,
         }
 
-    def stats_per_probe(self, window_seconds: Optional[int] = None) -> dict:
+    def stats_per_probe(self, window_seconds: Optional[int] = None,
+                        site: Optional[str] = None) -> dict:
         """Per-probe min/max/avg/count over the full (un-downsampled) window.
 
         Returns ``{probe_id: {count, min, max, avg}}``. Used for the dashboard's
         per-probe statistics breakdown, where a single global average across
         probes of different ranges (a −18 °C freezer + a 22 °C room) would be
         meaningless. Rows with an empty ``probe_id`` are grouped under ``""``.
+
+        ``site`` narrows to one forwarding store on an HQ hub; ``''`` selects
+        this hub's own probes, ``None`` (the default) every site at once.
         """
         conn = self._conn()
         cutoff = self._cutoff(window_seconds)
-        where = "WHERE epoch >= ?" if cutoff is not None else ""
-        params: tuple = (cutoff,) if cutoff is not None else ()
+        clauses, params_list = [], []
+        if cutoff is not None:
+            clauses.append("epoch >= ?"); params_list.append(cutoff)
+        if site is not None:
+            clauses.append("site = ?"); params_list.append(site)
+        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        params: tuple = tuple(params_list)
         rows = conn.execute(
             f"SELECT probe_id, COUNT(*) AS n, MIN(temperature_c) AS mn, "
             f"MAX(temperature_c) AS mx, AVG(temperature_c) AS av "
@@ -521,7 +545,8 @@ class Database:
             for r in rows if r["n"]
         }
 
-    def latest_per_probe(self, window_seconds: Optional[int] = None) -> pd.DataFrame:
+    def latest_per_probe(self, window_seconds: Optional[int] = None,
+                         site: Optional[str] = None) -> pd.DataFrame:
         """Latest reading for each probe within the window (for alerts/display).
 
         Ties on ``epoch`` (two readings in the same second) are broken by
@@ -533,22 +558,32 @@ class Database:
         is the rowid, so the index order breaks epoch ties for free).  That is
         O(probes x log N) per call, replacing a ROW_NUMBER() window scan that
         touched every row in the window on every dashboard tick.
+
+        ``site`` narrows to one forwarding store on an HQ hub; ``''`` selects
+        this hub's own probes, ``None`` (the default) every site at once. Alerts
+        pass ``None`` — a breach in store 3 is still a breach when head office
+        happens to be looking at store 1.
         """
         conn = self._conn()
         cutoff = self._cutoff(window_seconds)
-        where = "WHERE epoch >= ?" if cutoff is not None else ""
-        params: tuple = (cutoff,) if cutoff is not None else ()
+        clauses, params_list = [], []
+        if cutoff is not None:
+            clauses.append("epoch >= ?"); params_list.append(cutoff)
+        if site is not None:
+            clauses.append("site = ?"); params_list.append(site)
+        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        params: tuple = tuple(params_list)
         pids = [r["probe_id"] for r in conn.execute(
             f"SELECT DISTINCT probe_id FROM readings {where}", params).fetchall()]
         cols = ["timestamp", "temperature_c", "temperature_f", "probe_id",
-                "humidity_pct", "vpd_kpa", "battery_pct"]
-        epoch_clause = " AND epoch >= ?" if cutoff is not None else ""
+                "humidity_pct", "vpd_kpa", "battery_pct", "site"]
+        seek_clause = ("" if not clauses else " AND " + " AND ".join(clauses))
         out = []
         for pid in pids:
             row = conn.execute(
                 f"SELECT ts AS timestamp, temperature_c, temperature_f, probe_id, "
-                f"humidity_pct, vpd_kpa, battery_pct FROM readings "
-                f"WHERE probe_id = ?{epoch_clause} ORDER BY epoch DESC, id DESC LIMIT 1",
+                f"humidity_pct, vpd_kpa, battery_pct, site FROM readings "
+                f"WHERE probe_id = ?{seek_clause} ORDER BY epoch DESC, id DESC LIMIT 1",
                 (pid,) + params,
             ).fetchone()
             if row is not None:
