@@ -161,6 +161,7 @@ Three things a hub keeps apart, which is what makes this work:
 | data directory | `DATA_DIR` env var | **not** `SETPOINT_DATA_DIR`. Omit it and all three hubs share one database and one config, and the test is meaningless. |
 | port | `PORT` env var | default 8088 |
 | device token | `SERVER_TOKEN` env var, else `provision_token` in its config | each hub has its own; the store's `upstream.token` must be **HQ's**, not its own |
+| probe claiming | `auto_provision` in its config, default **true** | turn it **off on the head-office hub** — see the warning below |
 
 ### 1. Start all three, one terminal each
 
@@ -186,6 +187,33 @@ Use a separate PowerShell window per hub — `$env:` persists for that window.
 
 `MDNS_ENABLE=0` keeps three hubs on one machine from advertising the same
 service and discovering each other. Leave it on in real deployments.
+
+> ### ⚠ Two hubs on one LAN will fight over your probes
+>
+> This bites when the head-office hub and a store hub are on the **same
+> network** — which is exactly what happens when you test across two machines at
+> home, and never happens in a real deployment where stores sit on their own
+> networks.
+>
+> Every hub runs an auto-provisioner (`auto_provision`, **on by default**) that
+> discovers probes over mDNS every 10 s and, seeing a probe pointed at a
+> *different* `server_url`, re-points it at itself. Two hubs on one LAN therefore
+> take turns stealing the same probes, and readings land in whichever hub
+> provisioned them most recently. It looks like forwarding is broken; it isn't.
+>
+> **On the head-office hub, set `auto_provision: false`.** An aggregating hub
+> should never claim probes — it receives forwarded copies, not direct posts.
+> That also makes the test faithful: every reading HQ holds then arrived by
+> forwarding, which is what you are trying to verify.
+>
+> The tell: forwarded rows carry a site label, directly-posted ones do not.
+>
+> ```bash
+> python3 -c "import sqlite3;print(*sqlite3.connect('temperature_log.db')
+>   .execute('SELECT site,probe_id,COUNT(*) FROM readings GROUP BY site,probe_id'),sep='\n')"
+> ```
+>
+> A row with an empty site on the HQ hub is a probe posting to it directly.
 
 ### 2. Give the stores some readings
 
