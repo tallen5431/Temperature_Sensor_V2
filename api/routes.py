@@ -27,19 +27,18 @@ from core.applog import HEALTH, get_logger
 from core.metrics import LATEST
 from core.mqtt_publish import MQTT
 from core.audit import AUDIT
+from core.protocol import MAX_BATCH_ROWS, MAX_INGEST_BYTES
 
 log = get_logger("api")
 
 # A probe is considered "online" if it has been seen within this many seconds.
 DEFAULT_ONLINE_TIMEOUT_SEC = 60
 
-# Reject absurdly large ingest bodies (DoS / disk-fill protection).
-MAX_INGEST_BYTES = 64 * 1024
-
-# Hard cap on readings accepted in one /ingest_csv call (the ≤1000-rows/request
-# contract in PROTOCOL.md §7). The 64 KB byte limit already bounds this in
-# practice; this is a belt-and-suspenders guard against a small-but-dense body.
-MAX_BATCH_ROWS = 1000
+# The two ingest limits (a 64 KB body for DoS/disk-fill protection, and the
+# ≤1000-rows/request contract in PROTOCOL.md §7) live in core.protocol because
+# the forwarder is the other side of this contract and has to respect them when
+# it builds a batch. Re-declaring them here is how a sender and a receiver drift
+# into "head office rejects every batch".
 
 # Named rolling windows accepted by ``GET /api/readings`` (mirrors the CSV
 # download's ?window= values in app.py). ``all`` / unknown -> no window.

@@ -72,6 +72,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Multi-site forwarding respected a row limit but not the receiver's byte
+  limit.** `/api/ingest_csv` refuses a body over 64 KB, and a row count cannot
+  honour a byte budget: 500 readings — the shipped default — encode to ~62 KB of
+  the 63.5 KB budget with a bare temperature, and to ~92 KB once a grow probe
+  adds humidity and battery. So the default already 413s forever for the probes
+  that report most, and the configured maximum of 1000 rows (124 KB) 413s for
+  everyone. Nothing retried its way out: the same bytes were rebuilt every cycle,
+  so forwarding simply stopped. Batches are now trimmed to prefixes that fit
+  before the round trip is spent, by binary search (the obvious pop-and-re-encode
+  loop measured 480 encodes and ~0.5 s of CPU per cycle at a 1000-row batch, on
+  the forwarder thread, forever). Trimming takes from the tail only — both
+  cursors advance to the last id accepted, so dropping from anywhere else would
+  step past records that were never sent — and readings give way before events,
+  which are the record an auditor asks for. A size-trimmed batch still counts as
+  full for the fast drain, since what it dropped is still waiting.
 - **The Wi-Fi scan behind "Set up a new probe" now only runs while that section
   is open.** It shells out to `netsh`/`nmcli` every few seconds, and previously
   started on any visit to the Settings page — opening Settings to change a

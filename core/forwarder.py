@@ -51,6 +51,8 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 
+from core.protocol import MAX_BATCH_ROWS, MAX_INGEST_BYTES
+
 log = logging.getLogger("hub.forwarder")
 
 
@@ -78,7 +80,11 @@ _EVENTS_KEY = "forwarder.last_event_id"
 
 DEFAULT_INTERVAL_SEC = 30
 DEFAULT_BATCH = 500          # PROTOCOL caps /ingest_csv at 1000 rows/request
-MAX_BATCH = 1000
+MAX_BATCH = MAX_BATCH_ROWS
+# The row limit is not the binding one — the receiver also refuses a body over
+# MAX_INGEST_BYTES. Leave headroom under it for the request line and headers
+# rather than aiming at the exact ceiling. See fit_batch.
+MAX_FORWARD_BODY_BYTES = MAX_INGEST_BYTES - 1024
 _BACKOFF_START = 5
 _BACKOFF_MAX = 300
 
@@ -150,16 +156,75 @@ def events_to_payload(rows) -> list:
     return out
 
 
+def batch_body(rows, events=()) -> bytes:
+    """Exactly the JSON bytes one upstream request carries.
+
+    Shared by :func:`post_batch` and :func:`fit_batch` so the size that is
+    measured is the size that is sent.
+    """
+    payload = {"readings": rows_to_payload(rows)}
+    if events:
+        payload["events"] = events_to_payload(events)
+    return json.dumps(payload).encode("utf-8")
+
+
+def fit_batch(rows, events, max_bytes: int = MAX_FORWARD_BODY_BYTES):
+    """Trim a batch to PREFIXES whose encoded request fits ``max_bytes``.
+
+    The receiver rejects any body over ``MAX_INGEST_BYTES`` with a 413, and a row
+    limit alone cannot honour a byte limit: 500 readings (the default) encode to
+    ~62 KB of the 63.5 KB budget with a bare temperature, and to ~92 KB once a
+    grow probe adds humidity and battery — so the shipped default already 413s
+    forever for the probes that report most. At the configured maximum of 1000 it
+    413s for every deployment. Nothing retries its way out of that: the same
+    bytes are rebuilt every cycle, so forwarding simply stops.
+
+    Trimming from the END only is what keeps this safe. Both cursors advance to
+    the last id actually accepted, so dropping from anywhere but the tail would
+    step the cursor past records that were never sent — a permanent hole in a
+    food-safety record, which is the one outcome worth more than throughput.
+
+    Readings shrink first: they are the bulk, and events are the record an
+    auditor asks for. Binary search rather than popping one at a time — the
+    obvious loop re-encodes the whole payload per pop, which measured 480 encodes
+    and 0.5 s of CPU per cycle at a 1000-row batch, burned on the forwarder
+    thread every interval forever.
+
+    Returns ``(rows, events)``; ``([], [])`` only when a single record exceeds the
+    budget on its own, which the caller reports rather than skipping.
+    """
+    def fits(r, e):
+        return len(batch_body(r, e)) <= max_bytes
+
+    rows, events = list(rows), list(events)
+    if fits(rows, events):
+        return rows, events
+
+    def largest_prefix(seq, build):
+        lo, hi = 0, len(seq)
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            if fits(*build(mid)):
+                lo = mid
+            else:
+                hi = mid - 1
+        return lo
+
+    keep = largest_prefix(rows, lambda n: (rows[:n], events))
+    if keep:
+        return rows[:keep], events
+    # Not even one reading fits alongside the events — shrink the events instead.
+    keep_ev = largest_prefix(events, lambda n: ([], events[:n]))
+    return [], events[:keep_ev]
+
+
 def post_batch(url: str, token: str, site: str, rows, events=(), timeout: float = 20.0) -> int:
     """POST one batch upstream. Returns the HTTP status, or 0 on transport error.
 
     Readings and events ride the same request: one round trip, and either both
     land or neither does, so the two cursors can advance together.
     """
-    payload = {"readings": rows_to_payload(rows)}
-    if events:
-        payload["events"] = events_to_payload(events)
-    body = json.dumps(payload).encode("utf-8")
+    body = batch_body(rows, events)
     req = urllib.request.Request(url, data=body, method="POST")
     req.add_header("Content-Type", "application/json")
     if token:
@@ -236,6 +301,29 @@ class UpstreamForwarder(threading.Thread):
             self.last_error = ""
             return _CycleResult()
 
+        # The row limit alone cannot honour the receiver's byte limit — see
+        # fit_batch. Trim to prefixes that will actually be accepted, before
+        # spending a round trip on bytes that can only come back 413.
+        wanted_rows, wanted_events = len(rows), len(events)
+        rows, events = fit_batch(rows, events)
+        if not rows and not events:
+            # A single record larger than a whole request. Unreachable through
+            # the sanitised ingest path (probe ids cap at 32 chars), so this
+            # means a hand-edited row. Stall loudly rather than skipping it: a
+            # gap in the record is worse than a stopped forwarder, and `pending`
+            # climbing beside this message in Diagnostics is the diagnosis.
+            self._backoff = _BACKOFF_MAX
+            self.last_error = ("A single reading or event is too large to forward. "
+                               "Forwarding is stopped until it is removed.")
+            log.error("upstream: the record after reading id=%d / event id=%d exceeds "
+                      "the %d-byte request budget on its own; forwarding is stalled",
+                      last, last_ev, MAX_FORWARD_BODY_BYTES)
+            return _CycleResult()
+        if len(rows) < wanted_rows or len(events) < wanted_events:
+            log.debug("upstream: batch trimmed to fit %d bytes — %d/%d readings, "
+                      "%d/%d events", MAX_FORWARD_BODY_BYTES, len(rows), wanted_rows,
+                      len(events), wanted_events)
+
         status = post_batch(url, str(block.get("token") or ""), site, rows, events)
         if 200 <= status < 300:
             # Both cursors advance together, because one request carried both.
@@ -249,9 +337,14 @@ class UpstreamForwarder(threading.Thread):
             log.info("forwarded %d readings, %d events to %s as site=%s",
                      len(rows), len(events), url, site)
             # Each cursor has its own limit. Either collection filling that
-            # limit means its cursor may have more work immediately available.
+            # limit means its cursor may have more work immediately available —
+            # judged on what was READ, not what survived fit_batch, or a batch
+            # trimmed for size would look partial and sleep a whole interval
+            # while the rows it just dropped were still waiting.
             return _CycleResult(len(rows),
-                                len(rows) >= batch or len(events) >= batch)
+                                wanted_rows >= batch or wanted_events >= batch
+                                or len(rows) < wanted_rows
+                                or len(events) < wanted_events)
 
         # 4xx means the request itself is wrong (bad token, malformed body).
         # Retrying identical bytes will not fix it, so keep the cursor and let the
