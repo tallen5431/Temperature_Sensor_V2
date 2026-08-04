@@ -75,7 +75,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The Wi-Fi scan behind "Set up a new probe" now only runs while that section
   is open.** It shells out to `netsh`/`nmcli` every few seconds, and previously
   started on any visit to the Settings page — opening Settings to change a
-  retention day is not consent to scan the airwaves.
+  retention day is not consent to scan the airwaves. `SSIDWatcher` also survives
+  being stopped and started again: it re-used one `Event` that `start()` never
+  cleared, so every restart spawned a thread that exited before its first scan,
+  leaving a watcher that looked running and reported nothing. Each thread now
+  owns its own event (so a retired one can't be revived by a later `clear()`,
+  and a new one can't race a stale flag), and `stop()` interrupts the sleep
+  rather than letting it run out — previously up to a full interval of further
+  scanning — and drops the last sighting, which is not current once scanning has
+  stopped.
+- **Changing the MQTT base topic no longer silently kills every Home Assistant
+  sensor.** Saving Integrations restarts the publisher, but the set of
+  already-announced probes survived the restart, so nothing re-announced. Home
+  Assistant learns a probe's state topic from a *retained* discovery message, so
+  it stayed subscribed to the old topic while the hub published to the new one —
+  every existing sensor going stale, until the hub was restarted. `stop()` now
+  clears the announce set (and the cap flag), so the next reading re-announces
+  each probe against the topics actually in effect.
+- **A multi-site backlog now drains fast at any configured batch size.** The
+  forwarder's "a full batch means there is more waiting, don't sleep" check
+  compared against the 500-row `DEFAULT_BATCH` constant instead of the batch it
+  had actually used, so with `upstream.batch` set below 500 a full batch could
+  never reach it. A store hub back from an outage caught up at one batch per
+  interval — hours instead of minutes. Both sites now derive the size from one
+  `batch_size()` helper.
+- **Diagnostics lists probes known only from readings.** A deep-sleep probe
+  keeps its radio off between readings and is never mDNS-discovered. The summary
+  counted it under "reporting" while the table below omitted it, so the snapshot
+  read "3 reporting" above a table of one with no way to tell which two were
+  missing. `/api/probes` has always appended them; the snapshot now applies the
+  same overlay.
+- **A legacy database no longer re-runs its schema migration on every startup.**
+  When a store holds genuinely-distinct readings that share a probe id and
+  instant (pre-millisecond timestamps), the unique index cannot be built — and
+  the failed attempt re-ran a full-table `GROUP BY` dedupe plus a failed index
+  build on every single open, i.e. on precisely the oldest and largest
+  databases. The verdict is now recorded in `meta` and honoured thereafter.
+
+### Internal
+
+- **`core/probes.py`: one definition of how to read a probe record.** The
+  discovery registry holds `ProbeInfo` dataclasses *and* plain dicts, so
+  `/metrics`, `/api/probes`, the Diagnostics snapshot, the Devices grid and the
+  auto-provisioner each carried their own attribute-or-key dance — and one had
+  already drifted, which is how `setpoint_probes_total` came to equal
+  `setpoint_probes_online` on every scrape. The five copies are now one helper,
+  and the test that covers it calls the real function instead of re-implementing
+  it (which is why that regression survived its own test).
+- Removed `core.applog.setup_logging`, dead since loggers moved to the `hub`
+  tree: nothing called it, and anything that had would have split the log across
+  a second file.
 
 - **The chart range selector could silence a live alert.** The alert banner and
   the "needs attention" gauge share one latest-per-probe scan, and that scan was

@@ -89,16 +89,31 @@ def _cfg_block(cfg) -> dict:
     return block if isinstance(block, dict) else {}
 
 
+def batch_size(block: dict) -> int:
+    """Rows per upstream request, clamped to the protocol's 1..1000.
+
+    Shared by the cycle that reads the batch and the pump that decides how long
+    to sleep afterwards — those two disagreeing is what made a configured batch
+    below the default drain a backlog at one batch per interval (see ``run``).
+    """
+    try:
+        return max(1, min(int(block.get("batch") or DEFAULT_BATCH), MAX_BATCH))
+    except (TypeError, ValueError):
+        return DEFAULT_BATCH
+
+
 def rows_to_payload(rows) -> list:
     """Shape ``db.rows_after()`` tuples into the JSON body ``/ingest_csv`` takes.
 
     Column order matches the SELECT in ``Database.rows_after``. ``id`` is dropped
     — it is this hub's cursor, meaningless to the receiver, whose own autoincrement
-    numbers its copy independently.
+    numbers its copy independently. ``vpd`` is dropped too, and deliberately: the
+    receiving hub recomputes it from temperature + humidity at ingest, using ITS
+    own ``vpd_leaf_offset_c``, so sending ours would be overwritten anyway.
     """
     out = []
     for r in rows:
-        _id, ts, _epoch, t_c, t_f, pid, hum, vpd, bat = r
+        _id, ts, _epoch, t_c, t_f, pid, hum, _vpd, bat = r
         row = {"timestamp": ts, "temperature_c": t_c,
                "temperature_f": t_f, "probe_id": pid}
         if hum is not None:
@@ -177,7 +192,7 @@ class UpstreamForwarder(threading.Thread):
             self.last_error = "No site name set."
             log.warning("upstream.enabled is set but upstream.site is empty; refusing to forward")
             return 0
-        batch = max(1, min(int(block.get("batch") or DEFAULT_BATCH), MAX_BATCH))
+        batch = batch_size(block)
 
         try:
             last = int(self.db.meta_get(_HWM_KEY, "0") or 0)
@@ -225,10 +240,17 @@ class UpstreamForwarder(threading.Thread):
                 sent = 0
                 self._backoff = min(_BACKOFF_MAX, (self._backoff or _BACKOFF_START) * 2)
             block = _cfg_block(self.cfg)
-            interval = int(block.get("interval_sec") or DEFAULT_INTERVAL_SEC)
+            try:
+                interval = int(block.get("interval_sec") or DEFAULT_INTERVAL_SEC)
+            except (TypeError, ValueError):
+                interval = DEFAULT_INTERVAL_SEC
             # A full batch means there is more waiting — drain promptly instead of
             # sleeping a full interval per batch, or a big backlog takes hours.
-            delay = self._backoff or (1 if sent >= DEFAULT_BATCH else max(5, interval))
+            # Compared against the CONFIGURED batch, not DEFAULT_BATCH: with
+            # upstream.batch set to anything below 500 a full batch could never
+            # reach the constant, so the fast-drain never engaged and a hub coming
+            # back from a long outage caught up at one batch per interval.
+            delay = self._backoff or (1 if sent >= batch_size(block) else max(5, interval))
             self.stop_event.wait(delay)
 
     def stop(self) -> None:

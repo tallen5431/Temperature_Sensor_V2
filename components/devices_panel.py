@@ -5,6 +5,7 @@ import pandas as pd
 from dash import html, dcc, Output, Input, State, no_update, ALL
 import dash_bootstrap_components as dbc
 
+from core.probes import discovered_probes, probe_address
 from core.status import probe_fresh_window
 from core.metrics import LATEST
 
@@ -243,24 +244,16 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
             probe_intervals = cfg.get('probe_intervals', {})
 
             # Normalise every mDNS-discovered probe into a plain dict, keyed by id.
+            # core.probes owns the dict-or-dataclass reading rule for every
+            # surface, so this grid can never disagree with /api/probes or
+            # Diagnostics about which probe it is looking at.
             merged = {}
-            for p in (finder.list_probes() or {}).values():
-                if isinstance(p, dict):
-                    props = p.get('properties', {}) or {}
-                    nm = p.get('name') or props.get('name') or props.get('id') or p.get('id') or 'Unknown'
-                    pid = props.get('id') or p.get('probe_id') or p.get('id')
-                    ipx = p.get('ip') or p.get('host') or 'N/A'
-                    prt = p.get('port', 80)
-                    lst = p.get('last_seen')
-                else:
-                    props = getattr(p, 'properties', {}) or {}
-                    nm = getattr(p, 'name', None) or getattr(p, 'id', None) or props.get('name') or props.get('id') or 'Unknown'
-                    pid = props.get('id') or getattr(p, 'probe_id', None) or getattr(p, 'id', None)
-                    ipx = getattr(p, 'ip', None) or getattr(p, 'host', None) or 'N/A'
-                    prt = getattr(p, 'port', 80)
-                    lst = getattr(p, 'last_seen', None)
-                key = pid or nm
-                merged[key] = {'name': nm, 'probe_id': pid, 'ip': ipx, 'port': prt, 'last_seen': lst}
+            for p in discovered_probes(finder):
+                nm = p['name'] or 'Unknown'
+                pid = p['probe_id'] or None
+                merged[pid or nm] = {'name': nm, 'probe_id': pid,
+                                     'ip': probe_address(p) or 'N/A',
+                                     'port': p['port'], 'last_seen': p['last_seen']}
 
             # Add probes known only from ingest (e.g. deep-sleep probes whose radio
             # is off between readings, so mDNS never discovers them) so they are
@@ -616,19 +609,10 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                 if (interval_changed or resolution_changed) and public_base_func is not None:
                     try:
                         from provisioning import provision_probe
-                        probes = (finder.list_probes() or {}).values()
-                        for p in probes:
-                            if isinstance(p, dict):
-                                props = p.get('properties', {}) or {}
-                                pid = props.get('id') or p.get('probe_id') or p.get('id')
-                                host = p.get('ip') or p.get('host') or ''
-                                port = int(p.get('port', 80) or 80)
-                            else:
-                                props = getattr(p, 'properties', {}) or {}
-                                pid = props.get('id') or getattr(p, 'probe_id', None) or getattr(p, 'id', None)
-                                host = getattr(p, 'ip', None) or getattr(p, 'host', None) or ''
-                                port = int(getattr(p, 'port', 80) or 80)
-
+                        for p in discovered_probes(finder):
+                            pid = p['probe_id']
+                            host = probe_address(p)
+                            port = p['port']
                             if pid == stored_probe_id and host:
                                 base = public_base_func()
                                 ok = provision_probe(

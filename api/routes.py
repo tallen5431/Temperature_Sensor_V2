@@ -18,6 +18,7 @@ try:  # battery telemetry helper — may be absent on an older core.storage buil
 except ImportError:
     def extract_battery(payload):
         return None
+from core.probes import discovered_probes
 from core.status import reporting_probe_ids, hub_health_window
 from core.alerts import threshold_for
 from core.storage import threshold_breach
@@ -250,37 +251,18 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
 
     # --- discovery listing ---
     def _iter_probes() -> List[Dict[str, Any]]:
-        if discovery is None:
-            return []
-        try:
-            vals = discovery.list_probes().values()
-        except Exception:
-            vals = []
         timeout = _online_timeout()
         now = time.time()
         out: List[Dict[str, Any]] = []
-        for obj in vals:
-            is_dict = isinstance(obj, dict)
-            get = (lambda k, d=None: (obj.get(k, d) if is_dict else getattr(obj, k, d)))
-            props = get("properties", {}) or {}
-            host = get("host")
-            ip = get("ip")
-            port = get("port", 80) or 80
-            name = get("name") or get("id") or props.get("name")
-            pid = props.get("id") or get("probe_id") or get("id") or name
-            last_seen = get("last_seen")
-            age = None
-            try:
-                if isinstance(last_seen, (int, float)):
-                    age = max(0.0, now - float(last_seen))
-            except Exception:
-                age = None
+        for p in discovered_probes(discovery):
+            last_seen = p["last_seen"]
+            age = None if last_seen is None else max(0.0, now - last_seen)
             out.append({
-                "host": host,
-                "ip": ip,
-                "port": port,
-                "name": name,
-                "probe_id": pid,
+                "host": p["host"],
+                "ip": p["ip"],
+                "port": p["port"],
+                "name": p["name"],
+                "probe_id": p["probe_id"] or p["name"],
                 "last_seen": last_seen,
                 "age_sec": round(age, 1) if age is not None else None,
                 "online": (age is not None and age <= timeout),

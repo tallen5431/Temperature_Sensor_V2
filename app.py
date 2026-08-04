@@ -14,6 +14,7 @@ from core.db import Database, migrate_csv_if_present, ExportTooLargeForXlsx
 from core.logging_setup import configure_logging
 from core.mdns_advert import MdnsAdvert
 from core.metrics import LATEST, render_prometheus
+from core.probes import discovered_probe_ids
 from core.secret_compare import constant_time_eq
 from core.status import reporting_probe_ids, hub_health_window
 from core.applog import HEALTH
@@ -241,30 +242,14 @@ def metrics():
         reporting = reporting_probe_ids(cfg, db)
     except Exception:
         reporting = set()
-    try:
-        discovered = set()
-        for p in (finder.list_probes() or {}).values():
-            # Read the id the way every other consumer does (api/routes.py,
-            # core/diagnostics.py): properties["id"] first, then the flat
-            # attributes, then the name. The registry stores ProbeInfo
-            # dataclasses, which have NO probe_id field — the id lives in
-            # .properties — so reaching straight for getattr(p, "probe_id")
-            # returned None for every probe, leaving this set permanently empty
-            # and making setpoint_probes_total identical to
-            # setpoint_probes_online on every scrape. That silently disarms the
-            # one alert these two gauges exist to support:
-            # probes_total - probes_online > 0, i.e. "a probe I know about has
-            # stopped reporting".
-            props = (p.get("properties") if isinstance(p, dict)
-                     else getattr(p, "properties", None)) or {}
-            pid = (props.get("id")
-                   or (p.get("probe_id") or p.get("id") or p.get("name")
-                       if isinstance(p, dict)
-                       else getattr(p, "probe_id", None) or getattr(p, "name", None)))
-            if pid:
-                discovered.add(pid)
-    except Exception:
-        discovered = set()
+    # core.probes is the single definition of how to read an id out of a probe
+    # record (ProbeInfo keeps it in .properties["id"], dict-shaped entries put it
+    # at the top level). Reading it by hand here is what once left this set
+    # permanently empty, making setpoint_probes_total identical to
+    # setpoint_probes_online on every scrape and disarming the one alert the two
+    # gauges exist for: total - online > 0, "a probe I know about has stopped
+    # reporting".
+    discovered = discovered_probe_ids(finder)
     total = len(discovered | reporting)
     body = render_prometheus(HEALTH.snapshot(hub_health_window(cfg)), LATEST.snapshot(),
                              total, HUB_VERSION,

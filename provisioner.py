@@ -4,6 +4,7 @@ import threading, time, socket
 from typing import Callable, Optional
 from provisioning import (provision_probe, get_probe_status, desired_probe_config,
                           usable_server_base)
+from core.probes import normalize_probe, probe_address
 from core.status import probe_fresh_window, probe_prune_window
 
 log = logging.getLogger("hub.provisioner")
@@ -182,19 +183,13 @@ class AutoProvisioner(threading.Thread):
 
         now = time.time()
         for key, p in (self.discovery.list_probes() or {}).items():
-            # 1) Handle both dict and object-style probes
-            if isinstance(p, dict):
-                props = p.get("properties", {}) or {}
-                probe_id = props.get("id") or p.get("probe_id") or p.get("id")
-                host = p.get("ip") or p.get("host") or ""
-                port = int(p.get("port", 80) or 80)
-                last_seen = p.get("last_seen")
-            else:
-                props = getattr(p, "properties", {}) or {}
-                probe_id = props.get("id") or getattr(p, "probe_id", None) or getattr(p, "id", None)
-                host = getattr(p, "ip", None) or getattr(p, "host", None) or ""
-                port = int(getattr(p, "port", 80) or 80)
-                last_seen = getattr(p, "last_seen", None)
+            # 1) core.probes reads a probe record the same way on every surface,
+            # whether the registry holds a ProbeInfo or a dict.
+            fields = normalize_probe(p)
+            probe_id = fields["probe_id"] or None
+            host = probe_address(p)
+            port = fields["port"]
+            last_seen = fields["last_seen"]
 
             # 2) A probe silent longer than its fresh window is asleep (or
             # gone) — resolving and GETting it would just burn a 3 s

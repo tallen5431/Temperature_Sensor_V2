@@ -252,13 +252,19 @@ class ProbeDiscovery:
                 browser.join(timeout=2.0)
             except Exception:
                 pass
-        try:
-            self._zc.close()
-        except Exception:
-            pass
+        # _zc is None when Zeroconf() could not open a multicast socket (a
+        # container without host networking); calling close() on it would raise
+        # into a bare except and read as a real failure being swallowed.
+        if self._zc is not None:
+            try:
+                self._zc.close()
+            except Exception:
+                pass
 
     def scan(self):
         """Manual refresh: restart the browser to prompt immediate updates."""
+        if self._zc is None:
+            return
         try:
             old_browser, self._browser = self._browser, None
             if old_browser:

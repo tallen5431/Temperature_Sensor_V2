@@ -12,24 +12,26 @@ probe, the discovered set was always empty, and ``probes_total`` was identical t
 caught it because test_metrics.py calls ``render_prometheus`` directly with a
 literal count and never exercises the extraction.
 
-These tests pin the extraction itself, against the real ProbeInfo class.
+These tests pin the extraction itself, against the real ProbeInfo class — and
+against the REAL function. They used to re-implement it here, which is how a copy
+in the test file could keep passing while the copy in app.py was broken; the rule
+now lives once, in ``core.probes``, and both the route and these tests call it.
 """
+from core.probes import discovered_probe_ids
 from probe_discovery import ProbeInfo
+
+
+class _Finder:
+    def __init__(self, probes):
+        self._p = probes
+
+    def list_probes(self):
+        return self._p
 
 
 def _extract(probes):
     """The id extraction as app.py's /metrics route performs it."""
-    discovered = set()
-    for p in (probes or {}).values():
-        props = (p.get("properties") if isinstance(p, dict)
-                 else getattr(p, "properties", None)) or {}
-        pid = (props.get("id")
-               or (p.get("probe_id") or p.get("id") or p.get("name")
-                   if isinstance(p, dict)
-                   else getattr(p, "probe_id", None) or getattr(p, "name", None)))
-        if pid:
-            discovered.add(pid)
-    return discovered
+    return discovered_probe_ids(_Finder(probes))
 
 
 def _probe(name, pid=None):

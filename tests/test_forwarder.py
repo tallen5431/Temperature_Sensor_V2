@@ -8,7 +8,6 @@ The correctness properties that matter, in the order they would hurt:
   * refuse to run half-configured rather than pooling stores anonymously
 """
 import datetime
-import pathlib
 
 import pytest
 
