@@ -180,3 +180,60 @@ def test_render_signature_changes_with_site(tmp_path):
     a = _render_sig(latest, "24h", "celsius", "all", "24h", now=0, site="all")
     b = _render_sig(latest, "24h", "celsius", "all", "24h", now=0, site="atlanta")
     assert a != b
+
+
+def test_empty_site_means_this_hubs_own_probes_in_every_query(tmp_path):
+    """All five site-aware queries must read '' the same way.
+
+    A truthiness test instead of `is not None` makes site='' mean "no filter" in
+    some methods and "HQ's own probes" in others — which is exactly how the chart
+    ends up showing six stores while the cards correctly show one.
+    """
+    db = Database(tmp_path / "d.db")
+    _seed(db, "LOCAL", site="")
+    _seed(db, "ATL", site="atlanta")
+
+    assert db.window_stats(site="")["count"] == 3
+    assert sorted(db.window_df(site="")["probe_id"].unique()) == ["LOCAL"]
+    assert sorted(db.stats_per_probe(site="")) == ["LOCAL"]
+    assert sorted(db.latest_per_probe(site="")["probe_id"]) == ["LOCAL"]
+    assert sorted(db.last_reading_epoch_per_probe(site="")) == ["LOCAL"]
+
+    # ...and None still means every site, for all five.
+    assert db.window_stats()["count"] == 6
+    assert sorted(db.window_df()["probe_id"].unique()) == ["ATL", "LOCAL"]
+    assert sorted(db.stats_per_probe()) == ["ATL", "LOCAL"]
+    assert sorted(db.latest_per_probe()["probe_id"]) == ["ATL", "LOCAL"]
+    assert sorted(db.last_reading_epoch_per_probe()) == ["ATL", "LOCAL"]
+
+
+def test_sites_uses_the_index_not_a_full_scan(tmp_path):
+    """The picker re-reads sites() on every 5 s tick. A plain SELECT DISTINCT
+    over a low-cardinality column is a full table scan (883 ms measured on a
+    six-store HQ at 1.5M rows); the loose index scan is O(sites x log N)."""
+    db = Database(tmp_path / "d.db")
+    _seed(db, "LOCAL", site="")
+    _seed(db, "ATL", site="atlanta")
+    _seed(db, "MAR", site="marietta")
+    assert db.sites() == ["atlanta", "marietta"]
+
+    conn = db._conn()
+    assert "idx_readings_site" in [r[1] for r in conn.execute("PRAGMA index_list(readings)")]
+    plan = " ".join(str(r[-1]) for r in conn.execute(
+        "EXPLAIN QUERY PLAN "
+        "WITH RECURSIVE t(s) AS (SELECT MIN(site) FROM readings WHERE site != ''"
+        " UNION ALL SELECT (SELECT MIN(site) FROM readings WHERE site > t.s AND site != '')"
+        " FROM t WHERE t.s IS NOT NULL) SELECT s FROM t WHERE s IS NOT NULL ORDER BY s"))
+    assert "idx_readings_site" in plan, plan
+    assert "SCAN readings" not in plan, f"fell back to a table scan: {plan}"
+
+
+def test_partial_index_costs_a_single_site_hub_nothing(tmp_path):
+    """`WHERE site != ''` makes the index empty on a hub nobody forwards to —
+    which is every hub until a chain runs one."""
+    db = Database(tmp_path / "d.db")
+    _seed(db, "LOCAL", site="", n=200)
+    indexed = db._conn().execute(
+        "SELECT COUNT(*) FROM readings WHERE site != ''").fetchone()[0]
+    assert indexed == 0
+    assert db.sites() == []
