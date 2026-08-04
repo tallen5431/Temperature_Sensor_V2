@@ -1,4 +1,11 @@
 # components/setup_helper.py
+"""Probe SoftAP setup helper — the body of the Settings → "Set up a new probe" card.
+
+The Wi-Fi watcher shells out to netsh/nmcli, so it must not run just because
+someone opened Settings.  ``ap-poll`` therefore ships **disabled**; the Settings
+page enables it only while this section is expanded, and the callback below —
+which is where ``start()`` is called — cannot fire until then.
+"""
 from __future__ import annotations
 
 import dash_bootstrap_components as dbc
@@ -8,42 +15,36 @@ from wifi_scan import SSIDWatcher
 
 # The watcher shells out to netsh/nmcli to look for the probe's setup SoftAP.
 # It is created lazily and only started the first time a user actually opens the
-# Settings page, so hubs whose owners never use the wizard never run Wi-Fi
-# scans in the background.
+# "Set up a new probe" section, so hubs whose owners never use the wizard never
+# run Wi-Fi scans in the background.
 _watcher = SSIDWatcher("Setpoint", interval_sec=10.0)
 
-SetupHelper = dbc.Card(
-    dbc.CardBody([
-        html.Div(className="d-flex justify-content-between align-items-center", children=[
-            html.H5("Probe Setup Helper (SoftAP)", className="mb-0"),
-            html.Small(id="ap-seen-label", className="text-muted"),
-        ]),
-        html.P(
-            "If a probe is unprovisioned, it starts a temporary Wi-Fi network named "
-            "Setpoint-XXXXXX (matching the sticker on your unit). This hub can't "
-            "control your computer's Wi-Fi, but it will watch for that network and "
-            "guide you to connect when it's nearby.",
-            className="mt-2",
-        ),
-        html.Ul([
-            html.Li("Put the probe in setup mode (power up without Wi-Fi)."),
-            html.Li("When its “Setpoint-XXXXXX” network (matching the sticker on your "
-                    "unit) appears below, join it from your computer."),
-            html.Li("Then open the config page (192.168.4.1) to select your home Wi-Fi."),
-            html.Li("Come back here — the probe should appear in Devices and provision automatically."),
-        ], className="small"),
-        dbc.Alert(id="ap-status", color="secondary", className="mt-2"),
-        html.Div([
-            html.A("Open probe config (http://192.168.4.1)", id="open-ap-link",
-                   href="http://192.168.4.1", target="_blank",
-                   className="btn btn-outline-primary btn-sm",
-                   n_clicks=0, style={"pointerEvents": "none"}),
-        ], className="mt-2"),
-        dcc.Interval(id="ap-poll", interval=5000, n_intervals=0),
-    ]),
-    className="h-100",
-)
+_IDLE_MESSAGE = ("Open this section and the hub starts watching for the probe's "
+                 "Setpoint-XXXXXX setup network.")
 
+SetupHelperBody = [
+    html.Div(className="d-flex justify-content-between align-items-center", children=[
+        html.Small("A brand-new probe broadcasts its own Wi-Fi network so you can tell "
+                   "it which network to join.", className="text-muted"),
+        html.Small(id="ap-seen-label", className="text-muted"),
+    ]),
+    html.Ol([
+        html.Li("Power the probe up with no saved Wi-Fi so it starts setup mode."),
+        html.Li("When its “Setpoint-XXXXXX” network (matching the sticker on your "
+                "unit) appears below, join it from this computer."),
+        html.Li("Open the probe's config page and pick your Wi-Fi network."),
+        html.Li("Come back here — the probe appears in Devices and configures itself."),
+    ], className="small mt-2"),
+    dbc.Alert(_IDLE_MESSAGE, id="ap-status", color="secondary", className="mt-2"),
+    html.Div([
+        html.A("Open probe config (http://192.168.4.1)", id="open-ap-link",
+               href="http://192.168.4.1", target="_blank",
+               className="btn btn-outline-primary btn-sm",
+               n_clicks=0, style={"pointerEvents": "none", "opacity": 0.5}),
+    ], className="mt-2"),
+    # Disabled until the section is opened — see the module docstring.
+    dcc.Interval(id="ap-poll", interval=5000, n_intervals=0, disabled=True),
+]
 
 def register_setup_helper_callbacks(app):
     @app.callback(
@@ -52,7 +53,9 @@ def register_setup_helper_callbacks(app):
         Output("ap-seen-label", "children"),
         Output("open-ap-link", "style"),
         Input("ap-poll", "n_intervals"),
-        prevent_initial_call=False,
+        # No initial call: the very first scan must be a consequence of someone
+        # opening the section, not of the Settings page rendering.
+        prevent_initial_call=True,
     )
     def _update_ap(_n):
         _watcher.start()  # idempotent; first call begins scanning

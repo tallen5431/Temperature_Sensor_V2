@@ -94,6 +94,9 @@ body {
 .probe-card { cursor: default; transition: transform .12s ease, border-color .12s ease; }
 .probe-card:hover { transform: translateY(-3px); border-color: var(--border-strong); }
 .gauge-card, .graph-card { min-height: 400px; overflow: visible !important; }
+/* Centre the fixed-height gauge in whatever height the row gives the card. */
+.gauge-fill { flex: 1 1 auto; display: flex; flex-direction: column; justify-content: center; }
+.gauge-fill > div { width: 100%; }
 
 /* Big section titles (gauge / graph / page headings). */
 .card-title, .card-body > h5, h4.mb-3, #page-content > div > h4 {
@@ -202,6 +205,43 @@ body {
 
 /* ---- the "Viewing" focus selector row ----------------------------------- */
 #time-range-selector, #focus-probe-selector { min-width: 160px; }
+/* The toolbar's segmented controls sit next to full-height input groups; match
+   their height so the row reads as one band rather than three floating pills. */
+.dash-toolbar .btn-group > .btn { padding-top: .25rem; padding-bottom: .25rem; }
+
+/* ---- collapsible settings sections -------------------------------------- */
+/* The Settings page is a list of these: a clickable summary row (a real
+   <button>, so it works from the keyboard) with the detail folded underneath. */
+.settings-card { overflow: hidden; }
+.settings-head {
+  display: flex; align-items: center; gap: .65rem;
+  width: 100%; text-align: left; text-decoration: none !important;
+  padding: .9rem 1.15rem; color: var(--text) !important;
+  /* .btn sets 600 globally; only the section name should be bold here, or the
+     one-line description reads as a second heading. */
+  font-weight: 400;
+  border: 0; border-radius: var(--radius);
+}
+.settings-head:hover { background: var(--surface-2); }
+.settings-head:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+.settings-title { font-weight: 700; letter-spacing: -.01em; display: block; }
+.settings-chevron {
+  color: var(--text-faint); font-size: .8rem; width: 1em; flex-shrink: 0;
+}
+.settings-badge { flex-shrink: 0; align-self: center; }
+.settings-body { padding-top: .25rem; border-top: 1px solid var(--border); }
+
+/* Second-level disclosure: "Advanced" blocks inside a section or a modal. */
+.advanced-toggle { color: var(--text-faint) !important; font-weight: 600; font-size: .85rem; }
+.advanced-toggle:hover { color: var(--brand-strong) !important; }
+.advanced-body {
+  border-left: 2px solid var(--border);
+  padding: .35rem 0 .1rem .8rem; margin-top: .5rem;
+}
+
+/* The dashboard's "More detail" fold — same affordance, no card around it. */
+.details-toggle { color: var(--text-faint) !important; font-weight: 600; }
+.details-toggle:hover { color: var(--brand-strong) !important; }
 
 /* ---- demo banner (subtle amber, not a loud block) ----------------------- */
 .demo-banner {
