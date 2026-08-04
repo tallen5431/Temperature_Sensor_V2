@@ -170,3 +170,21 @@ def test_every_section_gets_a_badge_except_the_live_wifi_scan():
         if key == "setup":
             continue  # reports a live Wi-Fi scan, not a saved setting
         assert key in badges, key
+
+
+def test_no_asset_reaches_out_to_the_internet():
+    """The hub is local-first: Bootstrap is VENDORED so it renders on an offline
+    or air-gapped install. The vendored file still carried an @import for Google
+    Fonts, which defeated the point — a render-blocking request that must time
+    out on an offline hub, and a food-safety appliance phoning a third party on
+    every page load. The font stack already falls back to system fonts."""
+    from pathlib import Path
+    assets = Path(__file__).parent.parent / "assets"
+    offenders = []
+    for f in assets.glob("*.css"):
+        text = f.read_text(encoding="utf-8", errors="ignore")
+        for marker in ("@import url(http", "fonts.googleapis", "fonts.gstatic",
+                       "cdn.jsdelivr", "cdnjs.cloudflare", "unpkg.com"):
+            if marker in text:
+                offenders.append(f"{f.name}: {marker}")
+    assert not offenders, "assets must not fetch from the internet: " + "; ".join(offenders)

@@ -292,7 +292,17 @@ a **chunk of buffered readings in a single request**, written to the log in one
 transaction.
 
 Same auth (`X-Token`) and the same 64 KiB body cap as `/api/ingest`; **≤ 1000
-rows per request**. Two body formats are accepted:
+rows per request**.
+
+**Both limits bind, and the byte one usually binds first.** 1000 rows is not
+reachable in practice: 500 temperature-only readings already encode to ~62 KB of
+the 64 KB budget, and 500 from a probe reporting humidity and battery encode to
+~85 KB and are refused. A sender must size its batch by the encoded body, not by
+a row count — see `core.forwarder.fit_batch`, which trims to a prefix that fits
+(a prefix, so a sender's cursor can never advance past a record that was not
+actually accepted).
+
+Two body formats are accepted:
 
 - **`Content-Type: text/csv`** (preferred; the probe's on-flash buffer format) —
   one reading per line, `timestamp,temperature_c,temperature_f,probe_id`:

@@ -170,7 +170,7 @@ fleet of store hubs from one template):
 | `token` | HQ's device token — the same one HQ's own probes use. |
 | `site` | Label for this store. `[A-Za-z0-9_-]`, 32 chars. **Required.** |
 | `interval_sec` | Idle poll gap. A full batch drains immediately instead of waiting. |
-| `batch` | Rows per request, capped at the protocol's 1000. Not on the form. |
+| `batch` | Rows per request. Not on the form, and rarely worth setting: the **binding limit is bytes, not rows** — the receiver refuses a body over 64 KB, so a batch is trimmed to whatever fits (~400 rows for a humidity probe, ~500 for temperature-only) regardless of what you put here. Trimming is from the tail only, so a cursor never steps past a record that was not sent. |
 
 `upstream.token` is redacted from `GET /api/config` like every other secret.
 
