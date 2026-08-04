@@ -26,7 +26,14 @@ deliberate.
    Change them together.
 
 Extensionless URLs (`/pilot`, `/freezer-alarm`) are used by every canonical, internal link and
-sitemap entry. `_redirects` makes that explicit rather than relying on a Cloudflare Pages default.
+sitemap entry. **Rely on the Cloudflare Pages default for this — do not add a `_redirects` file
+mapping them to `.html`.** Pages already serves `foo.html` at `/foo`, *and* it 301s `/foo.html`
+back to `/foo` to keep one canonical URL. A rule like `/foo /foo.html 200` therefore points at a
+path Pages immediately redirects away from, and the two bounce off each other until the browser
+gives up with `ERR_TOO_MANY_REDIRECTS`. A `_redirects` file written to "make the default explicit"
+took all eight subpages down for about a day (`8b40876` added it, `/replacement-parts` was the
+page that surfaced it). The homepage stayed up throughout, because `/` had no rule — which is what
+makes this look like a zone/SSL problem when it is not.
 
 ## Deploy model
 
