@@ -41,6 +41,9 @@ FONT_STACK = ("-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, "
               "'Helvetica Neue', Arial, sans-serif")
 
 # --- Gauge Card ---
+# The gauge is a fixed 230 px inside a card stretched to the graph's height, so
+# it used to sit pinned to the top over ~250 px of dead space. gauge-fill takes
+# the leftover height and centres it (see theme.css).
 GaugeCard = dbc.Card(
     dbc.CardBody([
         html.H5(
@@ -48,36 +51,36 @@ GaugeCard = dbc.Card(
              html.Span("LIVE", id="live-badge", className="ms-2 text-success small fw-bold")],
             className="card-title",
         ),
-        dcc.Graph(id="temp-gauge", style={"height": "230px"},
-                  config={"displayModeBar": False}),
-    ]),
+        html.Div(
+            dcc.Graph(id="temp-gauge", style={"height": "260px"},
+                      config={"displayModeBar": False}),
+            className="gauge-fill",
+        ),
+    ], className="d-flex flex-column"),
     className="h-100 gauge-card",
 )
 
 # --- Metrics Row ---
-# Responsive widths (xs=6, lg=3) so the KPI cards form a clean 2×2 grid on a
-# phone instead of a single 4-wide row whose long labels wrap mid-word.
+# Three KPIs, not four: the °C/°F/K picker used to sit here dressed as a metric,
+# which put a control the eye reads as a readout in the middle of the readouts.
+# It now lives with the other view controls in the toolbar above, leaving this
+# row showing only things that are actually measured.
+#
+# Responsive widths (xs=6, md=4) keep the two that matter most side by side on a
+# phone, and give a clean 3-across row from tablets up.
 MetricsRow = dbc.Row([
     dbc.Col(dbc.Card(dbc.CardBody([
         html.H6("Connected Probes", className="text-muted mb-1"),
         html.H2(id="metric-probes", className="fw-bold mb-0 kpi-value"),
-    ]), className="h-100"), xs=6, lg=3),
+    ]), className="h-100"), xs=6, md=4),
     dbc.Col(dbc.Card(dbc.CardBody([
         html.H6("Last Update", className="text-muted mb-1"),
         html.H2(id="metric-lastupdate", className="fw-bold mb-0 kpi-value"),
-    ]), className="h-100"), xs=6, lg=3),
+    ]), className="h-100"), xs=6, md=4),
     dbc.Col(dbc.Card(dbc.CardBody([
         html.H6("Logging Status", className="text-muted mb-1"),
         html.H2(id="metric-logging", className="fw-bold text-success mb-0 kpi-value"),
-    ]), className="h-100"), xs=6, lg=3),
-    dbc.Col(dbc.Card(dbc.CardBody([
-        html.H6("Unit", className="text-muted mb-1"),
-        dbc.ButtonGroup([
-            dbc.Button("°C", id="unit-celsius", size="sm", color="primary", outline=False),
-            dbc.Button("°F", id="unit-fahrenheit", size="sm", color="primary", outline=True),
-            dbc.Button("K", id="unit-kelvin", size="sm", color="primary", outline=True),
-        ], size="sm"),
-    ]), className="h-100"), xs=6, lg=3),
+    ]), className="h-100"), xs=12, md=4),
 ], className="g-3 mb-3 metric-row")
 
 # --- Statistics Row ---
@@ -230,21 +233,27 @@ FocusBar = dbc.Row([
         id="site-selector-col", style={"display": "none"},
         xl=3, lg=4, md=6, sm=12, className="mb-2 mb-lg-0",
     ),
-    # Clock format toggle — every absolute time on the dashboard (Last Update,
-    # the Min/Max "at ..." times, and the graph's ticks/hover) follows this, so
-    # a customer can flip between 24h and 12h for fast comparison against other
-    # clocks/logs without digging into Settings.
+    # Display unit and clock format. Both start from the browser's own locale
+    # (see the clientside callback in register_dashboard_callbacks), so a US
+    # customer opens the page already in °F on a 12-hour clock and never has to
+    # find these; they sit here, next to the other view controls, for the times
+    # someone wants to override that.
     dbc.Col(
-        dbc.InputGroup([
-            dbc.InputGroupText("Clock"),
-            dbc.ButtonGroup([
-                dbc.Button("24h", id="clock-24h", size="sm", color="secondary", outline=False),
-                dbc.Button("12h", id="clock-12h", size="sm", color="secondary", outline=True),
-            ]),
+        dbc.ButtonGroup([
+            dbc.Button("°C", id="unit-celsius", size="sm", color="primary", outline=False),
+            dbc.Button("°F", id="unit-fahrenheit", size="sm", color="primary", outline=True),
+            dbc.Button("K", id="unit-kelvin", size="sm", color="primary", outline=True),
         ], size="sm"),
         width="auto",
     ),
-], className="mb-3 justify-content-end g-2 align-items-center")
+    dbc.Col(
+        dbc.ButtonGroup([
+            dbc.Button("24h", id="clock-24h", size="sm", color="secondary", outline=False),
+            dbc.Button("12h", id="clock-12h", size="sm", color="secondary", outline=True),
+        ], size="sm"),
+        width="auto",
+    ),
+], className="mb-3 justify-content-end g-2 align-items-center dash-toolbar")
 
 # Hub's local timezone label, shown so a user knows what the on-screen and
 # exported local timestamps mean (the CSV also carries an unambiguous UTC column).
@@ -285,10 +294,40 @@ ExportModal = dbc.Modal([
 ], id="export-modal", is_open=False)
 
 
+# --- "More detail" -----------------------------------------------------------
+# The secondary reads — recent events, the per-probe breakdown, humidity/VPD —
+# folded behind one toggle. They are genuinely useful and none of them is the
+# question someone opens the dashboard to answer, so they used to sit between
+# the operator and the chart. Collapsed, the page ends at the numbers that
+# matter; the choice is remembered per browser.
+#
+# Their callbacks are gated on this being open (see register_dashboard_callbacks)
+# so a closed section costs nothing at all — no per-probe GROUP BY every 5 s.
+DetailsSection = html.Div([
+    dbc.Button("▸ More detail", id="dash-details-toggle", color="link", size="sm",
+               className="px-0 details-toggle"),
+    dbc.Collapse([
+        html.Div(id="details-empty", className="mb-2"),
+        ProbeStatsRow,
+        EnvironmentRow,
+        EventsRow,
+    ], id="dash-details-collapse", is_open=False),
+], className="mt-2 mb-3")
+
+
 # --- Dashboard Layout ---
+# Reading order is now urgency order: anything wrong → how the hub is doing →
+# each probe → the chart → the numbers behind it → everything else on request.
+# The gauge and graph used to sit below five stacked sections, so the single most
+# looked-at element on the page was also the one furthest down it.
 DashboardLayout = html.Div([
-    dcc.Store(id="temp-unit-store", storage_type="local", data="celsius"),
-    dcc.Store(id="clock-format-store", storage_type="local", data="24h"),
+    # No default: an empty store means "this browser has never chosen", which is
+    # what lets the clientside locale probe fill in °F / 12-hour for the people
+    # who expect them. _convert()/_fmt_clock() treat an unset value as °C / 24 h,
+    # so nothing renders wrong in the moment before it resolves.
+    dcc.Store(id="temp-unit-store", storage_type="local"),
+    dcc.Store(id="clock-format-store", storage_type="local"),
+    dcc.Store(id="dash-details-store", storage_type="local", data=False),
     # Per-client render signature for the main refresh callback: when a 5 s tick
     # arrives and nothing it would draw has changed, the callback answers
     # no_update instead of re-rendering both figures (see update_dashboard).
@@ -298,17 +337,15 @@ DashboardLayout = html.Div([
     html.Div(id="demo-banner"),
     ExportModal,
     FocusBar,
-    MetricsRow,
     AlertsRow,
-    EventsRow,
+    MetricsRow,
     ProbesRow,
-    StatsRow,
-    ProbeStatsRow,
-    EnvironmentRow,
     dbc.Row([
         dbc.Col(GaugeCard, xs=12, lg=4),
         dbc.Col(GraphCard, xs=12, lg=8),
-    ], className="g-3 align-items-stretch"),
+    ], className="g-3 align-items-stretch mb-3"),
+    StatsRow,
+    DetailsSection,
 ])
 
 
@@ -1071,7 +1108,10 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
                 # breakdown just below instead. Global Min/Max stay meaningful as
                 # the coldest / hottest reading anywhere.
                 stat_avg = "Per-probe"
-                stat_avg_info = "see per-probe stats below"
+                # Names where the breakdown now lives: it moved behind the
+                # dashboard's "More detail" fold, so "below" would send someone
+                # looking at a section that is closed.
+                stat_avg_info = "per-probe breakdown under “More detail”"
             else:
                 stat_avg = _fmt(stats["avg"], temp_unit)
                 stat_avg_info = f"{filtered_points:,} readings"
@@ -1210,6 +1250,52 @@ def register_dashboard_callbacks(app, finder, cfg, db):
         except Exception:
             log.exception("demo data clear failed")
             return no_update
+
+    # --- Locale defaults ------------------------------------------------------
+    # Both stores start empty, meaning "this browser has never chosen". While
+    # that holds, take the answer from the browser instead of asking: a US
+    # customer's first view is already °F on a 12-hour clock, and everyone else
+    # keeps °C / 24 h. Runs clientside because the locale only exists there — the
+    # server sees a request, not the reader. Once either store holds a value the
+    # callback answers no_update forever, so an explicit choice is never
+    # second-guessed, and any failure just leaves the °C / 24 h defaults.
+    app.clientside_callback(
+        """
+        function (_n, unit, clock) {
+            var nu = window.dash_clientside.no_update;
+            var out = [nu, nu];
+            try {
+                if (!unit) {
+                    var tag = (navigator.languages && navigator.languages[0])
+                              || navigator.language || "";
+                    var region = "";
+                    try {
+                        region = (new Intl.Locale(tag)).maximize().region || "";
+                    } catch (e) {
+                        var m = /[-_]([A-Za-z]{2})(?![A-Za-z])/.exec(tag);
+                        region = m ? m[1] : "";
+                    }
+                    // The countries that use Fahrenheit for everyday temperature.
+                    var F = ["US", "LR", "MM", "BS", "BZ", "KY", "PW", "FM", "MH"];
+                    out[0] = (F.indexOf(region.toUpperCase()) >= 0)
+                             ? "fahrenheit" : "celsius";
+                }
+                if (!clock) {
+                    var h12 = (new Intl.DateTimeFormat(undefined, {hour: "numeric"}))
+                              .resolvedOptions().hour12;
+                    out[1] = h12 ? "12h" : "24h";
+                }
+            } catch (e) { /* leave the stores empty; the °C / 24 h defaults apply */ }
+            return out;
+        }
+        """,
+        Output("temp-unit-store", "data", allow_duplicate=True),
+        Output("clock-format-store", "data", allow_duplicate=True),
+        Input("dash-refresh", "n_intervals"),
+        State("temp-unit-store", "data"),
+        State("clock-format-store", "data"),
+        prevent_initial_call=True,
+    )
 
     @app.callback(
         Output("temp-unit-store", "data"),
@@ -1360,8 +1446,14 @@ def register_dashboard_callbacks(app, finder, cfg, db):
         Input("temp-unit-store", "data"),
         Input("focus-probe-selector", "value"),
         Input("site-selector", "value"),
+        # An Input, not a State: opening "More detail" has to draw the section
+        # now, not on the next tick. Closed, this skips a per-probe GROUP BY that
+        # otherwise ran every 5 s over the whole selected range for nobody.
+        Input("dash-details-collapse", "is_open"),
     )
-    def _update_probe_stats(_n, time_range, temp_unit, focus_probe, site):
+    def _update_probe_stats(_n, time_range, temp_unit, focus_probe, site, details_open):
+        if not details_open:
+            return []
         # In focus mode the global StatsRow already shows the selected probe's
         # min/avg/max, so the per-probe breakdown would be redundant.
         if focus_probe and focus_probe != "all":
@@ -1373,10 +1465,13 @@ def register_dashboard_callbacks(app, finder, cfg, db):
         Input("dash-refresh", "n_intervals"),
         Input("focus-probe-selector", "value"),
         Input("site-selector", "value"),
+        Input("dash-details-collapse", "is_open"),
     )
-    def _update_environment(_n, focus_probe, site):
+    def _update_environment(_n, focus_probe, site, details_open):
         """Humidity + VPD cards for grow-variant probes (SHT4x). Empty for a
         temperature-only deployment so the layout is unchanged for most users."""
+        if not details_open:
+            return []
         focus = focus_probe if (focus_probe and focus_probe != "all") else None
         site_filter = _site_filter(site)
         try:
@@ -1406,16 +1501,68 @@ def register_dashboard_callbacks(app, finder, cfg, db):
         Output("events-row", "children"),
         Input("events-refresh", "n_intervals"),
         Input("site-selector", "value"),
-        State("temp-unit-store", "data"),
+        Input("dash-details-collapse", "is_open"),
+        Input("temp-unit-store", "data"),
     )
-    def _update_events(_n, site, temp_unit):
+    def _update_events(_n, site, details_open, temp_unit):
         """Recent alert-lifecycle events, refreshed on their own 30 s interval.
         Renders nothing (invisible section) while the event log is empty.
 
         Site is an Input, not State: switching store is a context switch the
-        operator expects to see immediately, not up to 30 s later.
+        operator expects to see immediately, not up to 30 s later. So is the
+        "More detail" state — otherwise opening the section could sit blank for
+        30 s and read as "no events" when there are plenty.
+
+        The unit is an Input for the same reason, and it stopped being optional
+        once the unit could change by itself: locale inference sets °F shortly
+        after first paint, which does not re-run a State-only callback, so this
+        feed rendered "15.0 °C (limit 8.0)" beside cards already reading °F and
+        only agreed with them 30 s later. Re-rendering on a unit change costs one
+        pass of a section that is gated behind the fold anyway.
         """
+        if not details_open:
+            return []
         return build_events(db, cfg, temp_unit, site=site)
+
+    # --- "More detail" toggle -------------------------------------------------
+    @app.callback(
+        Output("dash-details-store", "data"),
+        Input("dash-details-toggle", "n_clicks"),
+        State("dash-details-store", "data"),
+        prevent_initial_call=True,
+    )
+    def _toggle_details(_n, is_open):
+        return not bool(is_open)
+
+    @app.callback(
+        Output("dash-details-collapse", "is_open"),
+        Output("dash-details-toggle", "children"),
+        Input("dash-details-store", "data"),
+    )
+    def _sync_details(is_open):
+        # Driven off the persisted store rather than the click, so the choice
+        # survives a reload instead of snapping shut on every refresh.
+        return bool(is_open), ("▾ Hide detail" if is_open else "▸ More detail")
+
+    @app.callback(
+        Output("details-empty", "children"),
+        Input("events-row", "children"),
+        Input("probe-stats-row", "children"),
+        Input("env-row", "children"),
+        Input("dash-details-collapse", "is_open"),
+    )
+    def _details_placeholder(events, stats, env, is_open):
+        """Explain an empty "More detail" instead of opening onto nothing.
+
+        All three sections legitimately render nothing on a young or single-probe
+        hub, so without this the toggle can look broken the first time it's used.
+        """
+        if not is_open or any(bool(x) for x in (events, stats, env)):
+            return None
+        return html.Small(
+            "Nothing extra yet — the per-probe breakdown appears once two or more "
+            "probes are reporting, recent events once an alert has fired, and "
+            "humidity for probes that measure it.", className="text-muted")
 
     @app.callback(
         Output("temp-gauge", "figure"),

@@ -6,7 +6,7 @@ from dash import Input, Output, dcc, html
 from components.dashboard_view import DashboardLayout, _reporting_probe_count
 from components.devices_panel import DevicesLayout, register_devices_callbacks
 from components.diagnostics_view import DiagnosticsLayout, register_diagnostics_callbacks
-from components.setup_helper import SetupHelper, register_setup_helper_callbacks
+from components.setup_helper import register_setup_helper_callbacks
 from components.settings_panel import SettingsPanel, register_settings_callbacks
 from components.help_modal import HelpModal, HelpPage
 from core.status import hub_status
@@ -34,8 +34,12 @@ def serve_page(pathname):
     if pathname == "/devices":
         return DevicesLayout
     elif pathname == "/settings":
-        return html.Div([html.H4("Settings & Configuration", className="mb-3"),
-                         SettingsPanel, SetupHelper])
+        return html.Div([
+            html.H4("Settings", className="mb-1"),
+            html.Small("Open a section to change it — the badge on the right shows "
+                       "what it is set to now.", className="text-muted d-block mb-3"),
+            SettingsPanel,
+        ])
     elif pathname == "/diagnostics":
         return DiagnosticsLayout
     elif pathname == "/help":

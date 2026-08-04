@@ -107,25 +107,26 @@ Per-probe options (friendly names, alert thresholds, read interval, calibration 
 ## Notifications & Alerts
 
 Set a **min/max threshold** per probe on the **Devices** page (✏️ Edit), then turn on
-notifications under **Settings → Notifications**. A background monitor checks the
-latest reading from each probe and notifies you when one goes out of range — it
+notifications under **Settings → Alerts & notifications**. A background monitor checks
+the latest reading from each probe and notifies you when one goes out of range — it
 runs server-side, so alerts fire even with no browser open.
 
 | Channel | What you need |
 |---|---|
-| **Email** | SMTP host/port, username/password, from + to addresses. Port 465 uses SSL; 587 uses STARTTLS. |
-| **Webhook** | A URL. The hub POSTs JSON with a Slack-compatible `text` field, so Slack/Discord/Zapier/IFTTT and custom relays (e.g. Twilio for SMS) all work. |
+| **Email** | Your address and its password. The hub infers the SMTP host, port and encryption from the address's domain (~30 providers, plus an `smtp.<domain>:587` fallback it labels as a guess), and defaults the From/To addresses to the same account — override any of it under **Server settings**. Port 465 uses SSL; 587 uses STARTTLS. Gmail/Yahoo/iCloud/Fastmail need a provider **app password**, and the form says so as soon as it recognises the domain. |
+| **Webhook** | A URL. The hub POSTs JSON with a Slack-compatible `text` field, so Slack/Discord/Teams/Zapier/IFTTT and custom relays (e.g. Twilio for SMS) all work — and names the service back to you once it recognises the URL. |
 
-You also control a **reminder interval** (how often to re-notify while a probe stays
-out of range), an **alert deadband / hysteresis** (°C — a probe must move back inside its
-limit by this much before the alert clears, so a noisy sensor sitting on the threshold
-doesn't flap; default 0.5), and whether to send a **"back to normal"** message on recovery.
-Use **Send test** to verify your settings. Thresholds are in °C.
+Under **Advanced settings** in the same card you also control a **reminder interval**
+(how often to re-notify while a probe stays out of range), an **alert deadband /
+hysteresis** (°C — a probe must move back inside its limit by this much before the alert
+clears, so a noisy sensor sitting on the threshold doesn't flap; default 0.5), and whether
+to send a **"back to normal"** message on recovery. Every one of them ships with a working
+default. Use **Send test** to verify your settings. Thresholds are in °C.
 
 **Offline alerts:** the hub also notifies you when a probe **stops reporting** for
 longer than *Offline after* (default 5 minutes), and again when it comes back —
 so a dead or unplugged probe doesn't go unnoticed. Toggle it under
-Settings → Notifications.
+Settings → Alerts & notifications.
 
 **Flap damping (weak Wi-Fi):** a probe on a spotty link — freezer Wi-Fi through a
 metal door, say — can drop out, land one reading, and drop again, which would
