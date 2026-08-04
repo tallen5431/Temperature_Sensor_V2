@@ -87,6 +87,32 @@ setup in the Cloudflare dashboard:
    `signup:` key appears in the KV namespace. If the binding is missing the form
    still says "you're on the list" but nothing is stored — so verify the KV entry.
 
+`/api/contact` ([`functions/api/contact.js`](../functions/api/contact.js)) reuses the
+same binding and token under a `contact:` prefix, so there is nothing extra to set up.
+
+### Two things about these endpoints that are easy to get wrong
+
+**Records go in KV *metadata*, not just the value.** A Worker invocation is capped
+at **50 subrequests** on the free plan, and every `KV.get()` is one. The original
+export walked the key list and issued a `get()` per key, so it worked in testing
+and started failing at roughly 50 records — the exact point where the list becomes
+worth exporting. `list()` returns metadata inline for free, so the export now costs
+no `get()` at all for records written since. Anything too big for KV's **1 KiB**
+metadata cap (a long contact message) still falls back to a `get()`, spent against
+an explicit budget; when that budget runs out the response carries
+`truncated: true` and a `cursor` to pass back as `?cursor=…`. See
+[`_shared.js`](../functions/api/_shared.js).
+
+**Rate limiting is not in the code, and needs to be in the dashboard.** The
+endpoints reject foreign origins and carry a honeypot field, which stops
+drive-by bots — but an `Origin` header is trivially forged, so that is a filter,
+not a control. The real protection is a **WAF rate-limiting rule**: Security →
+WAF → Rate limiting rules → match `http.request.uri.path in {"/api/waitlist"
+"/api/contact" "/api/quote"}`, something like 5 requests per minute per IP,
+action Block. Worth doing, because free-tier KV allows **1,000 writes/day**: once
+that is gone, real submissions start returning `store_failed` and the only
+symptom is that the list quietly stops growing.
+
 ## Replacement-parts quote form (`/api/quote`)
 
 [`replacement-parts.html`](replacement-parts.html) is the cold-outreach landing page for

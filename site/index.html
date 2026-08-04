@@ -641,6 +641,13 @@
         <p>The DIY kit is <a href="https://www.tindie.com/products/datumlaboratories/setpoint-diy-kit-local-wi-fi-temperature-monitor/" target="_blank" rel="noopener" style="color:var(--signal);text-decoration:underline;">live on Tindie now</a>. Pre-built, pre-flashed <b>Setpoint USB &amp; Battery</b> units are not on sale yet — they ship once FCC Part 15B testing is complete. Join the list and I'll tell you when, with launch pricing.</p>
         <form class="wl-form" id="wlForm" novalidate>
           <input type="email" id="wlEmail" placeholder="you@example.com" aria-label="Email address" required>
+          <!-- Honeypot: off-screen rather than display:none, because the cruder
+               bots skip hidden fields but fill everything they can see in the
+               DOM. aria-hidden + tabindex=-1 keeps it away from screen readers
+               and the tab order. A human never fills it; /api/waitlist discards
+               any submission that has it set. -->
+          <input type="text" id="wlCompany" name="company" tabindex="-1" aria-hidden="true"
+                 autocomplete="off" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
           <button type="submit" class="btn signal">Join the list</button>
         </form>
         <p class="wl-note" id="wlNote">No spam — launch updates only. One email, then you decide.</p>
@@ -840,7 +847,7 @@
     fetch("/api/waitlist", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: email })
+      body: JSON.stringify({ email: email, company: document.getElementById("wlCompany").value })
     }).then(function (r) {
       return r.json().catch(function () { return {}; });
     }).then(function (body) {
