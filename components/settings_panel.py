@@ -607,7 +607,22 @@ def register_settings_callbacks(app, cfg, public_base_func=None):
                    className="small mb-2"),
             dbc.Table([html.Tbody([
                 html.Tr([html.Td("Head office hub address", className="text-muted small"),
-                         html.Td(html.Code(base or "(unknown)"))]),
+                         html.Td([
+                             html.Code(base or "(unknown)"),
+                             # This address is auto-detected from the default
+                             # route, so on a hub reached over a VPN it is the
+                             # physical NIC's address — correct for the same LAN,
+                             # useless to a store on another network, and wrong in
+                             # a way that looks right. Name the fix here, because
+                             # this table is exactly where someone copies it from.
+                             html.Small(
+                                 "Detected from this machine's network. If your "
+                                 "sites are on other networks, they need an address "
+                                 "that reaches this hub — a VPN address such as "
+                                 "Tailscale's. Set PUBLIC_BASE to it and restart, "
+                                 "and this line will show the right one.",
+                                 className="text-muted d-block mt-1"),
+                         ])]),
                 html.Tr([html.Td("Head office token", className="text-muted small"),
                          html.Td(html.Code(token or "(none set)"))]),
                 html.Tr([html.Td("This site's name", className="text-muted small"),
