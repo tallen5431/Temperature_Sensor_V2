@@ -57,9 +57,15 @@ def _find_db() -> Path:
     for c in _candidates():
         if c.exists():
             return c
-    sys.exit("Could not find temperature_log.db. Pass its path:\n"
+    # By far the most common reason, and the one worth naming: the hub has not
+    # been started since the database was created or deleted. It is made on
+    # startup, so "no database" usually means "no hub running", not "wrong path".
+    sys.exit("No database found — has the hub been started yet?\n"
+             "It is created on first run, so a hub that has never started (or one\n"
+             "whose database was just deleted) has none until you start it again.\n"
+             "\nIf it lives somewhere else, pass the path:\n"
              "  python3 scripts/site_report.py /path/to/temperature_log.db\n"
-             "Looked in:\n  " + "\n  ".join(str(c) for c in _candidates()))
+             "\nLooked in:\n  " + "\n  ".join(str(c) for c in _candidates()))
 
 
 def _config_for(db_path: Path) -> dict:
