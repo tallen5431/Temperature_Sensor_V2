@@ -67,6 +67,26 @@ def test_get_returns_copy_not_live_reference(tmp_path):
     assert c.get("probe_names") == {"p1": "Fridge"}  # unchanged
 
 
+def test_to_dict_returns_deep_snapshot_without_changing_live_or_persisted_data(tmp_path):
+    p = tmp_path / "config.json"
+    c = Config(p)
+    original = {
+        "nested_snapshot_test": {
+            "metadata": {"location": "walk-in"},
+            "channels": ["email", {"name": "webhook", "enabled": True}],
+        }
+    }
+    c.update(original)
+
+    snapshot = c.to_dict()
+    snapshot["nested_snapshot_test"]["metadata"]["location"] = "TAMPERED"
+    snapshot["nested_snapshot_test"]["channels"].append("injected")
+    snapshot["nested_snapshot_test"]["channels"][1]["enabled"] = False
+
+    assert c.to_dict()["nested_snapshot_test"] == original["nested_snapshot_test"]
+    assert json.loads(p.read_text(encoding="utf-8"))["nested_snapshot_test"] == original["nested_snapshot_test"]
+
+
 def test_concurrent_mutate_and_save_does_not_race(tmp_path):
     # Reproduces the get()->mutate->update() vs save()->json.dumps race: with the
     # live-reference bug this raised "dict changed size during iteration".

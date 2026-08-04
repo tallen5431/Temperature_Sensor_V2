@@ -117,4 +117,4 @@ class Config:
 
     def to_dict(self) -> dict:
         with self.lock:
-            return dict(self.data)
+            return copy.deepcopy(self.data)
