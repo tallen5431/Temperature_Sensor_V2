@@ -207,13 +207,7 @@ service and discovering each other. Leave it on in real deployments.
 > forwarding, which is what you are trying to verify.
 >
 > The tell: forwarded rows carry a site label, directly-posted ones do not.
->
-> ```bash
-> python3 -c "import sqlite3;print(*sqlite3.connect('temperature_log.db')
->   .execute('SELECT site,probe_id,COUNT(*) FROM readings GROUP BY site,probe_id'),sep='\n')"
-> ```
->
-> A row with an empty site on the HQ hub is a probe posting to it directly.
+> `scripts/site_report.py` shows both and names the problem outright.
 
 ### 2. Give the stores some readings
 
@@ -269,15 +263,37 @@ Each store's log shows the push:
 INFO hub.forwarder: forwarded 2 readings to http://127.0.0.1:8098/api/ingest_csv as site=atlanta
 ```
 
-and HQ's database has them labelled:
+and HQ's database has them labelled. `scripts/site_report.py` is the check you
+will run most — it opens the store **read-only**, so it can never create or
+change anything:
 
 ```bash
-python -c "import sqlite3;print(*sqlite3.connect('/tmp/setpoint/hq/temperature_log.db')
-  .execute('SELECT site,probe_id,COUNT(*) FROM readings GROUP BY site,probe_id'),sep='\n')"
-# ('atlanta',  'ATL-Freezer', 9)
-# ('atlanta',  'ATL-Walkin',  9)
-# ('marietta', 'MAR-Walkin',  9)
+DATA_DIR=/tmp/setpoint/hq python scripts/site_report.py
 ```
+```
+readings : 27
+
+  site                 probe                          rows   newest
+  -------------------- ------------------------ ----------   -------------------
+  atlanta              ATL-Freezer                       9   2026-08-04T08:45:48
+  atlanta              ATL-Walkin                        9   2026-08-04T08:45:48
+  marietta             MAR-Walkin                        9   2026-08-04T08:45:48
+
+forwarded from : atlanta, marietta
+local readings : 0
+```
+
+Run it on a **store** hub instead and it reports the other side — the backlog
+still waiting to go:
+
+```
+forwarding     : ON -> http://127.0.0.1:8098 as "atlanta"
+  sent so far  : up to row 300
+  still to send: 200
+```
+
+Any row listed under site `(local)` **on the HQ hub** is a probe posting to head
+office directly — see the auto-provision warning above.
 
 ### 5. Open the dashboards
 

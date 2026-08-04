@@ -93,3 +93,44 @@ def test_diagnostics_stays_quiet_when_forwarding_is_off(tmp_path):
     up = build_diagnostics(cfg, db, _F(), "http://hub:8088", "0", "Setpoint")["upstream"]
     assert up["enabled"] is False
     assert "pending" not in up      # no backlog line on a hub that forwards nothing
+
+
+def test_site_report_is_read_only_and_never_creates_a_database(tmp_path):
+    """The obvious one-liner (sqlite3.connect) CREATES an empty database when run
+    from the wrong directory, so a mistyped path reports "no such table:
+    readings" and leaves a junk file behind. The helper must refuse instead."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    script = Path(__file__).resolve().parent.parent / "scripts" / "site_report.py"
+    missing = tmp_path / "nothing-here"
+    missing.mkdir()
+    r = subprocess.run([sys.executable, str(script), str(missing / "temperature_log.db")],
+                       capture_output=True, text=True,
+                       env={"PATH": "/usr/bin:/bin", "DATA_DIR": str(missing)})
+    assert r.returncode != 0
+    assert not (missing / "temperature_log.db").exists(), "it created a database"
+
+
+def test_site_report_separates_forwarded_from_local(tmp_path):
+    import datetime
+    import subprocess
+    import sys
+    from pathlib import Path
+    from core.db import Database
+
+    db = Database(tmp_path / "temperature_log.db")
+    now = datetime.datetime.now()
+    for pid, site in (("ATL-Walkin", "atlanta"), ("Direct-Probe", "")):
+        for i in range(3):
+            db.append((now - datetime.timedelta(seconds=3 - i)).isoformat(
+                timespec="milliseconds"), 4.0, 39.2, pid, site=site)
+
+    script = Path(__file__).resolve().parent.parent / "scripts" / "site_report.py"
+    r = subprocess.run([sys.executable, str(script), str(tmp_path / "temperature_log.db")],
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert "atlanta" in r.stdout and "(local)" in r.stdout
+    # The line that diagnoses two hubs fighting over one probe.
+    assert "posting directly to THIS hub" in r.stdout
