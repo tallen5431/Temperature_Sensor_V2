@@ -186,6 +186,16 @@ class MqttPublisher:
             client = self._client
             self._client = None
             self._enabled = False
+            # Forget what has been announced. Saving Settings does stop() then
+            # start(), so a changed base_topic or discovery_prefix produces a
+            # publisher writing to new topics — while Home Assistant still
+            # subscribes to the old ones from the retained discovery config.
+            # Every existing probe's sensor would go stale (and stay stale until
+            # the hub was restarted) because it had already been announced and
+            # was therefore never announced again. Clearing here means the next
+            # reading re-announces each probe against the topics now in effect.
+            self._announced.clear()
+            self._announce_capped = False
         if client:
             try:
                 client.loop_stop()

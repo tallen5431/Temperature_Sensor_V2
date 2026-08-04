@@ -46,6 +46,20 @@ SetupHelperBody = [
     dcc.Interval(id="ap-poll", interval=5000, n_intervals=0, disabled=True),
 ]
 
+def set_scanning(enabled: bool) -> None:
+    """Start or stop the background Wi-Fi scan.
+
+    Gating the poll interval alone is not enough: the watcher runs its own thread
+    and would keep shelling out to netsh/nmcli every few seconds for the life of
+    the process after the section was opened once. The Settings page calls this
+    as the section opens and closes so the scan really does track it.
+    """
+    if enabled:
+        _watcher.start()
+    else:
+        _watcher.stop()
+
+
 def register_setup_helper_callbacks(app):
     @app.callback(
         Output("ap-status", "children"),

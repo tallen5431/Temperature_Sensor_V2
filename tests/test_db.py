@@ -324,6 +324,40 @@ def test_migration_preserves_distinct_same_epoch_readings(tmp_path):
     assert temps == [4.0, 22.0]   # nothing deleted
 
 
+def test_migration_does_not_re_scan_on_every_open(tmp_path):
+    """A database that genuinely cannot take the unique index used to re-run the
+    whole dedupe — a full-table GROUP BY plus a failed index build — on EVERY
+    startup, i.e. on precisely the oldest and largest stores. The verdict is
+    recorded once and honoured after that."""
+    path = tmp_path / "legacy.db"
+    _legacy_db(path, [
+        ("2026-01-01T00:00:05", 1767225605, 4.0, 39.2, "P1"),
+        ("2026-01-01T00:00:05", 1767225605, 22.0, 71.6, "P1"),  # distinct, same epoch
+    ])
+    first = Database(path)
+    assert first.meta_get(Database._NO_UNIQUE_KEY) == "1"
+
+    # Re-open: the scan must be skipped, the data untouched, and the index that
+    # serves the same queries still in place.
+    again = Database(path)
+    assert sorted(r["temperature_c"] for r in again.fetch_readings(probe_id="P1")) \
+        == [4.0, 22.0]
+    idx = {r[0] for r in again._conn().execute(
+        "SELECT name FROM sqlite_master WHERE type='index'").fetchall()}
+    assert "idx_readings_probe_epoch" in idx
+
+
+def test_a_migrated_database_skips_the_migration_next_time(tmp_path):
+    """The common path: once the unique index exists there is nothing to do."""
+    path = tmp_path / "clean.db"
+    Database(path).append("2026-01-01T00:00:05.000", 4.0, 39.2, "P1")
+    db = Database(path)
+    assert db.meta_get(Database._NO_UNIQUE_KEY) == ""     # never marked
+    idx = {r[0] for r in db._conn().execute(
+        "SELECT name FROM sqlite_master WHERE type='index'").fetchall()}
+    assert Database._UNIQUE_INDEX in idx
+
+
 def test_migration_collapses_byte_identical_duplicates(tmp_path):
     # A genuine replay (every column identical) IS collapsed to one row, and the
     # UNIQUE index is then built so future replays are dropped by INSERT OR IGNORE.

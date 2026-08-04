@@ -202,63 +202,7 @@ class Database:
             # whole history nor silently skips the rows written while it was
             # down. Deliberately generic — a second consumer beats a second table.
             conn.execute("CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)")
-            # One physical reading per (probe, instant): a UNIQUE index makes
-            # ingest idempotent, so a re-sent bulk chunk (a dropped ACK on a
-            # /ingest_csv flush) or a replayed single POST cannot create
-            # duplicate rows that would inflate COUNT/AVG/min-max and CSV
-            # exports. Every reading carries a millisecond-precision timestamp
-            # (the probe's nowIso(), or the hub's own ms stamp when a payload
-            # omits one), so two DISTINCT readings never share an epoch — only a
-            # byte-identical replay collides, and INSERT OR IGNORE drops it.
-            # Replaces the old non-unique (probe_id, epoch) index, which this
-            # supersedes for the same query patterns.
-            #
-            # ``site`` is in the key, and its POSITION is the whole trick. Two
-            # stores whose operators both named a probe "walkin" produce the same
-            # (probe_id, epoch) at head office, and a two-column key made
-            # INSERT OR IGNORE silently discard the second store's reading — a
-            # hole in a food-safety record, created by nothing worse than two
-            # people picking the same obvious name. Adding site as the THIRD
-            # column fixes that while leaving (probe_id, epoch) as the leading
-            # prefix, so the per-probe "newest row" seek in latest_per_probe
-            # still uses this index exactly as before.
-            conn.execute("DROP INDEX IF EXISTS idx_readings_probe_epoch")
-            conn.execute("DROP INDEX IF EXISTS idx_readings_probe_epoch_uniq")
-            try:
-                conn.execute(
-                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_readings_probe_epoch_site_uniq "
-                    "ON readings(probe_id, epoch, site)"
-                )
-            except sqlite3.IntegrityError:
-                # A pre-existing database from the older non-idempotent path may
-                # hold rows that share a (probe_id, epoch). Collapse ONLY
-                # byte-identical duplicates — every reading column equal — keeping
-                # the earliest id. Rows that share an epoch but differ in any
-                # value are DISTINCT measurements (old whole-second stamping of a
-                # sub-1 s cadence, before ms timestamps) and MUST be preserved:
-                # grouping on the full row, not just (probe_id, epoch), is what
-                # keeps this from silently deleting real readings.
-                conn.execute(
-                    "DELETE FROM readings WHERE id NOT IN ("
-                    " SELECT MIN(id) FROM readings GROUP BY probe_id, epoch, site, "
-                    " temperature_c, temperature_f, humidity_pct, vpd_kpa, battery_pct)"
-                )
-                try:
-                    conn.execute(
-                        "CREATE UNIQUE INDEX IF NOT EXISTS idx_readings_probe_epoch_site_uniq "
-                        "ON readings(probe_id, epoch, site)"
-                    )
-                except sqlite3.IntegrityError:
-                    # Genuinely-distinct readings still collide on (probe_id,
-                    # epoch), so uniqueness cannot be enforced without discarding
-                    # real data. Keep the old NON-unique index instead: ingest
-                    # idempotency just doesn't apply retroactively to this legacy
-                    # DB (new readings carry ms-precision epochs and don't
-                    # collide), which is strictly better than losing history.
-                    conn.execute(
-                        "CREATE INDEX IF NOT EXISTS idx_readings_probe_epoch "
-                        "ON readings(probe_id, epoch)"
-                    )
+            self._ensure_reading_uniqueness(conn)
             # Alert-lifecycle event log (threshold breach/recovery, probe
             # offline/online, rate-of-change) — powers the dashboard's recent
             # events feed without re-deriving history from raw readings.
@@ -305,6 +249,92 @@ class Database:
                     "CREATE INDEX IF NOT EXISTS idx_events_fwd_dedup "
                     "ON events(kind, probe_id, epoch, site) WHERE site != ''")
             conn.commit()
+
+    # Set in ``meta`` once a database is proven to hold genuinely-distinct
+    # readings that share a (probe_id, epoch, site), so uniqueness can never be
+    # enforced on it. Without the marker every startup re-ran the dedupe scan
+    # below — a full-table GROUP BY plus a failed index build — on precisely the
+    # oldest and largest databases.
+    _NO_UNIQUE_KEY = "schema.readings_not_unique"
+    _UNIQUE_INDEX = "idx_readings_probe_epoch_site_uniq"
+
+    def _ensure_reading_uniqueness(self, conn: sqlite3.Connection) -> None:
+        """Enforce one physical reading per (probe, instant, site).
+
+        The UNIQUE index makes ingest idempotent: a re-sent bulk chunk (a dropped
+        ACK on an ``/ingest_csv`` flush) or a replayed single POST cannot create
+        duplicate rows that would inflate COUNT/AVG/min-max and the CSV exports.
+        Every reading carries a millisecond-precision timestamp — the probe's
+        ``nowIso()``, or the hub's own ms stamp when a payload omits one — so two
+        DISTINCT readings never share an epoch; only a byte-identical replay
+        collides, and ``INSERT OR IGNORE`` drops it.
+
+        ``site`` is in the key, and its POSITION is the whole trick. Two stores
+        whose operators both named a probe "walkin" produce the same
+        (probe_id, epoch) at head office, and a two-column key made INSERT OR
+        IGNORE silently discard the second store's reading — a hole in a
+        food-safety record, created by nothing worse than two people picking the
+        same obvious name. Adding site as the THIRD column fixes that while
+        leaving (probe_id, epoch) as the leading prefix, so the per-probe "newest
+        row" seek in :meth:`latest_per_probe` still uses this index as before.
+
+        Caller holds the write lock.
+        """
+        have_unique = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='index' AND name=?",
+            (self._UNIQUE_INDEX,)).fetchone() is not None
+        if have_unique:
+            return  # already migrated — the overwhelmingly common path
+        gave_up = conn.execute("SELECT 1 FROM meta WHERE k=?",
+                               (self._NO_UNIQUE_KEY,)).fetchone() is not None
+        if gave_up:
+            # A previous run already proved this database can't take the unique
+            # index. Just make sure the non-unique one serving the same query
+            # patterns is present, and skip the scan.
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_readings_probe_epoch "
+                         "ON readings(probe_id, epoch)")
+            return
+
+        conn.execute("DROP INDEX IF EXISTS idx_readings_probe_epoch")
+        conn.execute("DROP INDEX IF EXISTS idx_readings_probe_epoch_uniq")
+        try:
+            conn.execute(f"CREATE UNIQUE INDEX {self._UNIQUE_INDEX} "
+                         "ON readings(probe_id, epoch, site)")
+            return
+        except sqlite3.IntegrityError:
+            pass
+
+        # A pre-existing database from the older non-idempotent path may hold
+        # rows that share a (probe_id, epoch). Collapse ONLY byte-identical
+        # duplicates — every reading column equal — keeping the earliest id. Rows
+        # that share an epoch but differ in any value are DISTINCT measurements
+        # (old whole-second stamping of a sub-1 s cadence, before ms timestamps)
+        # and MUST be preserved: grouping on the full row, not just
+        # (probe_id, epoch), is what keeps this from deleting real readings.
+        conn.execute(
+            "DELETE FROM readings WHERE id NOT IN ("
+            " SELECT MIN(id) FROM readings GROUP BY probe_id, epoch, site, "
+            " temperature_c, temperature_f, humidity_pct, vpd_kpa, battery_pct)"
+        )
+        try:
+            conn.execute(f"CREATE UNIQUE INDEX {self._UNIQUE_INDEX} "
+                         "ON readings(probe_id, epoch, site)")
+        except sqlite3.IntegrityError:
+            # Genuinely-distinct readings still collide, so uniqueness cannot be
+            # enforced without discarding real data. Keep the old NON-unique
+            # index instead: ingest idempotency just doesn't apply retroactively
+            # to this legacy DB (new readings carry ms-precision epochs and don't
+            # collide), which is strictly better than losing history. Record the
+            # verdict so the next startup doesn't repeat this scan.
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_readings_probe_epoch "
+                         "ON readings(probe_id, epoch)")
+            conn.execute("INSERT OR REPLACE INTO meta (k, v) VALUES (?, '1')",
+                         (self._NO_UNIQUE_KEY,))
+            log.warning(
+                "This database holds readings that share a probe id and instant "
+                "but differ in value (pre-millisecond timestamps), so duplicate "
+                "ingests cannot be de-duplicated retroactively. New readings are "
+                "unaffected.")
 
     # -- writes ----------------------------------------------------------------
     def append(self, ts: str, t_c: float, t_f: float, probe_id: str = "",
@@ -430,10 +460,12 @@ class Database:
     def has_probe_prefix(self, prefix: str) -> bool:
         """True if any reading's ``probe_id`` starts with ``prefix``.
 
-        The GLOB prefix pattern rewrites to a range seek on
-        ``idx_readings_probe_epoch`` (verified via EXPLAIN QUERY PLAN in the
-        tests), so answering "is demo data loaded?" on every settings render is
-        O(log N) instead of scanning/grouping the whole readings table the way
+        The GLOB prefix pattern rewrites to a range seek on whichever index leads
+        with ``probe_id`` — ``idx_readings_probe_epoch_site_uniq``, or the legacy
+        ``idx_readings_probe_epoch`` on a database that could not take the unique
+        one (verified via EXPLAIN QUERY PLAN in the tests) — so answering "is demo
+        data loaded?" on every settings render is O(log N) instead of
+        scanning/grouping the whole readings table the way
         ``last_reading_epoch_per_probe`` does.  ``prefix`` is expected to be a
         plain probe-id token (no GLOB metacharacters).
         """

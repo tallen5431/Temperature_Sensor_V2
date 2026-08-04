@@ -28,7 +28,7 @@ from core.alerts import format_event
 from core.forwarder import FORWARDER
 from core.mqtt_publish import MQTT
 from core.storage import sanitize_site
-from components.setup_helper import SetupHelperBody
+from components.setup_helper import SetupHelperBody, set_scanning
 
 
 def _section_title(text):
@@ -787,6 +787,11 @@ def register_settings_callbacks(app, cfg, public_base_func=None):
         Input("sec-setup-collapse", "is_open"),
     )
     def _gate_ap_scan(is_open):
+        # Both halves matter. Disabling the interval stops the UI polling;
+        # set_scanning stops the watcher THREAD, which otherwise keeps shelling
+        # out to netsh/nmcli every few seconds for the rest of the process's life
+        # once the section has been opened once.
+        set_scanning(bool(is_open))
         return not bool(is_open)
 
     @app.callback(
