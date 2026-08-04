@@ -79,9 +79,45 @@ the cursor stops advancing and catches up later.
 
 ---
 
-## Configuring a store hub
+## Setting it up
 
-In that store's `config.json`:
+**Settings → Multi-site**, on each hub. No file editing, no restart.
+
+At **head office**, open that card and click *"Head office: show what my sites
+need"*. It prints this hub's address and device token — the two values each site
+has to be given. (It is behind a click because it reveals a secret, and because
+it is irrelevant to the person configuring a store.)
+
+At **each site**, turn on *"Send a copy of my readings to head office"* and fill
+in the three fields: head office's address, this site's name, head office's
+token. Save.
+
+Saving does not just write a file — it **forwards immediately and tells you what
+happened**:
+
+> Saved — sent 1,284 readings to head office as "atlanta". Everything is up to date.
+
+or, honestly:
+
+> Saved, but nothing has reached head office yet. Head office rejected the token
+> — check it matches head office's device token.
+
+A saved setting that cannot reach head office must never look like a working one;
+that is the whole reason the status line reports the live result rather than
+"Saved". The card refuses outright to store a half-configuration — no address, no
+site name, no token — because those are the states the forwarder silently does
+nothing in.
+
+Two things the form does quietly so nobody has to know the protocol: a site name
+is **slugged**, not rejected (`Atlanta Store #2` → `atlanta-store-2`, echoed back
+into the field so it matches what the dashboard shows), and a blank token keeps
+the saved one, so re-saving other fields never wipes the credential. The token is
+never sent back to the browser.
+
+### The same settings in `config.json`
+
+The UI writes this block; you can also write it directly (useful for imaging a
+fleet of store hubs from one template):
 
 ```json
 {
@@ -102,12 +138,14 @@ In that store's `config.json`:
 | `token` | HQ's device token — the same one HQ's own probes use. |
 | `site` | Label for this store. `[A-Za-z0-9_-]`, 32 chars. **Required.** |
 | `interval_sec` | Idle poll gap. A full batch drains immediately instead of waiting. |
-| `batch` | Rows per request, capped at the protocol's 1000. |
+| `batch` | Rows per request, capped at the protocol's 1000. Not on the form. |
 
 `upstream.token` is redacted from `GET /api/config` like every other secret.
 
-**Use HTTPS for `url` in production.** Readings are not secret, but the token is,
-and it rides in a header. Terminate TLS at HQ with a reverse proxy or a tunnel.
+**Use HTTPS for `url` in production**, or a VPN. Readings are not secret but the
+token is, and it rides in a header. Terminate TLS at HQ with a reverse proxy or a
+tunnel — and see the warning in *Remote administration* below before exposing any
+hub to the internet.
 
 ---
 
@@ -124,39 +162,11 @@ Three things a hub keeps apart, which is what makes this work:
 | port | `PORT` env var | default 8088 |
 | device token | `SERVER_TOKEN` env var, else `provision_token` in its config | each hub has its own; the store's `upstream.token` must be **HQ's**, not its own |
 
-### 1. Lay out three data directories
-
-`upstream` is not on the Settings page yet, so a store's block is a hand-edit of
-its `config.json`. Writing the file *before* first start also skips a restart —
-the forwarder thread is only launched at boot if `upstream.enabled` is already
-true.
+### 1. Start all three, one terminal each
 
 ```bash
 mkdir -p /tmp/setpoint/{hq,store-atl,store-mar}
 
-cat > /tmp/setpoint/store-atl/config.json <<'JSON'
-{
-  "provision_token": "atlanta-local-token",
-  "upstream": {
-    "enabled": true,
-    "url": "http://127.0.0.1:8098",
-    "token": "hq-token-abc123",
-    "site": "atlanta",
-    "interval_sec": 5
-  }
-}
-JSON
-
-sed 's/atlanta/marietta/g' /tmp/setpoint/store-atl/config.json \
-  > /tmp/setpoint/store-mar/config.json
-```
-
-`interval_sec: 5` just makes the test feel live; 30 is the default and is right
-in production.
-
-### 2. Start all three, one terminal each
-
-```bash
 # head office
 DATA_DIR=/tmp/setpoint/hq        PORT=8098 SERVER_TOKEN=hq-token-abc123      MDNS_ENABLE=0 python app.py
 # store 1
@@ -177,18 +187,7 @@ Use a separate PowerShell window per hub — `$env:` persists for that window.
 `MDNS_ENABLE=0` keeps three hubs on one machine from advertising the same
 service and discovering each other. Leave it on in real deployments.
 
-Each store logs the forwarder at startup — this line is the confirmation that
-its config was read:
-
-```
-INFO hub.forwarder: upstream forwarder started
-INFO hub.app: Upstream forwarder started (site=atlanta -> http://127.0.0.1:8098)
-```
-
-If it is missing, `upstream.enabled` is not `true` in that hub's config.json, or
-you edited the wrong directory.
-
-### 3. Give the stores some readings
+### 2. Give the stores some readings
 
 No probes needed — `scripts/simulate_probe.py` posts as one. Note each store
 takes its **own** token here:
@@ -211,9 +210,32 @@ python scripts/simulate_probe.py --url http://127.0.0.1:8099 \
 
 Real hardware works too: flash a probe pointing at `http://<this-pc>:8099`.
 
+### 3. Turn on forwarding, from the UI
+
+On **<http://127.0.0.1:8099/settings>** → Multi-site, flip *"Send a copy of my
+readings to head office"* and enter:
+
+| field | value |
+|---|---|
+| Head office hub address | `http://127.0.0.1:8098` |
+| This site's name | `atlanta` |
+| Head office token | `hq-token-abc123` |
+| Send every | `5` (just to make the test feel live; 30 is the default) |
+
+Save. The status line reports what actually happened, and the readings from step
+2 go immediately — no restart:
+
+> Saved — sent 9 readings to head office as "atlanta". Everything is up to date.
+
+Repeat on **<http://127.0.0.1:8100/settings>** with the site name `marietta`.
+
+Worth trying deliberately: save with the wrong token first. It stores the
+settings but tells you the truth — *"Head office rejected the token"* — rather
+than reporting success and leaving you to discover the gap later.
+
 ### 4. Watch it arrive
 
-Within `interval_sec`, each store's log shows the push:
+Each store's log shows the push:
 
 ```
 INFO hub.forwarder: forwarded 2 readings to http://127.0.0.1:8098/api/ingest_csv as site=atlanta
@@ -322,9 +344,14 @@ HQ. Naming it in the store's hub does not carry across — only readings forward
 Honest list, so nobody sells past it:
 
 - **No per-site alerting rules.** Alerts evaluate per probe as they always have.
-- **Sites are not renameable from the UI.** The label is whatever the store hub's
-  `upstream.site` says; changing it there makes HQ show a new store alongside the
-  old one until the old rows age out.
+  Note both hubs alert independently: the store's own monitor fires, and HQ's
+  monitor separately evaluates the forwarded reading against HQ's thresholds.
+  Usually what you want — store staff get theirs, the owner gets theirs — but put
+  **different recipients** on each hub or one breach sends the same person two
+  emails.
+- **Renaming a site starts a new one.** Change `upstream.site` and HQ shows the
+  new label alongside the old until the old rows age out; history is not
+  relabelled.
 - **No remote administration.** Changing a store's thresholds still means reaching
   that store's hub. See below.
 - **Site is sender-declared.** The token authenticates the store; the label is

@@ -7,11 +7,13 @@ running alert monitor and notifier pick up changes without a restart.
 from __future__ import annotations
 
 import dash_bootstrap_components as dbc
-from dash import Input, Output, State, html, dcc
+from dash import Input, Output, State, html, dcc, no_update
 
 from core.notifications import Notifier
 from core.alerts import format_event
+from core.forwarder import FORWARDER
 from core.mqtt_publish import MQTT
+from core.storage import sanitize_site
 
 
 def _section_title(text):
@@ -225,7 +227,62 @@ IntegrationsCard = dbc.Card(dbc.CardBody([
 ]), className="mb-3")
 
 
-SettingsPanel = html.Div([NotificationSettings, IntegrationsCard, DataManagement])
+MultiSiteCard = dbc.Card(dbc.CardBody([
+    html.H5("Multi-site", className="card-title"),
+    html.P("Running more than one location? Each site keeps its own hub, its own "
+           "database and its own alerts — nothing changes there. A site can also "
+           "send a copy of its readings to a hub at head office, so one dashboard "
+           "covers them all.",
+           className="text-muted small"),
+
+    # Everything below the switch is hidden until it is on, so a single-site
+    # customer — nearly everyone — sees one line they can ignore.
+    dbc.Switch(id="upstream-enabled",
+               label="Send a copy of my readings to head office", value=False),
+    dbc.Collapse(dbc.Card(dbc.CardBody([
+        dbc.Row([
+            dbc.Col([
+                html.Small("Head office hub address", className="text-muted"),
+                dbc.Input(id="upstream-url", placeholder="http://192.168.1.50:8088"),
+                html.Small("Shown on the head-office hub's Diagnostics page.",
+                           className="text-muted"),
+            ], md=7),
+            dbc.Col([
+                html.Small("This site's name", className="text-muted"),
+                dbc.Input(id="upstream-site", placeholder="atlanta"),
+                html.Small("How this location is labelled at head office.",
+                           className="text-muted"),
+            ], md=5),
+        ], className="g-2"),
+        dbc.Row([
+            dbc.Col([
+                html.Small("Head office token", className="text-muted"),
+                dbc.Input(id="upstream-token", type="password", placeholder="(unchanged)"),
+                html.Small("Head office's device token — not this hub's. "
+                           "Leave blank to keep the saved one.",
+                           className="text-muted"),
+            ], md=7),
+            dbc.Col([
+                html.Small("Send every (seconds)", className="text-muted d-block"),
+                dbc.Input(id="upstream-interval", type="number", min=5, step=5, value=30),
+            ], md=5),
+        ], className="g-2 mt-1"),
+    ]), className="mt-2 mb-1"), id="upstream-collapse", is_open=False),
+
+    dbc.Button("Save", id="upstream-save", color="primary", className="mt-3"),
+    html.Div(id="upstream-status", className="mt-2"),
+
+    # --- The other half: what a store needs in order to point HERE ----------
+    html.Hr(className="mt-4"),
+    dbc.Button("Head office: show what my sites need ▾", id="upstream-hq-toggle",
+               color="link", size="sm", className="p-0"),
+    dbc.Collapse(html.Div(id="upstream-hq-body", className="mt-2"),
+                 id="upstream-hq-collapse", is_open=False),
+]), className="mb-3")
+
+
+SettingsPanel = html.Div([NotificationSettings, IntegrationsCard,
+                          MultiSiteCard, DataManagement])
 
 
 def _ok(msg):
@@ -288,6 +345,32 @@ def build_notifications_config(enabled, cooldown_min, recovery, email_enabled, h
     return conf
 
 
+def build_upstream_config(enabled, url, site, token, interval, existing=None):
+    """Turn the Multi-site form values into the ``upstream`` config block.
+
+    Pure and module-level so it can be unit-tested. A blank token keeps the saved
+    one (same rule as the MQTT/SMTP passwords), and keys the form does not expose
+    — ``batch`` — are carried over untouched.
+
+    ``site`` is sanitised to the same charset the wire protocol accepts rather
+    than rejected, so "Atlanta Store #2" becomes a usable label instead of an
+    error the operator has to decode.
+    """
+    out = dict(existing or {})
+    try:
+        interval = max(5, int(interval))
+    except (TypeError, ValueError):
+        interval = 30
+    out.update({
+        "enabled": bool(enabled),
+        "url": (url or "").strip().rstrip("/"),
+        "site": sanitize_site((site or "").strip().replace(" ", "-").lower()),
+        "token": token if token else out.get("token", ""),
+        "interval_sec": interval,
+    })
+    return out
+
+
 def build_mqtt_config(enabled, host, port, username, password, base_topic, discovery,
                       existing=None):
     """Turn raw Integrations form values into the ``mqtt`` config block.
@@ -313,7 +396,7 @@ def build_mqtt_config(enabled, host, port, username, password, base_topic, disco
     return out
 
 
-def register_settings_callbacks(app, cfg):
+def register_settings_callbacks(app, cfg, public_base_func=None):
     @app.callback(
         Output("notif-enabled", "value"),
         Output("notif-cooldown-min", "value"),
@@ -434,6 +517,129 @@ def register_settings_callbacks(app, cfg):
     )
     def _toggle_mqtt(enabled):
         return bool(enabled)
+
+    # --- Multi-site (upstream roll-up) ---------------------------------------
+    @app.callback(
+        Output("upstream-enabled", "value"),
+        Output("upstream-url", "value"),
+        Output("upstream-site", "value"),
+        Output("upstream-interval", "value"),
+        Input("settings-loaded", "n_intervals"),
+    )
+    def _load_upstream(_n):
+        u = cfg.get("upstream", {}) or {}
+        try:
+            interval = max(5, int(u.get("interval_sec", 30) or 30))
+        except (TypeError, ValueError):
+            interval = 30
+        return (bool(u.get("enabled", False)), u.get("url", ""),
+                u.get("site", ""), interval)
+
+    @app.callback(
+        Output("upstream-collapse", "is_open"),
+        Input("upstream-enabled", "value"),
+    )
+    def _toggle_upstream(enabled):
+        return bool(enabled)
+
+    @app.callback(
+        Output("upstream-hq-collapse", "is_open"),
+        Output("upstream-hq-body", "children"),
+        Input("upstream-hq-toggle", "n_clicks"),
+        State("upstream-hq-collapse", "is_open"),
+        prevent_initial_call=True,
+    )
+    def _toggle_hq_help(_n, is_open):
+        """The other half of setup: what to type into each site's hub.
+
+        Kept behind a click because it reveals this hub's device token, and
+        because it is irrelevant to the store-side operator reading the card
+        above it. Built on open so the address and token are always current.
+        """
+        if is_open:
+            return False, None
+        base = public_base_func() if public_base_func else ""
+        token = str(cfg.get("provision_token", "") or "")
+        return True, html.Div([
+            html.P("At each of your sites, open that hub's Settings → Multi-site, "
+                   "turn on “Send a copy of my readings to head office”, and enter:",
+                   className="small mb-2"),
+            dbc.Table([html.Tbody([
+                html.Tr([html.Td("Head office hub address", className="text-muted small"),
+                         html.Td(html.Code(base or "(unknown)"))]),
+                html.Tr([html.Td("Head office token", className="text-muted small"),
+                         html.Td(html.Code(token or "(none set)"))]),
+                html.Tr([html.Td("This site's name", className="text-muted small"),
+                         html.Td(html.Span("a different label per site — atlanta, marietta, …",
+                                           className="small"))]),
+            ])], bordered=False, size="sm", className="mb-2"),
+            dbc.Alert(
+                [html.Strong("Treat the token like a password. "),
+                 "Anyone who has it can post readings to this hub. The address above "
+                 "must be reachable from each site — same network, or a VPN such as "
+                 "Tailscale. Do not port-forward it to the open internet."],
+                color="warning", className="small mb-0"),
+        ])
+
+    @app.callback(
+        Output("upstream-status", "children"),
+        # Echo the stored label back into the field. The wire protocol accepts
+        # [A-Za-z0-9_-] only, so "Atlanta Store #2" is saved as "atlanta-store-2"
+        # — and a form still showing the typed text while the dashboard shows the
+        # slug is how someone concludes their site name "didn't save".
+        Output("upstream-site", "value", allow_duplicate=True),
+        Input("upstream-save", "n_clicks"),
+        State("upstream-enabled", "value"),
+        State("upstream-url", "value"),
+        State("upstream-site", "value"),
+        State("upstream-token", "value"),
+        State("upstream-interval", "value"),
+        prevent_initial_call=True,
+    )
+    def _save_upstream(_n, enabled, url, site, token, interval):
+        try:
+            block = build_upstream_config(enabled, url, site, token, interval,
+                                          existing=cfg.get("upstream", {}) or {})
+        except Exception as e:  # noqa: BLE001
+            return _err(f"Could not save: {e}"), no_update
+
+        # Validate before writing: a half-configured block is the one state the
+        # forwarder refuses to run in, and silently saving it is how someone ends
+        # up believing their freezer data is reaching head office when it is not.
+        if block["enabled"]:
+            if not block["url"]:
+                return _err("Enter the head office hub address, or switch forwarding off."), no_update
+            if not block["url"].startswith(("http://", "https://")):
+                return _err("The address needs to start with http:// or https://."), no_update
+            if not block["site"]:
+                return _err("Give this site a name — head office uses it to tell your "
+                            "locations apart, and readings sent without one could never "
+                            "be separated later."), no_update
+            if not block["token"]:
+                return _err("Enter head office's device token."), no_update
+
+        try:
+            cfg.update({"upstream": block})
+        except Exception as e:  # noqa: BLE001
+            return _err(f"Could not save: {e}"), no_update
+
+        if not block["enabled"]:
+            return _ok("Saved — this hub is not sending readings anywhere."), block["site"]
+
+        # Report what actually happened, not that a file was written. A saved
+        # setting that cannot reach head office must never look like a working one.
+        sent, err = FORWARDER.sync_now()
+        if err:
+            return (dbc.Alert(f"Saved, but nothing has reached head office yet. {err}",
+                              color="warning", dismissable=True, className="mb-0"),
+                    block["site"])
+        pending = FORWARDER.pending()
+        if sent:
+            tail = f" {pending:,} still to send." if pending else " Everything is up to date."
+            return _ok(f"Saved — sent {sent:,} reading{'s' if sent != 1 else ''} "
+                       f"to head office as “{block['site']}”.{tail}"), block["site"]
+        return _ok(f"Saved — connected to head office as “{block['site']}”. "
+                   "New readings will be sent as they arrive."), block["site"]
 
     @app.callback(
         Output("mqtt-status", "children"),

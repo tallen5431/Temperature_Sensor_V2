@@ -448,13 +448,18 @@ def _start_background_services(port: int):
     # enables it. A store hub pushes a copy of its readings to an aggregating
     # hub head office runs; nothing leaves the building otherwise, and the store
     # keeps its own database either way. See core/forwarder.py, docs/MULTI_SITE.md.
+    # The pump thread runs unconditionally and no-ops while `enabled` is false —
+    # one dict lookup every 30 s. Gating the START on the config instead meant
+    # switching forwarding on in Settings saved a setting that quietly did
+    # nothing until the next hub restart, which is exactly how a working feature
+    # gets reported as broken.
     try:
-        from core.forwarder import UpstreamForwarder
-        if (cfg.get("upstream") or {}).get("enabled"):
-            UpstreamForwarder(db, cfg).start()
-            log.info("Upstream forwarder started (site=%s -> %s)",
-                     (cfg.get("upstream") or {}).get("site") or "?",
-                     (cfg.get("upstream") or {}).get("url") or "?")
+        from core.forwarder import FORWARDER
+        FORWARDER.start(db, cfg)
+        up = cfg.get("upstream") or {}
+        if up.get("enabled"):
+            log.info("Upstream forwarder active (site=%s -> %s)",
+                     up.get("site") or "?", up.get("url") or "?")
     except Exception:  # noqa: BLE001 - roll-up is optional; never block startup
         log.exception("upstream forwarder failed to start")
 

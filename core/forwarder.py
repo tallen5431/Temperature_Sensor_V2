@@ -46,10 +46,31 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import time
 import urllib.error
 import urllib.request
 
 log = logging.getLogger("hub.forwarder")
+
+
+def _explain(status: int) -> str:
+    """Turn an HTTP status into something a store manager can act on.
+
+    The Settings page shows this verbatim. "upstream POST -> 401" is a log line;
+    "head office rejected the token" is a thing someone can go fix.
+    """
+    if not status:
+        return ("Could not reach head office — check the address, and that the "
+                "head-office hub is running and its firewall allows the port.")
+    if status == 401:
+        return "Head office rejected the token — check it matches head office's device token."
+    if status == 404:
+        return "Head office answered, but not with a Setpoint hub — check the address."
+    if status == 413:
+        return "Batch too large for head office — lower the rows-per-send."
+    if 500 <= status < 600:
+        return f"Head office returned an error ({status}) — it may be starting up or overloaded."
+    return f"Head office refused the readings (HTTP {status})."
 
 _HWM_KEY = "forwarder.last_id"
 
@@ -124,15 +145,28 @@ class UpstreamForwarder(threading.Thread):
         self.cfg = cfg
         self.stop_event = stop_event or threading.Event()
         self._backoff = 0
+        # Settings can ask for a cycle on demand (so "Save" reports a real
+        # result instead of a hopeful one) while the pump thread is mid-cycle.
+        # Two concurrent cycles would read the same high-water mark and post the
+        # same batch twice — harmless upstream thanks to INSERT OR IGNORE, but
+        # it doubles the traffic and muddles the status, so serialise them.
+        self._cycle_lock = threading.Lock()
+        self.last_error = ""       # human-readable, for the Settings status line
+        self.last_sent_epoch = 0.0
 
     # -- one cycle, exposed so tests can drive it without a thread ------------
     def run_once(self) -> int:
         """Forward at most one batch. Returns rows accepted upstream (0 if idle)."""
+        with self._cycle_lock:
+            return self._run_once_locked()
+
+    def _run_once_locked(self) -> int:
         block = _cfg_block(self.cfg)
         if not block.get("enabled"):
             return 0
         url = ingest_url(block.get("url"))
         if not url:
+            self.last_error = "No head-office address set."
             log.warning("upstream.enabled is set but upstream.url is empty; nothing to do")
             return 0
         site = str(block.get("site") or "").strip()
@@ -140,6 +174,7 @@ class UpstreamForwarder(threading.Thread):
             # Without a site label HQ cannot tell this store's readings from any
             # other's. Refuse rather than silently pooling six stores into one
             # anonymous heap that no later migration can separate.
+            self.last_error = "No site name set."
             log.warning("upstream.enabled is set but upstream.site is empty; refusing to forward")
             return 0
         batch = max(1, min(int(block.get("batch") or DEFAULT_BATCH), MAX_BATCH))
@@ -151,12 +186,15 @@ class UpstreamForwarder(threading.Thread):
         rows = self.db.rows_after(last, limit=batch)
         if not rows:
             self._backoff = 0
+            self.last_error = ""
             return 0
 
         status = post_batch(url, str(block.get("token") or ""), site, rows)
         if 200 <= status < 300:
             self.db.meta_set(_HWM_KEY, str(rows[-1][0]))
             self._backoff = 0
+            self.last_error = ""
+            self.last_sent_epoch = time.time()
             log.info("forwarded %d readings to %s as site=%s", len(rows), url, site)
             return len(rows)
 
@@ -164,9 +202,18 @@ class UpstreamForwarder(threading.Thread):
         # Retrying identical bytes will not fix it, so keep the cursor and let the
         # warning stand rather than hammering an upstream that is telling us no.
         self._backoff = min(_BACKOFF_MAX, (self._backoff or _BACKOFF_START) * 2)
+        self.last_error = _explain(status)
         log.warning("upstream POST %s -> %s; %d readings held, retrying in %ds",
                     url, status or "no response", len(rows), self._backoff)
         return 0
+
+    def pending(self) -> int:
+        """Local readings not yet accepted upstream — the backlog, for the UI."""
+        try:
+            last = int(self.db.meta_get(_HWM_KEY, "0") or 0)
+            return max(0, self.db.count_local_after(last))
+        except Exception:  # noqa: BLE001 - a status readout must never raise
+            return 0
 
     def run(self) -> None:  # pragma: no cover - thread wrapper
         log.info("upstream forwarder started")
@@ -186,3 +233,47 @@ class UpstreamForwarder(threading.Thread):
 
     def stop(self) -> None:
         self.stop_event.set()
+
+
+class _ForwarderHandle:
+    """Process-wide handle so Settings can drive the pump without a restart.
+
+    The thread is started unconditionally at boot and no-ops while
+    ``upstream.enabled`` is false (one dict lookup every 30 s). That is what lets
+    someone switch forwarding on in Settings and have it work, instead of saving
+    a setting that quietly does nothing until the hub is restarted — which is
+    exactly the kind of thing that gets diagnosed as "the feature is broken".
+    """
+
+    def __init__(self):
+        self._fwd = None
+
+    def start(self, db, cfg) -> None:
+        if self._fwd is not None:
+            return
+        self._fwd = UpstreamForwarder(db, cfg)
+        self._fwd.start()
+
+    def stop(self) -> None:
+        if self._fwd is not None:
+            self._fwd.stop()
+            self._fwd = None
+
+    def sync_now(self) -> tuple:
+        """Force one cycle. Returns ``(rows_sent, error_text)`` for the UI."""
+        if self._fwd is None:
+            return 0, "Forwarding is not running on this hub."
+        try:
+            sent = self._fwd.run_once()
+        except Exception as e:  # noqa: BLE001 - surfaced to the operator, not raised
+            return 0, str(e)
+        return sent, self._fwd.last_error
+
+    def pending(self) -> int:
+        return self._fwd.pending() if self._fwd is not None else 0
+
+    def last_sent_epoch(self) -> float:
+        return self._fwd.last_sent_epoch if self._fwd is not None else 0.0
+
+
+FORWARDER = _ForwarderHandle()

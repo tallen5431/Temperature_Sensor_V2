@@ -1046,6 +1046,17 @@ class Database:
         sql += " ORDER BY id LIMIT ?"
         return self._conn().execute(sql, (int(after_id), int(limit))).fetchall()
 
+    def count_local_after(self, after_id: int) -> int:
+        """How many locally-ingested readings are past the forwarding cursor.
+
+        The Settings page shows this as the backlog waiting to reach head office,
+        so "it says enabled but is anything happening?" has an answer.
+        """
+        row = self._conn().execute(
+            "SELECT COUNT(*) FROM readings WHERE id > ? AND (site IS NULL OR site = '')",
+            (int(after_id),)).fetchone()
+        return int(row[0]) if row else 0
+
     def max_reading_id(self) -> int:
         row = self._conn().execute("SELECT MAX(id) FROM readings").fetchone()
         return int(row[0]) if row and row[0] is not None else 0
