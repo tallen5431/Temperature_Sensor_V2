@@ -14,7 +14,8 @@ import pytest
 
 from core.config import Config
 from core.db import Database
-from core.forwarder import UpstreamForwarder, ingest_url, rows_to_payload
+from core.forwarder import (MAX_FORWARD_BODY_BYTES, UpstreamForwarder, _batch_body,
+                            ingest_url, rows_to_payload)
 
 
 def _seed(db, n=5, probe="Setpoint-9A3F2C", start=None, site=""):
@@ -220,3 +221,56 @@ def test_a_failed_batch_holds_both_cursors(store, monkeypatch):
     assert fwd.run_once() == 2
     assert ok.calls[0]["ids"] == fail.calls[0]["ids"]
     assert ok.calls[0]["event_ids"] == fail.calls[0]["event_ids"]
+
+
+def test_encoded_body_limit_splits_a_configured_batch(store, monkeypatch):
+    db, cfg = store
+    cfg.set("upstream", {**cfg.get("upstream"), "batch": 1000})
+    # Individually valid records, but far too large to travel as one batch.
+    _seed(db, 80, probe="P" * 1000)
+    bodies = []
+
+    def accept(url, token, site, rows, events=(), timeout=20.0):
+        bodies.append(_batch_body(rows, events))
+        return 200
+
+    monkeypatch.setattr("core.forwarder.post_batch", accept)
+    fwd = UpstreamForwarder(db, cfg)
+    sent = fwd.run_once()
+
+    assert 0 < sent < 80
+    assert len(bodies[0]) <= MAX_FORWARD_BODY_BYTES
+    assert int(db.meta_get("forwarder.last_id", "0")) == sent
+
+
+def test_size_split_advances_each_cursor_only_through_sent_prefix(store, monkeypatch):
+    db, cfg = store
+    _seed(db, 40, probe="R" * 1200)
+    for _ in range(40):
+        db.record_event("high-" + "E" * 1200, "probe", 12.0, 8.0)
+    cap = _Capture(200)
+    monkeypatch.setattr("core.forwarder.post_batch", cap)
+
+    UpstreamForwarder(db, cfg).run_once()
+
+    call = cap.calls[0]
+    assert int(db.meta_get("forwarder.last_id", "0")) == call["ids"][-1]
+    assert int(db.meta_get("forwarder.last_event_id", "0")) == call["event_ids"][-1]
+    assert call["ids"] == list(range(1, call["ids"][-1] + 1))
+    assert call["event_ids"] == list(range(1, call["event_ids"][-1] + 1))
+
+
+def test_413_adaptively_reduces_request_and_advances_reduced_prefix(store, monkeypatch):
+    db, cfg = store
+    _seed(db, 8)
+    calls = []
+
+    def receiver(url, token, site, rows, events=(), timeout=20.0):
+        calls.append([row[0] for row in rows])
+        return 413 if len(rows) > 2 else 200
+
+    monkeypatch.setattr("core.forwarder.post_batch", receiver)
+    assert UpstreamForwarder(db, cfg).run_once() == 2
+    assert [len(call) for call in calls] == [8, 4, 2]
+    assert calls[0] != calls[1] != calls[2]
+    assert db.meta_get("forwarder.last_id", "0") == "2"
