@@ -436,7 +436,13 @@ def _make_gauge(name, t_c, lo, hi, temp_unit, suffix):
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=val,
-        number={"suffix": suffix, "font": {"size": 40, "color": "#e9f1f7"}},
+        # valueformat pins one decimal to match _fmt(), which every other
+        # readout on the page uses. Without it Plotly picks ~3 significant
+        # digits from the magnitude, so the same reading rendered "19.8 °C"
+        # and "67.7 °F" but "293 K" — the gauge is the largest number on the
+        # dashboard and was the only one that silently dropped a decimal.
+        number={"suffix": suffix, "valueformat": ".1f",
+                "font": {"size": 40, "color": "#e9f1f7"}},
         title={"text": name, "font": {"size": 15, "color": "#9db0be"}},
         gauge={"axis": {"range": ax, "tickcolor": "#6e8393",
                         "tickfont": {"color": "#9db0be", "size": 10}},

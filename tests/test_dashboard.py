@@ -518,3 +518,22 @@ def test_graph_layout_is_zoom_stable(tmp_path):
             assert fig.layout.yaxis.tickformat == ".2f", (
                 f"y tickformat must be pinned ({unit}/{clock}); a free format "
                 "widens labels as the user zooms and drags the plot area left")
+
+
+def test_gauge_number_matches_shared_formatter_in_every_unit():
+    """The gauge's big number must use the same precision as every other readout.
+
+    Plotly's Indicator picks ~3 significant digits from the value's magnitude
+    when valueformat is unset. That happens to render one decimal in C and F
+    but drops it in Kelvin, so the same reading showed "19.8 °C" / "67.7 °F"
+    but "293 K" while the stat cards beside it — which all go through _fmt() —
+    said "293.0 K". Pinning valueformat keeps the largest number on the page
+    consistent with the small ones.
+    """
+    from components.dashboard_view import _make_gauge, _fmt, _unit_symbol
+    for unit in ("celsius", "fahrenheit", "kelvin"):
+        sym = _unit_symbol(unit)
+        ind = _make_gauge("P", 19.83, 2.0, 5.0, unit, " " + sym).data[0]
+        assert ind.number.valueformat == ".1f", f"{unit}: gauge valueformat unpinned"
+        assert f"{ind.value:.1f} {sym}" == _fmt(19.83, unit), (
+            f"{unit}: gauge number disagrees with _fmt()")
