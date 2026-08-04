@@ -737,7 +737,6 @@ def test_latest_per_probe_does_not_scan_the_window(db):
     comes from a loose index scan, so no plan here may contain a table or
     index SCAN.
     """
-    now = time.time()
     for i in range(200):
         db.append(_iso(datetime.datetime.now() - datetime.timedelta(seconds=200 - i)),
                   4.0, 39.2, f"P{i % 4}")

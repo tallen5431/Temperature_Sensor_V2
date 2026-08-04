@@ -50,6 +50,27 @@ def test_hub_version_is_a_plain_release_number():
     assert PRODUCT_NAME == "Setpoint"
 
 
+def test_packaging_version_matches_the_hub_version():
+    """pyproject.toml declares the version a second time, for the wheel. Same
+    shape as the flash manifest, which drifted twice while a note asked people
+    to keep it in sync -- so this is enforced instead of asked for."""
+    import tomllib
+    from core.version import HUB_VERSION
+    meta = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))
+    assert meta["project"]["version"] == HUB_VERSION, \
+        "bump pyproject.toml's version alongside core/version.py"
+
+
+def test_pytest_is_configured_in_exactly_one_place():
+    """pytest.ini takes precedence over pyproject.toml, so a
+    [tool.pytest.ini_options] block there applies to nothing. One existed, with a
+    filterwarnings setting that had never taken effect."""
+    pyproject = (REPO / "pyproject.toml").read_text(encoding="utf-8")
+    assert "[tool.pytest.ini_options]" not in pyproject, \
+        "pytest.ini wins — put pytest settings there, not in pyproject.toml"
+    assert (REPO / "pytest.ini").exists()
+
+
 def test_the_developer_file_map_covers_every_core_module():
     """docs/DEVELOPING.md's file map is what a contributor navigates by, so a
     module missing from it is invisible. It had silently rotted: six core
