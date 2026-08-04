@@ -9,9 +9,9 @@ build and why. Pin assignments referenced here come from `firmware/src/protocol.
 
 > **Two boards ship, and which one you hold decides what you may sell.**
 >
-> | | Rev 1 — **ESP32-C3 SuperMini** (socketed) | Rev 2 — **`ESP32-C3-MINI-1`** (soldered) |
+> | | Rev 1 — **ESP32-C3 SuperMini** (socketed) | Rev 2 — **`ESP32-C3-WROOM-02`** (soldered) |
 > |---|---|---|
-> | Radio | bare `ESP32-C3FH4` + trace antenna, **no modular grant** | pre-certified module, **FCC ID `2AC7Z-ESPC3MINI1`** |
+> | Radio | bare `ESP32-C3FH4` + trace antenna, **no modular grant** | pre-certified module, **FCC ID `2AC7Z-ESPC3WROOM02`** |
 > | Sell as a **DIY kit** | ✅ yes | ✅ yes |
 > | Sell **assembled** | ❌ no — would owe ~$5–15k full intentional-radiator testing | ✅ **after** a ~$300–1,500 Part 15B SDoC |
 > | Use it for | kits, loaner pilots, dev | the assembled SKU |
@@ -26,7 +26,7 @@ build and why. Pin assignments referenced here come from `firmware/src/protocol.
 > and GPIO8 is kept boot-safe (a strapping pin held high at reset). DS18B20 stays on
 > **GPIO5 + 4.7 kΩ pull-up**. Build/flash with FQBN `esp32:esp32:esp32c3`.
 
-- **Firmware target:** ESP32-C3 (rev-1 SuperMini or rev-2 `ESP32-C3-MINI-1`), firmware **v2.8.2**, protocol v1 (FQBN `esp32:esp32:esp32c3`).
+- **Firmware target:** ESP32-C3 (rev-1 SuperMini or rev-2 `ESP32-C3-WROOM-02`), firmware **v2.8.2**, protocol v1 (FQBN `esp32:esp32:esp32c3`).
 - **Sensor:** DS18B20 (waterproof probe) on **GPIO5** with a 4.7 kΩ pull-up to
   3V3. This is the **only** sensor the current firmware supports.
 - **Status LED:** GPIO8 (the C3 SuperMini's on-board LED, **active-low**), so no external LED is

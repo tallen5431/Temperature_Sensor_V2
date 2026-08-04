@@ -3,7 +3,7 @@
 > **Why this exists:** the rev-1 board sockets an **ESP32-C3 SuperMini** (bare `ESP32-C3FH4` +
 > PCB trace antenna), which carries **no modular FCC grant** — so assembled units can't take the
 > cheap Part 15B SDoC path (see [`STARTUP_CHECKLIST.md`](STARTUP_CHECKLIST.md)). Rev 2 replaces it
-> with a soldered-down, pre-certified **`ESP32-C3-MINI-1`** module (FCC ID `2AC7Z-ESPC3MINI1`).
+> with a soldered-down, pre-certified **`ESP32-C3-WROOM-02`** module (FCC ID `2AC7Z-ESPC3WROOM02`).
 > Same ESP32-C3 chip, **zero firmware change**.
 
 ## Honest scope — this is more than a footprint swap
@@ -13,15 +13,15 @@ button, and decoupling. When you move to a **bare module**, your carrier board h
 itself. It's a well-trodden, ~10-part circuit (Espressif publishes the reference), and **JLCPCB can
 place all of it** — but plan for it as a real (small) circuit board, not a passive carrier.
 
-**Good news:** unlike the SuperMini, the `ESP32-C3-MINI-1` has an **official KiCad footprint**
-(`RF_Module:ESP32-C3-MINI-1`) and symbol — no custom footprint to draw this time.
+**Good news:** unlike the SuperMini, the `ESP32-C3-WROOM-02` has an **official KiCad footprint**
+(`RF_Module:ESP32-C3-WROOM-02`) and symbol — no custom footprint to draw this time.
 
 ## 1. Module choice
 
 | Option | Antenna | Use it when |
 |---|---|---|
-| **ESP32-C3-MINI-1** (FCC ID `2AC7Z-ESPC3MINI1`) | On-module PCB antenna | Default. Module sits at the board edge, antenna facing out. |
-| **ESP32-C3-MINI-1U** | U.FL → external antenna | If the unit lives inside a **metal enclosure** or a walk-in wall where an internal antenna won't radiate. |
+| **ESP32-C3-WROOM-02** (FCC ID `2AC7Z-ESPC3WROOM02`) | On-module PCB antenna | Default. Module sits at the board edge, antenna facing out. |
+| **ESP32-C3-WROOM-02U** | U.FL → external antenna | If the unit lives inside a **metal enclosure** or a walk-in wall where an internal antenna won't radiate. |
 
 ## 2. The support circuit you now provide (the ~10 parts)
 
@@ -38,7 +38,7 @@ place all of it** — but plan for it as a real (small) circuit board, not a pas
 
 Your firmware is unchanged, so the GPIO assignments stay identical to rev 1:
 
-| Your net (rev 1) | ESP32-C3-MINI-1 pin | Notes |
+| Your net (rev 1) | ESP32-C3-WROOM-02 pin | Notes |
 |---|---|---|
 | DS18B20 **data** | **IO5** | Keep the **4.7 kΩ pull-up IO5→3V3** (mandatory for 1-Wire). |
 | DS18B20 VDD / GND | 3V3 / GND | Probe powered from 3V3. |
@@ -47,7 +47,7 @@ Your firmware is unchanged, so the GPIO assignments stay identical to rev 1:
 | GND | GND (multiple) | Star/plane ground. |
 | Battery / 5 V in | → LDO input | From TP4056 OUT (battery) or USB 5 V. |
 
-> Reference exact castellation numbers on the **ESP32-C3-MINI-1 datasheet** / the KiCad symbol — the
+> Reference exact castellation numbers on the **ESP32-C3-WROOM-02 datasheet** / the KiCad symbol — the
 > functions above are what matter; don't hard-code pin numbers from memory.
 
 ## 4. How you flash it — pick one
@@ -71,7 +71,7 @@ Your firmware is unchanged, so the GPIO assignments stay identical to rev 1:
 
 ## 6. What JLCPCB places vs. what you hand-solder
 
-- **JLC PCBA (from LCSC stock):** the **ESP32-C3-MINI-1 module**, the LDO, all the caps/resistors,
+- **JLC PCBA (from LCSC stock):** the **ESP32-C3-WROOM-02 module**, the LDO, all the caps/resistors,
   and the USB-C connector + ESD if you use it. This solves the "module is surface-mount" problem —
   JLC places it correctly, antenna keep-out respected.
 - **You hand-solder (or add as JLC THT):** the through-hole connectors — DS18B20 3-pin header, the
@@ -81,6 +81,6 @@ Your firmware is unchanged, so the GPIO assignments stay identical to rev 1:
 
 Keep rev 1 for **pilots + DIY kits**. When you're ready to build the assembled, certifiable SKU,
 open a fresh KiCad board: reuse the **70×30 outline and connector placements**, drop in
-`RF_Module:ESP32-C3-MINI-1`, add the §2 support circuit, wire §3, honor §5, and export for a
-**JLCPCB PCBA** order. Then the Part 15B SDoC + "Contains FCC ID: 2AC7Z-ESPC3MINI1" label
+`RF_Module:ESP32-C3-WROOM-02`, add the §2 support circuit, wire §3, honor §5, and export for a
+**JLCPCB PCBA** order. Then the Part 15B SDoC + "Contains FCC ID: 2AC7Z-ESPC3WROOM02" label
 ([`STARTUP_CHECKLIST.md`](STARTUP_CHECKLIST.md) Phase 2).

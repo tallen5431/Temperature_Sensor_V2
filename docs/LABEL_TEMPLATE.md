@@ -30,8 +30,23 @@ mandatory:
 **1. Module identification** — 47 CFR §15.19, the host carries the module's grant:
 
 ```
-Contains FCC ID: 2AC7Z-ESPC3MINI1
+Contains FCC ID: 2AC7Z-ESPC3WROOM02
 ```
+
+> ⛔ **VERIFY THIS STRING BEFORE THE FIRST LABEL IS PRINTED.** It must be the FCC ID of the
+> *exact* module variant soldered to the board. The board carries an **`ESP32-C3-WROOM-02`**
+> (confirmed from `hardware/rev2/` — `U1`, `RF_Module:ESP32-C3-WROOM-02`), and the ID above is
+> the expected one for it, but it has not been checked against Espressif's certificate from
+> inside this repo.
+>
+> Check it against the module datasheet or Espressif's certification page, and mind the
+> variants — a `-WROOM-02U` (external antenna) is a **different grant** from a `-WROOM-02`.
+>
+> Every doc here said `2AC7Z-ESPC3MINI1` until 2026-08-04, because the rev-2 *plan*
+> (`PCB_REV2_MODULE.md`) specified an `ESP32-C3-MINI-1` and the board was built with a
+> WROOM-02 instead. Printing a module's FCC ID on a product that does not contain that module
+> is a false statement of conformity, so this is the one string on the label worth checking
+> twice.
 
 **2. Compliance statement** — §15.19(a)(3), reproduce verbatim:
 
@@ -119,7 +134,7 @@ larger label (or a second one on the underside) is usually needed:
 |  ID:   Setpoint-9A3F2C                [ ##### ]      |
 |  Setup Wi-Fi : Setpoint-9A3F2C   (open)              |
 +------------------------------------------------------+
-|  Contains FCC ID: 2AC7Z-ESPC3MINI1                   |
+|  Contains FCC ID: 2AC7Z-ESPC3WROOM02                   |
 |  This device complies with part 15 of the FCC Rules. |
 |  Operation is subject to the following two           |
 |  conditions: (1) This device may not cause harmful   |

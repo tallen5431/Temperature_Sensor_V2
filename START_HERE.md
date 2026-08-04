@@ -87,7 +87,7 @@ Ordered by dependency — each unblocks the next.
 ## The gate — only after demand is proven
 
 - [ ] Run the **FCC Part 15B SDoC** (~$300–1,500) on a QC-passed rev-2 unit; keep the signed report.
-- [ ] Label **"Contains FCC ID: 2AC7Z-ESPC3MINI1"**; confirm insurance bound; COI + W-9 ready.
+- [ ] Label **"Contains FCC ID: 2AC7Z-ESPC3WROOM02"**; confirm insurance bound; COI + W-9 ready.
 - [ ] **Sell assembled units** (restaurants B2B + a homelab variant). Finance only for inventory
       scaling — never certification.
 

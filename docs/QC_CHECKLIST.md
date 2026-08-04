@@ -8,8 +8,8 @@ sketch with `arduino-cli`, captures the unit's identity from the boot `[label]`
 serial line, and prints the exact label + a matching QC list to tick on the bench.
 
 - **Which board is on the bench?** Rev 1 (socketed SuperMini) may leave as a **kit only**.
-  Rev 2 (soldered `ESP32-C3-MINI-1`) is the assembled SKU — but only once the Part 15B SDoC
-  is signed and the unit carries **"Contains FCC ID: 2AC7Z-ESPC3MINI1"** plus the
+  Rev 2 (soldered `ESP32-C3-WROOM-02`) is the assembled SKU — but only once the Part 15B SDoC
+  is signed and the unit carries **"Contains FCC ID: 2AC7Z-ESPC3WROOM02"** plus the
   §15.19(a)(3) statement. A unit that passes every test below is *working*, not *sellable*;
   those are different gates. See [`COMPLIANCE.md`](COMPLIANCE.md).
 - Firmware: **v2.8.2**, protocol v1 — the **same image on both boards**, no build flag.

@@ -13,8 +13,8 @@
 `ESP32-C3FH4` chip with a PCB trace antenna — NOT a pre-certified radio module.** That puts you on
 the **expensive** FCC path as-is:
 
-- A **pre-certified module** (its own **FCC ID** printed on it, e.g. `ESP32-C3-MINI-1`,
-  FCC ID `2AC7Z-ESPC3MINI1`) carries the intentional-radiator approval, so you'd only need the cheap
+- A **pre-certified module** (its own **FCC ID** printed on it, e.g. `ESP32-C3-WROOM-02`,
+  FCC ID `2AC7Z-ESPC3WROOM02`) carries the intentional-radiator approval, so you'd only need the cheap
   **Part 15B SDoC** (~$300–1,500).
 - A **bare chip + trace antenna** (what the SuperMini is) does **NOT** inherit that approval. Selling
   assembled units would owe **full intentional-radiator FCC testing** (like a full FCC ID:
@@ -24,9 +24,10 @@ the **expensive** FCC path as-is:
 is kept as the rationale for *why* it was necessary, and as the spec if a future board is laid
 out. The remaining gate is the Part 15B SDoC, not the respin.
 
-**Action (completed) — respin rev 2 around a pre-certified module** (`ESP32-C3-MINI-1`, or `-WROOM-02`). Same
+**Action (completed) — respin rev 2 around a pre-certified module.** The board as built carries the
+`ESP32-C3-WROOM-02`. Same
 ESP32-C3 chip, **zero firmware change**, and you get the cheap SDoC path **plus** a real
-"Contains FCC ID: 2AC7Z-ESPC3MINI1" label. Note the module is a **surface-mount castellated part**,
+"Contains FCC ID: 2AC7Z-ESPC3WROOM02" label. Note the module is a **surface-mount castellated part**,
 not a header-pluggable board — so this is a genuine board redesign (solder the module down instead of
 socketing the SuperMini), the biggest change left in your hardware.
 
@@ -89,7 +90,7 @@ DIY kits.
 
 ### Phase 2 — Clear the gate, then sell assembled (once demand is real)
 - [x] **Resolve the module question** (see gotcha) — rev 2 respun to the pre-certified
-      `ESP32-C3-MINI-1` (FCC ID `2AC7Z-ESPC3MINI1`) and bench-verified.
+      `ESP32-C3-WROOM-02` (FCC ID `2AC7Z-ESPC3WROOM02`) and bench-verified.
 - [ ] **Part 15B SDoC** on the finished rev-2 unit *in its enclosure* — the remaining gate before
       assembled units may be sold. Freeze the case first; the test covers the product as shipped.
 - [ ] **FCC Part 15B SDoC** on the finished unit at an accredited lab; keep the signed report.

@@ -60,8 +60,12 @@ keep ADC1 free for §2:
 
 | Signal | Pin | Notes |
 |---|---|---|
-| `CHRG` → | `IO6` | 100 kΩ pull-up to 3V3 |
-| `STDBY` → | `IO7` | 100 kΩ pull-up to 3V3 |
+| `CHRG` → | `IO10` | 100 kΩ pull-up to 3V3 |
+| `STDBY` → | `IO1` | 100 kΩ pull-up to 3V3 |
+
+**Not IO6 or IO7** — on the board as built those are the **I²C bus** (`SCL`/`SDA`) going to `J3`
+with 4.7 kΩ pull-ups `R5`/`R6`. That is the "I²C header reserved" the site refers to; leave it
+alone.
 
 Firmware can then blink `D1` distinctly while charging, and report charge state to
 the hub. Do 1a **and** 1b — the LED works with the board unpowered and off the
@@ -147,7 +151,7 @@ Ordered by value, not effort. None is required.
   and lets one probe watch a fridge *and* its freezer compartment. It is also the
   cheapest possible answer to "can I monitor two things?" on a sales call.
 - **Silkscreen the FCC block.** Once the SDoC is signed the label must carry
-  "Contains FCC ID: 2AC7Z-ESPC3MINI1", the §15.19(a)(3) statement and the
+  "Contains FCC ID: 2AC7Z-ESPC3WROOM02", the §15.19(a)(3) statement and the
   responsible party ([`LABEL_TEMPLATE.md`](LABEL_TEMPLATE.md)). Some of that can be
   silkscreen instead of a sticker that can peel.
 
