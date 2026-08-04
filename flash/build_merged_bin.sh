@@ -76,5 +76,6 @@ else
 fi
 
 echo "==> Done: $OUT"
-echo "    Keep flash/manifest.json 'version' in sync with FW_VERSION, then host the"
-echo "    flash/ folder over HTTPS (e.g. GitHub Pages) so buyers can flash from Chrome."
+echo "    Bump flash/manifest.json 'version' and index.html's 'firmware v...' to match"
+echo "    FW_VERSION (tests/test_version_sync.py checks this), then host the flash/"
+echo "    folder over HTTPS (e.g. GitHub Pages) so buyers can flash from Chrome."
