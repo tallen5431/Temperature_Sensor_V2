@@ -58,6 +58,8 @@ import time
 import urllib.error
 import urllib.request
 
+from core.protocol import MAX_BATCH_ROWS, MAX_INGEST_BYTES
+
 log = logging.getLogger("hub.forwarder")
 
 
@@ -85,7 +87,10 @@ _EVENTS_KEY = "forwarder.last_event_id"
 
 DEFAULT_INTERVAL_SEC = 30
 DEFAULT_BATCH = 500          # PROTOCOL caps /ingest_csv at 1000 rows/request
-MAX_BATCH = 1000
+MAX_BATCH = MAX_BATCH_ROWS
+# Stay comfortably below the receiver's hard ceiling.  Besides allowing for a
+# proxy to re-encode JSON, this makes the strict "fits below" contract explicit.
+MAX_FORWARD_BODY_BYTES = MAX_INGEST_BYTES - 1024
 _BACKOFF_START = 5
 _BACKOFF_MAX = 300
 
@@ -133,16 +138,40 @@ def events_to_payload(rows) -> list:
     return out
 
 
+def _batch_body(rows, events=()) -> bytes:
+    """Return exactly the JSON bytes used for an upstream request."""
+    payload = {"readings": rows_to_payload(rows)}
+    if events:
+        payload["events"] = events_to_payload(events)
+    return json.dumps(payload).encode("utf-8")
+
+
+def _fit_batch(rows, events, max_bytes=MAX_FORWARD_BODY_BYTES):
+    """Select cursor-safe prefixes whose encoded request fits ``max_bytes``.
+
+    Removing only from the ends is important: advancing a cursor through a
+    non-prefix would permanently skip the omitted records.
+    """
+    rows, events = list(rows), list(events)
+    while rows or events:
+        if len(_batch_body(rows, events)) <= max_bytes:
+            return rows, events
+        # Preserve a useful mix when both queues are populated, while converging
+        # quickly for large batches.
+        if len(rows) >= len(events) and rows:
+            rows.pop()
+        elif events:
+            events.pop()
+    return rows, events
+
+
 def post_batch(url: str, token: str, site: str, rows, events=(), timeout: float = 20.0) -> int:
     """POST one batch upstream. Returns the HTTP status, or 0 on transport error.
 
     Readings and events ride the same request: one round trip, and either both
     land or neither does, so the two cursors can advance together.
     """
-    payload = {"readings": rows_to_payload(rows)}
-    if events:
-        payload["events"] = events_to_payload(events)
-    body = json.dumps(payload).encode("utf-8")
+    body = _batch_body(rows, events)
     req = urllib.request.Request(url, data=body, method="POST")
     req.add_header("Content-Type", "application/json")
     if token:
@@ -219,7 +248,28 @@ class UpstreamForwarder(threading.Thread):
             self.last_error = ""
             return 0
 
-        status = post_batch(url, str(block.get("token") or ""), site, rows, events)
+        rows, events = _fit_batch(rows, events)
+        if not rows and not events:
+            self._backoff = _BACKOFF_MAX
+            self.last_error = ("The next reading or event is too large to forward; "
+                               "shorten its probe ID or event fields, or remove/quarantine the record.")
+            log.error("upstream record after reading id=%d/event id=%d exceeds %d bytes",
+                      last, last_ev, MAX_FORWARD_BODY_BYTES)
+            return 0
+
+        token = str(block.get("token") or "")
+        status = post_batch(url, token, site, rows, events)
+        # A receiver/proxy may enforce a smaller limit than this version knows.
+        # Reduce cursor-safe prefixes immediately rather than retrying identical
+        # bytes on every cycle.
+        while status == 413 and len(rows) + len(events) > 1:
+            target_count = max(1, (len(rows) + len(events)) // 2)
+            while len(rows) + len(events) > target_count:
+                if len(rows) >= len(events) and rows:
+                    rows.pop()
+                elif events:
+                    events.pop()
+            status = post_batch(url, token, site, rows, events)
         if 200 <= status < 300:
             # Both cursors advance together, because one request carried both.
             if rows:
@@ -237,7 +287,9 @@ class UpstreamForwarder(threading.Thread):
         # Retrying identical bytes will not fix it, so keep the cursor and let the
         # warning stand rather than hammering an upstream that is telling us no.
         self._backoff = min(_BACKOFF_MAX, (self._backoff or _BACKOFF_START) * 2)
-        self.last_error = _explain(status)
+        self.last_error = (_explain(status) if status != 413 else
+                           "The next reading or event is too large for head office; "
+                           "remove or quarantine that record before retrying.")
         log.warning("upstream POST %s -> %s; %d readings held, retrying in %ds",
                     url, status or "no response", len(rows), self._backoff)
         return 0
