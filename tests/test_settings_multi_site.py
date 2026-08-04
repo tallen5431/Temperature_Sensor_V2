@@ -48,3 +48,48 @@ def test_disabling_keeps_the_settings_for_next_time():
     assert out["enabled"] is False
     assert out["url"] == "http://hq:8088" and out["site"] == "atl"
     assert out["token"] == "keep-me"
+
+
+def test_diagnostics_reports_forwarding_without_leaking_the_token(tmp_path):
+    """"Head office can't see my store" is the support ticket this answers, and
+    the blob is meant to be pasted into an email — so state yes, secrets no."""
+    import json
+    from core.config import Config
+    from core.db import Database
+    from core.diagnostics import build_diagnostics
+
+    cfg = Config(tmp_path / "c.json")
+    db = Database(tmp_path / "t.db")
+    cfg.update({"provision_token": "HUB-SECRET",
+                "upstream": {"enabled": True, "url": "http://hq:8088",
+                             "token": "HQ-SECRET", "site": "atlanta",
+                             "interval_sec": 30}})
+
+    class _F:
+        def list_probes(self):
+            return {}
+
+    blob = build_diagnostics(cfg, db, _F(), "http://hub:8088", "0", "Setpoint")
+    up = blob["upstream"]
+    assert up["enabled"] is True and up["site"] == "atlanta"
+    assert up["url"] == "http://hq:8088"
+    assert "pending" in up and "last_error" in up
+    text = json.dumps(blob)
+    assert "HQ-SECRET" not in text and "HUB-SECRET" not in text
+
+
+def test_diagnostics_stays_quiet_when_forwarding_is_off(tmp_path):
+    from core.config import Config
+    from core.db import Database
+    from core.diagnostics import build_diagnostics
+
+    cfg = Config(tmp_path / "c.json")
+    db = Database(tmp_path / "t.db")
+
+    class _F:
+        def list_probes(self):
+            return {}
+
+    up = build_diagnostics(cfg, db, _F(), "http://hub:8088", "0", "Setpoint")["upstream"]
+    assert up["enabled"] is False
+    assert "pending" not in up      # no backlog line on a hub that forwards nothing

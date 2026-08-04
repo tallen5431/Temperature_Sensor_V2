@@ -275,5 +275,8 @@ class _ForwarderHandle:
     def last_sent_epoch(self) -> float:
         return self._fwd.last_sent_epoch if self._fwd is not None else 0.0
 
+    def last_error(self) -> str:
+        return self._fwd.last_error if self._fwd is not None else ""
+
 
 FORWARDER = _ForwarderHandle()

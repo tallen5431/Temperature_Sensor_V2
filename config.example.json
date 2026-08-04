@@ -58,5 +58,13 @@
     "base_topic": "setpoint",
     "discovery_prefix": "homeassistant",
     "discovery_enabled": true
+  },
+  "upstream": {
+    "enabled": false,
+    "url": "",
+    "token": "",
+    "site": "",
+    "interval_sec": 30,
+    "batch": 500
   }
 }

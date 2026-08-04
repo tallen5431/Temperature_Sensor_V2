@@ -155,4 +155,32 @@ def build_diagnostics(cfg, db, finder, public_base: str, version: str,
             "dropped": health["notify_dropped"],
             "last_failure_age_sec": health["last_notify_failure_age_sec"],
         },
+        # Multi-site forwarding. Same principle as notifications above: whether
+        # it is CONFIGURED is a different question from whether readings are
+        # ARRIVING, and "head office can't see my store" is the support ticket
+        # this has to answer. `pending` climbing with a `last_error` set is the
+        # whole diagnosis. The token is deliberately absent — this blob is meant
+        # to be pasted into an email.
+        "upstream": _upstream_diag(cfg, now),
     }
+
+
+def _upstream_diag(cfg, now: float) -> Dict[str, Any]:
+    up = cfg.get("upstream", {}) or {}
+    out: Dict[str, Any] = {
+        "enabled": bool(up.get("enabled")),
+        "url": str(up.get("url") or ""),
+        "site": str(up.get("site") or ""),
+        "interval_sec": _int(up.get("interval_sec", 30), 30),
+    }
+    if not out["enabled"]:
+        return out
+    try:
+        from core.forwarder import FORWARDER
+        last = FORWARDER.last_sent_epoch()
+        out["pending"] = FORWARDER.pending()
+        out["last_send_age_sec"] = round(now - last, 1) if last else None
+        out["last_error"] = FORWARDER.last_error()
+    except Exception:  # noqa: BLE001 - diagnostics must never raise
+        pass
+    return out
