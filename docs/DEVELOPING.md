@@ -56,7 +56,7 @@ Setpoint ──POST /api/ingest {temperature_c, probe_id, timestamp}──▶ Hu
 - **`app.py`** boots logging, config, storage, discovery, the Flask server + API blueprint, the Dash app, mDNS advertising, and the auto-provisioner, then serves via waitress.
 - **Device token** is resolved once at startup (`SERVER_TOKEN` env → config `provision_token` → freshly generated). The *same* token guards mutating API endpoints **and** is pushed to probes by the provisioner, so probes echo it back as `X-Token` and plug-and-play stays secure by default. An empty token means "open" (used only in tests / air-gapped dev).
 - **Discovery** (`probe_discovery.py`) browses `_temps-probe._tcp.local.` and tracks last-seen probes.
-- **Auto-provisioner** (`auto_provisioner.py`) periodically pushes the hub's ingest base URL + token + interval to every discovered probe by IP.
+- **Auto-provisioner** (`provisioner.py`) periodically pushes the hub's ingest base URL + token + interval to every discovered probe by IP.
 - **Storage** (`core/storage.py`) validates, calibrates, and appends readings under a process-wide write lock with an advisory OS file lock; it also escapes spreadsheet-formula fields and rejects out-of-range / non-finite values.
 
 ---
@@ -67,8 +67,8 @@ Setpoint ──POST /api/ingest {temperature_c, probe_id, timestamp}──▶ Hu
 |---|---|
 | `app.py` | Entry point; wiring of UI, API, discovery, provisioner, mDNS, waitress. |
 | `api/routes.py` | `create_api()` → Flask blueprint with all `/api/*` endpoints and auth. |
-| `auto_provision.py` | `provision_probe()` — provision a single probe (POST its `/provision`). |
-| `auto_provisioner.py` | `AutoProvisioner` background thread — provisions all discovered probes on a period. |
+| `provisioning.py` | `provision_probe()` — provision a single probe (POST its `/provision`); `desired_probe_config()` — the single source of truth for what a probe should be running, shared by the push and pull paths. |
+| `provisioner.py` | `AutoProvisioner` background thread — provisions all discovered probes on a period. |
 | `probe_discovery.py` | `ProbeDiscovery` — zeroconf browser; `list_probes()`, `update_last_seen()`. |
 | `wifi_scan.py` | Wi-Fi scan helper used by setup UI. |
 | `provision_device.sh` | Shell helper to provision a probe manually. |
@@ -78,6 +78,12 @@ Setpoint ──POST /api/ingest {temperature_c, probe_id, timestamp}──▶ Hu
 | `core/db.py` | `Database` — the SQLite (WAL) readings store (system of record): schema, windowed reads/downsampling, retention purge, CSV import/export, backup. |
 | `core/alerts.py` / `alert_monitor.py` | Threshold + offline alert evaluation (hysteresis) and the background `AlertMonitor` thread (also runs the retention purge). |
 | `core/notifications.py` | `Notifier` — sends alert events over email/webhook with a cooldown. |
+| `core/forwarder.py` | `UpstreamForwarder`/`FORWARDER` — incremental log shipping to a head-office hub (multi-site roll-up). Byte-bounded batches, durable cursors in the `meta` table. See `docs/MULTI_SITE.md`. |
+| `core/units.py` | Temperature conversion — the one place `c_to_f`, the unit symbols, and the absolute-vs-delta distinction live. |
+| `core/protocol.py` | Wire limits shared with the firmware (`MAX_INGEST_BYTES`, `MAX_BATCH_ROWS`); see `PROTOCOL.md`. |
+| `core/probes.py` | `normalize_probe`/`probe_address` — read a probe record the same way whether the registry holds a `ProbeInfo` or a dict. |
+| `core/secret_compare.py` | `constant_time_eq` — token comparison that tolerates non-ASCII input (`hmac.compare_digest` raises on it). |
+| `core/demo.py` | Seeds/clears clearly-labelled `DEMO-` readings so a new user can explore before any probe exists. |
 | `core/metrics.py` | Prometheus `/metrics` exposition + the in-memory `LATEST` per-probe registry. |
 | `core/mqtt_publish.py` | Optional MQTT publishing + Home Assistant auto-discovery (`MQTT`). |
 | `core/audit.py` | Tamper-evident hash-chained audit log (`AUDIT`), verified at `/api/audit/verify`. |
@@ -85,7 +91,7 @@ Setpoint ──POST /api/ingest {temperature_c, probe_id, timestamp}──▶ Hu
 | `core/applog.py` | `get_logger` + the `HEALTH` counters surfaced on `/api/health` and `/metrics`. |
 | `core/logging_setup.py` | Rotating-file + console logging configuration. |
 | `core/mdns_advert.py` | `MdnsAdvert` — advertises the hub over mDNS. |
-| `core/version.py` | `HUB_VERSION`/`__version__` (2.6.2), `PRODUCT_NAME`, `PROTOCOL_VERSION` (1). |
+| `core/version.py` | `HUB_VERSION`/`__version__`, `PRODUCT_NAME`, `PROTOCOL_VERSION` — the single source of truth; read it there rather than copying the number into prose. |
 | `components/layout_main.py` | Builds the Dash layout, page routing, callback registration. |
 | `components/*.py` | Dashboard UI pieces (dashboard, devices, settings, diagnostics, help, probe-setup wizard). |
 | `config.example.json` | Shipped default config; copied to `config.json` on first run. |
@@ -216,11 +222,12 @@ auth) and `/metrics` (Prometheus scrape) are intentionally exempt.
 names are logged, never secret values). `GET /api/audit/verify` (auth) reports chain integrity and
 entry count. See `docs/COMPLIANCE.md` for how this fits a B2B / regulated path.
 
-**Log retention** — a background task (`core/retention.py`) keeps the readings database bounded for 24/7 use:
-readings newer than `retention.raw_days` are kept full-resolution, older ones are thinned to one per
-probe per `downsample_interval_min`, and anything past `downsample_days` is dropped. Runs hourly +
-shortly after startup, atomically under the write lock. Set `retention.enabled: false` to keep
-everything (and manage disk yourself).
+**Reading retention** — `AlertMonitor.maybe_purge()` (`alert_monitor.py`) keeps the readings
+database bounded for 24/7 use: rows older than `retention_days` are deleted, at most hourly.
+`retention_days: 0` — the default — keeps everything and leaves disk to you. The purge refuses to
+run when its cutoff is at or past the newest row, so a clock jump cannot empty the table (see
+`Database.purge_older_than`). There is no tiered downsampling: the dashboard downsamples for
+*display* (`fetch_readings`), but every stored row is kept at full resolution until it is purged.
 
 ---
 

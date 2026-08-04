@@ -48,3 +48,25 @@ def test_hub_version_is_a_plain_release_number():
     assert re.fullmatch(r"\d+\.\d+\.\d+", HUB_VERSION), HUB_VERSION
     assert __version__ == HUB_VERSION
     assert PRODUCT_NAME == "Setpoint"
+
+
+def test_the_developer_file_map_covers_every_core_module():
+    """docs/DEVELOPING.md's file map is what a contributor navigates by, so a
+    module missing from it is invisible. It had silently rotted: six core
+    modules were absent (including the whole multi-site forwarder), and three
+    listed files -- auto_provision.py, auto_provisioner.py, core/retention.py --
+    did not exist under those names, or at all."""
+    doc = (REPO / "docs" / "DEVELOPING.md").read_text(encoding="utf-8")
+    listed = set()
+    for m in re.finditer(r"^\|\s*`([^`]+)`(?:\s*/\s*`([^`]+)`)?\s*\|", doc, re.M):
+        listed.update(g for g in m.groups() if g)
+
+    on_disk = {p.relative_to(REPO).as_posix() for p in (REPO / "core").glob("*.py")
+               if not p.name.startswith("__")}
+    assert not (on_disk - listed), \
+        f"add to the file map in docs/DEVELOPING.md: {sorted(on_disk - listed)}"
+
+    # ...and nothing in the map may name a file that isn't there.
+    ghosts = [p for p in listed
+              if (p.endswith((".py", ".sh")) and "*" not in p and not (REPO / p).exists())]
+    assert not ghosts, f"file map names missing files: {ghosts}"
