@@ -1,4 +1,26 @@
 // ESP32 + DS18B20 + WiFiManager + mDNS + OTA + WebServer
+// v2.9.0 — threshold watch: sample often, transmit rarely. Reading the sensor
+//           costs a conversion; associating and POSTing costs seconds of radio,
+//           so the two are now decoupled. Given limits by the hub (from
+//           alert_thresholds, over the existing provision + ingest-reply
+//           channel) plus a sample cadence shorter than the report interval, a
+//           deep-sleeping probe wakes every cfg_sample_ms with the RADIO OFF,
+//           reads, and buffers — powering the radio only when the report is due
+//           or the reading just crossed a limit. A probe reporting every 15
+//           minutes therefore notices a thawing freezer within a minute instead
+//           of up to fifteen, and because every sample is buffered and flushed
+//           on the next report the hub gets the finer history at no extra radio
+//           cost. Only the TRANSITIONS transmit early (in and out of the
+//           excursion); sitting in breach reports on the normal interval, and
+//           WATCH_HYSTERESIS_C stops a probe parked on its limit chattering.
+//           This is what the v2.5.0 disturbance burst could not do: that fires
+//           on a sudden CHANGE, and a slow thaw has none — and above
+//           BURST_MAX_INTERVAL_MS it is off entirely, which is exactly the long
+//           interval where a silent excursion costs most. OFF unless the hub
+//           sends limits AND a shorter sample cadence, so a probe told nothing
+//           behaves exactly as it did in 2.8.2. State reported in /status
+//           (watch_armed, alert_min_c, alert_max_c, sample_ms, in_breach) so the
+//           probe's copy of the limits can be checked against the hub's.
 // v2.8.2 — offline buffering no longer requires a synced clock. A probe whose
 //           NTP has never landed (a LAN with no internet — the local-first
 //           deployment this product is sold for) previously DROPPED every
@@ -138,7 +160,7 @@ inline void ledBlink(uint8_t n, uint16_t onMs = 60, uint16_t offMs = 120) {
 
 // ---------------- Identity --------------------------------------------------
 static const char* SENSOR_NAME = "Setpoint";
-static const char* FW_VERSION  = "2.8.2";
+static const char* FW_VERSION  = "2.9.0";
 
 // The setup SoftAP is intentionally OPEN (no password): it only exists during
 // first-time Wi-Fi setup and is torn down once the probe joins the home network,
@@ -205,6 +227,32 @@ static const uint32_t BURST_SAMPLE_MS =  1000UL;  // sample cadence during the b
 // until a settled (non-disturbed) wake re-arms it — normal fixed-interval
 // logging continues throughout; only the aggressive stay-awake flush is paused.
 static const uint32_t BURST_MAX_CONSECUTIVE = 3;
+
+// ---------------- Threshold watch (sample often, transmit rarely) -----------
+// The burst above reacts to a sudden CHANGE. It cannot catch the failure that
+// matters most: a freezer thawing slowly. Hours of small per-wake deltas never
+// reach BURST_DELTA_C, and above BURST_MAX_INTERVAL_MS bursting is off entirely
+// — which is exactly the long-interval configuration where a silent excursion
+// costs the most. So watch the ABSOLUTE limits too.
+//
+// The asymmetry this exploits: reading the sensor is cheap (CPU + a conversion,
+// no radio), associating and POSTing is expensive (seconds of radio at ~100 mA).
+// So decouple the two. Wake every `cfg_sample_ms` and read; keep the radio OFF
+// and buffer the reading unless the report interval is due OR the reading just
+// crossed a limit. A probe on a 15-minute report interval can then notice a
+// breach within a minute, and — because every sample is buffered and flushed on
+// the next report — the hub receives the finer history too, at no extra radio
+// cost. Limits come from the hub (alert_thresholds) over the existing
+// provision/ingest-reply channel, so the probe never invents them.
+//
+// OFF unless the hub supplies limits AND a sample interval shorter than the
+// report interval: with either unset this file behaves exactly as it did.
+static const float    WATCH_UNSET_C       = -999.0f;  // sentinel: no limit configured
+// Clearing needs to beat the limit by this much before it counts as recovered,
+// so a probe parked exactly on its limit doesn't transmit an enter/clear pair
+// every sample and flatten its battery.
+static const float    WATCH_HYSTERESIS_C  = 0.5f;
+static const uint32_t WATCH_SAMPLE_MIN_MS = 5000UL;   // floor on the sample cadence
 
 // ---------------- Wake-time / radio budget (battery) ------------------------
 // A freezer is an RF box, so a probe that can't associate must not hold its
@@ -276,8 +324,13 @@ static const uint8_t  DS_READ_RETRIES    = 2;
 Preferences prefs;   // namespace: "tscfg"
 String   cfg_server_url = "";
 String   cfg_token      = "";
-uint32_t cfg_interval   = 5000;   // ms between readings
+uint32_t cfg_interval   = 5000;   // ms between readings (= how often we REPORT)
 uint8_t  cfg_res_bits   = DS_RESOLUTION_DEFAULT_BITS;  // DS18B20 resolution (9..12), provisionable
+// Threshold watch, all hub-supplied. cfg_sample_ms is how often to READ; it is
+// only honoured when shorter than cfg_interval and at least one limit is set.
+float    cfg_alert_min_c = WATCH_UNSET_C;
+float    cfg_alert_max_c = WATCH_UNSET_C;
+uint32_t cfg_sample_ms   = 0;     // 0 = no separate sample cadence (read == report)
 
 // ---------------- WiFiManager parameters ------------------------------------
 WiFiManager wm;
@@ -330,6 +383,9 @@ RTC_DATA_ATTR static uint32_t rtc_wakesSinceSync = 0;  // deep-sleep wakes since
 RTC_DATA_ATTR static float    rtc_lastReadingC   = -999.0f; // last temp (across sleep) for disturbance detection; -999 = unset
 RTC_DATA_ATTR static uint32_t rtc_burstStreak    = 0;       // consecutive wakes that fired a burst (cap guard)
 RTC_DATA_ATTR static uint32_t rtc_wifiFailStreak = 0;       // consecutive deep-sleep reconnect failures (backoff)
+// Threshold watch, carried across deep sleep.
+RTC_DATA_ATTR static uint32_t rtc_msSinceReport  = 0;       // ms slept+worked since the last successful report
+RTC_DATA_ATTR static bool     rtc_inBreach       = false;   // was the last evaluated reading outside its limits?
 
 // ---------------- State -----------------------------------------------------
 static bool          g_timeValid     = false;
@@ -342,6 +398,9 @@ static bool          g_wasConnected  = false;
 static unsigned long g_lastFlushAt   = 0;
 static unsigned long g_wakeStart     = 0;   // millis() at top of setup()
 static bool          g_deepSleepMode = false;
+// Set in setup(): this wake exists only to read the sensor, so the radio was
+// never powered. loop() may still power it up if the reading crossed a limit.
+static bool          g_sampleOnlyWake = false;
 static uint16_t      g_convMs        = 375;  // DS18B20 conversion wait; tracks cfg_res_bits (applyResolution)
 
 // ============================================================================
@@ -440,7 +499,30 @@ void loadConfig() {
   cfg_token      = prefs.getString("token",      cfg_token);
   cfg_interval   = prefs.getUInt  ("interval",   cfg_interval);
   cfg_res_bits   = prefs.getUChar ("res_bits",   cfg_res_bits);
+  cfg_alert_min_c = prefs.getFloat("al_min",     cfg_alert_min_c);
+  cfg_alert_max_c = prefs.getFloat("al_max",     cfg_alert_max_c);
+  cfg_sample_ms   = prefs.getUInt ("sample_ms",  cfg_sample_ms);
   prefs.end();
+}
+
+// ---------------- Threshold watch helpers -----------------------------------
+
+// True when the hub has given this probe at least one limit AND a sample
+// cadence shorter than its report interval. Everything the watch does is gated
+// on this, so a probe the hub has said nothing to behaves exactly as before.
+static bool watchArmed() {
+  bool haveLimit = (cfg_alert_min_c > WATCH_UNSET_C) || (cfg_alert_max_c > WATCH_UNSET_C);
+  return haveLimit && cfg_sample_ms >= WATCH_SAMPLE_MIN_MS && cfg_sample_ms < cfg_interval;
+}
+
+// Is this reading outside its limits? Hysteresis is applied only on the way
+// OUT: entering breach is judged against the bare limit (report the excursion
+// the moment it happens), leaving it must beat the limit by WATCH_HYSTERESIS_C.
+static bool outsideLimits(float tC) {
+  const float slack = rtc_inBreach ? WATCH_HYSTERESIS_C : 0.0f;
+  if (cfg_alert_max_c > WATCH_UNSET_C && tC > cfg_alert_max_c - slack) return true;
+  if (cfg_alert_min_c > WATCH_UNSET_C && tC < cfg_alert_min_c + slack) return true;
+  return false;
 }
 
 void saveConfig() {
@@ -449,6 +531,9 @@ void saveConfig() {
   prefs.putString("token",      cfg_token);
   prefs.putUInt  ("interval",   cfg_interval);
   prefs.putUChar ("res_bits",   cfg_res_bits);
+  prefs.putFloat ("al_min",     cfg_alert_min_c);
+  prefs.putFloat ("al_max",     cfg_alert_max_c);
+  prefs.putUInt  ("sample_ms",  cfg_sample_ms);
   prefs.end();
 }
 
@@ -605,12 +690,38 @@ bool applyHubConfig(const String& payload) {
     changed = true;
   }
 
+  // Threshold watch. Limits arrive as JSON null when the hub has none for this
+  // probe, which must CLEAR a previously-set limit rather than be ignored —
+  // otherwise deleting a threshold on the dashboard leaves the probe still
+  // waking every minute to check a limit nobody holds any more. `| WATCH_UNSET_C`
+  // supplies exactly that: an absent or null key reads back as unset.
+  if (c.containsKey("alert_min_c")) {
+    float v = c["alert_min_c"] | WATCH_UNSET_C;
+    if (v != cfg_alert_min_c) { cfg_alert_min_c = v; changed = true; }
+  }
+  if (c.containsKey("alert_max_c")) {
+    float v = c["alert_max_c"] | WATCH_UNSET_C;
+    if (v != cfg_alert_max_c) { cfg_alert_max_c = v; changed = true; }
+  }
+  if (c.containsKey("sample_ms")) {
+    uint32_t v = (uint32_t)(c["sample_ms"] | 0UL);
+    if (v != cfg_sample_ms) { cfg_sample_ms = v; changed = true; }
+  }
+
   if (changed) {
     saveConfig();
     g_deepSleepMode = DEEP_SLEEP_ENABLED && (cfg_interval >= DEEP_SLEEP_MIN_MS);
     Serial.printf("[Config] Applied from hub: interval=%lu ms, resolution=%u-bit, sleep=%s\n",
                   (unsigned long)cfg_interval, cfg_res_bits,
                   g_deepSleepMode ? "deep" : "modem");
+    if (watchArmed()) {
+      Serial.printf("[Watch] Armed: limits %.1f..%.1f C, sampling every %lu ms "
+                    "(reporting every %lu ms).\n",
+                    cfg_alert_min_c, cfg_alert_max_c,
+                    (unsigned long)cfg_sample_ms, (unsigned long)cfg_interval);
+    } else {
+      Serial.println("[Watch] Off (no limits, or sample interval not shorter than report interval).");
+    }
   }
   return changed;
 }
@@ -975,6 +1086,15 @@ void handleStatus() {
   doc["fs_free_kb"]  = (LittleFS.totalBytes() - LittleFS.usedBytes()) / 1024;
   doc["sleep_mode"]  = g_deepSleepMode ? "deep" : "modem";
   doc["wake_count"]  = rtc_bootCount;
+  // Report the limits this probe is actually holding. They are a COPY of the
+  // hub's, pushed over provisioning, and a probe that was asleep when they
+  // changed keeps the old ones — so the copy has to be inspectable or the drift
+  // is invisible from both ends.
+  doc["watch_armed"] = watchArmed();
+  doc["sample_ms"]   = cfg_sample_ms;
+  if (cfg_alert_min_c > WATCH_UNSET_C) doc["alert_min_c"] = cfg_alert_min_c;
+  if (cfg_alert_max_c > WATCH_UNSET_C) doc["alert_max_c"] = cfg_alert_max_c;
+  doc["in_breach"]   = rtc_inBreach;
   sendJSON(200, doc);
 }
 
@@ -1312,9 +1432,21 @@ void setup() {
     // regardless, since a door-open is exactly when the network may return.)
     bool skipConnect = (rtc_wifiFailStreak >= WIFI_FAIL_BACKOFF_AFTER) &&
                        (rtc_bootCount % WIFI_FAIL_BACKOFF_EVERY != 0);
+    // Threshold watch: this is a SAMPLE-only wake — read the sensor with the
+    // radio off and go back to sleep, unless the reading turns out to have
+    // crossed a limit, in which case loop() powers the radio up then. Skipping
+    // the association is the entire saving; the read itself was never the cost.
+    g_sampleOnlyWake = watchArmed() && (rtc_msSinceReport + cfg_sample_ms / 2 < cfg_interval);
+    if (g_sampleOnlyWake) {
+      skipConnect = true;
+      Serial.printf("[Watch] Sample wake (%lu/%lu ms into the report interval) — radio off.\n",
+                    (unsigned long)rtc_msSinceReport, (unsigned long)cfg_interval);
+    }
     if (skipConnect) {
-      Serial.printf("[WiFi] Backoff (%u consecutive fails) — radio stays off this wake.\n",
-                    rtc_wifiFailStreak);
+      if (!g_sampleOnlyWake) {
+        Serial.printf("[WiFi] Backoff (%u consecutive fails) — radio stays off this wake.\n",
+                      rtc_wifiFailStreak);
+      }
     } else {
       WiFi.mode(WIFI_STA);
       WiFi.begin();
@@ -1580,10 +1712,14 @@ void loop() {
       ledBlink(2, 60, 160);
 
       if (g_deepSleepMode) {
-        // Sleep even on error; the sensor will be retried on next wake
+        // Sleep even on error; the sensor will be retried on next wake. Keep
+        // charging the report interval, or a spell of bad reads would leave the
+        // clock stopped and the first good reading would look overdue by
+        // however long the fault lasted.
         unsigned long elapsed = millis() - g_wakeStart;
         uint32_t sleepMs = cfg_interval > elapsed
                            ? (uint32_t)(cfg_interval - elapsed) : 1000UL;
+        rtc_msSinceReport += (uint32_t)elapsed + sleepMs;
         enterDeepSleep(sleepMs);
       }
       return;
@@ -1603,9 +1739,57 @@ void loop() {
                        && fabsf(tC - rtc_lastReadingC) >= burstDelta;
     rtc_lastReadingC = tC;
 
-    if (connected) {
+    // ── Threshold watch: does this reading justify the radio? ──────────────
+    // Only the TRANSITIONS are worth an unscheduled transmission. Entering an
+    // excursion is the alert; leaving it is the all-clear, and is worth just as
+    // much because until it arrives the hub is still telling someone their
+    // freezer is warm. Sitting in breach reports on the normal interval — the
+    // hub's own re-alert cooldown handles repetition, and a probe parked past
+    // its limit must not transmit every sample.
+    bool watchReport = false;
+    if (watchArmed()) {
+      const bool breach = outsideLimits(tC);
+      if (breach != rtc_inBreach) {
+        watchReport = true;
+        Serial.printf("[Watch] %s at %.2f C (limits %.1f..%.1f) — reporting now.\n",
+                      breach ? "BREACH" : "Recovered", tC,
+                      cfg_alert_min_c, cfg_alert_max_c);
+      }
+      rtc_inBreach = breach;
+    }
+    // A sample wake reports only on a transition; a scheduled wake always does.
+    const bool doReport = watchReport || !g_sampleOnlyWake;
+
+    // The radio was left off for this wake, but the reading turned out to
+    // matter. Power it up now — this is the whole point of sampling cheaply.
+    if (doReport && g_sampleOnlyWake && WiFi.status() != WL_CONNECTED) {
+      WiFi.mode(WIFI_STA);
+      WiFi.begin();
+      uint32_t t0 = millis();
+      while (WiFi.status() != WL_CONNECTED && millis() - t0 < WIFI_CONNECT_MS) delay(50);
+      if (WiFi.status() == WL_CONNECTED) {
+        rtc_wifiFailStreak = 0;
+        Serial.printf("[Watch] Radio up in %lu ms to deliver the excursion.\n", millis() - t0);
+      } else {
+        rtc_wifiFailStreak++;
+        Serial.println("[Watch] Could not associate — excursion buffered, goes with the next report.");
+      }
+      connected = (WiFi.status() == WL_CONNECTED);
+    }
+
+    if (!doReport) {
+      // Cheap path: keep the reading on flash and sleep again. It is not lost —
+      // the next report flushes the buffer, so the hub gets the fine-grained
+      // history too, at no extra radio cost.
+      bufferAppend(ts, tC, tF);
+    } else if (connected) {
       if (postWithTimestamp(ts, tC, tF, g_probeId)) {
         ledOn(); delay(20); ledOff();
+        // Report delivered: restart the interval, and push up the samples taken
+        // with the radio off since the last one so the hub has the fine history
+        // too. This is the flush that makes cheap sampling free to the hub.
+        rtc_msSinceReport = 0;
+        if (watchArmed() && LittleFS.exists(BUFFER_FILE)) bufferFlush();
       } else {
         // POST failed (hub unreachable?) — fall through to buffer
         Serial.println("[POST] Failed — buffering reading.");
@@ -1659,10 +1843,23 @@ void loop() {
       uint32_t sleepMs;
       if (doBurst) {
         sleepMs = cfg_interval;
+      } else if (watchArmed()) {
+        // Sleep to the next SAMPLE, not the next report — but never past the
+        // report itself, so a report is not delayed by up to one sample gap.
+        uint32_t untilReport = rtc_msSinceReport < cfg_interval
+                               ? cfg_interval - rtc_msSinceReport : 0UL;
+        uint32_t gap = cfg_sample_ms < untilReport ? cfg_sample_ms : untilReport;
+        if (gap < WATCH_SAMPLE_MIN_MS) gap = cfg_sample_ms;   // report just fired
+        sleepMs = gap > (uint32_t)elapsed ? (uint32_t)(gap - elapsed) : 100UL;
       } else {
         sleepMs = cfg_interval > (uint32_t)elapsed
                   ? (uint32_t)(cfg_interval - elapsed) : 100UL;
       }
+      // Charge this whole wake — the sleep AND the time spent awake — against
+      // the report interval. Counting only the sleep would let the interval
+      // drift longer by however long each wake took, and a 15-minute report
+      // would quietly become 16.
+      rtc_msSinceReport += (uint32_t)elapsed + sleepMs;
       enterDeepSleep(sleepMs);
       // never reached
     }

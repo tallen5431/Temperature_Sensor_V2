@@ -224,17 +224,25 @@ class AutoProvisioner(threading.Thread):
             # probe should be running.
             interval_ms = default_interval_ms
             resolution_bits = None
+            watch = (None, None, 0)
             if self.cfg is not None and probe_id:
                 desired_cfg = desired_probe_config(self.cfg, probe_id)
                 interval_ms = desired_cfg["interval_ms"]
                 resolution_bits = desired_cfg["resolution_bits"]
+                # Part of "what should this probe be running", so it belongs in
+                # the change-detection tuple below — otherwise editing a
+                # threshold on the dashboard would never reach a probe this
+                # session, and the probe would keep watching the old limit.
+                watch = (desired_cfg.get("alert_min_c"),
+                         desired_cfg.get("alert_max_c"),
+                         desired_cfg.get("sample_ms", 0))
 
             host = (host or "").rstrip(".")
             if not host:
                 continue
 
             target_url = f"{base}/api/ingest"
-            desired = (base, interval_ms, resolution_bits, self.token)
+            desired = (base, interval_ms, resolution_bits, self.token, watch)
             # Once we've provisioned this probe this session, only
             # re-provision when its visible config (server_url /
             # interval) differs — this avoids the ESP32 doing an
@@ -257,10 +265,23 @@ class AutoProvisioner(threading.Thread):
                     # re-provision every cycle.
                     res_ok = status.get("resolution_bits") in (None, resolution_bits) \
                         if status else False
+                    # The watch has to be compared here too, not just in the
+                    # `desired` tuple above. Changing a threshold leaves
+                    # server_url, interval and resolution all identical, so
+                    # without this the shortcut declares the probe "already
+                    # configured correctly" and the new limit never ships — the
+                    # probe keeps watching the old one until the hub restarts.
+                    # Absent keys mean firmware that predates the watch: treat as
+                    # a match so an old probe isn't re-provisioned every cycle.
+                    watch_ok = True
+                    if status is not None and "sample_ms" in status:
+                        watch_ok = (status.get("alert_min_c") == watch[0] and
+                                    status.get("alert_max_c") == watch[1] and
+                                    status.get("sample_ms") == watch[2])
                     if (status and
                             status.get("server_url") == target_url and
                             status.get("interval_ms") == interval_ms and
-                            res_ok):
+                            res_ok and watch_ok):
                         continue  # already configured correctly
                 except Exception:
                     pass  # can't check — fall through and provision
@@ -273,6 +294,7 @@ class AutoProvisioner(threading.Thread):
                     token=self.token,
                     interval_ms=interval_ms,
                     resolution_bits=resolution_bits,
+                    watch=watch,
                 ):
                     self._provisioned.add(key)
                     self._pushed[key] = desired
