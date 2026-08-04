@@ -237,3 +237,47 @@ def test_partial_index_costs_a_single_site_hub_nothing(tmp_path):
         "SELECT COUNT(*) FROM readings WHERE site != ''").fetchone()[0]
     assert indexed == 0
     assert db.sites() == []
+
+
+def test_two_stores_may_name_a_probe_the_same_thing(tmp_path):
+    """The dedup key must include the site.
+
+    Probe ids are operator-visible strings, not just MAC-derived ones — two
+    managers both calling their cooler "walkin" is the expected case, not a
+    pathological one. With UNIQUE(probe_id, epoch), head office's
+    INSERT OR IGNORE silently discarded the second store's reading: a hole in a
+    food-safety record caused by nothing worse than two people picking the same
+    obvious name, and invisible from either end.
+    """
+    db = Database(tmp_path / "hq.db")
+    ts = "2026-08-04T10:00:00.000"
+    db.append(ts, 3.5, 38.3, "walkin", site="atlanta")
+    db.append(ts, -18.9, -2.0, "walkin", site="marietta")
+    db.append(ts, 21.0, 69.8, "walkin", site="")        # HQ's own, same name again
+
+    assert db.window_stats(site="atlanta")["count"] == 1
+    assert db.window_stats(site="marietta")["count"] == 1
+    assert db.window_stats(site="")["count"] == 1
+    assert db.count() == 3
+
+
+def test_replay_from_one_store_is_still_idempotent(tmp_path):
+    """Widening the key must not cost the property the forwarder depends on:
+    re-sending a batch after a dropped response cannot duplicate rows."""
+    db = Database(tmp_path / "hq.db")
+    ts = "2026-08-04T10:00:00.000"
+    for _ in range(5):
+        db.append(ts, 3.5, 38.3, "walkin", site="atlanta")
+    assert db.count() == 1
+
+
+def test_per_probe_seek_still_uses_the_index(tmp_path):
+    """site is the THIRD column precisely so (probe_id, epoch) stays a usable
+    prefix — latest_per_probe's per-probe seek must not fall back to a scan."""
+    db = Database(tmp_path / "hq.db")
+    db.append("2026-08-04T10:00:00.000", 3.5, 38.3, "walkin", site="atlanta")
+    plan = " ".join(str(r[-1]) for r in db._conn().execute(
+        "EXPLAIN QUERY PLAN SELECT ts FROM readings WHERE probe_id=? "
+        "ORDER BY epoch DESC, id DESC LIMIT 1", ("walkin",)))
+    assert "idx_readings_probe_epoch_site_uniq" in plan, plan
+    assert "SCAN readings" not in plan, plan

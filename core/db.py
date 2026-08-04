@@ -181,11 +181,22 @@ class Database:
             # byte-identical replay collides, and INSERT OR IGNORE drops it.
             # Replaces the old non-unique (probe_id, epoch) index, which this
             # supersedes for the same query patterns.
+            #
+            # ``site`` is in the key, and its POSITION is the whole trick. Two
+            # stores whose operators both named a probe "walkin" produce the same
+            # (probe_id, epoch) at head office, and a two-column key made
+            # INSERT OR IGNORE silently discard the second store's reading — a
+            # hole in a food-safety record, created by nothing worse than two
+            # people picking the same obvious name. Adding site as the THIRD
+            # column fixes that while leaving (probe_id, epoch) as the leading
+            # prefix, so the per-probe "newest row" seek in latest_per_probe
+            # still uses this index exactly as before.
             conn.execute("DROP INDEX IF EXISTS idx_readings_probe_epoch")
+            conn.execute("DROP INDEX IF EXISTS idx_readings_probe_epoch_uniq")
             try:
                 conn.execute(
-                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_readings_probe_epoch_uniq "
-                    "ON readings(probe_id, epoch)"
+                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_readings_probe_epoch_site_uniq "
+                    "ON readings(probe_id, epoch, site)"
                 )
             except sqlite3.IntegrityError:
                 # A pre-existing database from the older non-idempotent path may
@@ -198,13 +209,13 @@ class Database:
                 # keeps this from silently deleting real readings.
                 conn.execute(
                     "DELETE FROM readings WHERE id NOT IN ("
-                    " SELECT MIN(id) FROM readings GROUP BY probe_id, epoch, "
+                    " SELECT MIN(id) FROM readings GROUP BY probe_id, epoch, site, "
                     " temperature_c, temperature_f, humidity_pct, vpd_kpa, battery_pct)"
                 )
                 try:
                     conn.execute(
-                        "CREATE UNIQUE INDEX IF NOT EXISTS idx_readings_probe_epoch_uniq "
-                        "ON readings(probe_id, epoch)"
+                        "CREATE UNIQUE INDEX IF NOT EXISTS idx_readings_probe_epoch_site_uniq "
+                        "ON readings(probe_id, epoch, site)"
                     )
                 except sqlite3.IntegrityError:
                     # Genuinely-distinct readings still collide on (probe_id,
