@@ -177,10 +177,11 @@ def _upstream_diag(cfg, now: float) -> Dict[str, Any]:
         return out
     try:
         from core.forwarder import FORWARDER
-        last = FORWARDER.last_sent_epoch()
-        out["pending"] = FORWARDER.pending()
-        out["last_send_age_sec"] = round(now - last, 1) if last else None
-        out["last_error"] = FORWARDER.last_error()
+        st = FORWARDER.status()
+        out["pending"] = st["pending"]
+        out["last_send_age_sec"] = (round(now - st["last_sent_epoch"], 1)
+                                    if st["last_sent_epoch"] else None)
+        out["last_error"] = st["last_error"]
     except Exception:  # noqa: BLE001 - diagnostics must never raise
         pass
     return out

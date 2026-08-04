@@ -269,14 +269,18 @@ class _ForwarderHandle:
             return 0, str(e)
         return sent, self._fwd.last_error
 
-    def pending(self) -> int:
-        return self._fwd.pending() if self._fwd is not None else 0
+    def status(self) -> dict:
+        """Backlog, last success and last error — the three things both callers
+        want together. Diagnostics renders all of it; Settings uses ``pending``.
 
-    def last_sent_epoch(self) -> float:
-        return self._fwd.last_sent_epoch if self._fwd is not None else 0.0
-
-    def last_error(self) -> str:
-        return self._fwd.last_error if self._fwd is not None else ""
+        Safe on a hub where the pump never started: every value is its
+        nothing-has-happened default rather than an absence to guard against.
+        """
+        if self._fwd is None:
+            return {"pending": 0, "last_sent_epoch": 0.0, "last_error": ""}
+        return {"pending": self._fwd.pending(),
+                "last_sent_epoch": self._fwd.last_sent_epoch,
+                "last_error": self._fwd.last_error}
 
 
 FORWARDER = _ForwarderHandle()

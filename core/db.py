@@ -36,6 +36,37 @@ log = logging.getLogger("hub.db")
 _SELECT_COLS = "ts AS timestamp, temperature_c, temperature_f, probe_id"
 
 
+def _reading_filters(cutoff=None, probe_id=None, site=None):
+    """Conjunction + params for the readings filters the dashboard queries share.
+
+    Returns ``(clauses, params)`` rather than a finished ``WHERE`` string because
+    one caller needs the bare conjunction: ``latest_per_probe`` appends it after
+    its own ``probe_id = ?`` in the per-probe seek. :func:`_where` renders the
+    ordinary case.
+
+    The two easy-to-get-wrong parts, in one place instead of five:
+
+    * ``site is not None``, not truthiness — ``''`` is a real site (this hub's
+      own probes) and must filter rather than mean "no filter". Getting that
+      inconsistent across siblings is how the chart ends up showing six stores
+      while the cards beside it correctly show one.
+    * ``params`` order must track ``clauses`` order, which is why they are built
+      together and returned together.
+    """
+    clauses, params = [], []
+    if cutoff is not None:
+        clauses.append("epoch >= ?"); params.append(cutoff)
+    if probe_id:
+        clauses.append("probe_id = ?"); params.append(probe_id)
+    if site is not None:
+        clauses.append("site = ?"); params.append(site)
+    return clauses, tuple(params)
+
+
+def _where(clauses) -> str:
+    return ("WHERE " + " AND ".join(clauses)) if clauses else ""
+
+
 _FORMULA_LEAD = ("=", "+", "-", "@", "\t", "\r")
 
 
@@ -405,13 +436,8 @@ class Database:
         """
         conn = self._conn()
         cutoff = self._cutoff(window_seconds)
-        clauses, params_list = [], []
-        if cutoff is not None:
-            clauses.append("epoch >= ?"); params_list.append(cutoff)
-        if site is not None:
-            clauses.append("site = ?"); params_list.append(site)
-        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
-        params: tuple = tuple(params_list)
+        clauses, params = _reading_filters(cutoff, site=site)
+        where = _where(clauses)
         rows = conn.execute(
             f"SELECT probe_id, MAX(epoch) AS last_epoch FROM readings {where} GROUP BY probe_id",
             params,
@@ -442,21 +468,8 @@ class Database:
         """
         conn = self._conn()
         cutoff = self._cutoff(window_seconds)
-        clauses, params_list = [], []
-        if cutoff is not None:
-            clauses.append("epoch >= ?"); params_list.append(cutoff)
-        if probe_id:
-            clauses.append("probe_id = ?"); params_list.append(probe_id)
-        # `is not None`, NOT a truthiness test: '' is a real site — this hub's own
-        # probes — and must filter, not mean "no filter". The sibling methods
-        # (window_stats, stats_per_probe, latest_per_probe,
-        # last_reading_epoch_per_probe) all read '' that way, and one of five
-        # disagreeing is how the chart ends up showing six stores while the cards
-        # correctly show one.
-        if site is not None:
-            clauses.append("site = ?"); params_list.append(site)
-        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
-        params: tuple = tuple(params_list)
+        clauses, params = _reading_filters(cutoff, probe_id, site)
+        where = _where(clauses)
 
         total = conn.execute(f"SELECT COUNT(*) AS n FROM readings {where}", params).fetchone()["n"]
         if total == 0:
@@ -501,15 +514,8 @@ class Database:
         """
         conn = self._conn()
         cutoff = self._cutoff(window_seconds)
-        clauses, params_list = [], []
-        if cutoff is not None:
-            clauses.append("epoch >= ?"); params_list.append(cutoff)
-        if probe_id:
-            clauses.append("probe_id = ?"); params_list.append(probe_id)
-        if site is not None:      # '' is a real site (this hub's own probes)
-            clauses.append("site = ?"); params_list.append(site)
-        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
-        params: tuple = tuple(params_list)
+        clauses, params = _reading_filters(cutoff, probe_id, site)
+        where = _where(clauses)
 
         agg = conn.execute(
             f"SELECT COUNT(*) AS n, MIN(temperature_c) AS mn, MAX(temperature_c) AS mx, "
@@ -549,13 +555,8 @@ class Database:
         """
         conn = self._conn()
         cutoff = self._cutoff(window_seconds)
-        clauses, params_list = [], []
-        if cutoff is not None:
-            clauses.append("epoch >= ?"); params_list.append(cutoff)
-        if site is not None:
-            clauses.append("site = ?"); params_list.append(site)
-        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
-        params: tuple = tuple(params_list)
+        clauses, params = _reading_filters(cutoff, site=site)
+        where = _where(clauses)
         rows = conn.execute(
             f"SELECT probe_id, COUNT(*) AS n, MIN(temperature_c) AS mn, "
             f"MAX(temperature_c) AS mx, AVG(temperature_c) AS av "
@@ -590,13 +591,8 @@ class Database:
         """
         conn = self._conn()
         cutoff = self._cutoff(window_seconds)
-        clauses, params_list = [], []
-        if cutoff is not None:
-            clauses.append("epoch >= ?"); params_list.append(cutoff)
-        if site is not None:
-            clauses.append("site = ?"); params_list.append(site)
-        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
-        params: tuple = tuple(params_list)
+        clauses, params = _reading_filters(cutoff, site=site)
+        where = _where(clauses)
         pids = [r["probe_id"] for r in conn.execute(
             f"SELECT DISTINCT probe_id FROM readings {where}", params).fetchall()]
         cols = ["timestamp", "temperature_c", "temperature_f", "probe_id",
@@ -1067,10 +1063,6 @@ class Database:
             "SELECT COUNT(*) FROM readings WHERE id > ? AND (site IS NULL OR site = '')",
             (int(after_id),)).fetchone()
         return int(row[0]) if row else 0
-
-    def max_reading_id(self) -> int:
-        row = self._conn().execute("SELECT MAX(id) FROM readings").fetchone()
-        return int(row[0]) if row and row[0] is not None else 0
 
     def sites(self):
         """Distinct non-empty site names present in the store, alphabetically.

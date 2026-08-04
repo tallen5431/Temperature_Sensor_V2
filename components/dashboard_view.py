@@ -416,6 +416,18 @@ def _empty_fig():
     return fig
 
 
+def _site_filter(site):
+    """Translate the site picker's value into a database filter.
+
+    The picker says ``"all"`` (or nothing at all, on a hub that has never seen a
+    forwarded reading and keeps the control hidden); the database layer says
+    ``None`` for "every site". Distinct vocabularies, and ``''`` means something
+    different again — this hub's OWN probes — so the conversion is not a cast and
+    lives in one place rather than at each of the six query sites.
+    """
+    return None if (not site or site == "all") else str(site)
+
+
 def _friendly_name(cfg, probe_id):
     if not probe_id:
         return "Unknown"
@@ -552,7 +564,7 @@ def build_events(db, cfg, temp_unit, limit=8, window_seconds=86400, site="all"):
     clutter the page while someone reads a different store.
     """
     temp_unit = temp_unit or "celsius"
-    site_filter = None if (not site or site == "all") else str(site)
+    site_filter = _site_filter(site)
     here = None
     if site_filter is not None:
         try:
@@ -635,7 +647,7 @@ def build_probe_cards(db, cfg, temp_unit, focus_probe="all", site="all"):
     """
     temp_unit = temp_unit or "celsius"
     focus = focus_probe if (focus_probe and focus_probe != "all") else None
-    site_filter = None if (not site or site == "all") else str(site)
+    site_filter = _site_filter(site)
     try:
         latest = db.latest_per_probe(window_seconds=PROBE_PRESENCE_WINDOW,
                                      site=site_filter)
@@ -707,7 +719,7 @@ def build_probe_stats(db, cfg, time_range, temp_unit, site="all"):
     """
     temp_unit = temp_unit or "celsius"
     window = RANGE_SECONDS.get(time_range or "24h", 86400)
-    site_filter = None if (not site or site == "all") else str(site)
+    site_filter = _site_filter(site)
     try:
         stats = db.stats_per_probe(window_seconds=window, site=site_filter)
     except Exception:
@@ -767,7 +779,7 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
     window = RANGE_SECONDS.get(time_range, 86400)
     suffix = " " + _unit_symbol(temp_unit)
     logging_status = "ON" if cfg.get("pull_enabled", True) else "OFF"
-    site_filter = None if (not site or site == "all") else str(site)
+    site_filter = _site_filter(site)
     probes_online = _reporting_probe_count(db, cfg, finder, site=site_filter)
     focus = focus_probe if (focus_probe and focus_probe != "all") else None
     focus_ts = None  # the focused probe's OWN latest timestamp (for "Last Update")
@@ -891,9 +903,8 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
         # mode its scan AND its stride track the focused probe's own volume (not
         # the global all-probe count, which used to decimate a quiet probe to a
         # point or two). The SQL filter also removes the old post-filter step.
-        # site_filter (computed at the top, since the Connected-Probes KPI needs
-        # it too): "all" or an empty value means no site filter; anything else
-        # narrows every query below to that one store's forwarded readings.
+        # site_filter is computed at the top of this function, not here, because
+        # the Connected-Probes KPI needs it before any of this runs.
         stats = db.window_stats(window_seconds=window, probe_id=focus, site=site_filter)
         filtered_points = stats["count"]
         if time_range != "all" and not filtered_points:
@@ -1374,7 +1385,7 @@ def register_dashboard_callbacks(app, finder, cfg, db):
         """Humidity + VPD cards for grow-variant probes (SHT4x). Empty for a
         temperature-only deployment so the layout is unchanged for most users."""
         focus = focus_probe if (focus_probe and focus_probe != "all") else None
-        site_filter = None if (not site or site == "all") else str(site)
+        site_filter = _site_filter(site)
         try:
             latest_each = db.latest_per_probe(window_seconds=PROBE_PRESENCE_WINDOW,
                                               site=site_filter)
@@ -1502,7 +1513,7 @@ def register_dashboard_callbacks(app, finder, cfg, db):
         chart, so a site change that orphans the current focus resets it to
         'All probes' rather than leaving a dropdown pointing at nothing.
         """
-        site_filter = None if (not site or site == "all") else str(site)
+        site_filter = _site_filter(site)
         opts = [{"label": "All probes (overview)", "value": "all"}]
         pids = []
         try:
