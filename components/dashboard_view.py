@@ -557,21 +557,17 @@ def build_events(db, cfg, temp_unit, limit=8, window_seconds=86400, site="all"):
     instead of burying the real alerts under a wall of online/offline entries.
     Returns ``[]`` when there's nothing to show. Dash-callback-free for tests.
 
-    ``site`` narrows the feed to one store. The events table has no site column —
-    events are keyed on probe id — so membership comes from which probes have
-    reported under that site. Note this filters the *scrollback*, not the live
-    alert banner: a breach in another store still raises, it just does not
-    clutter the page while someone reads a different store.
+    ``site`` narrows the feed to the hub that RECORDED the events — a store's own
+    alert engine's decisions against its own thresholds, forwarded here. That is
+    the record an auditor asks for, and it is why this filters on the event's own
+    site rather than inferring membership from which probes report where.
+
+    Note this filters the *scrollback*, not the live alert banner: a breach in
+    another store still raises, it just does not clutter the page while someone
+    is reading a different store.
     """
     temp_unit = temp_unit or "celsius"
     site_filter = _site_filter(site)
-    here = None
-    if site_filter is not None:
-        try:
-            here = set(db.last_reading_epoch_per_probe(
-                window_seconds=PROBE_PRESENCE_WINDOW, site=site_filter) or {})
-        except Exception:  # noqa: BLE001 - never break the feed over a filter
-            here = None
     try:
         # Fetch alerts and connectivity in SEPARATE, kind-filtered queries. A
         # flapping probe can emit hundreds of online/offline rows; if we pulled
@@ -581,14 +577,11 @@ def build_events(db, cfg, temp_unit, limit=8, window_seconds=86400, site="all"):
         # `limit` of them are always fetched; connectivity gets a wider slice
         # that we then collapse to one row per probe below.
         alerts = db.list_events(limit=limit, window_seconds=window_seconds,
-                                exclude_kinds=_CONNECTIVITY_KINDS)
+                                exclude_kinds=_CONNECTIVITY_KINDS, site=site_filter)
         conn_events = db.list_events(limit=max(limit * 8, 64), window_seconds=window_seconds,
-                                     kinds=_CONNECTIVITY_KINDS)
+                                     kinds=_CONNECTIVITY_KINDS, site=site_filter)
     except Exception:
         return []  # events log unavailable — hide the section rather than break
-    if here is not None:
-        alerts = [e for e in alerts if e.get("probe_id") in here]
-        conn_events = [e for e in conn_events if e.get("probe_id") in here]
     if not alerts and not conn_events:
         return []
 

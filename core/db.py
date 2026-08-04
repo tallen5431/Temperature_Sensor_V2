@@ -276,6 +276,34 @@ class Database:
                 """
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_events_epoch ON events(epoch)")
+            # Which hub RECORDED this event. '' is this one; a store's label on a
+            # row its hub forwarded here. Readings answer "what was the
+            # temperature"; events answer "what did that store's own hub decide
+            # about it, against its own thresholds" — a different record, and the
+            # one a food-safety auditor actually asks for.
+            try:
+                conn.execute("ALTER TABLE events ADD COLUMN site TEXT NOT NULL DEFAULT ''")
+            except sqlite3.OperationalError:
+                pass
+            # Idempotency for FORWARDED events only — hence `WHERE site != ''`,
+            # and that restriction is load-bearing rather than an optimisation.
+            # Event epochs are whole seconds (readings carry milliseconds), so a
+            # blanket unique key would treat two genuinely distinct same-second
+            # events for one probe as a replay and silently drop the second. The
+            # only place a replay can actually happen is a forwarded batch re-sent
+            # after a dropped response, so constrain exactly that and leave every
+            # locally-recorded event alone. Being partial also makes the index
+            # empty on a hub nobody forwards to, which is nearly all of them.
+            try:
+                conn.execute(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_events_fwd_dedup "
+                    "ON events(kind, probe_id, epoch, site) WHERE site != ''")
+            except sqlite3.IntegrityError:
+                # A log that already holds forwarded duplicates: keep the history,
+                # lose only the constraint.
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_events_fwd_dedup "
+                    "ON events(kind, probe_id, epoch, site) WHERE site != ''")
             conn.commit()
 
     # -- writes ----------------------------------------------------------------
@@ -303,7 +331,7 @@ class Database:
             conn.commit()
 
     def record_event(self, kind: str, probe_id: str, temperature_c=None,
-                     limit=None, ts=None) -> None:
+                     limit=None, ts=None, site: str = "") -> None:
         """Append one alert-lifecycle event to the events log.
 
         ``kind`` is one of ``'high' 'low' 'recovery' 'offline' 'online' 'rate'``;
@@ -325,10 +353,11 @@ class Database:
             conn = self._conn()
             with self._write_lock:
                 conn.execute(
-                    "INSERT INTO events (ts, epoch, kind, probe_id, temperature_c, limit_c) "
-                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    "INSERT OR IGNORE INTO events "
+                    "(ts, epoch, kind, probe_id, temperature_c, limit_c, site) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
                     (ts, int(iso_to_epoch(ts)), kind, str(probe_id or ""),
-                     _f(temperature_c), _f(limit)),
+                     _f(temperature_c), _f(limit), site or ""),
                 )
                 conn.commit()
         except Exception:
@@ -679,10 +708,14 @@ class Database:
 
     def list_events(self, limit: int = 50, window_seconds: Optional[int] = None,
                     kinds: Optional[Iterable[str]] = None,
-                    exclude_kinds: Optional[Iterable[str]] = None) -> list:
+                    exclude_kinds: Optional[Iterable[str]] = None,
+                    site: Optional[str] = None) -> list:
         """Most recent alert-lifecycle events as dict rows, newest first.
 
-        Row keys: ``timestamp, epoch, kind, probe_id, temperature_c, limit_c``.
+        Row keys: ``timestamp, epoch, kind, probe_id, temperature_c, limit_c,
+        site``. ``site`` filters to the hub that recorded them — ``''`` for this
+        hub's own, a store label for the events that store forwarded, ``None``
+        (default) for every hub at once.
         ``window_seconds`` bounds the log to a rolling window (index-backed via
         ``idx_events_epoch``); ``limit`` caps the payload for the UI/API.
         ``kinds`` restricts the result to those event kinds (whitelist);
@@ -706,13 +739,16 @@ class Database:
         if drop_list:
             clauses.append(f"kind NOT IN ({','.join('?' * len(drop_list))})")
             params.extend(drop_list)
-        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        if site is not None:
+            clauses.append("site = ?")
+            params.append(site)
+        where = _where(clauses)
         try:
             cap = max(1, int(limit))
         except (TypeError, ValueError):
             cap = 50
         rows = conn.execute(
-            f"SELECT ts AS timestamp, epoch, kind, probe_id, temperature_c, limit_c "
+            f"SELECT ts AS timestamp, epoch, kind, probe_id, temperature_c, limit_c, site "
             f"FROM events {where} ORDER BY epoch DESC, id DESC LIMIT ?",
             tuple(params) + (cap,),
         ).fetchall()
@@ -1048,6 +1084,20 @@ class Database:
         """
         sql = ("SELECT id, ts, epoch, temperature_c, temperature_f, probe_id, "
                "humidity_pct, vpd_kpa, battery_pct FROM readings WHERE id > ?")
+        if local_only:
+            sql += " AND (site IS NULL OR site = '')"
+        sql += " ORDER BY id LIMIT ?"
+        return self._conn().execute(sql, (int(after_id), int(limit))).fetchall()
+
+    def events_after(self, after_id: int, limit: int = 500, local_only: bool = True):
+        """Events with ``id > after_id``, oldest first, for upstream forwarding.
+
+        Same contract as :meth:`rows_after` — insertion-order cursor, and
+        ``local_only`` excludes events that arrived here from another hub so two
+        hubs pointed at each other cannot ping-pong them.
+        """
+        sql = ("SELECT id, ts, epoch, kind, probe_id, temperature_c, limit_c "
+               "FROM events WHERE id > ?")
         if local_only:
             sql += " AND (site IS NULL OR site = '')"
         sql += " ORDER BY id LIMIT ?"

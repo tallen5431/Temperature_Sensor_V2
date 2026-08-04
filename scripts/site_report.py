@@ -109,6 +109,19 @@ def main() -> None:
     print(f"local readings : {local:,}"
           + ("   <- probes posting directly to THIS hub" if local and sites else ""))
 
+    # Alerts are a separate record from readings: what each hub's own engine
+    # decided against its own thresholds. Worth its own line, because "head
+    # office has the temperatures but not the alerts" is a distinct failure.
+    try:
+        ev = conn.execute("SELECT site, kind, COUNT(*) FROM events "
+                          "GROUP BY site, kind ORDER BY site, kind").fetchall()
+    except sqlite3.OperationalError:
+        ev = []
+    if ev:
+        print("\nalert events   :")
+        for site, kind, n in ev:
+            print(f"  {(site or '(local)'):<20} {kind:<24} {n:>10,}")
+
     # --- this hub's own forwarding settings, if any --------------------------
     up = (_config_for(db_path).get("upstream") or {})
     if up.get("enabled"):

@@ -46,15 +46,41 @@ has with a hub, which is why this is small:
 
 | probe → hub | store hub → HQ hub |
 |---|---|
-| `POST /api/ingest_csv` | the same endpoint, unchanged |
+| `POST /api/ingest_csv` | the same endpoint, plus an optional `events` array |
 | `X-Token` auth | the same auth |
 | buffers to flash when the hub is down | backlog simply stays unsent |
-| `UNIQUE(probe_id, epoch)` + `INSERT OR IGNORE` | the same index makes re-sends idempotent |
+| `UNIQUE(probe_id, epoch, site)` + `INSERT OR IGNORE` | the same index makes re-sends idempotent |
 
-That last row carries the design. Because the receiver de-duplicates on
-`(probe_id, epoch)`, a batch re-sent after a dropped response **cannot** create
-duplicates. So the forwarder never has to solve exactly-once delivery — it only
-has to guarantee it never *skips*, and at-least-once comes free.
+That last row carries the design. Because the receiver de-duplicates, a batch
+re-sent after a dropped response **cannot** create duplicates. So the forwarder
+never has to solve exactly-once delivery — it only has to guarantee it never
+*skips*, and at-least-once comes free.
+
+`site` is in that key, and it has to be. Probe ids are operator-visible strings:
+two managers both naming their cooler `walkin` is the ordinary case, and without
+site in the key head office silently discarded the second store's readings.
+
+### Two records, not one
+
+A store forwards **readings** and **alert events**, in the same request:
+
+* **Readings** are what the sensor measured.
+* **Events** are what that store's own alert engine *decided* — against that
+  store's own thresholds. Head office re-evaluating the same readings against
+  its own limits produces a different answer, and it is the store's answer an
+  auditor asks for. So the store's event log travels with its readings, and the
+  Recent-events feed filtered to a store shows what that store actually alerted
+  on.
+
+Events carry their own cursor, so neither stream can block the other, and they
+share the request so one round trip advances both — either the batch lands or
+neither cursor moves.
+
+Event epochs are whole seconds, unlike readings' milliseconds, so their
+uniqueness constraint is **partial**: it covers forwarded rows only
+(`WHERE site != ''`). Constraining local events too would treat two genuinely
+distinct same-second events as a replay and drop one, and a replay can only
+happen on a forwarded batch anyway.
 
 **Push, never pull.** Stores need no inbound reachability: no tunnel, no port
 forward, no VPN, nothing to secure per site. It also survives a store outage —
@@ -387,12 +413,12 @@ HQ. Naming it in the store's hub does not carry across — only readings forward
 
 Honest list, so nobody sells past it:
 
-- **No per-site alerting rules.** Alerts evaluate per probe as they always have.
-  Note both hubs alert independently: the store's own monitor fires, and HQ's
-  monitor separately evaluates the forwarded reading against HQ's thresholds.
-  Usually what you want — store staff get theirs, the owner gets theirs — but put
-  **different recipients** on each hub or one breach sends the same person two
-  emails.
+- **No per-site alerting rules.** Alerts evaluate per probe as they always have,
+  and each hub's thresholds are its own. Both hubs also alert independently: the
+  store's monitor fires, and HQ's monitor separately evaluates the forwarded
+  reading against HQ's thresholds. Usually what you want — store staff get
+  theirs, the owner gets theirs — but put **different recipients** on each hub or
+  one breach sends the same person two emails.
 - **Renaming a site starts a new one.** Change `upstream.site` and HQ shows the
   new label alongside the old until the old rows age out; history is not
   relabelled.

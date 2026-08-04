@@ -146,21 +146,42 @@ def test_gauge_follows_the_selected_site(tmp_path):
     assert "ATL-Walkin" in str(atl[0].data[0].title.text)
 
 
-def test_recent_events_narrow_to_the_selected_site(tmp_path):
-    """The events log has no site column — membership is inferred from which
-    probes report under that site."""
+def test_recent_events_narrow_to_the_hub_that_recorded_them(tmp_path):
+    """An event belongs to the hub whose alert engine decided it.
+
+    Filtering to a store therefore shows what THAT store alerted on, against its
+    own thresholds — the record an auditor asks for — rather than head office's
+    re-evaluation of the same readings.
+    """
     db, cfg = Database(tmp_path / "d.db"), Config(tmp_path / "c.json")
     _seed(db, "ATL-Walkin", site="atlanta")
     _seed(db, "SAV-Freezer", site="savannah")
-    db.record_event("high", "ATL-Walkin", 9.1, 8.0)
-    db.record_event("offline", "SAV-Freezer")
+    db.record_event("high", "ATL-Walkin", 9.1, 8.0, site="atlanta")
+    db.record_event("offline", "SAV-Freezer", site="savannah")
+    db.record_event("high", "HQ-Rack", 40.0, 35.0)          # head office's own
 
     everything = str(build_events(db, cfg, "celsius", site="all"))
-    assert "ATL-Walkin" in everything and "SAV-Freezer" in everything
+    assert all(p in everything for p in ("ATL-Walkin", "SAV-Freezer", "HQ-Rack"))
 
     atl = str(build_events(db, cfg, "celsius", site="atlanta"))
     assert "ATL-Walkin" in atl
     assert "SAV-Freezer" not in atl
+    assert "HQ-Rack" not in atl
+
+
+def test_forwarded_events_are_deduped_but_local_ones_are_not(tmp_path):
+    """Event epochs are whole seconds, so a blanket unique key would treat two
+    genuinely distinct same-second events as a replay. The constraint covers
+    forwarded rows only — the one place a replay can actually happen."""
+    db = Database(tmp_path / "d.db")
+    ts = "2026-08-04T10:00:00"
+    for _ in range(5):                       # a store's batch, re-sent 5 times
+        db.record_event("high", "walkin", 9.1, 8.0, ts=ts, site="atlanta")
+    assert len(db.list_events(site="atlanta")) == 1
+
+    for _ in range(5):                       # local events keep their old freedom
+        db.record_event("high", "walkin", 9.1, 8.0, ts=ts)
+    assert len(db.list_events(site="")) == 5
 
 
 def test_alerts_still_see_every_site(tmp_path):
