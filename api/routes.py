@@ -192,6 +192,21 @@ def _is_safe_provision_target(host: str) -> bool:
                 and not ip.is_multicast)
 
 
+def _batch_events(req) -> list:
+    """Optional ``events`` array from a bulk-ingest body. ``[]`` if absent.
+
+    JSON only, and deliberately so: the CSV form is the probe's on-flash buffer
+    format, and probes have no event log. Only a forwarding hub sends these.
+    """
+    if "application/json" not in (req.headers.get("Content-Type") or "").lower():
+        return []
+    body = req.get_json(silent=True)
+    if not isinstance(body, dict):
+        return []
+    events = body.get("events")
+    return [e for e in events if isinstance(e, dict)] if isinstance(events, list) else []
+
+
 def _parse_batch(req):
     """Parse a bulk-ingest body into a list of reading dicts, or None if unusable.
 
@@ -781,7 +796,28 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
             log.warning("ingest_csv: re-stamped %d/%d future-dated row(s) from probe=%r "
                         "— check the probe's clock (NTP) or the hub's",
                         restamped, len(rows), header_pid or "?")
+        # Alert-lifecycle events, optional and JSON-only. A probe never sends
+        # these — only a forwarding hub does, carrying what its OWN alert engine
+        # decided against its OWN thresholds. That is a different record from the
+        # readings beside them and the one an auditor asks for, so it rides the
+        # same request rather than needing its own endpoint, auth path and
+        # failure mode: one round trip, and either both land or neither does.
+        events_in = _batch_events(request)
+        events_ok = 0
+        if events_in:
+            site = sanitize_site(request.headers.get("X-Site"))
+            for ev in events_in[:MAX_BATCH_ROWS]:
+                try:
+                    db.record_event(str(ev.get("kind") or ""),
+                                    sanitize_probe_id(ev.get("probe_id") or ""),
+                                    temperature_c=ev.get("temperature_c"),
+                                    limit=ev.get("limit_c"),
+                                    ts=ev.get("timestamp") or ev.get("ts"),
+                                    site=site)
+                    events_ok += 1
+                except Exception:  # noqa: BLE001 - an event must never fail readings
+                    pass
         return jsonify(ok=True, accepted=accepted, rejected=rejected,
-                       restamped=restamped)
+                       restamped=restamped, events=events_ok)
 
     return bp

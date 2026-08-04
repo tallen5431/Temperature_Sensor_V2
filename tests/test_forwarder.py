@@ -38,9 +38,10 @@ class _Capture:
         self.status = status
         self.calls = []
 
-    def __call__(self, url, token, site, rows, timeout=20.0):
+    def __call__(self, url, token, site, rows, events=(), timeout=20.0):
         self.calls.append({"url": url, "token": token, "site": site,
-                           "ids": [r[0] for r in rows]})
+                           "ids": [r[0] for r in rows],
+                           "event_ids": [e[0] for e in events]})
         return self.status
 
 
@@ -161,3 +162,60 @@ def test_batch_is_capped_to_the_protocol_limit(store, monkeypatch):
     monkeypatch.setattr("core.forwarder.post_batch", cap)
     UpstreamForwarder(db, cfg).run_once()
     assert len(cap.calls[0]["ids"]) == 5     # all five, but the request cap held
+
+
+def test_events_forward_alongside_readings(store, monkeypatch):
+    """A store's alert decisions are a separate record from its readings, and
+    the one an auditor asks for. They ride the same request so one round trip
+    advances both cursors — either the batch lands or neither moves."""
+    db, cfg = store
+    _seed(db, 2)
+    db.record_event("high", "Setpoint-9A3F2C", 15.0, 8.0)
+    cap = _Capture(200)
+    monkeypatch.setattr("core.forwarder.post_batch", cap)
+
+    fwd = UpstreamForwarder(db, cfg)
+    assert fwd.run_once() == 2                 # return value stays "readings sent"
+    assert cap.calls[0]["event_ids"] == [1]
+    # Both cursors advanced, so a second cycle is idle.
+    assert fwd.run_once() == 0
+    assert len(cap.calls) == 1
+
+
+def test_an_events_only_batch_still_goes(store, monkeypatch):
+    """Events must not need a reading to travel with — an offline event fires
+    precisely when readings have stopped arriving."""
+    db, cfg = store
+    db.record_event("offline", "Setpoint-9A3F2C")
+    cap = _Capture(200)
+    monkeypatch.setattr("core.forwarder.post_batch", cap)
+    UpstreamForwarder(db, cfg).run_once()
+    assert cap.calls[0]["ids"] == [] and cap.calls[0]["event_ids"] == [1]
+
+
+def test_forwarded_events_are_never_re_forwarded(store, monkeypatch):
+    """The loop guard, for events: rows that arrived FROM another hub carry a
+    site and must not be pushed on."""
+    db, cfg = store
+    db.record_event("high", "Remote", 12.0, 8.0, site="marietta")
+    db.record_event("high", "Local", 12.0, 8.0)
+    cap = _Capture(200)
+    monkeypatch.setattr("core.forwarder.post_batch", cap)
+    UpstreamForwarder(db, cfg).run_once()
+    assert cap.calls[0]["event_ids"] == [2]
+
+
+def test_a_failed_batch_holds_both_cursors(store, monkeypatch):
+    db, cfg = store
+    _seed(db, 2)
+    db.record_event("high", "Setpoint-9A3F2C", 15.0, 8.0)
+    fail = _Capture(503)
+    monkeypatch.setattr("core.forwarder.post_batch", fail)
+    fwd = UpstreamForwarder(db, cfg)
+    assert fwd.run_once() == 0
+
+    ok = _Capture(200)
+    monkeypatch.setattr("core.forwarder.post_batch", ok)
+    assert fwd.run_once() == 2
+    assert ok.calls[0]["ids"] == fail.calls[0]["ids"]
+    assert ok.calls[0]["event_ids"] == fail.calls[0]["event_ids"]

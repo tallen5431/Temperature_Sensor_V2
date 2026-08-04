@@ -36,6 +36,37 @@ log = logging.getLogger("hub.db")
 _SELECT_COLS = "ts AS timestamp, temperature_c, temperature_f, probe_id"
 
 
+def _reading_filters(cutoff=None, probe_id=None, site=None):
+    """Conjunction + params for the readings filters the dashboard queries share.
+
+    Returns ``(clauses, params)`` rather than a finished ``WHERE`` string because
+    one caller needs the bare conjunction: ``latest_per_probe`` appends it after
+    its own ``probe_id = ?`` in the per-probe seek. :func:`_where` renders the
+    ordinary case.
+
+    The two easy-to-get-wrong parts, in one place instead of five:
+
+    * ``site is not None``, not truthiness — ``''`` is a real site (this hub's
+      own probes) and must filter rather than mean "no filter". Getting that
+      inconsistent across siblings is how the chart ends up showing six stores
+      while the cards beside it correctly show one.
+    * ``params`` order must track ``clauses`` order, which is why they are built
+      together and returned together.
+    """
+    clauses, params = [], []
+    if cutoff is not None:
+        clauses.append("epoch >= ?"); params.append(cutoff)
+    if probe_id:
+        clauses.append("probe_id = ?"); params.append(probe_id)
+    if site is not None:
+        clauses.append("site = ?"); params.append(site)
+    return clauses, tuple(params)
+
+
+def _where(clauses) -> str:
+    return ("WHERE " + " AND ".join(clauses)) if clauses else ""
+
+
 _FORMULA_LEAD = ("=", "+", "-", "@", "\t", "\r")
 
 
@@ -189,6 +220,34 @@ class Database:
                 """
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_events_epoch ON events(epoch)")
+            # Which hub RECORDED this event. '' is this one; a store's label on a
+            # row its hub forwarded here. Readings answer "what was the
+            # temperature"; events answer "what did that store's own hub decide
+            # about it, against its own thresholds" — a different record, and the
+            # one a food-safety auditor actually asks for.
+            try:
+                conn.execute("ALTER TABLE events ADD COLUMN site TEXT NOT NULL DEFAULT ''")
+            except sqlite3.OperationalError:
+                pass
+            # Idempotency for FORWARDED events only — hence `WHERE site != ''`,
+            # and that restriction is load-bearing rather than an optimisation.
+            # Event epochs are whole seconds (readings carry milliseconds), so a
+            # blanket unique key would treat two genuinely distinct same-second
+            # events for one probe as a replay and silently drop the second. The
+            # only place a replay can actually happen is a forwarded batch re-sent
+            # after a dropped response, so constrain exactly that and leave every
+            # locally-recorded event alone. Being partial also makes the index
+            # empty on a hub nobody forwards to, which is nearly all of them.
+            try:
+                conn.execute(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_events_fwd_dedup "
+                    "ON events(kind, probe_id, epoch, site) WHERE site != ''")
+            except sqlite3.IntegrityError:
+                # A log that already holds forwarded duplicates: keep the history,
+                # lose only the constraint.
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_events_fwd_dedup "
+                    "ON events(kind, probe_id, epoch, site) WHERE site != ''")
             conn.commit()
 
     # Set in ``meta`` once a database is proven to hold genuinely-distinct
@@ -302,7 +361,7 @@ class Database:
             conn.commit()
 
     def record_event(self, kind: str, probe_id: str, temperature_c=None,
-                     limit=None, ts=None) -> None:
+                     limit=None, ts=None, site: str = "") -> None:
         """Append one alert-lifecycle event to the events log.
 
         ``kind`` is one of ``'high' 'low' 'recovery' 'offline' 'online' 'rate'``;
@@ -324,10 +383,11 @@ class Database:
             conn = self._conn()
             with self._write_lock:
                 conn.execute(
-                    "INSERT INTO events (ts, epoch, kind, probe_id, temperature_c, limit_c) "
-                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    "INSERT OR IGNORE INTO events "
+                    "(ts, epoch, kind, probe_id, temperature_c, limit_c, site) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
                     (ts, int(iso_to_epoch(ts)), kind, str(probe_id or ""),
-                     _f(temperature_c), _f(limit)),
+                     _f(temperature_c), _f(limit), site or ""),
                 )
                 conn.commit()
         except Exception:
@@ -437,13 +497,8 @@ class Database:
         """
         conn = self._conn()
         cutoff = self._cutoff(window_seconds)
-        clauses, params_list = [], []
-        if cutoff is not None:
-            clauses.append("epoch >= ?"); params_list.append(cutoff)
-        if site is not None:
-            clauses.append("site = ?"); params_list.append(site)
-        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
-        params: tuple = tuple(params_list)
+        clauses, params = _reading_filters(cutoff, site=site)
+        where = _where(clauses)
         rows = conn.execute(
             f"SELECT probe_id, MAX(epoch) AS last_epoch FROM readings {where} GROUP BY probe_id",
             params,
@@ -474,21 +529,8 @@ class Database:
         """
         conn = self._conn()
         cutoff = self._cutoff(window_seconds)
-        clauses, params_list = [], []
-        if cutoff is not None:
-            clauses.append("epoch >= ?"); params_list.append(cutoff)
-        if probe_id:
-            clauses.append("probe_id = ?"); params_list.append(probe_id)
-        # `is not None`, NOT a truthiness test: '' is a real site — this hub's own
-        # probes — and must filter, not mean "no filter". The sibling methods
-        # (window_stats, stats_per_probe, latest_per_probe,
-        # last_reading_epoch_per_probe) all read '' that way, and one of five
-        # disagreeing is how the chart ends up showing six stores while the cards
-        # correctly show one.
-        if site is not None:
-            clauses.append("site = ?"); params_list.append(site)
-        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
-        params: tuple = tuple(params_list)
+        clauses, params = _reading_filters(cutoff, probe_id, site)
+        where = _where(clauses)
 
         total = conn.execute(f"SELECT COUNT(*) AS n FROM readings {where}", params).fetchone()["n"]
         if total == 0:
@@ -533,15 +575,8 @@ class Database:
         """
         conn = self._conn()
         cutoff = self._cutoff(window_seconds)
-        clauses, params_list = [], []
-        if cutoff is not None:
-            clauses.append("epoch >= ?"); params_list.append(cutoff)
-        if probe_id:
-            clauses.append("probe_id = ?"); params_list.append(probe_id)
-        if site is not None:      # '' is a real site (this hub's own probes)
-            clauses.append("site = ?"); params_list.append(site)
-        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
-        params: tuple = tuple(params_list)
+        clauses, params = _reading_filters(cutoff, probe_id, site)
+        where = _where(clauses)
 
         agg = conn.execute(
             f"SELECT COUNT(*) AS n, MIN(temperature_c) AS mn, MAX(temperature_c) AS mx, "
@@ -581,13 +616,8 @@ class Database:
         """
         conn = self._conn()
         cutoff = self._cutoff(window_seconds)
-        clauses, params_list = [], []
-        if cutoff is not None:
-            clauses.append("epoch >= ?"); params_list.append(cutoff)
-        if site is not None:
-            clauses.append("site = ?"); params_list.append(site)
-        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
-        params: tuple = tuple(params_list)
+        clauses, params = _reading_filters(cutoff, site=site)
+        where = _where(clauses)
         rows = conn.execute(
             f"SELECT probe_id, COUNT(*) AS n, MIN(temperature_c) AS mn, "
             f"MAX(temperature_c) AS mx, AVG(temperature_c) AS av "
@@ -622,13 +652,8 @@ class Database:
         """
         conn = self._conn()
         cutoff = self._cutoff(window_seconds)
-        clauses, params_list = [], []
-        if cutoff is not None:
-            clauses.append("epoch >= ?"); params_list.append(cutoff)
-        if site is not None:
-            clauses.append("site = ?"); params_list.append(site)
-        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
-        params: tuple = tuple(params_list)
+        clauses, params = _reading_filters(cutoff, site=site)
+        where = _where(clauses)
         pids = [r["probe_id"] for r in conn.execute(
             f"SELECT DISTINCT probe_id FROM readings {where}", params).fetchall()]
         cols = ["timestamp", "temperature_c", "temperature_f", "probe_id",
@@ -715,10 +740,14 @@ class Database:
 
     def list_events(self, limit: int = 50, window_seconds: Optional[int] = None,
                     kinds: Optional[Iterable[str]] = None,
-                    exclude_kinds: Optional[Iterable[str]] = None) -> list:
+                    exclude_kinds: Optional[Iterable[str]] = None,
+                    site: Optional[str] = None) -> list:
         """Most recent alert-lifecycle events as dict rows, newest first.
 
-        Row keys: ``timestamp, epoch, kind, probe_id, temperature_c, limit_c``.
+        Row keys: ``timestamp, epoch, kind, probe_id, temperature_c, limit_c,
+        site``. ``site`` filters to the hub that recorded them — ``''`` for this
+        hub's own, a store label for the events that store forwarded, ``None``
+        (default) for every hub at once.
         ``window_seconds`` bounds the log to a rolling window (index-backed via
         ``idx_events_epoch``); ``limit`` caps the payload for the UI/API.
         ``kinds`` restricts the result to those event kinds (whitelist);
@@ -742,13 +771,16 @@ class Database:
         if drop_list:
             clauses.append(f"kind NOT IN ({','.join('?' * len(drop_list))})")
             params.extend(drop_list)
-        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        if site is not None:
+            clauses.append("site = ?")
+            params.append(site)
+        where = _where(clauses)
         try:
             cap = max(1, int(limit))
         except (TypeError, ValueError):
             cap = 50
         rows = conn.execute(
-            f"SELECT ts AS timestamp, epoch, kind, probe_id, temperature_c, limit_c "
+            f"SELECT ts AS timestamp, epoch, kind, probe_id, temperature_c, limit_c, site "
             f"FROM events {where} ORDER BY epoch DESC, id DESC LIMIT ?",
             tuple(params) + (cap,),
         ).fetchall()
@@ -1089,6 +1121,20 @@ class Database:
         sql += " ORDER BY id LIMIT ?"
         return self._conn().execute(sql, (int(after_id), int(limit))).fetchall()
 
+    def events_after(self, after_id: int, limit: int = 500, local_only: bool = True):
+        """Events with ``id > after_id``, oldest first, for upstream forwarding.
+
+        Same contract as :meth:`rows_after` — insertion-order cursor, and
+        ``local_only`` excludes events that arrived here from another hub so two
+        hubs pointed at each other cannot ping-pong them.
+        """
+        sql = ("SELECT id, ts, epoch, kind, probe_id, temperature_c, limit_c "
+               "FROM events WHERE id > ?")
+        if local_only:
+            sql += " AND (site IS NULL OR site = '')"
+        sql += " ORDER BY id LIMIT ?"
+        return self._conn().execute(sql, (int(after_id), int(limit))).fetchall()
+
     def count_local_after(self, after_id: int) -> int:
         """How many locally-ingested readings are past the forwarding cursor.
 
@@ -1099,10 +1145,6 @@ class Database:
             "SELECT COUNT(*) FROM readings WHERE id > ? AND (site IS NULL OR site = '')",
             (int(after_id),)).fetchone()
         return int(row[0]) if row else 0
-
-    def max_reading_id(self) -> int:
-        row = self._conn().execute("SELECT MAX(id) FROM readings").fetchone()
-        return int(row[0]) if row and row[0] is not None else 0
 
     def sites(self):
         """Distinct non-empty site names present in the store, alphabetically.

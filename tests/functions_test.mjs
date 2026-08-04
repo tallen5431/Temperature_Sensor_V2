@@ -12,6 +12,7 @@ import { onRequestPost as waitlistPost, onRequestGet as waitlistGet }
   from "../functions/api/waitlist.js";
 import { onRequestPost as contactPost, onRequestGet as contactGet }
   from "../functions/api/contact.js";
+import { onRequestGet as quoteGet } from "../functions/api/quote.js";
 import { timingSafeEqual, isAllowedOrigin, exportRecords, fitsMetadata }
   from "../functions/api/_shared.js";
 
@@ -194,6 +195,21 @@ console.log("export auth");
   r = await contactGet({ request: new Request("https://x/api/contact?token=wrong"),
     env: { WAITLIST: kv, WAITLIST_TOKEN: "right" } });
   await eq("contact export honours the same token", r.status, 403);
+
+  r = await quoteGet({ request: new Request("https://x/api/quote"), env: { WAITLIST: kv } });
+  await eq("quote export with no token secret set -> 405", r.status, 405);
+  r = await quoteGet({ request: new Request("https://x/api/quote?token=right"),
+    env: { WAITLIST: kv, WAITLIST_TOKEN: "right" } });
+  await eq("quote export accepts correct token", r.status, 200);
+  r = await quoteGet({ request: new Request("https://x/api/quote?token=wrong"),
+    env: { WAITLIST: kv, WAITLIST_TOKEN: "right" } });
+  await eq("quote export rejects incorrect token", r.status, 403);
+  r = await quoteGet({ request: new Request("https://x/api/quote"),
+    env: { WAITLIST: kv, WAITLIST_TOKEN: "right" } });
+  await eq("quote export rejects missing token", r.status, 403);
+  r = await quoteGet({ request: new Request("https://x/api/quote?token=r%C3%AFght"),
+    env: { WAITLIST: kv, WAITLIST_TOKEN: "right" } });
+  await eq("quote export rejects non-ASCII token", r.status, 403);
 }
 
 // ── fitsMetadata ───────────────────────────────────────────────────────────

@@ -17,6 +17,8 @@
 // Photos never become public: R2 objects are private and only readable through
 // the token-gated GET below.
 
+import { timingSafeEqual } from "./_shared.js";
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const MAX_FILES = 6;
@@ -414,7 +416,7 @@ export async function onRequestGet({ request, env }) {
   if (!env.WAITLIST_TOKEN) return new Response("Method Not Allowed", { status: 405 });
 
   const url = new URL(request.url);
-  if (url.searchParams.get("token") !== env.WAITLIST_TOKEN) {
+  if (!timingSafeEqual(url.searchParams.get("token"), env.WAITLIST_TOKEN)) {
     return new Response("Forbidden", { status: 403 });
   }
 

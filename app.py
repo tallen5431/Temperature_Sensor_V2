@@ -463,6 +463,14 @@ def _start_background_services(port: int):
             MQTT.stop()
         except Exception:
             pass
+        try:
+            # Daemon thread, so the process would exit regardless — but stopping
+            # it explicitly lets an in-flight batch finish rather than being cut
+            # mid-POST, and keeps this list a complete account of what is running.
+            from core.forwarder import FORWARDER
+            FORWARDER.stop()
+        except Exception:
+            pass
         if provisioner:
             provisioner.stop()
         if mdns:

@@ -1138,7 +1138,7 @@ def register_settings_callbacks(app, cfg, public_base_func=None):
             return (dbc.Alert(f"Saved, but nothing has reached head office yet. {err}",
                               color="warning", dismissable=True, className="mb-0"),
                     block["site"])
-        pending = FORWARDER.pending()
+        pending = FORWARDER.status()["pending"]
         if sent:
             tail = f" {pending:,} still to send." if pending else " Everything is up to date."
             return _ok(f"Saved — sent {sent:,} reading{'s' if sent != 1 else ''} "

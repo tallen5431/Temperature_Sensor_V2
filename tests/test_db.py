@@ -183,7 +183,7 @@ def test_record_and_list_events(db):
     events = db.list_events()
     assert [e["kind"] for e in events] == ["offline", "recovery", "high"]  # newest first
     assert set(events[0]) == {"timestamp", "epoch", "kind", "probe_id",
-                              "temperature_c", "limit_c"}
+                              "temperature_c", "limit_c", "site"}
     assert events[2]["probe_id"] == "A"
     assert events[2]["temperature_c"] == 30.0 and events[2]["limit_c"] == 25.0
     assert events[0]["temperature_c"] is None and events[0]["limit_c"] is None

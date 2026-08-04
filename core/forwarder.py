@@ -73,6 +73,7 @@ def _explain(status: int) -> str:
     return f"Head office refused the readings (HTTP {status})."
 
 _HWM_KEY = "forwarder.last_id"
+_EVENTS_KEY = "forwarder.last_event_id"
 
 DEFAULT_INTERVAL_SEC = 30
 DEFAULT_BATCH = 500          # PROTOCOL caps /ingest_csv at 1000 rows/request
@@ -124,9 +125,31 @@ def rows_to_payload(rows) -> list:
     return out
 
 
-def post_batch(url: str, token: str, site: str, rows, timeout: float = 20.0) -> int:
-    """POST one batch upstream. Returns the HTTP status, or 0 on transport error."""
-    body = json.dumps({"readings": rows_to_payload(rows)}).encode("utf-8")
+def events_to_payload(rows) -> list:
+    """Shape ``db.events_after()`` tuples into the ``events`` array ``/ingest_csv``
+    accepts. Column order matches the SELECT in ``Database.events_after``; the
+    local id is dropped for the same reason readings drop theirs."""
+    out = []
+    for _id, ts, _epoch, kind, pid, t_c, limit_c in rows:
+        ev = {"timestamp": ts, "kind": kind, "probe_id": pid}
+        if t_c is not None:
+            ev["temperature_c"] = t_c
+        if limit_c is not None:
+            ev["limit_c"] = limit_c
+        out.append(ev)
+    return out
+
+
+def post_batch(url: str, token: str, site: str, rows, events=(), timeout: float = 20.0) -> int:
+    """POST one batch upstream. Returns the HTTP status, or 0 on transport error.
+
+    Readings and events ride the same request: one round trip, and either both
+    land or neither does, so the two cursors can advance together.
+    """
+    payload = {"readings": rows_to_payload(rows)}
+    if events:
+        payload["events"] = events_to_payload(events)
+    body = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(url, data=body, method="POST")
     req.add_header("Content-Type", "application/json")
     if token:
@@ -194,23 +217,27 @@ class UpstreamForwarder(threading.Thread):
             return 0
         batch = batch_size(block)
 
-        try:
-            last = int(self.db.meta_get(_HWM_KEY, "0") or 0)
-        except (TypeError, ValueError):
-            last = 0
+        last = self._cursor(_HWM_KEY)
+        last_ev = self._cursor(_EVENTS_KEY)
         rows = self.db.rows_after(last, limit=batch)
-        if not rows:
+        events = self.db.events_after(last_ev, limit=batch)
+        if not rows and not events:
             self._backoff = 0
             self.last_error = ""
             return 0
 
-        status = post_batch(url, str(block.get("token") or ""), site, rows)
+        status = post_batch(url, str(block.get("token") or ""), site, rows, events)
         if 200 <= status < 300:
-            self.db.meta_set(_HWM_KEY, str(rows[-1][0]))
+            # Both cursors advance together, because one request carried both.
+            if rows:
+                self.db.meta_set(_HWM_KEY, str(rows[-1][0]))
+            if events:
+                self.db.meta_set(_EVENTS_KEY, str(events[-1][0]))
             self._backoff = 0
             self.last_error = ""
             self.last_sent_epoch = time.time()
-            log.info("forwarded %d readings to %s as site=%s", len(rows), url, site)
+            log.info("forwarded %d readings, %d events to %s as site=%s",
+                     len(rows), len(events), url, site)
             return len(rows)
 
         # 4xx means the request itself is wrong (bad token, malformed body).
@@ -222,11 +249,16 @@ class UpstreamForwarder(threading.Thread):
                     url, status or "no response", len(rows), self._backoff)
         return 0
 
+    def _cursor(self, key: str) -> int:
+        try:
+            return int(self.db.meta_get(key, "0") or 0)
+        except (TypeError, ValueError):
+            return 0
+
     def pending(self) -> int:
         """Local readings not yet accepted upstream — the backlog, for the UI."""
         try:
-            last = int(self.db.meta_get(_HWM_KEY, "0") or 0)
-            return max(0, self.db.count_local_after(last))
+            return max(0, self.db.count_local_after(self._cursor(_HWM_KEY)))
         except Exception:  # noqa: BLE001 - a status readout must never raise
             return 0
 
@@ -291,14 +323,18 @@ class _ForwarderHandle:
             return 0, str(e)
         return sent, self._fwd.last_error
 
-    def pending(self) -> int:
-        return self._fwd.pending() if self._fwd is not None else 0
+    def status(self) -> dict:
+        """Backlog, last success and last error — the three things both callers
+        want together. Diagnostics renders all of it; Settings uses ``pending``.
 
-    def last_sent_epoch(self) -> float:
-        return self._fwd.last_sent_epoch if self._fwd is not None else 0.0
-
-    def last_error(self) -> str:
-        return self._fwd.last_error if self._fwd is not None else ""
+        Safe on a hub where the pump never started: every value is its
+        nothing-has-happened default rather than an absence to guard against.
+        """
+        if self._fwd is None:
+            return {"pending": 0, "last_sent_epoch": 0.0, "last_error": ""}
+        return {"pending": self._fwd.pending(),
+                "last_sent_epoch": self._fwd.last_sent_epoch,
+                "last_error": self._fwd.last_error}
 
 
 FORWARDER = _ForwarderHandle()

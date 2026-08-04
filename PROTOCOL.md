@@ -305,16 +305,21 @@ rows per request**. Two body formats are accepted:
 - **`Content-Type: application/json`** — `{ "readings": [ {…}, … ] }` or a bare
   array, each element the same object shape as a single `/api/ingest` body.
 
+  The object form may also carry an optional **`events`** array — alert-lifecycle
+  records (`{"timestamp", "kind", "probe_id", "temperature_c", "limit_c"}`) from
+  a **forwarding hub**, never from a probe. Probes have no event log, which is
+  why this is JSON-only and absent from the CSV form. See §5.2.
+
 Each reading is validated exactly like `/api/ingest` (§6: finite, `-60..150 °C`,
 timestamp normalisation, per-probe calibration). Invalid rows are skipped, not
 fatal — one corrupt line never rejects the rest of the chunk.
 
-**Response** `200`: `{ "ok": true, "accepted": <int>, "rejected": <int>, "restamped": <int> }`.
+**Response** `200`: `{ "ok": true, "accepted": <int>, "rejected": <int>, "restamped": <int>, "events": <int> }`.
 Errors mirror `/api/ingest` (`401` unauthorized, `413` too large / > 1000 rows,
 `400` unparseable body, `503` storage error).
 
 - `accepted` — rows **newly stored**. Ingest is idempotent (`UNIQUE(probe_id,
-  epoch)` + `INSERT OR IGNORE`), so a re-sent chunk after a dropped ACK is
+  epoch, site)` + `INSERT OR IGNORE`), so a re-sent chunk after a dropped ACK is
   deduped and legitimately reports `accepted: 0`. **A probe MUST advance its
   buffer checkpoint on the `200` itself, not on `accepted`** — treating
   `accepted: 0` as failure would re-send the same chunk forever and never drain
@@ -327,6 +332,43 @@ Errors mirror `/api/ingest` (`401` unauthorized, `413` too large / > 1000 rows,
   non-zero value means that chunk's chronology is drain-time, not
   measurement-time — check the probe's clock. The spreading is what stops such a
   chunk collapsing onto a single epoch and being discarded by the unique index.
+
+### 5.2 Forwarded alert events (hub → hub only)
+
+A hub aggregating other hubs receives two records, not one. Readings say what a
+sensor measured; **events** say what that store's own alert engine *decided*
+about it, against that store's own thresholds. Head office re-evaluating the same
+readings against its own limits gives a different answer, and it is the store's
+answer that belongs in its audit trail — so the event log travels with the
+readings.
+
+Events ride the optional `events` array of a JSON `/api/ingest_csv` body, with
+the same `X-Token` and `X-Site` headers as the readings beside them:
+
+```json
+{
+  "readings": [ … ],
+  "events": [
+    {"timestamp": "2026-08-04T10:00:00", "kind": "high",
+     "probe_id": "walkin", "temperature_c": 15.0, "limit_c": 8.0}
+  ]
+}
+```
+
+`kind` is one of `high low recovery offline online rate`; `temperature_c` and
+`limit_c` are optional. Rows are stamped with the batch's `X-Site`, so an event's
+site names the hub that **recorded** it — `''` for the receiving hub's own.
+
+A malformed event is skipped, never fatal: an event must not cost a reading. The
+`events` count in the response is informational for the same reason `accepted`
+is — a forwarding hub advances its event cursor on the `200`, not on the count.
+
+**Idempotency for events is partial by design.** Event epochs are whole seconds
+(readings carry milliseconds), so the unique key
+`(kind, probe_id, epoch, site) WHERE site != ''` constrains **forwarded rows
+only**. Applying it to locally-recorded events would treat two genuinely distinct
+same-second events as a replay and silently drop one; a replay can only arise
+from a re-sent batch anyway.
 
 ---
 
