@@ -115,6 +115,10 @@ All endpoints are under the `/api` prefix. Mutating endpoints require the device
 | POST | `/api/ingest` | yes | Ingest one reading. |
 | GET | `/api/ingest` | — | Always `405` (POST only; prevents drive-by log poisoning). |
 | POST | `/api/ingest_csv` | yes | Bulk ingest of CSV lines (max 1000 rows/request). |
+| GET | `/api/readings/latest` | no | Latest reading per probe as JSON — the JSON twin of `/metrics`. |
+| GET | `/api/readings` | no | Historical readings as JSON. Same filters as the CSV download: `?window=24h`, `?probe=<id>`, `?from=&to=`, `?limit=N`. |
+| GET | `/api/diagnostics` | no | Secret-free health snapshot for self-service support (safe to paste into an email). |
+| GET | `/api/audit/verify` | yes | Audit-chain integrity + entry count. |
 
 Additionally, two files are downloadable outside `/api` (served by Flask): `GET /download/temperature_log.csv` **exports** readings as CSV (optionally `?window=24h`), and `GET /download/backup.db` returns a full SQLite snapshot. Any other path returns 404.
 
@@ -138,6 +142,8 @@ Returns:
 }
 ```
 
+- `version` — `core.version.HUB_VERSION`. The number above is an illustrative
+  sample, not a pin; read the module for the current value.
 - `probes` — count of currently discovered probes.
 - `base` — the public base URL the hub advertises to probes.
 - `rows_written`, `ingest_rejected`, `write_failures` — cumulative counters.
