@@ -6,6 +6,7 @@ readings gets an "all sites / one store" picker, and cards say which building a
 probe is in, because "Walk-in" alone is ambiguous across six stores.
 """
 import datetime
+import time
 
 from components.dashboard_view import (build_dashboard, build_events,
                                        build_probe_cards, build_probe_stats,
@@ -349,3 +350,29 @@ def test_a_single_site_export_is_unchanged(tmp_path):
     buf2 = io.StringIO(); db.export_friendly_csv(buf2)
     assert buf2.getvalue().splitlines()[0] == (
         "date,time,probe,temperature_c,temperature_f,probe_id,timestamp_utc")
+
+
+def test_a_probe_id_shared_by_two_sites_collapses_in_the_roll_up(tmp_path):
+    """Pins a known limitation so it stays a decision rather than a surprise.
+
+    Storage keeps both rows (the unique index carries the site), but everything
+    keyed by probe id alone — thresholds, names, calibration, latest-per-probe —
+    sees one probe. The newest reading wins, so the in-breach one can hide. The
+    store's own hub still alerts on its own probes; it is HQ's copy that goes
+    quiet. scripts/site_report.py warns when it sees this, and docs/MULTI_SITE.md
+    lists it under "What is not built yet"."""
+    db = Database(tmp_path / "s.db")
+    now = int(time.time())
+    stamp = lambda e: datetime.datetime.fromtimestamp(e).isoformat(timespec="milliseconds")
+    db.bulk_insert([(stamp(now - 10), 30.0, 86.0, "walkin")], site="atlanta")
+    db.bulk_insert([(stamp(now - 9), 4.0, 39.2, "walkin")], site="marietta")
+
+    # Both rows are stored — nothing is lost on disk.
+    assert db.count() == 2
+    assert len(db.latest_per_probe(site="atlanta")) == 1
+    assert len(db.latest_per_probe(site="marietta")) == 1
+
+    # But the hub-wide view (what the alert monitor uses) shows only the newest.
+    lp = db.latest_per_probe(window_seconds=3600)
+    assert list(lp["probe_id"]) == ["walkin"]
+    assert float(lp.iloc[0]["temperature_c"]) == 4.0   # the breach at 30 C is hidden

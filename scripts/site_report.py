@@ -109,6 +109,29 @@ def main() -> None:
     print(f"local readings : {local:,}"
           + ("   <- probes posting directly to THIS hub" if local and sites else ""))
 
+    # A probe id reaching head office from two different stores. Storage copes
+    # (the unique index carries the site), but everything the hub keys by probe
+    # id alone does not: thresholds, friendly names, calibration offsets, and
+    # the roll-up's own "latest per probe" all collapse the two into one. The
+    # practical symptom is a masked alert — the newest of the two readings wins,
+    # so a walk-in at 30 C in one store is invisible behind an in-range reading
+    # from the other. Each store's own hub still alerts on its own probes, so
+    # nothing is lost at the store; it is head office's copy that goes quiet.
+    # Falls out of the GROUP BY above, so it costs nothing to check.
+    by_pid: dict = {}
+    for site, pid, _n, _newest in rows:
+        if pid:
+            by_pid.setdefault(pid, set()).add(site or "")
+    clashes = {p: s for p, s in by_pid.items() if len(s) > 1}
+    if clashes:
+        print("\nWARNING: same probe id from more than one site")
+        for pid, where in sorted(clashes.items()):
+            labels = ", ".join(sorted(s if s else "(local)" for s in where))
+            print(f"  {pid:<24} {labels}")
+        print("  Head office keys thresholds, names and calibration by probe id"
+              "\n  alone, so these share one set and only one shows in the roll-up."
+              "\n  Give each probe a distinct id — see docs/MULTI_SITE.md.")
+
     # Alerts are a separate record from readings: what each hub's own engine
     # decided against its own thresholds. Worth its own line, because "head
     # office has the temperatures but not the alerts" is a distinct failure.

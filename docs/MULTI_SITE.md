@@ -438,6 +438,16 @@ Honest list, so nobody sells past it:
 - **Renaming a site starts a new one.** Change `upstream.site` and HQ shows the
   new label alongside the old until the old rows age out; history is not
   relabelled.
+- **Probe ids must be unique across the whole fleet.** Storage handles a clash
+  (the unique index carries the site, so no rows are lost), but everything head
+  office keys by probe id *alone* does not: thresholds, friendly names,
+  calibration offsets, and the roll-up's own latest-per-probe collapse two
+  same-named probes into one. The newest reading wins, so a walk-in at 30 °C in
+  store 1 can sit invisible behind an in-range reading from store 2's walk-in.
+  The store's own hub still alerts normally — it is HQ's second copy that goes
+  quiet. Probes ship with a chip-derived id (`Setpoint-0000xx`) that is already
+  unique, so this only bites if you override it; `python3
+  scripts/site_report.py` warns when it sees one.
 - **No remote administration.** Changing a store's thresholds still means reaching
   that store's hub. See below.
 - **Site is sender-declared.** The token authenticates the store; the label is

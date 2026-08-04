@@ -653,7 +653,6 @@ class Database:
         conn = self._conn()
         cutoff = self._cutoff(window_seconds)
         clauses, params = _reading_filters(cutoff, site=site)
-        where = _where(clauses)
         # The probe list comes from a loose index scan over the WHOLE table, not
         # a windowed SELECT DISTINCT. The seeks below were always the cheap half;
         # the DISTINCT was the expensive one, because deduplicating a
