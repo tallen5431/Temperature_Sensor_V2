@@ -1,10 +1,16 @@
 # Multi-site — how head office sees six stores
 
-> **Status: implemented and testable end to end** — stores forward, and HQ's
-> dashboard has a store picker that scopes the whole page.
-> Code: [`core/forwarder.py`](../core/forwarder.py),
-> [`components/dashboard_view.py`](../components/dashboard_view.py).
-> Tests: `tests/test_forwarder.py`, `tests/test_multi_site_dashboard.py`.
+> **Status: implemented and testable end to end.** A store forwards its readings
+> and its alert log to head office; HQ's dashboard gains a store picker that
+> scopes the whole page; both ends are configured from Settings.
+>
+> Code: [`core/forwarder.py`](../core/forwarder.py) ·
+> [`components/dashboard_view.py`](../components/dashboard_view.py) ·
+> [`components/settings_panel.py`](../components/settings_panel.py).
+> Tests: `test_forwarder.py`, `test_multi_site_dashboard.py`,
+> `test_settings_multi_site.py`.
+> Wire format: [`PROTOCOL.md`](../PROTOCOL.md) §5.1–5.2.
+> Check a running hub with `python3 scripts/site_report.py`.
 
 ## The question, and the trap
 
@@ -175,6 +181,59 @@ hub to the internet.
 
 ---
 
+## The HQ dashboard
+
+A **Site** picker appears next to "Viewing" in the focus bar. It is populated
+from `Database.sites()`, so it stays **invisible on a hub no one forwards to** —
+which is every hub until a chain runs one. Single-site users never learn the
+control exists.
+
+Selecting a store scopes the entire page, not part of it:
+
+| | scoped to the selected store |
+|---|---|
+| Temperature chart | ✅ |
+| Min / Max / Average | ✅ |
+| "Showing X of Y data points" (both numbers) | ✅ |
+| Probe status cards | ✅ |
+| Per-probe statistics | ✅ |
+| Humidity / VPD cards | ✅ |
+| Current-temperature gauge | ✅ |
+| "Connected Probes" KPI | ✅ |
+| "Last Update" KPI | ✅ |
+| Recent events feed | ✅ — that store's OWN alert decisions, forwarded (see [Two records](#two-records-not-one)) |
+| "Viewing" probe dropdown | ✅ (and a focus the store no longer contains resets to *All probes*) |
+
+**Three things deliberately do not filter**, and each would be a bug if it did:
+
+- **Alerts.** A breach in Savannah is still a breach while head office is looking
+  at Atlanta. The alert scan and the banner stay hub-wide.
+- **`/metrics`, `/api/probes`, `/api/health`.** A Prometheus scrape wants the
+  hub, not whatever a browser tab happens to be showing. `reporting_probe_ids()`
+  takes an optional `site` only for the KPI; every machine-facing caller leaves it
+  unset.
+- **The footer's "N probes online".** It is a hub health indicator shared with
+  Devices, Settings and Diagnostics, none of which have a site context.
+
+Cards belonging to a forwarding store carry a `⌂ store` line. HQ's own probes get
+no badge, so a single-site hub's cards are byte-for-byte what they were.
+
+**Probe names are per hub.** `probe_names` lives in HQ's own `config.json`, so a
+forwarded probe shows its raw id (`Setpoint-9A3F2C`) until someone names it at
+HQ. Naming it in the store's hub does not carry across — only readings forward.
+
+**Give head office the same thresholds as its stores.** Limits are per hub and do
+not forward, and a hub with no limits for a probe cannot judge it — so an HQ
+without them shows a green `● OK` card for a probe at 15 °C while the forwarded
+event beside it reads `HIGH · 15.0 °C (limit 8.0)`. Nothing is broken; HQ simply
+has no opinion. Set matching limits at HQ (a `default` block covers every store
+at once) and the card turns red with the event. This is the one setup step whose
+absence looks like a bug.
+
+---
+
+---
+
 ## Test it locally with three hubs
 
 Head office plus two stores, all on one machine, no network and no hardware
@@ -342,7 +401,7 @@ that matters most: a single-site customer's dashboard must be untouched.
   returns everything lands. Verified: 12 readings written during an outage, 12
   arrived, 0 lost.
 - **Force a full replay.** Rewind a store's high-water mark and watch HQ's row
-  count *not* move — `UNIQUE(probe_id, epoch)` + `INSERT OR IGNORE` make
+  count *not* move — `UNIQUE(probe_id, epoch, site)` + `INSERT OR IGNORE` make
   re-sends idempotent, which is what lets the forwarder settle for
   at-least-once delivery instead of solving exactly-once:
 
@@ -366,49 +425,6 @@ that directory — your real hub's data directory is untouched.
 
 ---
 
-## The HQ dashboard
-
-A **Site** picker appears next to "Viewing" in the focus bar. It is populated
-from `Database.sites()`, so it stays **invisible on a hub no one forwards to** —
-which is every hub until a chain runs one. Single-site users never learn the
-control exists.
-
-Selecting a store scopes the entire page, not part of it:
-
-| | scoped to the selected store |
-|---|---|
-| Temperature chart | ✅ |
-| Min / Max / Average | ✅ |
-| "Showing X of Y data points" (both numbers) | ✅ |
-| Probe status cards | ✅ |
-| Per-probe statistics | ✅ |
-| Humidity / VPD cards | ✅ |
-| Current-temperature gauge | ✅ |
-| "Connected Probes" KPI | ✅ |
-| "Last Update" KPI | ✅ |
-| Recent events feed | ✅ |
-| "Viewing" probe dropdown | ✅ (and a focus the store no longer contains resets to *All probes*) |
-
-**Three things deliberately do not filter**, and each would be a bug if it did:
-
-- **Alerts.** A breach in Savannah is still a breach while head office is looking
-  at Atlanta. The alert scan and the banner stay hub-wide.
-- **`/metrics`, `/api/probes`, `/api/health`.** A Prometheus scrape wants the
-  hub, not whatever a browser tab happens to be showing. `reporting_probe_ids()`
-  takes an optional `site` only for the KPI; every machine-facing caller leaves it
-  unset.
-- **The footer's "N probes online".** It is a hub health indicator shared with
-  Devices, Settings and Diagnostics, none of which have a site context.
-
-Cards belonging to a forwarding store carry a `⌂ store` line. HQ's own probes get
-no badge, so a single-site hub's cards are byte-for-byte what they were.
-
-**Probe names are per hub.** `probe_names` lives in HQ's own `config.json`, so a
-forwarded probe shows its raw id (`Setpoint-9A3F2C`) until someone names it at
-HQ. Naming it in the store's hub does not carry across — only readings forward.
-
----
-
 ## What is not built yet
 
 Honest list, so nobody sells past it:
@@ -427,6 +443,14 @@ Honest list, so nobody sells past it:
 - **Site is sender-declared.** The token authenticates the store; the label is
   self-reported. Fine inside one company. If that ever matters, give each store
   its own token and have HQ map token → site.
+- **Deletions do not propagate.** An insertion-order cursor can only express new
+  rows, so a store's retention purge or a deleted probe leaves head office
+  holding history the store no longer has. Defensible — HQ is the archive — but
+  the two copies do diverge, and nothing warns you.
+- **Calibration is applied at ingest.** Re-calibrating a probe changes new rows
+  only, so a store's history and HQ's copy of it were computed under whichever
+  offset was in force at the time. The same is true within a single hub; multi-
+  site just makes it visible in two places.
 
 ## Remote administration, when you need it
 

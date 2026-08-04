@@ -66,7 +66,7 @@ def _local_iso_now() -> str:
     Millisecond precision: this stamps a payload that arrives WITHOUT its own
     timestamp (a probe whose clock hasn't synced yet). Two such readings from
     one probe within the same wall-clock second would collapse onto an identical
-    whole-second stamp — and the UNIQUE(probe_id, epoch) ingest index would then
+    whole-second stamp — and the UNIQUE(probe_id, epoch, site) ingest index would then
     treat the second as a duplicate and drop it. Sub-second precision keeps them
     distinct so no legitimate reading is ever discarded.
     """
@@ -133,7 +133,7 @@ def _clamp_future(ts: str) -> str:
     every correct probe stamp looks "far in the future" and would be overwritten
     with the hub's wrong time — destroying the good data in favour of the bad
     clock. Worse, a whole replayed backlog then collapses onto near-identical
-    stamps and the UNIQUE(probe_id, epoch) index drops all but a couple of rows.
+    stamps and the UNIQUE(probe_id, epoch, site) index drops all but a couple of rows.
     So below the trust floor we keep the probe's stamp: the probe only stamps a
     reading once its own clock is NTP-valid, making it the better source.
     """
@@ -157,7 +157,7 @@ def absolute_epoch(raw_ts) -> float | None:
     (01:30 EDT and 01:30 EST are both "01:30"). Re-deriving the epoch from that
     string then gives both readings the SAME epoch, which
 
-      * makes them collide on the ``UNIQUE(probe_id, epoch)`` ingest index, so
+      * makes them collide on the ``UNIQUE(probe_id, epoch, site)`` ingest index, so
         one is silently discarded, and
       * interleaves the whole repeated hour when anything sorts by epoch — the
         chart, the exports, the rate-of-change window.
@@ -191,7 +191,7 @@ def is_future_stamp(raw_ts, now: float | None = None) -> bool:
     that must know a row WILL be clamped before it happens — notably the bulk
     ``/ingest_csv`` drain, which has to re-stamp such rows itself (spread 1 ms
     apart) instead of letting every row clamp independently to the same
-    millisecond and be swallowed by the UNIQUE(probe_id, epoch) index.
+    millisecond and be swallowed by the UNIQUE(probe_id, epoch, site) index.
 
     Returns ``False`` when the hub's own clock is below the trust floor: an
     unsynced hub must never classify a correctly-stamped probe reading as

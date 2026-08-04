@@ -315,7 +315,7 @@ class Database:
         # timestamp carried timezone info. Re-deriving it from the local-naive
         # ``ts`` is ambiguous during the DST fall-back hour, where two readings an
         # hour apart share one wall time — they would collide on
-        # UNIQUE(probe_id, epoch) and sort interleaved. See storage.absolute_epoch.
+        # UNIQUE(probe_id, epoch, site) and sort interleaved. See storage.absolute_epoch.
         epoch = iso_to_epoch(ts) if epoch is None else float(epoch)
         conn = self._conn()
         with self._write_lock:
@@ -378,7 +378,7 @@ class Database:
         Used for the legacy-CSV migration and the probe's bulk backlog drain
         (``/api/ingest_csv``) so importing tens of thousands of rows is a single
         commit rather than one per row.  Uses ``INSERT OR IGNORE`` against the
-        UNIQUE(probe_id, epoch) index, so a re-sent chunk (a dropped ACK on a
+        UNIQUE(probe_id, epoch, site) index, so a re-sent chunk (a dropped ACK on a
         flush) does not duplicate already-stored readings.  Returns the number of
         rows actually inserted (replayed duplicates are skipped, not counted).
         """

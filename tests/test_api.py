@@ -233,7 +233,7 @@ def test_ingest_single_replay_is_idempotent(tmp_path):
 
 def test_ingest_batch_without_timestamps_keeps_all_rows(tmp_path):
     # Timestamp-less bulk rows must be receipt-stamped 1 ms apart, not collapsed
-    # onto one epoch and silently dropped by the UNIQUE(probe_id, epoch) index.
+    # onto one epoch and silently dropped by the UNIQUE(probe_id, epoch, site) index.
     client, db, _ = _make_client(tmp_path)
     r = client.post("/api/ingest_csv", json={"readings": [
         {"temperature_c": 4.0, "probe_id": "p1"},
@@ -353,7 +353,7 @@ def test_bulk_drain_future_stamps_are_restamped_not_collapsed(tmp_path):
     # Data-loss regression: a probe whose clock ran ahead during the outage that
     # filled its buffer drains rows stamped in the future. normalize_payload
     # clamped each row to its own "now", so a 100-row chunk collapsed onto ~1 ms
-    # and UNIQUE(probe_id, epoch) silently dropped almost all of it — while the
+    # and UNIQUE(probe_id, epoch, site) silently dropped almost all of it — while the
     # hub still answered 200, so the probe advanced its checkpoint and deleted
     # the buffer. Such rows are now receipt-stamped 1 ms apart like
     # timestamp-less rows, and the count is reported.
@@ -465,7 +465,7 @@ def test_bulk_drain_accepts_clockless_buffer_lines(tmp_path):
 def test_dst_fallback_hour_keeps_both_readings(tmp_path, monkeypatch):
     # During the DST fall-back hour two UTC instants an hour apart map to the
     # SAME local wall time. Re-deriving the epoch from that local-naive string
-    # gave them one epoch, so UNIQUE(probe_id, epoch) dropped one and everything
+    # gave them one epoch, so UNIQUE(probe_id, epoch, site) dropped one and everything
     # that sorts by epoch interleaved the whole repeated hour. The probe stamps
     # in UTC, so the unambiguous instant is carried through instead.
     import os, time as _time

@@ -676,7 +676,7 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
         # Receipt-stamp bulk rows the hub must stamp itself, spread 1 ms apart.
         # Two cases need this, and both are silent data loss without it, because
         # every such row would otherwise land on the SAME millisecond and all but
-        # the first would be dropped by the UNIQUE(probe_id, epoch) index while
+        # the first would be dropped by the UNIQUE(probe_id, epoch, site) index while
         # the endpoint still answered 200 — so the probe advances its checkpoint
         # and deletes the buffer it just lost:
         #   1. a row with NO timestamp at all, and

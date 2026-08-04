@@ -117,7 +117,7 @@ def test_latest_per_probe_window_and_dedup(db):
     db.append(ts, 21.0, 0.0, "A")  # same (probe, instant): idempotent — ignored
     db.append(_iso(now - datetime.timedelta(hours=2)), 5.0, 0.0, "OLD")
     # The duplicate second is not stored (INSERT OR IGNORE on UNIQUE(probe_id,
-    # epoch)): a re-sent reading can't create a second row. The first write wins.
+    # epoch, site)): a re-sent reading can't create a second row. First write wins.
     assert db.count() == 2
     latest = db.latest_per_probe(window_seconds=3600)
     by_probe = {r["probe_id"]: r["temperature_c"] for _, r in latest.iterrows()}
@@ -560,7 +560,7 @@ def test_stats_per_probe(db):
     now = datetime.datetime.now()
     # Freezer probe A: cold range; room probe B: warm range. Distinct timestamps
     # per reading — one probe cannot hold two readings at the same instant (the
-    # UNIQUE(probe_id, epoch) ingest index dedupes those).
+    # UNIQUE(probe_id, epoch, site) ingest index dedupes those).
     for i, t in enumerate((-20.0, -18.0, -16.0)):
         db.append(_iso(now - datetime.timedelta(seconds=i)), t, 0.0, "A")
     for i, t in enumerate((20.0, 22.0, 24.0)):

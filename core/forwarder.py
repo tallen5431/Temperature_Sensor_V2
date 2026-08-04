@@ -1,4 +1,4 @@
-"""Forward this hub's readings to another hub (multi-site roll-up).
+"""Forward this hub's readings and alert log to another hub (multi-site roll-up).
 
 A chain with six stores wants head office to see all six. The local-first
 architecture is the product's whole point, so the answer is *not* a cloud: each
@@ -11,14 +11,22 @@ is the same relationship a probe already has with a hub:
 ===========================  ==========================================
 probe  ->  hub               store hub  ->  HQ hub
 ===========================  ==========================================
-POST /api/ingest_csv         the same endpoint, unchanged
+POST /api/ingest_csv         the same endpoint, plus an `events` array
 X-Token auth                 the same auth
 buffers to flash when down   the backlog simply stays unsent
-UNIQUE(probe_id, epoch)      the same index makes re-sends idempotent
+UNIQUE(probe_id,epoch,site)  the same index makes re-sends idempotent
 ===========================  ==========================================
 
+TWO RECORDS travel, not one. Readings are what the sensor measured; events are
+what this store's own alert engine DECIDED about them, against this store's own
+thresholds. Head office re-evaluating the same readings against its own limits
+gives a different answer, and it is the store's answer that belongs in the
+store's audit trail. They share one request — one round trip, and either the
+batch lands or neither cursor moves — but keep separate cursors so neither
+stream can block the other.
+
 That last row is what makes this safe. Because the receiving hub inserts with
-``INSERT OR IGNORE`` against ``UNIQUE(probe_id, epoch)``, a batch re-sent after a
+``INSERT OR IGNORE`` against ``UNIQUE(probe_id, epoch, site)``, a batch re-sent after a
 dropped response cannot duplicate rows. The forwarder therefore never has to be
 clever about exactly-once delivery: it only has to be sure it never *skips*, and
 at-least-once is free.
