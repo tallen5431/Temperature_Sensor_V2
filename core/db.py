@@ -654,8 +654,19 @@ class Database:
         cutoff = self._cutoff(window_seconds)
         clauses, params = _reading_filters(cutoff, site=site)
         where = _where(clauses)
-        pids = [r["probe_id"] for r in conn.execute(
-            f"SELECT DISTINCT probe_id FROM readings {where}", params).fetchall()]
+        # The probe list comes from a loose index scan over the WHOLE table, not
+        # a windowed SELECT DISTINCT. The seeks below were always the cheap half;
+        # the DISTINCT was the expensive one, because deduplicating a
+        # low-cardinality column means visiting every row in the window — 64 ms
+        # of a 78 ms call on a 2M-row store, on every 5 s dashboard tick, from
+        # four callbacks and the alert monitor. Walking the index one probe at a
+        # time is O(probes x log N), which is what this method always claimed to
+        # be.
+        #
+        # Dropping the window from THIS query changes nothing: each seek still
+        # carries the window, and a probe with no row inside it returns None and
+        # is skipped below. It costs one extra seek per long-retired probe.
+        pids = self.probe_ids()
         cols = ["timestamp", "temperature_c", "temperature_f", "probe_id",
                 "humidity_pct", "vpd_kpa", "battery_pct", "site"]
         seek_clause = ("" if not clauses else " AND " + " AND ".join(clauses))
@@ -688,21 +699,11 @@ class Database:
         months-long store can never emit an unbounded payload over the API.
         """
         conn = self._conn()
-        clauses, params_list = [], []
-        cutoff = self._cutoff(window_seconds)
-        if cutoff is not None:
-            clauses.append("epoch >= ?"); params_list.append(cutoff)
-        if start_epoch is not None:
-            clauses.append("epoch >= ?"); params_list.append(float(start_epoch))
-        if end_epoch is not None:
-            # float(), not int(): a `to=YYYY-MM-DD` filter resolves to the
-            # fractional end-of-day epoch (…23:59:59.999999) so that
-            # `epoch <= bound` keeps the final second's millisecond rows. int()
-            # truncated the bound to …59 and silently dropped 23:59:59.001–.999.
-            clauses.append("epoch <= ?"); params_list.append(float(end_epoch))
-        if probe_id:
-            clauses.append("probe_id = ?"); params_list.append(probe_id)
-        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        # Same filters as every export variant, so they share the builder — this
+        # was a byte-identical copy, comment included, and the end_epoch float()
+        # subtlety it documents is exactly the kind that gets fixed in one copy.
+        where, params_list = self._export_where(window_seconds, probe_id,
+                                                start_epoch, end_epoch)
         try:
             cap = int(limit) if limit else int(max_points)
         except (TypeError, ValueError):
@@ -712,7 +713,7 @@ class Database:
             f"SELECT ts AS timestamp, temperature_c, temperature_f, probe_id, "
             f"humidity_pct, vpd_kpa, battery_pct FROM readings {where} "
             f"ORDER BY epoch DESC, id DESC LIMIT ?",
-            tuple(params_list) + (cap,),
+            params_list + (cap,),
         ).fetchall()
         out = [dict(r) for r in rows]
         out.reverse()  # oldest-first for charting/time-series consumers
@@ -946,20 +947,34 @@ class Database:
         """
         conn = self._conn()
         where, params = self._export_where(window_seconds, probe_id, start_epoch, end_epoch)
+        # A `site` column appears only on a hub that actually holds forwarded
+        # readings. Without it, head office's export of six stores is rows of
+        # "walkin" at 4 C, -18 C and 21 C with nothing to tell them apart — and
+        # this file is the artefact that goes to an inspector. Adding it
+        # unconditionally would instead change the shape of every existing
+        # customer's export and break whatever imports it, so it is conditional,
+        # exactly like the dashboard's site picker.
+        multi = bool(self.sites())
         writer = _csv.writer(file_obj)
-        writer.writerow(["timestamp", "timestamp_utc", "temperature_c", "temperature_f",
-                         "probe_id", "humidity_pct", "vpd_kpa"])
+        header = ["timestamp", "timestamp_utc", "temperature_c", "temperature_f",
+                  "probe_id", "humidity_pct", "vpd_kpa"]
+        if multi:
+            header.append("site")
+        writer.writerow(header)
         n = 0
         for r in conn.execute(
-            f"SELECT ts, epoch, temperature_c, temperature_f, probe_id, humidity_pct, vpd_kpa "
-            f"FROM readings {where} ORDER BY epoch ASC",
+            f"SELECT ts, epoch, temperature_c, temperature_f, probe_id, humidity_pct, "
+            f"vpd_kpa, site FROM readings {where} ORDER BY epoch ASC",
             params,
         ):
             hum = "" if r["humidity_pct"] is None else f"{r['humidity_pct']:.2f}"
             vpd = "" if r["vpd_kpa"] is None else f"{r['vpd_kpa']:.3f}"
-            writer.writerow([_csv_safe(r["ts"]), self._utc_string(r["epoch"]),
-                             f"{r['temperature_c']:.3f}", f"{r['temperature_f']:.3f}",
-                             _csv_safe(r["probe_id"]), hum, vpd])
+            row = [_csv_safe(r["ts"]), self._utc_string(r["epoch"]),
+                   f"{r['temperature_c']:.3f}", f"{r['temperature_f']:.3f}",
+                   _csv_safe(r["probe_id"]), hum, vpd]
+            if multi:
+                row.append(_csv_safe(r["site"] or "(this hub)"))
+            writer.writerow(row)
             n += 1
         return n
 
@@ -990,20 +1005,27 @@ class Database:
         names = name_map or {}
         conn = self._conn()
         where, params = self._export_where(window_seconds, probe_id, start_epoch, end_epoch)
+        # See export_csv: `site` only on a hub that holds forwarded readings, and
+        # it matters MORE here — this variant leads with the friendly name, and
+        # six stores all calling a probe "Walk-in" is the ordinary case.
+        multi = bool(self.sites())
         writer = _csv.writer(file_obj)
-        writer.writerow(self._FRIENDLY_HEADERS)
+        writer.writerow(self._FRIENDLY_HEADERS + (["site"] if multi else []))
         n = 0
         for r in conn.execute(
-            f"SELECT ts, epoch, temperature_c, temperature_f, probe_id "
+            f"SELECT ts, epoch, temperature_c, temperature_f, probe_id, site "
             f"FROM readings {where} ORDER BY epoch ASC",
             params,
         ):
             d, t = self._local_date_time(r["ts"], r["epoch"])
             pid = r["probe_id"] or ""
             friendly = names.get(pid, pid) if isinstance(names, dict) else pid
-            writer.writerow([d.isoformat(), t.isoformat(), _csv_safe(friendly),
-                             f"{r['temperature_c']:.3f}", f"{r['temperature_f']:.3f}",
-                             _csv_safe(pid), self._utc_string(r["epoch"])])
+            row = [d.isoformat(), t.isoformat(), _csv_safe(friendly),
+                   f"{r['temperature_c']:.3f}", f"{r['temperature_f']:.3f}",
+                   _csv_safe(pid), self._utc_string(r["epoch"])]
+            if multi:
+                row.append(_csv_safe(r["site"] or "(this hub)"))
+            writer.writerow(row)
             n += 1
         return n
 
@@ -1047,15 +1069,20 @@ class Database:
         wb = Workbook(write_only=True)
         ws = wb.create_sheet("Readings")
         ws.freeze_panes = "A2"  # keep the header visible while scrolling
-        widths = [12, 11, 22, 15, 15, 20, 26]
+        # See export_csv for why `site` is conditional. The auto-filter and
+        # column widths have to track it, or the dropdowns stop one column short
+        # of the data and the new column renders at default width.
+        multi = bool(self.sites())
+        headers = self._FRIENDLY_HEADERS + (["site"] if multi else [])
+        widths = [12, 11, 22, 15, 15, 20, 26] + ([16] if multi else [])
         for i, w in enumerate(widths, start=1):
             ws.column_dimensions[get_column_letter(i)].width = w
         # Filter dropdowns over the whole populated table (header + data rows).
-        ws.auto_filter.ref = f"A1:{get_column_letter(len(self._FRIENDLY_HEADERS))}{total + 1}"
+        ws.auto_filter.ref = f"A1:{get_column_letter(len(headers))}{total + 1}"
 
         bold = Font(bold=True)
         header = []
-        for label in self._FRIENDLY_HEADERS:
+        for label in headers:
             c = WriteOnlyCell(ws, value=label)
             c.font = bold
             header.append(c)
@@ -1065,7 +1092,7 @@ class Database:
         where, params = self._export_where(window_seconds, probe_id, start_epoch, end_epoch)
         n = 0
         for r in conn.execute(
-            f"SELECT ts, epoch, temperature_c, temperature_f, probe_id "
+            f"SELECT ts, epoch, temperature_c, temperature_f, probe_id, site "
             f"FROM readings {where} ORDER BY epoch ASC",
             params,
         ):
@@ -1080,8 +1107,11 @@ class Database:
             c_cell.number_format = "0.000"
             f_cell = WriteOnlyCell(ws, value=round(float(r["temperature_f"]), 3))
             f_cell.number_format = "0.000"
-            ws.append([date_cell, time_cell, _xlsx_safe(friendly),
-                       c_cell, f_cell, _xlsx_safe(pid), self._utc_string(r["epoch"])])
+            row = [date_cell, time_cell, _xlsx_safe(friendly),
+                   c_cell, f_cell, _xlsx_safe(pid), self._utc_string(r["epoch"])]
+            if multi:
+                row.append(_xlsx_safe(r["site"] or "(this hub)"))
+            ws.append(row)
             n += 1
         wb.save(file_obj)
         return n
@@ -1145,6 +1175,24 @@ class Database:
             "SELECT COUNT(*) FROM readings WHERE id > ? AND (site IS NULL OR site = '')",
             (int(after_id),)).fetchone()
         return int(row[0]) if row else 0
+
+    def probe_ids(self):
+        """Every distinct probe id in the store, ascending.
+
+        Loose index scan for the same reason :meth:`sites` uses one: SELECT
+        DISTINCT over a low-cardinality column visits every row, and this is on
+        the dashboard's 5 s path. ``idx_readings_probe_epoch_site_uniq`` leads
+        with ``probe_id``, so MIN-then-MIN-of-what-is-greater walks it a probe at
+        a time.
+        """
+        rows = self._conn().execute(
+            "WITH RECURSIVE t(p) AS ("
+            "  SELECT MIN(probe_id) FROM readings"
+            "  UNION ALL"
+            "  SELECT (SELECT MIN(probe_id) FROM readings WHERE probe_id > t.p)"
+            "    FROM t WHERE t.p IS NOT NULL"
+            ") SELECT p FROM t WHERE p IS NOT NULL ORDER BY p").fetchall()
+        return [r[0] for r in rows]
 
     def sites(self):
         """Distinct non-empty site names present in the store, alphabetically.

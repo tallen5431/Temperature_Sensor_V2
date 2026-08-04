@@ -1,29 +1,13 @@
 from __future__ import annotations
 import logging
-import threading, time, socket
+import threading, time
 from typing import Callable, Optional
 from provisioning import (provision_probe, get_probe_status, desired_probe_config,
-                          usable_server_base)
+                          resolve_host, usable_server_base)
 from core.probes import normalize_probe, probe_address
 from core.status import probe_fresh_window, probe_prune_window
 
 log = logging.getLogger("hub.provisioner")
-
-
-def _resolve_with_timeout(host: str, timeout: float = 3.0) -> Optional[str]:
-    """Resolve hostname to IP in a background thread to avoid blocking the caller."""
-    result: list = [None]
-
-    def _do():
-        try:
-            result[0] = socket.gethostbyname(host)
-        except Exception:
-            pass
-
-    t = threading.Thread(target=_do, daemon=True)
-    t.start()
-    t.join(timeout)
-    return result[0]
 
 
 class AutoProvisioner(threading.Thread):
@@ -93,7 +77,7 @@ class AutoProvisioner(threading.Thread):
             mdns_host = mdns_host.rstrip(".")
             if not mdns_host:
                 return None
-            new_ip = _resolve_with_timeout(mdns_host)
+            new_ip = resolve_host(mdns_host)
             cur_ip = p.get("ip") if isinstance(p, dict) else getattr(p, "ip", None)
             if new_ip and new_ip != cur_ip:
                 return new_ip

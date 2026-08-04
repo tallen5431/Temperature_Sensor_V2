@@ -427,3 +427,47 @@ def test_both_pruners_share_one_window(tmp_path):
     mon._last_prune = 0
     mon.maybe_prune_probes()
     assert seen["after"] == expected
+
+
+def test_a_restart_re_reports_a_breach_that_is_still_happening(tmp_path):
+    """Alert state is in-memory, so a hub restart re-evaluates from scratch.
+
+    This pins a TRADE-OFF rather than an implementation detail, because the
+    alternative is worse. Persisting the state would stop the duplicate, but a
+    hub that was down for hours would then trust a stale verdict and could stay
+    silent about a probe whose situation changed while it was off. For a
+    food-safety device, re-reporting something still true beats missing
+    something new — and after a power cut (which warms the freezer AND restarts
+    the hub, the correlated case) being told again is what you want.
+
+    The cost is one duplicate transition in the event log per restart per
+    breaching probe: the audit trail reads as recover-and-re-breach when the
+    excursion was continuous. Accepted knowingly; change it only with the
+    stale-state risk in mind.
+    """
+    from core.config import Config
+    from core.db import Database
+    from alert_monitor import AlertMonitor
+
+    db = Database(tmp_path / "t.db")
+    cfg = Config(tmp_path / "c.json")
+    cfg.update({"alert_thresholds": {"default": {"min": 0.0, "max": 8.0}},
+                "notifications": {"enabled": False}})
+
+    class _F:
+        def list_probes(self):
+            return {}
+
+    def warm():
+        db.append(datetime.datetime.now().isoformat(timespec="milliseconds"),
+                  15.0, 59.0, "walkin")
+
+    warm()
+    m = AlertMonitor(db, cfg, discovery=_F())
+    m.check_once()
+    m.check_once()          # same process: the state machine holds, no duplicate
+    assert [e["kind"] for e in db.list_events()] == ["high"]
+
+    warm()
+    AlertMonitor(db, cfg, discovery=_F()).check_once()   # restart
+    assert [e["kind"] for e in db.list_events()] == ["high", "high"]

@@ -726,3 +726,37 @@ def test_migrate_csv(tmp_path):
     assert db.count() == 2
     # second call is a no-op because the db is no longer empty
     assert migrate_csv_if_present(db, csv_path) == 0
+
+
+def test_latest_per_probe_does_not_scan_the_window(db):
+    """It runs from four dashboard callbacks and the alert monitor, every 5 s.
+
+    The per-probe seeks were always cheap; the SELECT DISTINCT that fed them was
+    not — deduplicating a low-cardinality column visits every row in the window,
+    which measured 64 ms of a 78 ms call on a 2M-row store. The probe list now
+    comes from a loose index scan, so no plan here may contain a table or
+    index SCAN.
+    """
+    now = time.time()
+    for i in range(200):
+        db.append(_iso(datetime.datetime.now() - datetime.timedelta(seconds=200 - i)),
+                  4.0, 39.2, f"P{i % 4}")
+    conn = db._conn()
+    plan = " ".join(str(r[-1]) for r in conn.execute(
+        "EXPLAIN QUERY PLAN "
+        "WITH RECURSIVE t(p) AS (SELECT MIN(probe_id) FROM readings"
+        " UNION ALL SELECT (SELECT MIN(probe_id) FROM readings WHERE probe_id > t.p)"
+        " FROM t WHERE t.p IS NOT NULL) SELECT p FROM t WHERE p IS NOT NULL ORDER BY p"))
+    assert "SEARCH" in plan and "SCAN readings" not in plan, plan
+    assert sorted(db.probe_ids()) == ["P0", "P1", "P2", "P3"]
+
+
+def test_latest_per_probe_still_drops_probes_outside_the_window(db):
+    """Widening the probe source to the whole table must not widen the RESULT:
+    the per-probe seek still carries the window, and a probe with no row inside
+    it is skipped. Otherwise a probe retired a year ago returns to the cards."""
+    db.append(_iso(datetime.datetime.now()), 4.0, 39.2, "LIVE")
+    db.append("2020-01-01T00:00:00.000", 4.0, 39.2, "RETIRED")
+    got = sorted(db.latest_per_probe(window_seconds=3600)["probe_id"])
+    assert got == ["LIVE"]
+    assert "RETIRED" in db.probe_ids()      # still known, just not recent

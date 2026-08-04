@@ -91,7 +91,7 @@ def _patch_net(monkeypatch, resolves=None, statuses=None, provisions=None,
                                "watch": kw.get("watch")})
         return True
 
-    monkeypatch.setattr(prov_mod, "_resolve_with_timeout", _resolve)
+    monkeypatch.setattr(prov_mod, "resolve_host", _resolve)
     monkeypatch.setattr(prov_mod, "get_probe_status", _status)
     monkeypatch.setattr(prov_mod, "provision_probe", _provision)
 

@@ -302,3 +302,50 @@ def test_per_probe_seek_still_uses_the_index(tmp_path):
         "ORDER BY epoch DESC, id DESC LIMIT 1", ("walkin",)))
     assert "idx_readings_probe_epoch_site_uniq" in plan, plan
     assert "SCAN readings" not in plan, plan
+
+
+def test_exports_attribute_readings_to_their_store(tmp_path):
+    """The export is the artefact that goes to an inspector.
+
+    Without a site column, head office's export of six stores is rows of
+    "walkin" at 4 C, -18 C and 21 C with nothing to tell them apart — and read as
+    one probe, that is a freezer swinging 40 degrees.
+    """
+    import io
+    db = Database(tmp_path / "hq.db")
+    for i, (t, site) in enumerate(((4.0, "atlanta"), (-18.0, "marietta"), (21.0, ""))):
+        db.append((datetime.datetime.now() + datetime.timedelta(seconds=i))
+                  .isoformat(timespec="milliseconds"), t, t * 9 / 5 + 32, "walkin", site=site)
+
+    for export in ("export_csv", "export_friendly_csv"):
+        buf = io.StringIO()
+        getattr(db, export)(buf)
+        lines = buf.getvalue().splitlines()
+        assert lines[0].endswith("site"), export
+        assert "atlanta" in lines[1] and "marietta" in lines[2], export
+        # HQ's own probes are named, not left blank — a blank cell in an audit
+        # export reads as missing data rather than "head office".
+        assert "(this hub)" in lines[3], export
+
+    buf = io.BytesIO()
+    assert db.export_xlsx(buf) == 3
+    import zipfile
+    assert zipfile.is_zipfile(io.BytesIO(buf.getvalue()))
+
+
+def test_a_single_site_export_is_unchanged(tmp_path):
+    """Adding a column to every existing customer's export would break whatever
+    imports it. The column appears only once a hub actually holds forwarded
+    readings — the same rule as the dashboard's site picker."""
+    import io
+    db = Database(tmp_path / "s.db")
+    db.append(datetime.datetime.now().isoformat(timespec="milliseconds"),
+              4.0, 39.2, "walkin")
+    assert db.sites() == []
+
+    buf = io.StringIO(); db.export_csv(buf)
+    assert buf.getvalue().splitlines()[0] == (
+        "timestamp,timestamp_utc,temperature_c,temperature_f,probe_id,humidity_pct,vpd_kpa")
+    buf2 = io.StringIO(); db.export_friendly_csv(buf2)
+    assert buf2.getvalue().splitlines()[0] == (
+        "date,time,probe,temperature_c,temperature_f,probe_id,timestamp_utc")
