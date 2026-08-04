@@ -10,6 +10,7 @@ from __future__ import annotations
 import threading
 import time
 from typing import Dict, List, Optional, Tuple, Union
+from core.units import c_to_f
 
 
 class HeldStates:
@@ -318,7 +319,7 @@ def format_event(event: dict, names: Optional[dict] = None) -> Tuple[str, str]:
                 f"{label} is reporting again.")
 
     c = event["temperature_c"]
-    f = (c * 9.0 / 5.0) + 32.0
+    f = c_to_f(c)
     reading = f"{c:.1f}°C / {f:.1f}°F"
     if kind == "rate":
         delta = float(event.get("delta_c", 0.0))

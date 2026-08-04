@@ -11,6 +11,7 @@ from core.storage import threshold_breach
 from core.status import (probe_fresh_window as _probe_fresh_window,
                          reporting_probe_ids, ONLINE_TIMEOUT_SEC)
 from core.demo import has_demo_data, load_demo_data, clear_demo_data
+from core import units
 
 # Held-breach registry: the AlertMonitor's hysteresis can hold a probe "in
 # breach" after its raw reading is back inside the limit. The probe cards read
@@ -350,20 +351,12 @@ DashboardLayout = html.Div([
 
 
 # --- Helpers -----------------------------------------------------------------
-def _convert(temp_c, unit):
-    if unit == "fahrenheit":
-        return (temp_c * 9.0 / 5.0) + 32.0
-    if unit == "kelvin":
-        return temp_c + 273.15
-    return temp_c
-
-
-def _unit_symbol(unit):
-    if unit == "fahrenheit":
-        return "°F"
-    if unit == "kelvin":
-        return "K"
-    return "°C"
+# Display conversion. The arithmetic lives in core.units (shared with the
+# Devices edit form, which rounds; the dashboard keeps full precision until
+# format time). Aliased rather than imported under their own names so the ~15
+# call sites below read the same as they always have.
+_convert = units.to_unit
+_unit_symbol = units.unit_symbol
 
 
 def _fmt(temp_c, unit):

@@ -9,6 +9,7 @@ from flask import Blueprint, jsonify, request
 
 from provisioning import provision_probe, resolve_host, desired_probe_config
 from core.diagnostics import build_diagnostics
+from core.units import c_to_f
 from core.secret_compare import constant_time_eq
 from core.storage import (normalize_payload, extract_humidity, compute_vpd,
                           sanitize_probe_id, sanitize_site, is_future_stamp,
@@ -535,7 +536,7 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
         offset = _calibration_offset(probe_id)
         if offset:
             t_c += offset
-            t_f = (t_c * 9.0 / 5.0) + 32.0
+            t_f = c_to_f(t_c)
 
         # Optional humidity -> Vapour Pressure Deficit (grow variant). A
         # temperature-only probe simply omits humidity and stores NULL.
@@ -696,7 +697,7 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
             offset = _calibration_offset(pid)
             if offset:
                 t_c += offset
-                t_f = (t_c * 9.0 / 5.0) + 32.0
+                t_f = c_to_f(t_c)
             # Carry the optional telemetry the live path stores, so a grow probe
             # draining a backlog doesn't come back as temperature-only.
             humidity = extract_humidity(row)

@@ -13,6 +13,7 @@ import datetime
 import math
 import re
 import time
+from core.units import c_to_f, f_to_c
 
 # A probe with a bad clock (failed NTP / drifted RTC) can stamp a reading in the
 # future. The hub's clock is authoritative, so a timestamp more than this many
@@ -230,9 +231,9 @@ def normalize_payload(payload: dict):
         raise ValueError("No temperature value found")
 
     if t_c is None:  # compute from F
-        t_c = (t_f - 32.0) * 5.0 / 9.0
+        t_c = f_to_c(t_f)
     if t_f is None:  # compute from C
-        t_f = (t_c * 9.0 / 5.0) + 32.0
+        t_f = c_to_f(t_c)
 
     # Enforce the ingest contract (PROTOCOL.md §6): the resolved value must be a
     # finite number in a physically sane band. This rejects NaN/inf (which would

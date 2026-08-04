@@ -8,67 +8,42 @@ import dash_bootstrap_components as dbc
 from core.probes import discovered_probes, probe_address
 from core.status import probe_fresh_window
 from core.metrics import LATEST
+from core import units
 
 log = logging.getLogger("hub.devices")
 
 
 # --- Unit conversion helpers -------------------------------------------------
 # The dashboard's unit toggle (temp-unit-store) affects DISPLAY only; config
-# always stores Celsius. Absolute temperatures (thresholds) and temperature
-# DELTAS (the calibration offset) convert differently: a delta scales but never
-# shifts (-0.5 °C of correction is -0.9 °F, NOT 31.1 °F), and a Kelvin delta
-# equals a Celsius delta. Pure and module-level so they can be unit-tested.
+# always stores Celsius. The arithmetic lives in core.units; these thin aliases
+# pin the 2-decimal rounding the edit form wants, so an operator sees 35.6 in a
+# number input rather than 35.60000000000001. Absolute temperatures (thresholds)
+# and temperature DELTAS (the calibration offset) convert differently -- see
+# core.units for why.
 
 def _unit_symbol(unit):
-    if unit == 'fahrenheit':
-        return '°F'
-    if unit == 'kelvin':
-        return 'K'
-    return '°C'
+    return units.unit_symbol(unit)
 
 
 def temp_c_to_unit(temp_c, unit):
     """Convert an absolute Celsius temperature to ``unit`` for display."""
-    if temp_c is None:
-        return None
-    t = float(temp_c)
-    if unit == 'fahrenheit':
-        return round(t * 9.0 / 5.0 + 32.0, 2)
-    if unit == 'kelvin':
-        return round(t + 273.15, 2)
-    return t
+    return units.to_unit(temp_c, unit, ndigits=2)
 
 
 def temp_unit_to_c(value, unit):
     """Convert an absolute temperature entered in ``unit`` back to Celsius."""
-    if value is None:
-        return None
-    v = float(value)
-    if unit == 'fahrenheit':
-        return round((v - 32.0) * 5.0 / 9.0, 2)
-    if unit == 'kelvin':
-        return round(v - 273.15, 2)
-    return v
+    return units.from_unit(value, unit, ndigits=2)
 
 
 def delta_c_to_unit(delta_c, unit):
     """Convert a Celsius temperature DELTA (calibration offset) to ``unit``."""
-    if delta_c is None:
-        return None
-    d = float(delta_c)
-    if unit == 'fahrenheit':
-        return round(d * 9.0 / 5.0, 2)
-    return d
+    return units.delta_to_unit(delta_c, unit, ndigits=2)
 
 
 def delta_unit_to_c(value, unit):
     """Convert a temperature DELTA entered in ``unit`` back to Celsius."""
-    if value is None:
-        return None
-    v = float(value)
-    if unit == 'fahrenheit':
-        return round(v * 5.0 / 9.0, 2)
-    return v
+    return units.delta_from_unit(value, unit, ndigits=2)
+
 
 def _humanize_seconds(seconds):
     """Render a reporting interval the way an operator would say it.

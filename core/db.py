@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 import pandas as pd
+from core.units import c_to_f
 
 log = logging.getLogger("hub.db")
 
@@ -1242,7 +1243,7 @@ def migrate_csv_if_present(db: "Database", csv_path: str | Path) -> int:
                 try:
                     t_f = float(row.get("temperature_f"))
                 except (TypeError, ValueError):
-                    t_f = (t_c * 9.0 / 5.0) + 32.0
+                    t_f = c_to_f(t_c)
                 rows.append((ts, t_c, t_f, (row.get("probe_id") or "").strip()))
         return db.bulk_insert(rows)
     except Exception:

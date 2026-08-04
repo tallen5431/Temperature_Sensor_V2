@@ -49,17 +49,28 @@ def _coerce_bool(val: Any):
     return None, False
 
 
-# (key, default, minimum, is_integer)
+# (key, default, minimum, maximum, is_integer). ``maximum`` is None for the
+# fields where "large" is merely unusual rather than invalid — a 30-day
+# retention and a 30-year one are both things an operator may legitimately mean.
 _NUMBERS = [
-    ("interval_sec", 5, 0.5, False),
-    ("probe_online_timeout_sec", 60, 1, True),
-    ("retention_days", 0, 0, True),
-    ("alert_freshness_sec", 600, 1, True),
-    ("offline_after_sec", 300, 1, True),
-    ("alert_hysteresis_c", 0.5, 0, False),
-    ("rate_alert_c", 0.0, 0, False),
-    ("rate_window_min", 10, 1, True),
-    ("resolution_bits", 11, 9, True),
+    ("interval_sec", 5, 0.5, None, False),
+    ("probe_online_timeout_sec", 60, 1, None, True),
+    ("retention_days", 0, 0, None, True),
+    ("alert_freshness_sec", 600, 1, None, True),
+    ("offline_after_sec", 300, 1, None, True),
+    ("alert_hysteresis_c", 0.5, 0, None, False),
+    ("rate_alert_c", 0.0, 0, None, False),
+    ("rate_window_min", 10, 1, None, True),
+    # 9..12 bit is the DS18B20's own range, so the ceiling is a real limit and
+    # clamping to it is the right answer rather than a fallback.
+    ("resolution_bits", 11, 9, 12, True),
+    # Tuning knobs every consumer already defends itself against, which is
+    # exactly why they belong here too: an unnormalised value is silently
+    # ignored at the point of use while config.json keeps showing it, so the
+    # setting looks applied and is not. Same reasoning as probe_intervals below.
+    ("probe_sample_sec", 60, 1, None, True),
+    ("health_fresh_sec", 120, 1, None, False),
+    ("probe_prune_after_sec", 3600, 1, None, True),
 ]
 _BOOLS = [("pull_enabled", True), ("auto_provision", True)]
 _DICTS = ["probe_names", "alert_thresholds", "calibration_offsets", "probe_intervals",
@@ -69,21 +80,65 @@ _NOTIF_BOOLS = [("enabled", False), ("notify_recovery", True), ("offline_alerts"
 _EMAIL_BOOLS = [("enabled", False), ("use_tls", True)]
 
 
-def _fix_number(d: Dict[str, Any], key, default, minimum, integer, warns: Warnings):
+def _fix_number(d: Dict[str, Any], key, default, minimum, integer, warns: Warnings,
+                maximum=None, over_max=None, label=None):
+    """Coerce ``d[key]`` to a number inside ``[minimum, maximum]``.
+
+    ``label`` names the field in warnings, matching :func:`_fix_bool`. Nested
+    fields need it: three subtrees have an ``enabled``, two have a port, and
+    ``hour=99 adjusted to 8`` does not say whose hour it was.
+
+    ``maximum`` bounds the top the way ``minimum`` bounds the bottom, so a field
+    with both declares them together instead of having its ceiling hand-rolled
+    afterwards — five of them were, each with its own wording and only one
+    guarded against a non-numeric value.
+
+    What to do when a value exceeds the ceiling differs by field, so ``over_max``
+    says which. Absent means clamp to ``maximum``: 12 bits is the sensor's real
+    limit, so ``resolution_bits: 20`` genuinely means 12. Passing a value
+    substitutes that instead, for ceilings that mark the input as nonsense rather
+    than merely too large — an SMTP port of 99999 becomes 587, because 65535
+    would be just as unusable and far more confusing to find in a log.
+    """
     if key not in d:
         return
+    name = label or key
     raw = d[key]
     n, ok = _to_number(raw, minimum, integer)
     if not ok:
-        warns.append(f"{key}={raw!r} is not a number; using {default}")
+        warns.append(f"{name}={raw!r} is not a number; using {default}")
         d[key] = default
         return
+    if maximum is not None and n > maximum:
+        n = over_max if over_max is not None else maximum
+        n = int(n) if integer else float(n)
     d[key] = n
     try:
         if float(raw) != float(n):
-            warns.append(f"{key}={raw!r} adjusted to {n}")
+            warns.append(f"{name}={raw!r} adjusted to {n}")
     except (TypeError, ValueError):
-        warns.append(f"{key}={raw!r} adjusted to {n}")
+        warns.append(f"{name}={raw!r} adjusted to {n}")
+
+
+def _subtree(parent: Dict[str, Any], key: str, warns: Warnings, label=None):
+    """Return ``parent[key]`` as a dict, or ``None`` when the key is absent.
+
+    A present-but-wrong-typed subtree (``"mqtt": 5``) is reset to ``{}`` with a
+    warning, so every caller can collapse to a single ``is not None`` check
+    instead of repeating the three-step present/typed/rebind dance nine times.
+
+    Absent stays absent on purpose: normalising a config must not invent keys the
+    operator never wrote — ``normalize_config({})`` returns ``{}``, and callers
+    throughout the hub read "key missing" as "use the built-in default".
+    """
+    if key not in parent:
+        return None
+    val = parent[key]
+    if not isinstance(val, dict):
+        warns.append(f"{label or key} must be an object; resetting")
+        parent[key] = {}
+        return parent[key]
+    return val
 
 
 def _fix_bool(d: Dict[str, Any], key, default, warns: Warnings, label=None):
@@ -105,18 +160,8 @@ def normalize_config(raw: Any) -> Tuple[Dict[str, Any], Warnings]:
 
     cfg = copy.deepcopy(raw)
 
-    for key, default, minimum, integer in _NUMBERS:
-        _fix_number(cfg, key, default, minimum, integer, warns)
-
-    # resolution_bits also has an UPPER bound (DS18B20 supports 9..12 bit); the
-    # _NUMBERS pass only enforces the 9 floor.
-    if "resolution_bits" in cfg:
-        try:
-            if int(cfg["resolution_bits"]) > 12:
-                warns.append(f"resolution_bits={cfg['resolution_bits']!r} > 12; using 12")
-                cfg["resolution_bits"] = 12
-        except (TypeError, ValueError):
-            pass
+    for key, default, minimum, maximum, integer in _NUMBERS:
+        _fix_number(cfg, key, default, minimum, integer, warns, maximum=maximum)
 
     for key, default in _BOOLS:
         _fix_bool(cfg, key, default, warns)
@@ -189,85 +234,56 @@ def normalize_config(raw: Any) -> Tuple[Dict[str, Any], Warnings]:
     # --- ui_auth / metrics / settings / mqtt subtrees --------------------------
     # These reach app.py / consumers unguarded; a wrong-typed value (e.g. a
     # numeric ui_auth.username) would crash startup. Coerce them like the rest.
-    ua = cfg.get("ui_auth")
-    if "ui_auth" in cfg and not isinstance(ua, dict):
-        warns.append("ui_auth must be an object; resetting")
-        cfg["ui_auth"] = {}
-        ua = cfg["ui_auth"]
-    if isinstance(ua, dict):
+    ua = _subtree(cfg, "ui_auth", warns)
+    if ua is not None:
         _fix_bool(ua, "enabled", False, warns, label="ui_auth.enabled")
         for f in ("username", "password"):
             if f in ua and not isinstance(ua[f], str):
                 warns.append(f"ui_auth.{f} must be a string; coercing")
                 ua[f] = "" if ua[f] is None else str(ua[f])
 
-    metrics = cfg.get("metrics")
-    if "metrics" in cfg and not isinstance(metrics, dict):
-        warns.append("metrics must be an object; resetting")
-        cfg["metrics"] = {}
-        metrics = cfg["metrics"]
-    if isinstance(metrics, dict):
+    metrics = _subtree(cfg, "metrics", warns)
+    if metrics is not None:
         _fix_bool(metrics, "enabled", True, warns, label="metrics.enabled")
 
-    settings = cfg.get("settings")
-    if "settings" in cfg and not isinstance(settings, dict):
-        warns.append("settings must be an object; resetting")
-        cfg["settings"] = {}
-        settings = cfg["settings"]
-    if isinstance(settings, dict):
-        _fix_number(settings, "vpd_leaf_offset_c", 0.0, None, False, warns)
+    settings = _subtree(cfg, "settings", warns)
+    if settings is not None:
+        _fix_number(settings, "vpd_leaf_offset_c", 0.0, None, False, warns,
+                    label="settings.vpd_leaf_offset_c")
 
     # --- upstream (multi-site roll-up; see core/forwarder.py) ---------------
-    upstream = cfg.get("upstream")
-    if "upstream" in cfg and not isinstance(upstream, dict):
-        warns.append("upstream must be an object; resetting")
-        cfg["upstream"] = {}
-        upstream = cfg["upstream"]
-    if isinstance(upstream, dict):
+    upstream = _subtree(cfg, "upstream", warns)
+    if upstream is not None:
         _fix_bool(upstream, "enabled", False, warns, label="upstream.enabled")
         for f in ("url", "token", "site"):
             if f in upstream and upstream[f] is not None and not isinstance(upstream[f], str):
                 warns.append(f"upstream.{f} must be a string; coercing")
                 upstream[f] = str(upstream[f])
-        if "interval_sec" in upstream:
-            _fix_number(upstream, "interval_sec", 30, 5, True, warns)
-        if "batch" in upstream:
-            _fix_number(upstream, "batch", 500, 1, True, warns)
-            if upstream.get("batch", 1) > 1000:
-                # PROTOCOL.md §7 caps /ingest_csv at 1000 rows per request; a
-                # larger batch would be rejected wholesale every cycle and the
-                # backlog would never drain.
-                warns.append("upstream.batch above the 1000-row protocol cap; using 1000")
-                upstream["batch"] = 1000
+        _fix_number(upstream, "interval_sec", 30, 5, True, warns,
+                    label="upstream.interval_sec")
+        # PROTOCOL.md §7 caps /ingest_csv at 1000 rows per request; a larger
+        # batch would be rejected wholesale every cycle and the backlog would
+        # never drain. The cap is real, so clamp to it rather than substituting.
+        _fix_number(upstream, "batch", 500, 1, True, warns, maximum=1000,
+                    label="upstream.batch")
 
-    mqtt = cfg.get("mqtt")
-    if "mqtt" in cfg and not isinstance(mqtt, dict):
-        warns.append("mqtt must be an object; resetting")
-        cfg["mqtt"] = {}
-        mqtt = cfg["mqtt"]
-    if isinstance(mqtt, dict):
+    mqtt = _subtree(cfg, "mqtt", warns)
+    if mqtt is not None:
         _fix_bool(mqtt, "enabled", False, warns, label="mqtt.enabled")
-        if "port" in mqtt:
-            _fix_number(mqtt, "port", 1883, 1, True, warns)
-            if mqtt.get("port", 1) > 65535:
-                warns.append("mqtt.port out of range; using 1883")
-                mqtt["port"] = 1883
+        _fix_number(mqtt, "port", 1883, 1, True, warns, maximum=65535,
+                    over_max=1883, label="mqtt.port")
         for f in ("host", "username", "password", "base_topic", "discovery_prefix"):
             if f in mqtt and mqtt[f] is not None and not isinstance(mqtt[f], str):
                 warns.append(f"mqtt.{f} must be a string; coercing")
                 mqtt[f] = str(mqtt[f])
 
     # --- notifications subtree -------------------------------------------------
-    notif = cfg.get("notifications")
-    if "notifications" in cfg and not isinstance(notif, dict):
-        warns.append("notifications must be an object; resetting")
-        cfg["notifications"] = {}
-        notif = cfg["notifications"]
-
-    if isinstance(notif, dict):
+    notif = _subtree(cfg, "notifications", warns)
+    if notif is not None:
         for key, default in _NOTIF_BOOLS:
             _fix_bool(notif, key, default, warns, label=f"notifications.{key}")
-        _fix_number(notif, "cooldown_sec", 1800, 1, True, warns)
+        _fix_number(notif, "cooldown_sec", 1800, 1, True, warns,
+                    label="notifications.cooldown_sec")
 
         # Back-online confirmation window for flap damping. ``null`` (or absent)
         # means "auto" — self-tune to each probe's offline window — so it is left
@@ -283,37 +299,22 @@ def normalize_config(raw: Any) -> Tuple[Dict[str, Any], Warnings]:
             else:
                 notif["flap_grace_sec"] = n
 
-        email = notif.get("email")
-        if "email" in notif and not isinstance(email, dict):
-            warns.append("notifications.email must be an object; resetting")
-            notif["email"] = {}
-            email = notif["email"]
-        if isinstance(email, dict):
+        email = _subtree(notif, "email", warns, label="notifications.email")
+        if email is not None:
             for key, default in _EMAIL_BOOLS:
                 _fix_bool(email, key, default, warns, label=f"notifications.email.{key}")
-            _fix_number(email, "smtp_port", 587, 1, True, warns)
-            if email.get("smtp_port", 1) > 65535:
-                warns.append("notifications.email.smtp_port out of range; using 587")
-                email["smtp_port"] = 587
+            _fix_number(email, "smtp_port", 587, 1, True, warns, maximum=65535,
+                        over_max=587, label="notifications.email.smtp_port")
 
-        webhook = notif.get("webhook")
-        if "webhook" in notif and not isinstance(webhook, dict):
-            warns.append("notifications.webhook must be an object; resetting")
-            notif["webhook"] = {}
-            webhook = notif["webhook"]
-        if isinstance(webhook, dict):
+        webhook = _subtree(notif, "webhook", warns, label="notifications.webhook")
+        if webhook is not None:
             _fix_bool(webhook, "enabled", False, warns, label="notifications.webhook.enabled")
 
-        summary = notif.get("daily_summary")
-        if "daily_summary" in notif and not isinstance(summary, dict):
-            warns.append("notifications.daily_summary must be an object; resetting")
-            notif["daily_summary"] = {}
-            summary = notif["daily_summary"]
-        if isinstance(summary, dict):
+        summary = _subtree(notif, "daily_summary", warns,
+                           label="notifications.daily_summary")
+        if summary is not None:
             _fix_bool(summary, "enabled", False, warns, label="notifications.daily_summary.enabled")
-            _fix_number(summary, "hour", 8, 0, True, warns)
-            if summary.get("hour", 0) > 23:
-                warns.append("notifications.daily_summary.hour out of range; using 8")
-                summary["hour"] = 8
+            _fix_number(summary, "hour", 8, 0, True, warns, maximum=23, over_max=8,
+                        label="notifications.daily_summary.hour")
 
     return cfg, warns
