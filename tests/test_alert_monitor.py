@@ -471,3 +471,58 @@ def test_a_restart_re_reports_a_breach_that_is_still_happening(tmp_path):
     warm()
     AlertMonitor(db, cfg, discovery=_F()).check_once()   # restart
     assert [e["kind"] for e in db.list_events()] == ["high", "high"]
+
+
+def test_removing_a_device_clears_its_held_alarm(tmp_path):
+    """"Remove device" deletes the probe's readings, but the monitor copies its
+    state forward every cycle and only revises probes that reported — so a
+    removed probe kept its `high` state forever. ``HELD`` went on publishing an
+    alarm for a device that no longer existed, and re-adding the same id later
+    started it already in breach, held by the hysteresis deadband.
+
+    Holding state for a merely SILENT probe is deliberate (it is what lets the
+    cards say ALARM · NO SIGNAL), so only probes with no rows at all are
+    forgotten — the operator deleting the data is the signal.
+    """
+    from core.alerts import HELD
+
+    db = Database(tmp_path / "r.db")
+    cfg = Config(tmp_path / "r.json")
+    cfg.update({"alert_thresholds": {"gone": {"max": 8.0}, "stays": {"max": 8.0}},
+                "notifications": {"enabled": False}})
+    now = datetime.datetime.now()
+    db.append(_iso(now), 20.0, 68.0, "gone")      # both in breach
+    db.append(_iso(now), 20.0, 68.0, "stays")
+    mon = AlertMonitor(db, cfg, RecordingNotifier(), period_sec=1)
+    mon.check_once()
+    assert HELD.get("gone") == "high" and HELD.get("stays") == "high"
+
+    db.delete_probe("gone")                       # what "remove device" does
+    mon._last_prune = 0.0                         # the hourly sweep comes due
+    mon.maybe_prune_probes()
+    mon.check_once()
+
+    assert HELD.get("gone") is None, "a deleted probe still holds an alarm"
+    assert "gone" not in mon._states
+    # The probe that is merely silent (deleted nothing) keeps its open incident.
+    assert HELD.get("stays") == "high"
+
+
+def test_a_silent_probe_keeps_its_open_breach(tmp_path):
+    """The counterpart guard: pruning must not be able to swallow a real
+    incident just because the probe stopped reporting mid-excursion — that is
+    the case the alarm exists for."""
+    from core.alerts import HELD
+
+    db = Database(tmp_path / "s.db")
+    cfg = Config(tmp_path / "s.json")
+    cfg.update({"alert_thresholds": {"quiet": {"max": 8.0}},
+                "notifications": {"enabled": False}})
+    db.append(_iso(datetime.datetime.now() - datetime.timedelta(hours=6)),
+              20.0, 68.0, "quiet")
+    mon = AlertMonitor(db, cfg, RecordingNotifier(), period_sec=1)
+    mon._states = {"quiet": {"condition": "high", "last_notified": time.time()}}
+    mon._last_prune = 0.0
+    mon.maybe_prune_probes()
+    mon.check_once()
+    assert HELD.get("quiet") == "high"

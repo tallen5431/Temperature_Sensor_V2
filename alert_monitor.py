@@ -302,18 +302,44 @@ class AlertMonitor(threading.Thread):
     def maybe_prune_probes(self):
         """Evict long-gone probes from the discovery registry on a slow cadence,
         independent of whether the auto-provisioner is running."""
-        if self.discovery is None or not hasattr(self.discovery, "prune_stale"):
-            return
         now = time.time()
         if now - self._last_prune < 3600:  # at most hourly
             return
         self._last_prune = now
+        self._forget_deleted_probes()
+        if self.discovery is None or not hasattr(self.discovery, "prune_stale"):
+            return
         try:
             # Same rule the provisioner's pruner uses — a flat window here would
             # evict a deep-sleeping probe between posts and undo that protection.
             self.discovery.prune_stale(int(probe_prune_window(self.cfg)))
         except Exception as e:  # noqa: BLE001
             log.warning("probe prune failed: %s", e)
+
+    def _forget_deleted_probes(self) -> None:
+        """Drop alert state for probes whose data is no longer in the store.
+
+        ``evaluate`` copies the previous states forward and only revises probes
+        that reported this cycle, which is deliberate — it is what keeps a breach
+        held while a probe is silent, so the cards can say ALARM · NO SIGNAL.
+        But it also means "remove device" left the probe's ``high``/``low`` state
+        behind forever: ``HELD`` kept publishing an alarm for a device that no
+        longer exists, and the same id re-added later would start life already in
+        breach. Deleting the readings is the operator saying this probe is gone,
+        so take them at their word — on the same hourly cadence as the registry
+        prune, and only for probes with no rows at all, so a merely-silent probe
+        keeps its open incident.
+        """
+        if not (self._states or self._rate_states):
+            return
+        try:
+            known = set(self.db.probe_ids() or ())
+        except Exception as e:  # noqa: BLE001 - never break the monitor on a read
+            log.debug("could not list probe ids for state prune: %s", e)
+            return
+        for states in (self._states, self._rate_states):
+            for pid in [p for p in states if p not in known]:
+                states.pop(pid, None)
 
     def maybe_daily_summary(self, now: datetime.datetime | None = None) -> bool:
         """Send the once-a-day summary email when due. Returns True when sent.

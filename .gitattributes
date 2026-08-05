@@ -1,0 +1,25 @@
+# Line endings that matter to a program, not just to a diff.
+#
+# Start.bat is the launcher a Windows customer double-clicks. It shipped with
+# pure LF endings, which cmd.exe parses inconsistently — parenthesised blocks
+# and `for /f` (both of which that file is built from) are where it shows up,
+# and the failure mode is an unhelpful "The syntax of the command is incorrect"
+# on the very first thing anyone runs. Force CRLF in the working tree and in
+# the archive, on every platform, regardless of the developer's core.autocrlf.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# ...and the counterpart: a shell script or a systemd unit with CRLF endings
+# fails on Linux with "bad interpreter: /usr/bin/env bash^M".
+*.sh    text eol=lf
+*.service text eol=lf
+Start.sh text eol=lf
+
+# Binary — never touch, never diff as text.
+*.png binary
+*.jpg binary
+*.ico binary
+*.bin binary
+*.step binary
+*.stp binary

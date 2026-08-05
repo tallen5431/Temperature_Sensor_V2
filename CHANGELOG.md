@@ -42,6 +42,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Demo data now demonstrates the product, not a thermometer.** The two demo
+  probes arrive with the alarm range their role implies (Demo Fridge 1–5 °C,
+  Demo Room 18–25 °C), so the cards show a range, a green OK earned against it,
+  and the alerting the hub exists for. Their sine wave was also wider than the
+  band it is now held to, which drew a line poking over its own limit with no
+  event recorded against it — the monitor only evaluates the newest reading — so
+  the demo's most visible moment read as alerting that missed an excursion.
+  Clearing the demo removes the thresholds along with everything else `DEMO-`.
 - **SMTP settings are inferred from the email address.** Typing
   `you@gmail.com` fills in `smtp.gmail.com:587` with STARTTLS; ~30 provider
   domains are covered (Gmail, Outlook, Yahoo, iCloud, Fastmail, Zoho, Proton
@@ -72,6 +80,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The Dashboard and the Devices grid gave opposite verdicts on the same
+  probe.** Each derived probe condition independently. Given a probe that
+  breached its limit and then stopped reporting, the Dashboard tested staleness
+  first and drew a calm grey "● stale" — dropping the alarm entirely — while the
+  Devices grid tested the breach first and drew a red "ALARM" with an hours-old
+  temperature beside it and nothing saying it was old. One probe, one moment, a
+  grey card on one page and a red one on the other, and neither told the whole
+  truth about the state that matters most: out of range *and* out of contact.
+  Both pages now read one shared verdict (`core.status.probe_state`) and report
+  both facts — **ALARM · NO SIGNAL**. The same change stopped the Dashboard
+  calling a probe with no limits set "● OK" in green; the Devices grid already
+  refused to, and green on the page people leave open was the wrong reassurance
+  about a probe nothing was checking.
+- **Start.bat gave up on machines that had Python installed.** Three uses of
+  `%errorlevel%` sat inside parenthesised blocks, where cmd.exe substitutes the
+  value when it *parses* the block — so each test read the exit code from before
+  the block ran. The `python3` and `python` fallbacks were therefore checking
+  whether the *`py` launcher* probe had succeeded, and never ran. On any Windows
+  box without the py launcher (a Microsoft Store or Anaconda install) the
+  launcher printed "Python 3.9 or newer is required but was not found" and quit.
+  The same file also emitted UTF-8 box-drawing characters with no `chcp`, which a
+  default code-page-437 console renders as mojibake, and shipped with LF line
+  endings, which cmd parses inconsistently in exactly the parenthesised blocks
+  and `for /f` loops it is built from. It is now plain ASCII with CRLF (pinned by
+  a new `.gitattributes`), every exit code is tested at run time, and a crash
+  reports its code instead of closing the window.
+- **A crash in Start.sh closed the window on its own error message.** `set -e`
+  aborted the script the moment `app.py` exited non-zero, so the "Press Enter to
+  exit" that existed to keep the failure on screen was unreachable in the one
+  case it was for. Ctrl+C (130) still exits without asking for a keypress. The
+  script also only *assigned* `HOST`/`PORT` rather than exporting them, so the
+  port printed in the banner and the port the hub bound were two independent
+  defaults that agreed by coincidence; both are now exported, and a test pins
+  them to `app.py`'s.
+- **"Remove device" left the removed probe holding an alarm forever.** The alert
+  monitor copies each probe's state forward every cycle and only revises probes
+  that reported — deliberate, since that is what keeps a breach held while a
+  probe is silent. But a deleted probe never reports again, so `HELD` went on
+  publishing `high` for a device that no longer existed, and re-adding the same
+  id started it already in breach. State is now dropped on the monitor's hourly
+  sweep for probes with **no rows at all**; a merely silent probe keeps its open
+  incident.
 - **Multi-site forwarding respected a row limit but not the receiver's byte
   limit.** `/api/ingest_csv` refuses a body over 64 KB, and a row count cannot
   honour a byte budget: 500 readings — the shipped default — encode to ~62 KB of

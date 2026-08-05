@@ -68,8 +68,11 @@ if [[ -f "$REQ_FILE" ]]; then
 fi
 
 # ── 3. Resolve host / port ───────────────────────────────────────────────────
-: "${HOST:=0.0.0.0}"
-: "${PORT:=8088}"
+# EXPORTED, not just assigned. `: "${PORT:=8088}"` sets a shell variable that
+# app.py never sees, so the banner below and the port the hub actually binds
+# were two independent defaults that happened to agree — until one moved.
+export HOST="${HOST:-0.0.0.0}"
+export PORT="${PORT:-8088}"
 
 # ── 4. Open browser automatically via Python's webbrowser module ─────────────
 export OPEN_BROWSER=1
@@ -77,15 +80,26 @@ export OPEN_BROWSER=1
 # ── 5. Start the hub ─────────────────────────────────────────────────────────
 echo ""
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║  Temperature Hub is starting…                           ║"
+echo "║  Setpoint Hub is starting…                              ║"
 echo "║  Open http://localhost:$PORT in your browser.          ║"
 echo "║  Press Ctrl+C to stop.                                  ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 echo ""
 
-"$PYTHON_EXE" "$APP_DIR/app.py"
+# `set -e` would abort the script the moment app.py exits non-zero, so the
+# pause below never ran and a crash message vanished with the window on anyone
+# who launched this by double-clicking. Take the exit code by hand instead.
+exit_code=0
+"$PYTHON_EXE" "$APP_DIR/app.py" || exit_code=$?
 
-# Optional pause when run interactively
-if [[ -t 0 ]]; then
-  read -r -p "Press Enter to exit..."
+# 130 is Ctrl+C — the normal way to stop the hub, not a fault, and not worth
+# making someone press a key for.
+if [[ "$exit_code" -ne 0 && "$exit_code" -ne 130 ]]; then
+  echo ""
+  echo "[ERROR] The hub stopped with exit code $exit_code."
+  echo "        The lines above say why. logs/hub.log has the full record."
+  if [[ -t 0 ]]; then
+    read -r -p "Press Enter to exit..."
+  fi
 fi
+exit "$exit_code"

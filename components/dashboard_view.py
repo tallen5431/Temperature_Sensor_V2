@@ -9,7 +9,7 @@ from dash import Input, Output, State, dcc, html, no_update
 
 from core.storage import threshold_breach
 from core.status import (probe_fresh_window as _probe_fresh_window,
-                         reporting_probe_ids, ONLINE_TIMEOUT_SEC)
+                         probe_state, reporting_probe_ids, ONLINE_TIMEOUT_SEC)
 from core.demo import has_demo_data, load_demo_data, clear_demo_data
 from core import units
 
@@ -731,25 +731,47 @@ def build_probe_cards(db, cfg, temp_unit, focus_probe="all", site="all"):
         except Exception:
             pass
         thr = thresholds.get(pid, thresholds.get("default", {})) or {}
-        breach = threshold_breach(t_c, thr.get("min"), thr.get("max"))
-        if age is not None and age > _probe_fresh_window(cfg, pid):
-            color, badge = "secondary", "● stale"
-        elif breach == "high":
+        stale = age is not None and age > _probe_fresh_window(cfg, pid)
+        held = HELD.get(pid) if HELD is not None else None
+        # Shared with the Devices grid (core.status.probe_state) so one probe
+        # cannot read grey "stale" here and red "ALARM" there at the same moment,
+        # which is exactly what happened whenever a probe breached and then went
+        # silent — each page reported one of the two facts and dropped the other.
+        state = probe_state(t_c, thr, stale=stale, held=held)
+        raw_breach = threshold_breach(t_c, thr.get("min"), thr.get("max"))
+        val_color = None                 # set only where it differs from `color`
+        if state["alarm"] and stale:
+            # The worst case the product has: out of range, and no longer
+            # reporting. Neither half may be dropped, and the number above it is
+            # old — say so rather than colouring it like a live reading.
+            color, badge = "danger", "▲ ALARM · NO SIGNAL"
+        elif raw_breach == "high":
             color, badge = "danger", "▲ HIGH"
-        elif breach == "low":
+        elif raw_breach == "low":
             color, badge = "info", "▼ LOW"
-        elif HELD is not None and HELD.get(pid) in ("high", "low"):
+        elif state["alarm"]:
             # Back inside the limit but still held by the monitor's hysteresis
             # deadband — not yet a clean OK.
             color, badge = "warning", "● recovering"
+        elif stale:
+            color, badge = "secondary", "● stale"
+        elif not state["watched"]:
+            # No limit is set, so nothing is checking this probe. The Devices
+            # grid already refused to call that "OK"; this card said OK in green
+            # for a probe with no alarm behind it at all. The badge is muted, not
+            # the reading — the number IS live and current, it is only the alarm
+            # that is missing, so greying the temperature would say the wrong
+            # thing about a working probe.
+            color, badge, val_color = "secondary", "● no alarm set", "body"
         else:
             color, badge = "success", "● OK"
+        val_color = val_color or color
         body = [
             html.Div([
                 html.Span(_friendly_name(cfg, pid), className="fw-bold text-truncate"),
                 dbc.Badge(badge, color=color, className="ms-2 flex-shrink-0"),
             ], className="d-flex justify-content-between align-items-center"),
-            html.H3(_fmt(t_c, temp_unit), className=f"fw-bold text-{color} my-1"),
+            html.H3(_fmt(t_c, temp_unit), className=f"fw-bold text-{val_color} my-1"),
             html.Small(_age_text(age), className="text-muted"),
         ]
         # Which building this probe is in. Present only on a hub that another hub

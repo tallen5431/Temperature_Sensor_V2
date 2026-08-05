@@ -56,6 +56,65 @@ def probe_fresh_window(cfg, probe_id) -> float:
     return max(base, interval * STALE_INTERVAL_MULTIPLIER)
 
 
+def probe_state(temp_c, thresholds, *, stale: bool = False,
+                held=None) -> Dict[str, Any]:
+    """One verdict on "how is this probe doing?", shared by every surface.
+
+    The Dashboard cards and the Devices grid each derived this independently and
+    reached OPPOSITE answers for the same probe. Given a probe that is both in
+    breach and silent, the Dashboard tested staleness first and rendered a grey
+    "stale" (dropping the alarm); the Devices grid tested the breach first and
+    rendered a red "ALARM" (dropping the silence). So one page showed a calm grey
+    card and the other a red one, for one probe, at the same moment.
+
+    That combination is the most urgent state this product has: the temperature
+    went wrong *and* you have lost sight of it. Neither page reported it in full,
+    and the reading either page displayed was hours old with nothing saying so.
+
+    Both facts are independent, so both are returned:
+
+    ``alarm``    ``'high'``/``'low'`` when the probe is outside its limits — from
+                 the raw reading, or from ``held`` (the monitor's hysteresis
+                 deadband) when the reading has come back inside but has not yet
+                 cleared it.
+    ``stale``    the caller's freshness verdict, passed straight through so this
+                 stays pure (see :func:`probe_fresh_window` for the rule).
+    ``watched``  whether any limit is set at all. Unwatched is not healthy: it
+                 means nothing is checking this probe.
+    ``severity`` the worst of the above, for colour. A breach is ``danger`` even
+                 when the probe has also gone silent; silent-or-unwatched is
+                 ``secondary`` (both mean "this hub does not know"), and only a
+                 fresh reading inside limits it is actually being held to earns
+                 ``success``.
+
+    Rendering stays with each surface — the two pages speak deliberately
+    different vocabularies ("▲ HIGH" vs "ALARM") — but they can no longer
+    disagree about the facts underneath.
+    """
+    lo = (thresholds or {}).get("min")
+    hi = (thresholds or {}).get("max")
+    watched = lo is not None or hi is not None
+    alarm = None
+    if temp_c is not None:
+        try:
+            if hi is not None and float(temp_c) > float(hi):
+                alarm = "high"
+            elif lo is not None and float(temp_c) < float(lo):
+                alarm = "low"
+        except (TypeError, ValueError):
+            alarm = None
+    if alarm is None and held in ("high", "low"):
+        alarm = held
+    if alarm is not None:
+        severity = "danger"
+    elif stale or not watched:
+        severity = "secondary"
+    else:
+        severity = "success"
+    return {"alarm": alarm, "stale": bool(stale), "watched": watched,
+            "severity": severity}
+
+
 def reporting_probe_ids(cfg, db, now: float | None = None,
                         site: str | None = None) -> set:
     """Set of probe ids whose most recent DB reading is within their own fresh

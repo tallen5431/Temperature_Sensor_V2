@@ -12,9 +12,22 @@ from core.units import c_to_f
 
 DEMO_PREFIX = "DEMO-"
 
+# Each demo probe carries the alarm range a real one in that role would be held
+# to. Without them the demo showed two probes reading normally and nothing
+# checking either — no alarm range on the Devices cards, and (since the hub
+# stopped calling an unwatched probe "OK") two grey "no alarm set" badges as the
+# first thing anyone saw. Thresholds make the demo show the product instead of a
+# thermometer: the range, a green OK earned against it, and the alerting the hub
+# exists for. ``clear_demo_data`` strips them again with everything else DEMO-.
 _DEMO_PROBES = {
-    "DEMO-Fridge": {"name": "Demo Fridge", "base": 4.0, "amp": 1.2},
-    "DEMO-Room":   {"name": "Demo Room",   "base": 21.5, "amp": 1.8},
+    # The swing is deliberately inside the band. At ±1.2 the fridge crossed 5 °C
+    # twice a cycle, so the demo chart showed a line poking over its own limit
+    # with no event recorded against it (the monitor only ever evaluates the
+    # newest reading) — which reads as alerting that missed an excursion.
+    "DEMO-Fridge": {"name": "Demo Fridge", "base": 4.0, "amp": 0.8,
+                    "min": 1.0, "max": 5.0},          # food-safe fridge band
+    "DEMO-Room":   {"name": "Demo Room",   "base": 21.5, "amp": 1.8,
+                    "min": 18.0, "max": 25.0},        # comfortable room
 }
 
 
@@ -39,6 +52,7 @@ def load_demo_data(db, cfg, hours: int = 24, step_min: int = 5) -> int:
     n_points = max(1, int(hours * 60 / step_min))
     rows = 0
     names = dict(cfg.get("probe_names", {}) or {})
+    thresholds = dict(cfg.get("alert_thresholds", {}) or {})
     for pid, spec in _DEMO_PROBES.items():
         for i in range(n_points):
             # newest point lands at ~now so demo probes read as live, not stale
@@ -48,7 +62,8 @@ def load_demo_data(db, cfg, hours: int = 24, step_min: int = 5) -> int:
                       round(c_to_f(c), 2), pid)
             rows += 1
         names[pid] = spec["name"]
-    cfg.update({"probe_names": names})
+        thresholds[pid] = {"min": spec["min"], "max": spec["max"]}
+    cfg.update({"probe_names": names, "alert_thresholds": thresholds})
     return rows
 
 

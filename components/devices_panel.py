@@ -6,7 +6,7 @@ from dash import html, dcc, Output, Input, State, no_update, ALL
 import dash_bootstrap_components as dbc
 
 from core.probes import discovered_probes, probe_address
-from core.status import probe_fresh_window
+from core.status import probe_fresh_window, probe_state
 from core.metrics import LATEST
 from core.alerts import HELD
 from core import units
@@ -332,15 +332,25 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                 # --- the reading, which is why anyone opens this page ---------
                 t_c = info.get('temperature_c')
                 thr = (cfg.get('alert_thresholds', {}) or {}).get(probe_id) or {}
-                watched = thr.get('min') is not None or thr.get('max') is not None
                 reading_row = None
                 if t_c is not None and pd.notna(t_c):
-                    breach = HELD.get(probe_id) if probe_id else None
-                    if breach in ('high', 'low'):
-                        val_cls, badge, badge_cls = 'text-danger', 'ALARM', 'text-danger'
-                    elif status_color != 'success':
+                    # One shared verdict (core.status.probe_state) so this card
+                    # and the Dashboard card can never contradict each other
+                    # about the same probe -- they used to, in opposite
+                    # directions, whenever a probe was BOTH in breach and silent.
+                    state = probe_state(t_c, thr,
+                                        stale=(status_color != 'success'),
+                                        held=HELD.get(probe_id) if probe_id else None)
+                    if state['alarm']:
+                        # Both facts, because a breach you have lost sight of is
+                        # worse than one you are watching -- not a reason to drop
+                        # the word ALARM, and not a reason to imply the number
+                        # beside it is live.
+                        badge = 'ALARM · NO SIGNAL' if state['stale'] else 'ALARM'
+                        val_cls, badge_cls = 'text-danger', 'text-danger'
+                    elif state['stale']:
                         val_cls, badge, badge_cls = 'text-muted', 'STALE', 'text-warning'
-                    elif not watched:
+                    elif not state['watched']:
                         # "OK" means "inside its limits". With no limits set,
                         # nothing is checking this probe, and calling it OK is a
                         # judgement the hub is not in a position to make -- it is

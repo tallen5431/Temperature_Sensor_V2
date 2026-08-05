@@ -26,6 +26,13 @@ temperature_log.csv
 # Application logs
 logs/
 
+# Test artifacts (a .coverage db full of one machine's absolute paths
+# was committed and churned on every run)
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+
 # PyInstaller build artifacts
 /build/
 /dist/
