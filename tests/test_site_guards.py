@@ -191,3 +191,25 @@ def test_every_assembled_tier_says_it_is_not_yet_for_sale():
                 f'"{name}" is an assembled unit priced on the page with badge '
                 f'"{badge}" and no availability qualifier. Assembled units may '
                 f"not be offered for sale until the FCC Part 15B SDoC is done.")
+
+
+SETUP_SITE = "setpoint.datumlaboratories.com"
+
+
+@pytest.mark.parametrize(
+    "name", sorted(p.name for p in (pathlib.Path(__file__).resolve().parent.parent
+                                    / "site").glob("*.html")))
+def test_every_page_can_reach_the_setup_site(name):
+    """setpoint.datumlaboratories.com is where a buyer downloads the launcher,
+    flashes the probe in the browser and follows the build guide -- the entire
+    post-purchase path.
+
+    A nav rebuild dropped the "Setup" link on the grounds that post-purchase
+    support did not need prime nav space, and the footer link that was supposed
+    to replace it never got added. The result shipped: ZERO links to the setup
+    site anywhere on the marketing site, so nobody who bought a kit could find
+    the flasher from datumlaboratories.com. Every page needs a route."""
+    html = (SITE / name).read_text(encoding="utf-8")
+    assert SETUP_SITE in html, (
+        f"{name} has no link to {SETUP_SITE} — kit buyers reach the flasher, "
+        f"the launcher download and the build guide through it.")

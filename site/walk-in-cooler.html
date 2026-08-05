@@ -179,9 +179,10 @@
      this and the base `display: none` apply with equal specificity, so source
      order decides — declaring this last is what makes the override win. */
   /* The hamburger has to take over BEFORE the desktop nav outgrows the row.
-     Eight page routes plus a CTA need ~1150px; at 720px the bar overflowed
-     horizontally through the whole 721-1100px band. */
-  @media (max-width: 1100px) { nav.top { display: none; } .mobile-nav { display: block; } }
+     Nine page routes plus a CTA need ~1250px (pilot.html is the widest, at
+     1240px). Below that the bar overflows horizontally, so the hamburger has
+     to take over there rather than at the old 720px. */
+  @media (max-width: 1280px) { nav.top { display: none; } .mobile-nav { display: block; } }
 
   .btn {
     display: inline-flex; align-items: center; gap: 8px;
@@ -386,6 +387,7 @@
       <a href="/field-test">Field test</a>
       <a href="/roi-calculator">ROI</a>
       <a href="/about">About</a>
+      <a href="https://setpoint.datumlaboratories.com">Setup</a>
       <a href="/services">Datum Labs</a>
       <a href="/pilot" class="btn ghost" style="padding:8px 14px;">Free pilot</a>
     </nav>
@@ -399,6 +401,7 @@
         <a href="/field-test">Field test</a>
         <a href="/roi-calculator">ROI</a>
         <a href="/about">About</a>
+        <a href="https://setpoint.datumlaboratories.com">Setup</a>
         <a href="/services">Datum Labs</a>
         <a href="/pilot" class="cta">Free pilot &rarr;</a>
       </nav>
@@ -624,6 +627,7 @@
         <a href="/roi-calculator">ROI calculator</a>
         <a href="/services">Services</a>
         <a href="/about">About</a>
+        <a href="https://setpoint.datumlaboratories.com">Setup &amp; flashing</a>
       </div>
     </div>
     <p class="fineprint">Setpoint is a Wi-Fi temperature sensor with threshold alarms. Probe accuracy is &plusmn;0.5&nbsp;&deg;C typical from &minus;10 to +85&nbsp;&deg;C and &plusmn;2&nbsp;&deg;C outside that band, uncalibrated. The DIY kit ships as parts you assemble and flash yourself. Assembled units will ship on a pre-certified radio module once Part 15B testing is complete, and are not offered for sale before then. A temperature-logging aid &mdash; not a certified medical, food-safety, or life-safety device, and not a validated critical-control device. Use appropriate redundancy for critical applications. &copy; 2026 Datum Laboratories LLC.</p>

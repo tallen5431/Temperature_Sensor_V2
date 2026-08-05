@@ -146,9 +146,10 @@
      this and the base `display: none` apply with equal specificity, so source
      order decides — declaring this last is what makes the override win. */
   /* The hamburger has to take over BEFORE the desktop nav outgrows the row.
-     Eight page routes plus a CTA need ~1150px; at 720px the bar overflowed
-     horizontally through the whole 721-1100px band. */
-  @media (max-width: 1100px) { nav.top { display: none; } .mobile-nav { display: block; } }
+     Nine page routes plus a CTA need ~1250px (pilot.html is the widest, at
+     1240px). Below that the bar overflows horizontally, so the hamburger has
+     to take over there rather than at the old 720px. */
+  @media (max-width: 1280px) { nav.top { display: none; } .mobile-nav { display: block; } }
 
   .btn {
     display: inline-flex; align-items: center; gap: 8px;
@@ -342,6 +343,7 @@
       <a href="/field-test">Field test</a>
       <a href="/roi-calculator">ROI</a>
       <a href="/about">About</a>
+      <a href="https://setpoint.datumlaboratories.com">Setup</a>
       <a href="/services">Datum Labs</a>
       <a href="#book" class="btn ghost" style="padding:8px 14px;">Book the pilot</a>
     </nav>
@@ -355,6 +357,7 @@
         <a href="/field-test">Field test</a>
         <a href="/roi-calculator">ROI</a>
         <a href="/about">About</a>
+        <a href="https://setpoint.datumlaboratories.com">Setup</a>
         <a href="/services">Datum Labs</a>
         <a href="#book" class="cta">Book the pilot &rarr;</a>
       </nav>
@@ -512,6 +515,7 @@
         <a href="/field-test">Field test</a>
         <a href="/roi-calculator">ROI calculator</a>
         <a href="/about">About</a>
+        <a href="https://setpoint.datumlaboratories.com">Setup &amp; flashing</a>
       </div>
     </div>
     <p class="fineprint">Pilot units are supplied as <b>loaner evaluation equipment</b> and remain the property of Datum Labs; they are not sold. Setpoint is a Wi-Fi temperature sensor with threshold alarms and a temperature-logging aid &mdash; not a certified medical, food-safety or life-safety device, not a validated critical-control device, and not certified to EN&nbsp;12830 or any equivalent. Probe accuracy is &plusmn;0.5&nbsp;&deg;C typical from &minus;10 to +85&nbsp;&deg;C and &plusmn;2&nbsp;&deg;C outside that band, uncalibrated. It does not replace required manual checks or official records. &copy; 2026 Datum Laboratories LLC.</p>

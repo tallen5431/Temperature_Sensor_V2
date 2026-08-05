@@ -183,9 +183,10 @@
      this and the base `display: none` apply with equal specificity, so source
      order decides — declaring this last is what makes the override win. */
   /* The hamburger has to take over BEFORE the desktop nav outgrows the row.
-     Eight page routes plus a CTA need ~1150px; at 720px the bar overflowed
-     horizontally through the whole 721-1100px band. */
-  @media (max-width: 1100px) { nav.top { display: none; } .mobile-nav { display: block; } }
+     Nine page routes plus a CTA need ~1250px (pilot.html is the widest, at
+     1240px). Below that the bar overflows horizontally, so the hamburger has
+     to take over there rather than at the old 720px. */
+  @media (max-width: 1280px) { nav.top { display: none; } .mobile-nav { display: block; } }
 
   .btn {
     display: inline-flex; align-items: center; gap: 8px;
@@ -363,6 +364,7 @@
       <a href="/field-test">Field test</a>
       <a href="/roi-calculator">ROI</a>
       <a href="/about">About</a>
+      <a href="https://setpoint.datumlaboratories.com">Setup</a>
       <a href="/services">Datum Labs</a>
       <a href="#kit" class="btn ghost" style="padding:8px 14px;">DIY kit $39</a>
     </nav>
@@ -376,6 +378,7 @@
         <a href="/field-test">Field test</a>
         <a href="/roi-calculator">ROI</a>
         <a href="/about">About</a>
+        <a href="https://setpoint.datumlaboratories.com">Setup</a>
         <a href="/services">Datum Labs</a>
         <a href="#kit" class="cta">DIY kit $39 &rarr;</a>
       </nav>
@@ -703,6 +706,7 @@
         <a href="/replacement-parts">Replacement parts</a>
         <a href="/about">About</a>
         <a href="#reserve">Reserve</a>
+        <a href="https://setpoint.datumlaboratories.com">Setup &amp; flashing</a>
       </div>
     </div>
     <p class="fineprint">Setpoint is a Wi-Fi temperature sensor with threshold alarms. The DIY kit ships as parts you assemble and flash yourself. Assembled units will ship on a pre-certified radio module once Part 15B testing is complete, and are not offered for sale before then. Not a certified medical, food-safety, or life-safety device — use appropriate redundancy for critical applications. Specifications describe rev-2 prototype hardware and may change before general availability. © 2026 Datum Laboratories LLC.</p>
