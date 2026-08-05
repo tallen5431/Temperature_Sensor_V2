@@ -990,6 +990,19 @@ class Database:
     _FRIENDLY_HEADERS = ["date", "time", "probe", "temperature_c", "temperature_f",
                          "probe_id", "timestamp_utc"]
 
+    def has_humidity(self) -> bool:
+        """Whether ANY stored reading carries humidity.
+
+        Gates the humidity/VPD columns on the spreadsheet exports the same way
+        ``sites()`` gates the site column: present when the hub actually holds
+        the data, absent otherwise, so a plain temperature deployment's export
+        is byte-identical to what it has always been. Single indexed EXISTS —
+        it does not scan.
+        """
+        row = self._conn().execute(
+            "SELECT 1 FROM readings WHERE humidity_pct IS NOT NULL LIMIT 1").fetchone()
+        return row is not None
+
     def export_friendly_csv(self, file_obj, name_map: Optional[dict] = None,
                             window_seconds: Optional[int] = None,
                             probe_id: Optional[str] = None,
@@ -1006,7 +1019,10 @@ class Database:
           is imported as text and won't.
         * ``probe`` shows the friendly name set in the dashboard (``name_map``),
           with the raw ``probe_id`` kept alongside for disambiguation.
-        * the unused ``humidity_pct``/``vpd_kpa`` columns are dropped as noise.
+        * ``humidity_pct``/``vpd_kpa`` appear only when the hub actually holds
+          them. They used to be dropped unconditionally while the docstring said
+          "unused", so a grow deployment — the niche those columns exist for —
+          lost humidity and VPD from the one export a non-technical user opens.
         * ``timestamp_utc`` is retained (full precision) so the exact,
           machine-independent instant is never lost.
         """
@@ -1017,12 +1033,15 @@ class Database:
         # it matters MORE here — this variant leads with the friendly name, and
         # six stores all calling a probe "Walk-in" is the ordinary case.
         multi = bool(self.sites())
+        humid = self.has_humidity()
         writer = _csv.writer(file_obj)
-        writer.writerow(self._FRIENDLY_HEADERS + (["site"] if multi else []))
+        writer.writerow(self._FRIENDLY_HEADERS
+                        + (["humidity_pct", "vpd_kpa"] if humid else [])
+                        + (["site"] if multi else []))
         n = 0
         for r in conn.execute(
-            f"SELECT ts, epoch, temperature_c, temperature_f, probe_id, site "
-            f"FROM readings {where} ORDER BY epoch ASC",
+            f"SELECT ts, epoch, temperature_c, temperature_f, probe_id, site, "
+            f"humidity_pct, vpd_kpa FROM readings {where} ORDER BY epoch ASC",
             params,
         ):
             d, t = self._local_date_time(r["ts"], r["epoch"])
@@ -1031,6 +1050,9 @@ class Database:
             row = [d.isoformat(), t.isoformat(), _csv_safe(friendly),
                    f"{r['temperature_c']:.3f}", f"{r['temperature_f']:.3f}",
                    _csv_safe(pid), self._utc_string(r["epoch"])]
+            if humid:
+                row.append("" if r["humidity_pct"] is None else f"{r['humidity_pct']:.2f}")
+                row.append("" if r["vpd_kpa"] is None else f"{r['vpd_kpa']:.3f}")
             if multi:
                 row.append(_csv_safe(r["site"] or "(this hub)"))
             writer.writerow(row)
@@ -1081,8 +1103,13 @@ class Database:
         # column widths have to track it, or the dropdowns stop one column short
         # of the data and the new column renders at default width.
         multi = bool(self.sites())
-        headers = self._FRIENDLY_HEADERS + (["site"] if multi else [])
-        widths = [12, 11, 22, 15, 15, 20, 26] + ([16] if multi else [])
+        humid = self.has_humidity()   # same gate as export_friendly_csv
+        headers = (self._FRIENDLY_HEADERS
+                   + (["humidity_pct", "vpd_kpa"] if humid else [])
+                   + (["site"] if multi else []))
+        widths = ([12, 11, 22, 15, 15, 20, 26]
+                  + ([14, 12] if humid else [])
+                  + ([16] if multi else []))
         for i, w in enumerate(widths, start=1):
             ws.column_dimensions[get_column_letter(i)].width = w
         # Filter dropdowns over the whole populated table (header + data rows).
@@ -1100,8 +1127,8 @@ class Database:
         where, params = self._export_where(window_seconds, probe_id, start_epoch, end_epoch)
         n = 0
         for r in conn.execute(
-            f"SELECT ts, epoch, temperature_c, temperature_f, probe_id, site "
-            f"FROM readings {where} ORDER BY epoch ASC",
+            f"SELECT ts, epoch, temperature_c, temperature_f, probe_id, site, "
+            f"humidity_pct, vpd_kpa FROM readings {where} ORDER BY epoch ASC",
             params,
         ):
             d, t = self._local_date_time(r["ts"], r["epoch"])
@@ -1117,6 +1144,13 @@ class Database:
             f_cell.number_format = "0.000"
             row = [date_cell, time_cell, _xlsx_safe(friendly),
                    c_cell, f_cell, _xlsx_safe(pid), self._utc_string(r["epoch"])]
+            if humid:
+                # Numbers, not text: a grower filtering or charting VPD in Excel
+                # needs real numeric cells.
+                for val, fmt in ((r["humidity_pct"], "0.00"), (r["vpd_kpa"], "0.000")):
+                    cell = WriteOnlyCell(ws, value=None if val is None else float(val))
+                    cell.number_format = fmt
+                    row.append(cell)
             if multi:
                 row.append(_xlsx_safe(r["site"] or "(this hub)"))
             ws.append(row)

@@ -419,7 +419,8 @@ def test_window_df_focus_stride_uses_focused_probe_count(db):
 
 
 def test_export_friendly_csv_shape(db):
-    db.append("2026-07-21T22:45:36.267", -18.5, -1.3, "Setpoint-000079", humidity=55.0)
+    """A plain temperature deployment's export is exactly what it always was."""
+    db.append("2026-07-21T22:45:36.267", -18.5, -1.3, "Setpoint-000079")
     buf = io.StringIO()
     n = db.export_friendly_csv(buf, name_map={"Setpoint-000079": "Chest Freezer"})
     assert n == 1
@@ -429,12 +430,35 @@ def test_export_friendly_csv_shape(db):
     # date and time are split into separate, spreadsheet-parseable columns
     assert cols[0] == "2026-07-21"
     assert cols[1] == "22:45:36"
-    # friendly name is used, raw id kept alongside, humidity/vpd dropped entirely
+    # friendly name is used, raw id kept alongside
     assert cols[2] == "Chest Freezer"
     assert cols[5] == "Setpoint-000079"
     assert len(cols) == 7
+    # no humidity stored, so no humidity columns
     assert "humidity" not in lines[0] and "vpd" not in lines[0]
     # full-precision UTC instant is retained
+    assert cols[6] == "2026-07-21T22:45:36.267Z"
+
+
+def test_export_friendly_csv_keeps_humidity_when_the_hub_has_it(db):
+    """These columns were dropped unconditionally while the docstring said
+    "unused". They are not unused on a grow deployment -- the SHT4x variant is
+    the reason humidity and VPD are stored and charted at all -- so the ONE
+    export a non-technical customer opens in a spreadsheet silently lost the
+    data that niche buys the product for. Gated on the hub actually holding it,
+    the same way the site column is."""
+    # vpd is supplied here because db.append stores what it is given; the
+    # ingest path computes it (core.storage.compute_vpd) before calling in.
+    db.append("2026-07-21T22:45:36.267", 21.5, 70.7, "GROW-1", humidity=55.0, vpd=1.156)
+    buf = io.StringIO()
+    db.export_friendly_csv(buf, name_map={})
+    lines = buf.getvalue().splitlines()
+    assert lines[0].split(",")[-2:] == ["humidity_pct", "vpd_kpa"]
+    cols = lines[1].split(",")
+    assert len(cols) == 9
+    assert cols[7] == "55.00"
+    assert cols[8] == "1.156"
+    # the temperature columns are untouched by the addition
     assert cols[6] == "2026-07-21T22:45:36.267Z"
 
 
@@ -759,3 +783,32 @@ def test_latest_per_probe_still_drops_probes_outside_the_window(db):
     got = sorted(db.latest_per_probe(window_seconds=3600)["probe_id"])
     assert got == ["LIVE"]
     assert "RETIRED" in db.probe_ids()      # still known, just not recent
+
+
+def test_export_xlsx_keeps_humidity_and_keeps_the_filter_in_step(db):
+    """The xlsx shares the friendly export's shape, so it needs the same gate —
+    and its auto-filter and column widths have to track the extra columns, or
+    the dropdowns stop short of the data (the bug the `site` column already had
+    a comment about)."""
+    import openpyxl
+    db.append("2026-07-21T22:45:36.267", 21.5, 70.7, "GROW-1", humidity=55.0, vpd=1.156)
+    buf = io.BytesIO()
+    db.export_xlsx(buf)
+    ws = openpyxl.load_workbook(io.BytesIO(buf.getvalue())).active
+    headers = [c.value for c in next(ws.iter_rows(min_row=1, max_row=1))]
+    assert headers[-2:] == ["humidity_pct", "vpd_kpa"]
+    row = [c.value for c in next(ws.iter_rows(min_row=2, max_row=2))]
+    assert row[7] == 55.0 and row[8] == 1.156     # numbers, not text
+    assert ws.auto_filter.ref.startswith("A1:I"), ws.auto_filter.ref
+
+
+def test_export_xlsx_is_unchanged_without_humidity(db):
+    import openpyxl
+    db.append("2026-07-21T22:45:36.267", -18.5, -1.3, "F1")
+    buf = io.BytesIO()
+    db.export_xlsx(buf)
+    ws = openpyxl.load_workbook(io.BytesIO(buf.getvalue())).active
+    headers = [c.value for c in next(ws.iter_rows(min_row=1, max_row=1))]
+    assert headers == ["date", "time", "probe", "temperature_c", "temperature_f",
+                       "probe_id", "timestamp_utc"]
+    assert ws.auto_filter.ref.startswith("A1:G")
