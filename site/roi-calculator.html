@@ -231,7 +231,7 @@
           <div class="sub" id="r_pay_sub">then it protects that load every year after, for free</div>
         </div>
 
-        <p class="frame" id="r_frame">One prevented failure ≈ <b id="f_event">$2,100</b>. Setpoint is <span class="g" id="f_cost">$267</span> once — so the <b>first</b> cooler it saves more than pays for the whole system.</p>
+        <p class="frame" id="r_frame">One prevented failure ≈ <b id="f_event">$2,100</b><span id="f_mid">. Setpoint is </span><span class="g" id="f_cost">$267</span><span id="f_tail"> once — so the <b>first</b> cooler it saves more than pays for the whole system.</span></p>
       </div>
 
       <div class="foot">
@@ -290,13 +290,18 @@
 
     $("f_event").textContent = usd0.format(Math.round(perEvent));
     $("f_cost").textContent = usd0.format(cost);
-    var frame = $("r_frame");
+    // Only the connective text differs between the two cases, so update THAT and
+    // leave #f_event / #f_cost in place. Rewriting #r_frame with innerHTML used to
+    // delete id="f_cost" on the first render; the next call then threw on
+    // $("f_cost").textContent above, so every later update died there and this
+    // sentence froze at its page-load numbers while the payback figures above it
+    // kept moving — two different costs on screen at once.
     if (perEvent >= cost) {
-      frame.innerHTML = 'One prevented failure ≈ <b id="f_event">' + usd0.format(Math.round(perEvent)) +
-        '</b>. Setpoint is <span class="g">' + usd0.format(cost) + '</span> once — so the <b>first</b> cooler it saves more than pays for the whole system.';
+      $("f_mid").textContent = ". Setpoint is ";
+      $("f_tail").innerHTML = " once — so the <b>first</b> cooler it saves more than pays for the whole system.";
     } else {
-      frame.innerHTML = 'One prevented failure ≈ <b>' + usd0.format(Math.round(perEvent)) +
-        '</b>, against a one-time <span class="g">' + usd0.format(cost) + '</span> — and it keeps watching every cooler, every night, after that.';
+      $("f_mid").textContent = ", against a one-time ";
+      $("f_tail").innerHTML = " — and it keeps watching every cooler, every night, after that.";
     }
   }
 
