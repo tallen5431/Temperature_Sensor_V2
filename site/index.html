@@ -63,7 +63,7 @@
     --faint: #69727A;
     --line: #DEE2DE;
     --line-strong: #C9CFCA;
-    --signal: #0C7C90;
+    --signal: #0B7689; --on-signal: #FFFFFF;
     --signal-soft: #E2F1F4;
     --warn: #C7860F;
     --cool: #1B8298;
@@ -72,6 +72,10 @@
     --screen-bg: #0B1418;
     --screen-grid: rgba(120,150,160,0.10);
     --screen-ink: #E7F0F1;
+    /* The device mock is a dark screen in BOTH themes, so it cannot use
+       --signal: that token is tuned for light backgrounds and measures 3.5:1
+       here. 7.4:1 on --screen-bg. */
+    --screen-accent: #17B3CC;
     --screen-slate: #7E939A;
     --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     --font-mono: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Menlo, Consolas, monospace;
@@ -85,10 +89,10 @@
       --raised: #18242F;
       --ink: #E9F1F7;
       --slate: #9DB0BE;
-      --faint: #748897;
+      --faint: #7A8D9B;
       --line: #22323F;
       --line-strong: #2F4454;
-      --signal: #17B3CC;
+      --signal: #17B3CC; --on-signal: #04222A;
       --signal-soft: rgba(23,179,204,.14);
       --warn: #EFB02E;
       --cool: #38B6D9;
@@ -99,12 +103,12 @@
   :root[data-theme="light"] {
     --paper: #F5F6F4; --surface: #FFFFFF; --raised: #FBFCFA; --ink: #12181C;
     --slate: #59636B; --faint: #69727A; --line: #DEE2DE; --line-strong: #C9CFCA;
-    --signal: #0C7C90; --signal-soft: #E2F1F4; --warn: #C7860F; --cool: #1B8298; --ok: #2C9A66; --alert: #D24A43;
+    --signal: #0B7689; --on-signal: #FFFFFF; --signal-soft: #E2F1F4; --warn: #C7860F; --cool: #1B8298; --ok: #2C9A66; --alert: #D24A43;
   }
   :root[data-theme="dark"] {
     --paper: #0B131B; --surface: #131F2B; --raised: #18242F; --ink: #E9F1F7;
-    --slate: #9DB0BE; --faint: #748897; --line: #22323F; --line-strong: #2F4454;
-    --signal: #17B3CC; --signal-soft: rgba(23,179,204,.14); --warn: #EFB02E; --cool: #38B6D9; --ok: #2FBF71; --alert: #F05A54;
+    --slate: #9DB0BE; --faint: #7A8D9B; --line: #22323F; --line-strong: #2F4454;
+    --signal: #17B3CC; --on-signal: #04222A; --signal-soft: rgba(23,179,204,.14); --warn: #EFB02E; --cool: #38B6D9; --ok: #2FBF71; --alert: #F05A54;
   }
 
   * { box-sizing: border-box; }
@@ -193,7 +197,7 @@
   .btn:hover { transform: translateY(-1px); }
   .btn:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
   .btn.ghost { background: transparent; color: var(--ink); border-color: var(--line-strong); }
-  .btn.signal { background: var(--signal); border-color: var(--signal); color: #04222A; }
+  .btn.signal { background: var(--signal); border-color: var(--signal); color: var(--on-signal); }
 
   /* ---------- hero ---------- */
   .hero { padding: 78px 0 70px; }
@@ -232,7 +236,7 @@
   .readout .val { font-family: var(--font-mono); font-size: 58px; font-weight: 600; color: var(--screen-ink); letter-spacing: -0.03em; line-height: 1; font-variant-numeric: tabular-nums; }
   .readout .unit { font-family: var(--font-mono); font-size: 22px; color: var(--screen-slate); }
   .subreadout { font-family: var(--font-mono); font-size: 12px; color: var(--screen-slate); letter-spacing: 0.04em; display: flex; gap: 16px; margin-bottom: 12px; }
-  .subreadout b { color: var(--signal); font-weight: 600; }
+  .subreadout b { color: var(--screen-accent); font-weight: 600; }
   canvas#trace { display: block; width: 100%; height: 168px; }
   .device-foot { display: flex; justify-content: space-between; margin-top: 10px; font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.06em; color: var(--screen-slate); text-transform: uppercase; }
 
@@ -663,7 +667,7 @@
     <div class="wrap">
       <div class="waitlist">
         <h2>Get an assembled unit first.</h2>
-        <p>The DIY kit is <a href="https://www.tindie.com/products/datumlaboratories/setpoint-diy-kit-local-wi-fi-temperature-monitor/" target="_blank" rel="noopener" style="color:var(--signal);text-decoration:underline;">live on Tindie now</a>. Pre-built, pre-flashed <b>Setpoint USB &amp; Battery</b> units are not on sale yet — they ship once FCC Part 15B testing is complete. Join the list and I'll tell you when, with launch pricing.</p>
+        <p>The DIY kit is <a href="https://www.tindie.com/products/datumlaboratories/setpoint-diy-kit-local-wi-fi-temperature-monitor/" target="_blank" rel="noopener" style="color:var(--paper);text-decoration:underline;">live on Tindie now</a>. Pre-built, pre-flashed <b>Setpoint USB &amp; Battery</b> units are not on sale yet — they ship once FCC Part 15B testing is complete. Join the list and I'll tell you when, with launch pricing.</p>
         <form class="wl-form" id="wlForm" novalidate>
           <label class="vh" for="wlEmail">Email address</label>
           <input type="email" id="wlEmail" placeholder="you@example.com" required>
