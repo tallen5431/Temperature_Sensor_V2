@@ -9,6 +9,7 @@ from core.probes import discovered_probes, probe_address
 from core.status import probe_fresh_window, probe_state
 from core.metrics import LATEST
 from core.alerts import HELD
+from core.storage import UNIDENTIFIED_PROBE_ID
 from core import units
 
 log = logging.getLogger("hub.devices")
@@ -394,6 +395,18 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                 card_body_children = [*title_elements]
                 if reading_row is not None:
                     card_body_children.append(reading_row)
+                # The catch-all card. Readings arrive here when the sender does
+                # not identify itself, which is a configuration mistake at the
+                # other end — so the card has to say what it is, or it reads as a
+                # mystery device on the operator's network.
+                if probe_id == UNIDENTIFIED_PROBE_ID:
+                    card_body_children.append(dbc.Alert(
+                        ['Something is sending readings without a probe ID, so '
+                         'they are all collected here. A Setpoint probe always '
+                         'sends one — this is usually a script or a third-party '
+                         'integration missing the ',
+                         html.Code('X-Probe-ID'), ' header.'],
+                        color='warning', className='py-2 px-2 small mb-2'))
                 card_body_children.append(html.Div([
                     html.Div([html.Span(k, className='probe-fact-k'),
                               html.Span(v, className='probe-fact-v')],

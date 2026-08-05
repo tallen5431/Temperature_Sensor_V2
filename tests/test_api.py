@@ -568,3 +568,59 @@ def test_backfill_logs_an_old_breach_but_not_the_newest_row(tmp_path):
     ]})
     q_events = [e for e in db.list_events(limit=20) if e["probe_id"] == "Q"]
     assert q_events == [], f"newest-row breach must be left to the alert engine, got {q_events}"
+
+
+def test_ingest_without_a_probe_id_lands_where_the_operator_can_see_it(client):
+    """The end-to-end half of the storage-level guard: a reading posted with no
+    X-Probe-ID and no body probe_id used to be stored under "" and then hidden by
+    every surface that renders probes, with the API still answering ok:true."""
+    from core.storage import UNIDENTIFIED_PROBE_ID
+    r = client.post("/api/ingest", json={"temperature_c": 4.2})
+    assert r.status_code == 200 and r.get_json()["ok"] is True
+    listed = client.get("/api/probes").get_json()
+    probes = listed if isinstance(listed, list) else listed.get("probes", [])
+    ids = [p.get("probe_id") or p.get("name") for p in probes]
+    assert UNIDENTIFIED_PROBE_ID in ids, (
+        f"the reading was accepted but no probe appeared for it: {ids}")
+
+
+def test_bulk_ingest_without_a_probe_id_lands_the_same_place(client):
+    from core.storage import UNIDENTIFIED_PROBE_ID
+    r = client.post("/api/ingest_csv",
+                    json={"readings": [{"temperature_c": 6.0,
+                                        "timestamp": "2026-08-05T10:00:00"},
+                                       {"temperature_c": 6.5,
+                                        "timestamp": "2026-08-05T10:01:00"}]})
+    assert r.status_code == 200 and r.get_json()["accepted"] == 2
+    rows = client.get("/api/readings").get_json()["readings"]
+    assert {row["probe_id"] for row in rows} == {UNIDENTIFIED_PROBE_ID}
+
+
+def test_a_batch_reports_the_rows_it_could_not_even_parse(client):
+    """PROTOCOL.md §7 defines `rejected` as "rows the hub refused". Rows the
+    parser dropped on the way in — a JSON element that is not an object, a CSV
+    line truncated to fewer than four fields — were filtered out silently, so a
+    chunk that was partly thrown away came back as `rejected: 0`. A probe
+    draining a buffer its battery died mid-append was told every line was fine."""
+    r = client.post("/api/ingest_csv", json={"readings": [
+        {"temperature_c": 4.0, "timestamp": "2026-08-05T09:00:00"},
+        "not a reading", 42, None,
+    ]})
+    body = r.get_json()
+    assert body["accepted"] == 1
+    assert body["rejected"] == 3, f"three junk elements went unreported: {body}"
+
+
+def test_a_truncated_csv_line_is_reported_not_swallowed(client):
+    body = ("2026-08-05T09:00:00,4.0,39.2,P1\n"
+            "2026-08-05T09:01:00,4.1\n"            # truncated mid-write
+            "\n"                                    # blank padding: not a row
+            "2026-08-05T09:02:00,4.2,39.6,P1\n")
+    r = client.post("/api/ingest_csv", data=body, content_type="text/csv")
+    got = r.get_json()
+    assert got["accepted"] == 2
+    assert got["rejected"] == 1, f"the truncated line was swallowed: {got}"
+
+
+def test_a_wholly_unusable_body_is_still_a_400(client):
+    assert client.post("/api/ingest_csv", json={"readings": "nope"}).status_code == 400

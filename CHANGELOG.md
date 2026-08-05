@@ -80,6 +80,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A reading with no probe id was stored somewhere nobody could see it.**
+  `POST /api/ingest` without `X-Probe-ID` (or a body `probe_id` of junk) answered
+  `{"ok": true}` and filed the row under the empty string — which every UI
+  surface skips by design, which "remove device" refuses to touch, and which the
+  CSV export writes with a blank column. So an integrator who forgot the header
+  watched the readings total climb while no probe ever appeared, with nothing
+  anywhere saying why. The reading is still kept — a bad label is never a reason
+  to lose a temperature — but it is now filed under the reserved id
+  `unidentified`, which shows up as an ordinary probe that can be renamed or
+  removed. PROTOCOL.md §2 and §6.4 also disagreed with each other about this (one
+  said the hub rejects a malformed id, the other that it sanitizes and logs it
+  anyway); §6.4 was right and §2 now says so.
+- **A bulk ingest reported `rejected: 0` for a chunk it had partly thrown away.**
+  `/api/ingest_csv`'s parser dropped JSON elements that were not objects, and CSV
+  lines with fewer than four fields, before the counting loop ever saw them — so
+  the reply under-reported. That last shape is exactly what a probe buffer
+  truncated mid-append leaves behind, which is the one case where the number has
+  to be true: a probe draining a corrupted backlog was told every line was fine.
+  Both now count as `rejected`, as PROTOCOL.md §7 always said they did. Blank
+  lines are padding and still don't count.
 - **The Dashboard and the Devices grid gave opposite verdicts on the same
   probe.** Each derived probe condition independently. Given a probe that
   breached its limit and then stopped reporting, the Dashboard tested staleness

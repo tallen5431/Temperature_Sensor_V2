@@ -47,7 +47,9 @@ hostname  = probe_id + ".local."          e.g.  Setpoint-9A3F2C.local.
 ```
 
 - `probe_id` is stable for the life of the hardware.
-- `probe_id` MUST match `^[A-Za-z0-9_-]{1,32}$` (the hub rejects anything else — see §6).
+- `probe_id` MUST match `^[A-Za-z0-9_-]{1,32}$`. The hub does **not** reject a
+  value that fails it — a bad label is never a reason to lose a good temperature
+  — it sanitizes to that charset and files the reading anyway (see §6.4).
 - The **same** `probe_id` string appears in the mDNS TXT `id` key, in the
   `X-Probe-ID` ingest header, and in `/whoami`. These MUST be byte-for-byte equal.
 
@@ -334,8 +336,11 @@ Errors mirror `/api/ingest` (`401` unauthorized, `413` too large / > 1000 rows,
   buffer checkpoint on the `200` itself, not on `accepted`** — treating
   `accepted: 0` as failure would re-send the same chunk forever and never drain
   the backlog.
-- `rejected` — rows the hub refused (malformed, or outside the §6 range band).
-  These will never be accepted, so they must not block the checkpoint either.
+- `rejected` — rows the hub refused: outside the §6 range band, non-finite, or
+  structurally unusable (a JSON element that is not an object, a CSV line with
+  fewer than four fields — the shape a buffer truncated mid-append leaves
+  behind). These will never be accepted, so they must not block the checkpoint
+  either. Blank lines are padding, not rows, and are not counted.
 - `restamped` — rows whose own timestamp was implausibly far in the future (a
   probe whose clock drifted during the very outage that filled its buffer) and
   which the hub therefore receipt-stamped on arrival, spread 1 ms apart. A
@@ -393,8 +398,17 @@ The hub validates every reading before it touches the log:
 3. **Range:** celsius must satisfy `-60.0 ≤ t_c ≤ 150.0`, else `400`. This band
    rejects sensor fault codes (e.g. `85.0` power-on, `-127` disconnected) so they
    cannot poison dashboard statistics or the auto-scaled axis.
-4. **probe_id:** sanitized against `^[A-Za-z0-9_-]{1,32}$`. A value that fails the
-   regex is dropped to empty string (the reading is still logged, without an id).
+4. **probe_id:** sanitized against `^[A-Za-z0-9_-]{1,32}$` — disallowed characters
+   are stripped and the result truncated to 32. The reading is never rejected for
+   its id. If nothing valid remains (or none was sent at all), it is filed under
+   the reserved id **`unidentified`**, which appears on the dashboard and the
+   Devices page like any other probe, so a sender that is not identifying itself
+   is visible rather than silently invisible. It can be renamed or removed there.
+   *(Earlier hubs stored such a reading under the empty string, which every UI
+   surface skips and "remove device" cannot touch — the row existed, counted
+   toward the readings total and appeared in the CSV export, and no screen ever
+   showed it. Rows already stored that way are left alone; only new ingest is
+   affected.)*
 5. **Method:** `GET /api/ingest` returns `405`; only `POST` mutates the log. (A prior
    version accepted `GET`, letting a drive-by `<img>` poison the CSV — closed.)
 6. **Size:** bodies over **64 KiB** are rejected `413`.

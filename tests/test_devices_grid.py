@@ -129,3 +129,18 @@ def test_an_unmonitored_probe_is_not_called_ok(tmp_path):
     txt = _grid_text(tmp_path, rows=[("P1", 21.1)])
     assert "NO ALARM SET" in txt
     assert "OK" not in txt.replace("NO ALARM SET", "")
+
+
+def test_the_catch_all_card_explains_what_it_is(tmp_path):
+    """Readings with no probe id all land on one card. Without a word of
+    explanation that reads as an unidentified device on the operator's network,
+    when it is actually a sender at the other end missing a header."""
+    from core.storage import UNIDENTIFIED_PROBE_ID
+    txt = _grid_text(tmp_path, rows=[(UNIDENTIFIED_PROBE_ID, 4.2)])
+    assert "without a probe ID" in txt
+    assert "X-Probe-ID" in txt
+
+
+def test_an_ordinary_probe_gets_no_such_warning(tmp_path):
+    txt = _grid_text(tmp_path, rows=[("Setpoint-9A3F2C", 4.2)], dbname="ord.db")
+    assert "without a probe ID" not in txt

@@ -185,3 +185,38 @@ def test_compute_vpd_typical_and_extreme():
     # VPD is clamped non-negative and never divides by zero at extreme cold.
     assert compute_vpd(-250.0, 50.0) >= 0.0
     assert compute_vpd(100.0, 100.0) >= 0.0
+
+
+# --- a reading with no usable id ------------------------------------------
+
+def test_a_reading_with_no_usable_id_is_filed_somewhere_visible():
+    """PROTOCOL.md §6.4: such a reading "is still logged, without an id". It was
+    — under probe_id "", which every UI surface skips (`if not
+    str(pid).strip(): continue`) and which `delete_probe("")` refuses to touch.
+    The hub answered ok:true, counted the row in the readings total and wrote it
+    to the CSV export with a blank column, and showed it nowhere, with no way to
+    remove it. An integrator who forgot X-Probe-ID watched the counter climb and
+    no probe ever appear."""
+    from core.storage import UNIDENTIFIED_PROBE_ID, storage_probe_id
+    for junk in (None, "", "   ", "!!!", "///", "\x00"):
+        assert storage_probe_id(junk) == UNIDENTIFIED_PROBE_ID
+    assert UNIDENTIFIED_PROBE_ID.strip(), \
+        "the fallback id must be non-blank or the UI skips it exactly as before"
+    from core.storage import sanitize_probe_id
+    assert sanitize_probe_id(UNIDENTIFIED_PROBE_ID) == UNIDENTIFIED_PROBE_ID, \
+        "the fallback must survive sanitising, or a round trip loses it again"
+
+
+def test_a_real_id_is_untouched_by_the_fallback():
+    from core.storage import storage_probe_id
+    for pid in ("Setpoint-9A3F2C", "Walk-in", "freezer_2"):
+        assert storage_probe_id(pid) == pid
+
+
+def test_the_two_id_helpers_answer_different_questions():
+    """sanitize_probe_id says "what is this id, cleaned up?" — and must still be
+    able to answer "nothing", because callers use that to decide whether the
+    request supplied one at all. storage_probe_id says where the row goes."""
+    from core.storage import sanitize_probe_id, storage_probe_id
+    assert sanitize_probe_id("!!!") == ""
+    assert storage_probe_id("!!!") != ""

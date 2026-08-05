@@ -13,7 +13,7 @@ from core.units import c_to_f
 from core.secret_compare import constant_time_eq
 from core.storage import (normalize_payload, extract_humidity, compute_vpd,
                           sanitize_probe_id, sanitize_site, is_future_stamp,
-                          absolute_epoch)
+                          absolute_epoch, storage_probe_id)
 try:  # battery telemetry helper — may be absent on an older core.storage build
     from core.storage import extract_battery
 except ImportError:
@@ -208,7 +208,8 @@ def _batch_events(req) -> list:
 
 
 def _parse_batch(req):
-    """Parse a bulk-ingest body into a list of reading dicts, or None if unusable.
+    """Parse a bulk-ingest body into ``(rows, unparseable)``, or ``None`` if the
+    body itself is unusable.
 
     Two wire formats, both accepted so the probe sends whichever is cheapest:
       * ``text/csv`` (default) — the probe's on-flash buffer format, one reading
@@ -217,6 +218,14 @@ def _parse_batch(req):
       * ``application/json`` — ``{"readings": [ {..}, .. ]}`` or a bare array
         (handy for tests and other clients).
     Each element comes back as a dict ``normalize_payload`` understands.
+
+    ``unparseable`` is the count of elements/lines this dropped on the way — a
+    JSON element that is not an object, or a CSV line with fewer than four
+    fields. They used to be filtered out here and never counted, so the reply
+    said ``rejected: 0`` for a chunk it had partly thrown away, and PROTOCOL.md
+    §7 documents ``rejected`` as "rows the hub refused". The truncated-buffer
+    case this is for (a probe whose battery died mid-append) is precisely the one
+    where a operator needs the number to be true.
     """
     ctype = (req.headers.get("Content-Type") or "").lower()
     if "application/json" in ctype:
@@ -225,18 +234,21 @@ def _parse_batch(req):
             body = body.get("readings")
         if not isinstance(body, list):
             return None
-        return [r for r in body if isinstance(r, dict)]
+        rows = [r for r in body if isinstance(r, dict)]
+        return rows, len(body) - len(rows)
     rows = []
+    unparseable = 0
     for line in (req.get_data(as_text=True) or "").splitlines():
         line = line.strip()
         if not line:
-            continue
+            continue          # blank padding is not a dropped reading
         parts = line.split(",")
         if len(parts) < 4:
-            continue  # structurally corrupt line — skip
+            unparseable += 1  # structurally corrupt line — skip, but say so
+            continue
         rows.append({"timestamp": parts[0], "temperature_c": parts[1],
                      "temperature_f": parts[2], "probe_id": parts[3]})
-    return rows
+    return rows, unparseable
 
 
 def _hub_has_data(db) -> bool:
@@ -538,8 +550,10 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
             return probe_id
 
     def _store(data: dict, remote_addr: str, probe_id: str):
-        # Bound the probe id to a safe token before it reaches the DB / CSV / MQTT.
-        probe_id = sanitize_probe_id(probe_id)
+        # Bound the probe id to a safe token before it reaches the DB / CSV / MQTT,
+        # and give a reading with no usable id somewhere VISIBLE to land — storing
+        # it under "" filed it where no screen shows it and no button removes it.
+        probe_id = storage_probe_id(probe_id)
         ts, t_c, t_f = normalize_payload(data)
         # Apply per-probe calibration so the stored value is the corrected
         # temperature (DS18B20 sensors vary by up to ~0.5 °C).
@@ -654,9 +668,10 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
             return _deny_unauthorized()
         if request.content_length and request.content_length > MAX_INGEST_BYTES:
             return jsonify(ok=False, error="payload too large"), 413
-        rows = _parse_batch(request)
-        if rows is None:
+        parsed = _parse_batch(request)
+        if parsed is None:
             return jsonify(ok=False, error="unparseable batch body"), 400
+        rows, unparseable = parsed
         if len(rows) > MAX_BATCH_ROWS:
             return jsonify(ok=False, error="too many rows (max %d)" % MAX_BATCH_ROWS), 413
 
@@ -664,7 +679,11 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
         valid = []        # (ts, t_c, t_f, probe_id) tuples for bulk_insert
         newest = {}       # probe_id -> (ts, t_c): most-recent accepted reading
         worst = {}        # probe_id -> (kind, t_c, limit, ts): worst backlog breach
-        rejected = 0
+        # Rows the parser could not even shape into a reading count as refused
+        # too — they are exactly as un-storable as one that fails validation
+        # below, and reporting them as zero told a probe draining a truncated
+        # buffer that every line had been fine.
+        rejected = unparseable
         # Receipt-stamp bulk rows the hub must stamp itself, spread 1 ms apart.
         # Two cases need this, and both are silent data loss without it, because
         # every such row would otherwise land on the SAME millisecond and all but
@@ -690,7 +709,7 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
                     milliseconds=synth)).isoformat(timespec="milliseconds")
                 synth += 1
             try:
-                pid = sanitize_probe_id(row.get("probe_id") or header_pid)
+                pid = storage_probe_id(row.get("probe_id") or header_pid)
                 ts, t_c, t_f = normalize_payload(row)
             except (ValueError, KeyError, TypeError):
                 rejected += 1

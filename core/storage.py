@@ -40,11 +40,39 @@ def sanitize_probe_id(probe_id) -> str:
     """Coerce a probe id to a safe token: keep ``[A-Za-z0-9_-]``, cap at 32 chars.
 
     Valid ids (``Setpoint-9A3F2C``) pass through unchanged; junk is stripped.
-    Returns ``""`` if nothing valid remains (treated as an anonymous reading).
+    Returns ``""`` if nothing valid remains — see :func:`storage_probe_id` for
+    what an ingest path does with that.
     """
     if not probe_id:
         return ""
     return _PROBE_ID_STRIP.sub("", str(probe_id))[:32]
+
+
+# Where a reading with no usable id gets filed. PROTOCOL.md §6.4 says such a
+# reading "is still logged, without an id" — and it was, under probe_id "", which
+# every UI surface skips (`if not str(pid).strip(): continue`) and which
+# `delete_probe("")` refuses to touch. So the hub answered `{"ok": true}`, stored
+# the row, counted it in the readings total, wrote it to the CSV export with a
+# blank column, and showed it precisely nowhere, with no way to remove it. An
+# integrator who forgot X-Probe-ID watched the readings counter climb and no
+# probe ever appear.
+#
+# The reading is still kept — a bad label is never a reason to lose a
+# temperature, the same rule the rest of this module follows. It just gets an id
+# a human can see, name and delete, so a broken sender is a visible fact on the
+# dashboard instead of an invisible one in the file.
+UNIDENTIFIED_PROBE_ID = "unidentified"
+
+
+def storage_probe_id(probe_id) -> str:
+    """The id an ingest path should FILE a reading under.
+
+    :func:`sanitize_probe_id` answers "what is this id, cleaned up?" and is what
+    to use for comparing, looking up per-probe config, or deciding whether a
+    caller supplied one. This answers the different question of where the row
+    goes, and never returns empty.
+    """
+    return sanitize_probe_id(probe_id) or UNIDENTIFIED_PROBE_ID
 
 
 def sanitize_site(site) -> str:
