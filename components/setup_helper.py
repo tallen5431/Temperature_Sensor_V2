@@ -11,7 +11,7 @@ from __future__ import annotations
 import dash_bootstrap_components as dbc
 from dash import Input, Output, dcc, html
 
-from wifi_scan import SSIDWatcher
+from wifi_scan import SSIDWatcher, scanner_available
 
 # The watcher shells out to netsh/nmcli to look for the probe's setup SoftAP.
 # It is created lazily and only started the first time a user actually opens the
@@ -77,6 +77,7 @@ def register_setup_helper_callbacks(app):
         # so we can tell the user exactly which network to join instead of the
         # generic brand prefix.
         names = _watcher.matched()
+        hidden = {"pointerEvents": "none", "opacity": 0.5}
         if names:
             shown = ", ".join(names)
             join = ("join that network" if len(names) == 1
@@ -84,8 +85,32 @@ def register_setup_helper_callbacks(app):
             msg = (f"Found {shown} nearby — {join} from your computer, then click "
                    "the button below to open the probe's config page.")
             return msg, "success", f"Found: {shown}", {}
+
+        # "Not found" is a claim about the airwaves, and on a lot of real hubs
+        # this machine is in no position to make it: an always-on mini-PC is
+        # usually wired, macOS 14.4 removed the `airport` scanner outright, and
+        # Raspberry Pi OS Lite ships with neither nmcli nor iwlist. Reporting
+        # those as "not found" sent a customer off to power-cycle a probe that
+        # may well have been broadcasting the whole time.
+        if not scanner_available():
+            return (["This computer can't scan for Wi-Fi networks, so the hub "
+                     "can't tell you whether the probe's setup network is up. ",
+                     html.Strong("Setup still works: "),
+                     "look for a network named Setpoint-XXXXXX (matching the "
+                     "sticker on your unit) on your phone or laptop, join it, "
+                     "and open ", html.Code("http://192.168.4.1"), "."],
+                    "warning", "Wi-Fi scanning unavailable", hidden)
+        if _watcher.scanned and not _watcher.latest:
+            return (["The hub scanned and saw ", html.Strong("no Wi-Fi networks "
+                     "at all"), " — not just no Setpoint one. This machine most "
+                     "likely has no Wi-Fi adapter (a wired hub) or is not "
+                     "permitted to scan. Join the probe's Setpoint-XXXXXX "
+                     "network from your phone instead, then open ",
+                     html.Code("http://192.168.4.1"), "."],
+                    "warning", "No networks visible", hidden)
+
         label = "Setpoint-XXXXXX: not found"
         msg = ("Waiting for the probe's Setpoint-XXXXXX setup network… Power the probe "
                "with no saved Wi-Fi so it starts the setup network (its name matches "
                "the sticker on your unit). This page checks every few seconds.")
-        return msg, "secondary", label, {"pointerEvents": "none", "opacity": 0.5}
+        return msg, "secondary", label, hidden

@@ -80,7 +80,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **A reading with no probe id was stored somewhere nobody could see it.**
+- **"Set up a new probe" claimed the probe was not there on machines that could
+  not look.** The helper watches for the probe's `Setpoint-XXXXXX` setup network
+  and reported "Setpoint-XXXXXX: not found — power the probe with no saved
+  Wi-Fi…" whenever it saw nothing. But a hub with no way to scan returns exactly
+  the same empty result as one that scanned and found nothing, and that is not a
+  rare configuration: the hub is meant to live on an always-on mini-PC, which is
+  usually wired; macOS 14.4 removed the `airport` binary the mac path shells out
+  to; and Raspberry Pi OS Lite has neither `nmcli` nor `iwlist`. So a customer
+  was sent off to power-cycle a probe that may well have been broadcasting the
+  whole time, and never told the one thing that would have worked. The helper now
+  separates "I cannot scan", "I scanned and saw no networks at all" (a wired
+  machine) and "I scanned and your probe is not among them", and the first two
+  say to join the setup network from a phone and open `http://192.168.4.1`.
   `POST /api/ingest` without `X-Probe-ID` (or a body `probe_id` of junk) answered
   `{"ok": true}` and filed the row under the empty string — which every UI
   surface skips by design, which "remove device" refuses to touch, and which the

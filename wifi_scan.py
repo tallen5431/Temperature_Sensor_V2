@@ -7,7 +7,7 @@ Exposes:
   - SSIDWatcher: background refresher with latest set
 """
 from __future__ import annotations
-import subprocess, sys, threading, shutil, re
+import os, subprocess, sys, threading, shutil, re
 from typing import Set, List
 
 def _run(cmd: List[str]) -> str:
@@ -53,6 +53,42 @@ def _parse_iwlist(text: str) -> Set[str]:
     ssids: Set[str] = set(re.findall(r'ESSID:"([^"]+)"', text))
     return ssids
 
+_MACOS_AIRPORT = ("/System/Library/PrivateFrameworks/Apple80211.framework"
+                  "/Versions/Current/Resources/airport")
+
+
+def _macos_airport() -> str:
+    """Path to the macOS scanner, or "" if this Mac no longer has one.
+
+    Apple removed the `airport` binary in macOS 14.4 (Sonoma). On a newer Mac
+    there is nothing here to run, which is not the same as "no networks nearby"
+    — see :func:`scanner_available`.
+    """
+    if shutil.which("airport"):
+        return "airport"
+    return _MACOS_AIRPORT if os.path.exists(_MACOS_AIRPORT) else ""
+
+
+def scanner_available() -> bool:
+    """Can this machine scan for Wi-Fi networks at all?
+
+    Distinct from "did the scan find anything". A hub with no scanner returns an
+    empty set from :func:`scan_ssids` exactly like a hub that scanned and saw
+    nothing, and the setup helper used to report both as "Setpoint-XXXXXX: not
+    found" — telling a customer to go power-cycle a probe that was very possibly
+    already broadcasting, on a machine that could never have seen it.
+
+    It is not a rare case: the hub is meant to live on an always-on mini-PC,
+    which is usually wired; macOS 14.4 removed the scanner outright; and a
+    Raspberry Pi OS Lite install has neither nmcli nor iwlist by default.
+    """
+    if sys.platform.startswith("win"):
+        return bool(shutil.which("netsh"))
+    if sys.platform == "darwin":
+        return bool(_macos_airport())
+    return bool(shutil.which("nmcli") or shutil.which("iwlist"))
+
+
 def scan_ssids() -> Set[str]:
     if sys.platform.startswith("win"):
         out = _run(["netsh", "wlan", "show", "networks", "mode=Bssid"])
@@ -61,10 +97,8 @@ def scan_ssids() -> Set[str]:
         return set()
     # macOS
     if sys.platform == "darwin":
-        airport = "/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport"
-        if shutil.which("airport"):
-            airport = "airport"
-        out = _run([airport, "-s"])
+        airport = _macos_airport()
+        out = _run([airport, "-s"]) if airport else ""
         if out:
             return _parse_macos(out)
         return set()
@@ -94,6 +128,10 @@ class SSIDWatcher:
         self.target = target_ssid
         self.interval = interval_sec
         self.latest: Set[str] = set()
+        # Has a scan actually completed since start()? Until one has, "no
+        # networks seen" is not yet a fact about the airwaves, only about how
+        # recently the section was opened.
+        self.scanned = False
         self._stop = threading.Event()
         self._th: threading.Thread | None = None
 
@@ -117,6 +155,7 @@ class SSIDWatcher:
                     self.latest = scan_ssids()
                 except Exception:
                     self.latest = set()
+                self.scanned = True
                 # wait(), not sleep(): stop() then takes effect at once rather
                 # than after up to one full interval of further scanning.
                 stop.wait(self.interval)
@@ -133,6 +172,7 @@ class SSIDWatcher:
         """
         self._stop.set()
         self.latest = set()
+        self.scanned = False
 
     def running(self) -> bool:
         return bool(self._th and self._th.is_alive() and not self._stop.is_set())
