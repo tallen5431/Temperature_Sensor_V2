@@ -172,3 +172,22 @@ def test_every_internal_link_and_anchor_resolves():
             elif frag and frag not in ids.get(target, set()):
                 bad.append(f"{name} -> {href} (no id '{frag}' in {target})")
     assert not bad, "broken internal links:\n  " + "\n  ".join(bad)
+
+
+def test_every_assembled_tier_says_it_is_not_yet_for_sale():
+    """site/README.md rule 1 applies to BOTH assembled tiers, not just one.
+    "Setpoint Battery" carried "not yet for sale" while its neighbour "Setpoint
+    USB" -- the same Rev 2 board, mains-powered -- was priced and spec'd as
+    assembled with no qualifier at all. The DIY kit is genuinely purchasable and
+    is deliberately excluded."""
+    html = (SITE / "index.html").read_text(encoding="utf-8")
+    tiers = re.findall(r'<div class="badge">([^<]*)</div>\s*<h3>([^<]*)</h3>', html)
+    assert tiers, "tier markup changed shape — update this test"
+    for badge, name in tiers:
+        if "DIY" in name:
+            assert "available now" in badge, f"{name}: the kit IS for sale, say so"
+        else:
+            assert "not yet for sale" in badge, (
+                f'"{name}" is an assembled unit priced on the page with badge '
+                f'"{badge}" and no availability qualifier. Assembled units may '
+                f"not be offered for sale until the FCC Part 15B SDoC is done.")
