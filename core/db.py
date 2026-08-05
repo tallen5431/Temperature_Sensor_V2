@@ -588,19 +588,27 @@ class Database:
             return {"count": 0, "min": None, "max": None, "avg": None,
                     "min_ts": None, "max_ts": None}
 
-        min_ts = conn.execute(
-            f"SELECT ts FROM readings {where} ORDER BY temperature_c ASC, epoch ASC LIMIT 1", params
+        # probe_id rides along free: these queries already fetch the exact row
+        # holding the extreme. Without it an overview tile reads "MIN 37.0 F"
+        # with no way to tell whether that was the freezer or the store room —
+        # a true number nobody can act on.
+        min_row = conn.execute(
+            f"SELECT ts, probe_id FROM readings {where} "
+            f"ORDER BY temperature_c ASC, epoch ASC LIMIT 1", params
         ).fetchone()
-        max_ts = conn.execute(
-            f"SELECT ts FROM readings {where} ORDER BY temperature_c DESC, epoch ASC LIMIT 1", params
+        max_row = conn.execute(
+            f"SELECT ts, probe_id FROM readings {where} "
+            f"ORDER BY temperature_c DESC, epoch ASC LIMIT 1", params
         ).fetchone()
         return {
             "count": int(agg["n"]),
             "min": agg["mn"],
             "max": agg["mx"],
             "avg": agg["av"],
-            "min_ts": min_ts["ts"] if min_ts else None,
-            "max_ts": max_ts["ts"] if max_ts else None,
+            "min_ts": min_row["ts"] if min_row else None,
+            "max_ts": max_row["ts"] if max_row else None,
+            "min_probe": (min_row["probe_id"] or "") if min_row else "",
+            "max_probe": (max_row["probe_id"] or "") if max_row else "",
         }
 
     def stats_per_probe(self, window_seconds: Optional[int] = None,

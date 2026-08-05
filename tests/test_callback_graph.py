@@ -147,3 +147,42 @@ def test_every_callback_target_exists_in_a_page(tmp_path):
         "These callback ids are not rendered by any page, so those callbacks can "
         f"never fire (or can never write anywhere): {sorted(dangling)}"
     )
+
+
+def test_dashboard_callback_outputs_match_what_it_returns():
+    """update_dashboard composes build_dashboard's tuple with two extra values,
+    and short-circuits an unchanged tick with a HARD-CODED ``(no_update,) * N``.
+    Both numbers have to track the Output list, and neither is checked by Python:
+    adding an Output 500s the whole callback at runtime with a
+    SchemaLengthValidationError, which is how the stat-colour change first
+    shipped. Dash also matches Outputs to the returned tuple POSITIONALLY, so an
+    Output inserted in the middle silently receives a neighbour's value."""
+    import re, pathlib
+    src = (pathlib.Path(__file__).resolve().parent.parent
+           / "components" / "dashboard_view.py").read_text(encoding="utf-8")
+
+    block = src[src.index('Output("temp-gauge", "figure")'):]
+    block = block[:block.index("def update_dashboard")]
+    n_outputs = len(re.findall(r"Output\(", block))
+
+    m = re.search(r"return \(no_update,\) \* (\d+)", src)
+    assert m, "the no_update short-circuit changed shape — update this test"
+    assert int(m.group(1)) == n_outputs, (
+        f"update_dashboard declares {n_outputs} Outputs but its unchanged-tick "
+        f"path returns {m.group(1)} no_updates — every 5 s tick would 500.")
+
+    # build_dashboard supplies all but the final two (logging class + render sig).
+    assert "(*out, logging_class, sig)" in src
+    from core.db import Database
+    from core.config import Config
+    import tempfile, pathlib as pl
+    with tempfile.TemporaryDirectory() as d:
+        from components.dashboard_view import build_dashboard
+
+        class _F:
+            def list_probes(self): return {}
+        out = build_dashboard(Database(pl.Path(d) / "t.db"), Config(pl.Path(d) / "c.json"),
+                              _F(), "24h", "celsius")
+    assert len(out) + 2 == n_outputs, (
+        f"build_dashboard returns {len(out)} values; the callback needs "
+        f"{n_outputs - 2} before it appends logging_class and sig.")

@@ -102,7 +102,7 @@ class HealthState:
             self.notify_dropped += 1
             self.last_notify_failure_ts = time.time()
 
-    def snapshot(self, fresh_window_sec: float = 120) -> dict:
+    def snapshot(self, fresh_window_sec: float = 120, expect_data: bool = True) -> dict:
         """Health counters plus the derived ``healthy`` flag.
 
         ``fresh_window_sec`` bounds how old the newest successful write may be
@@ -111,6 +111,15 @@ class HealthState:
         A write failure no longer latches the flag forever: only a failure NEWER
         than the latest successful write marks the appliance unhealthy, so one
         transient hiccup months ago cannot condemn a recovered system.
+
+        ``expect_data`` says whether this hub has ever stored a reading. A hub
+        that has not is not BROKEN, it is new — and "no write yet in this
+        process" was previously enough to report unhealthy, so a fresh install
+        showed "Needs attention" before the customer had connected anything, and
+        every restart flapped ``setpoint_healthy`` 1->0->1 until the first probe
+        reported (up to a full interval on a slow-cadence fleet, which is exactly
+        what a Grafana alert would be wired to). With no data to be stale about,
+        staleness cannot be the complaint; a real write FAILURE still can.
         """
         with self._lock:
             last = self.last_write_ts
@@ -133,8 +142,9 @@ class HealthState:
                 "last_notify_failure_age_sec": (round(notify_age, 1)
                                                 if notify_age is not None else None),
                 "last_write_age_sec": round(age, 1) if age is not None else None,
-                "healthy": bool(last and age is not None and age < fresh_window_sec
-                                and not failing),
+                "healthy": (not failing if (last is None and not expect_data)
+                            else bool(last and age is not None
+                                      and age < fresh_window_sec and not failing)),
             }
 
 

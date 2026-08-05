@@ -84,6 +84,8 @@ def test_empty_database_returns_the_no_data_state_without_raising(tmp_path, cfg,
     db = Database(tmp_path / "empty.db")
     with caplog.at_level("ERROR"):
         out = build_dashboard(db, cfg, _NoFinder(), "24h", "celsius")
-    assert len(out) == 14
+    # 14 values + the three stat-value classNames, which are driven now so an
+    # empty hub does not colour "MAX" in alarm red when nothing is wrong.
+    assert len(out) == 17
     assert out[LAST_UPDATE] == "(no data)"
     assert not [r for r in caplog.records if "dashboard update failed" in r.message]

@@ -38,7 +38,9 @@ def test_build_dashboard_empty(tmp_path):
     db = Database(tmp_path / "d.db")
     cfg = Config(tmp_path / "c.json")
     out = build_dashboard(db, cfg, FakeFinder(), "24h", "celsius")
-    assert len(out) == 14
+    # 14 values + the three stat-value classNames, which are driven now so an
+    # empty hub does not colour "MAX" in alarm red when nothing is wrong.
+    assert len(out) == 17
     # metric-lastupdate is "(no data)" when empty
     assert out[3] == "(no data)"
 
@@ -537,3 +539,26 @@ def test_gauge_number_matches_shared_formatter_in_every_unit():
         assert ind.number.valueformat == ".1f", f"{unit}: gauge valueformat unpinned"
         assert f"{ind.value:.1f} {sym}" == _fmt(19.83, unit), (
             f"{unit}: gauge number disagrees with _fmt()")
+
+
+def test_empty_hub_uses_muted_stat_colours_not_alarm_red(tmp_path):
+    """A brand-new hub showed "N/A" for MAX in text-danger red, which reads as a
+    fault on a hub whose only condition is that nobody has connected a probe
+    yet. The three value classNames are the last three outputs."""
+    db = Database(tmp_path / "empty.db")
+    cfg = Config(tmp_path / "c.json")
+    out = build_dashboard(db, cfg, FakeFinder(), "24h", "celsius")
+    min_cls, max_cls, avg_cls = out[-3], out[-2], out[-1]
+    assert "text-danger" not in max_cls, "empty MAX still painted as an alarm"
+    for cls in (min_cls, max_cls, avg_cls):
+        assert "text-muted" in cls
+
+
+def test_populated_hub_keeps_the_scannable_stat_colours(tmp_path):
+    """Muting must apply only to the empty state — the info/danger/success
+    coding is what makes the three tiles readable at a glance."""
+    db = Database(tmp_path / "d.db")
+    cfg = Config(tmp_path / "c.json")
+    db.append(datetime.datetime.now().isoformat(timespec="milliseconds"), 4.0, 39.2, "P1")
+    out = build_dashboard(db, cfg, FakeFinder(), "24h", "celsius")
+    assert "text-info" in out[-3] and "text-danger" in out[-2] and "text-success" in out[-1]

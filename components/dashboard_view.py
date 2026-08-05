@@ -172,7 +172,22 @@ GraphCard = dbc.Card(
 )
 
 # --- First-run onboarding banner ---
-def _onboarding_card():
+def _onboarding_card(base_url="", needs_token=False):
+    """First-run guidance. ``base_url`` is this hub's real address and
+    ``needs_token`` whether ingest is authenticated, because the sample command
+    used to hard-code ``http://localhost:8088`` and omit the token — so on a
+    default install (which always generates one) the very first thing a new user
+    copied returned ``{"error":"unauthorized"}``, and on any non-8088 port it did
+    not connect at all.
+
+    The token itself is deliberately NOT printed here. Settings keeps it behind a
+    click for a reason, and this card is on the page people screenshot when they
+    ask for help."""
+    base = (base_url or "http://localhost:8088").rstrip("/")
+    cmd = "curl -X POST -H 'Content-Type: application/json' "
+    if needs_token:
+        cmd += "-H 'X-Token: YOUR-DEVICE-TOKEN' "
+    cmd += "-d '{\"temperature_c\":22.3}' " + base + "/api/ingest"
     return dbc.Alert(
         [
             html.H5("Waiting for your first reading…", className="alert-heading"),
@@ -189,7 +204,12 @@ def _onboarding_card():
                    className="mb-2 small"),
             dbc.Button("Load demo data", id="demo-load-btn", color="info", size="sm"),
             html.P(["Or send a real test reading from a terminal: ",
-                    html.Code("curl -X POST -H 'Content-Type: application/json' -d '{\"temperature_c\":22.3}' http://localhost:8088/api/ingest")],
+                    html.Code(cmd)]
+                   + ([html.Br(),
+                       html.Small(["Replace ", html.Code("YOUR-DEVICE-TOKEN"),
+                                   " with this hub's token — Settings \u2192 Probes \u2192 "
+                                   "\u201cShow token\u201d."],
+                                  className="text-muted")] if needs_token else []),
                    className="mb-0 mt-2 small"),
         ],
         color="info", className="mb-3",
@@ -439,10 +459,27 @@ def _reporting_probe_count(db, cfg, finder, site=None):
             finder, cfg.get("probe_online_timeout_sec", ONLINE_TIMEOUT_SEC))
 
 
-def _empty_fig():
+def _empty_fig(message="Waiting for data…"):
+    """A placeholder figure that reads as EMPTY rather than as broken.
+
+    paper_bgcolor was transparent but plot_bgcolor was not, so plotly_dark's own
+    dark fill painted the plotting area — a brand-new hub showed two large black
+    rectangles where the gauge and chart belong, which looks like a half-loaded
+    page rather than one waiting for its first probe. Both layers are now
+    transparent, and the space carries a line of text instead of nothing.
+    """
     fig = go.Figure()
-    fig.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
-                      xaxis={"visible": False}, yaxis={"visible": False})
+    fig.update_layout(
+        template="plotly_dark",
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        xaxis={"visible": False}, yaxis={"visible": False},
+        margin={"l": 0, "r": 0, "t": 0, "b": 0},
+        annotations=[{
+            "text": message, "showarrow": False,
+            "xref": "paper", "yref": "paper", "x": 0.5, "y": 0.5,
+            "font": {"size": 13, "color": "#8A99A8"},
+        }],
+    )
     return fig
 
 
@@ -807,12 +844,19 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
     focus = focus_probe if (focus_probe and focus_probe != "all") else None
     focus_ts = None  # the focused probe's OWN latest timestamp (for "Last Update")
 
+    # Value colours, so an empty hub does not paint "N/A" for MAX in alarm red as
+    # though something were wrong. Live values keep the info/danger/success
+    # coding that makes the three tiles scannable.
+    STAT_LIVE = ("fw-bold text-info mb-0", "fw-bold text-danger mb-0",
+                 "fw-bold text-success mb-0")
+    STAT_EMPTY = ("fw-bold text-muted mb-0",) * 3
+
     def _no_data():
-        """The 14-tuple for 'nothing to plot yet'. Shared by the first-run path
+        """The 17-tuple for 'nothing to plot yet'. Shared by the first-run path
         and the failure handler so the two can never drift in arity."""
         return (_empty_fig(), _empty_fig(), str(probes_online), "(no data)",
-                logging_status, "No signal", "No data available",
-                "N/A", "", "N/A", "", "N/A", "", [])
+                logging_status, "Waiting for the first reading", "No data yet",
+                "—", "", "—", "", "—", "", []) + STAT_EMPTY
 
     try:
         if latest is None:
@@ -1094,6 +1138,16 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
             stat_max = _fmt(stats["max"], temp_unit)
             stat_min_time = f"at {_fmt_clock(stats['min_ts'], clock_format)}"
             stat_max_time = f"at {_fmt_clock(stats['max_ts'], clock_format)}"
+            # In the overview these are the coldest/hottest reading ANYWHERE, so
+            # name the probe — otherwise the operator sees a real number and
+            # cannot tell which unit it came from, which is most of its value.
+            if focus is None and multi:
+                if stats.get("min_probe"):
+                    stat_min_time = (f"{_friendly_name(cfg, stats['min_probe'])} · "
+                                     f"{stat_min_time}")
+                if stats.get("max_probe"):
+                    stat_max_time = (f"{_friendly_name(cfg, stats['max_probe'])} · "
+                                     f"{stat_max_time}")
             if focus is None and multi:
                 # An "average" across probes of different ranges (a −18 °C freezer
                 # and a 22 °C room) is a number no probe is near — so the overview
@@ -1183,7 +1237,8 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
             hb = f"Last reading: {ts}"
 
         return (gauge, fig, str(probes_online), last_update, logging_status, hb, range_info,
-                stat_min, stat_min_time, stat_max, stat_max_time, stat_avg, stat_avg_info, alerts)
+                stat_min, stat_min_time, stat_max, stat_max_time, stat_avg, stat_avg_info,
+                alerts) + (STAT_EMPTY if not filtered_points else STAT_LIVE)
 
     except Exception:
         log.exception("dashboard update failed")
@@ -1191,7 +1246,27 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
 
 
 # --- Callbacks ---------------------------------------------------------------
-def register_dashboard_callbacks(app, finder, cfg, db):
+def register_dashboard_callbacks(app, finder, cfg, db, public_base_func=None, token=""):
+    @app.callback(
+        Output("live-badge", "children"),
+        Output("live-badge", "className"),
+        Input("dash-refresh", "n_intervals"),
+    )
+    def _live_badge(_):
+        """Keep the gauge's LIVE badge honest. Scoped to the dashboard because
+        that is the only page the badge exists on."""
+        from components.layout_main import live_badge_display
+        from core.status import hub_status
+        from components.dashboard_view import _reporting_probe_count as _rpc
+        try:
+            probes = (finder.list_probes() or {}).values()
+            timeout = int(cfg.get("probe_online_timeout_sec", 60) or 60)
+            status = hub_status(probes, timeout, db.count(),
+                                reporting_online=_rpc(db, cfg, finder))
+            return live_badge_display(status)
+        except Exception:  # noqa: BLE001 - a badge must never break the page
+            return "", "ms-2 text-muted small fw-bold"
+
     @app.callback(
         Output("dashboard-onboarding", "children"),
         Input("dash-refresh", "n_intervals"),
@@ -1200,7 +1275,15 @@ def register_dashboard_callbacks(app, finder, cfg, db):
         # Guide the customer until the very first reading lands, then get out of
         # the way. has_any() is an O(1) EXISTS check, cheap to run every 5 s tick.
         try:
-            return None if db.has_any() else _onboarding_card()
+            if db.has_any():
+                return None
+            base = ""
+            if public_base_func is not None:
+                try:
+                    base = public_base_func() or ""
+                except Exception:  # noqa: BLE001 - never break onboarding
+                    base = ""
+            return _onboarding_card(base, needs_token=bool(token))
         except Exception:
             return None
 
@@ -1572,6 +1655,12 @@ def register_dashboard_callbacks(app, finder, cfg, db):
         Output("stat-avg", "children"),
         Output("stat-avg-info", "children"),
         Output("alerts-container", "children"),
+        # These three MUST stay last of build_dashboard's outputs and in this
+        # order: it appends them to the end of its tuple, so an Output declared
+        # earlier here would silently receive the alerts list instead.
+        Output("stat-min", "className"),
+        Output("stat-max", "className"),
+        Output("stat-avg", "className"),
         Output("metric-logging", "className"),
         Output("dash-render-sig", "data"),
         Input("dash-refresh", "n_intervals"),
@@ -1597,7 +1686,10 @@ def register_dashboard_callbacks(app, finder, cfg, db):
         trigger = (callback_context.triggered[0]["prop_id"].split(".")[0]
                    if callback_context.triggered else "")
         if trigger == "dash-refresh" and prev_sig == sig:
-            return (no_update,) * 16
+            # Must equal the Output count above. A literal here silently 500s the
+            # whole callback the moment an Output is added, which is exactly what
+            # happened when the three stat classNames landed.
+            return (no_update,) * 19
         out = build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe,
                               clock_format, latest=latest, site=site)
         # Colour the Logging KPI by state (its value is out[4]): green when ON,

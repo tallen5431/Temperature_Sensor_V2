@@ -30,6 +30,29 @@ def footer_status_display(status: dict) -> tuple[str, str]:
     return text, f"{css} fw-bold"
 
 
+# The gauge card's "LIVE" badge (driven from register_dashboard_callbacks,
+# NOT from the footer: the footer lives on every page and live-badge only on
+# the dashboard, so a footer-owned Output would fail with "a nonexistent
+# object was used in an Output" the moment you opened Settings -- taking the
+# footer's own status down with it).
+# It carried an id but nothing ever wrote to it,
+# so it was a hard-coded green LIVE that stayed lit on a hub with no data at all
+# and on one whose probes had been silent for hours — a status light wired to
+# nothing, on a monitoring product. It now reports the same hub state the footer
+# does, so the two can never disagree.
+_LIVE_DISPLAY = {
+    "online":  ("LIVE",    "ms-2 text-success small fw-bold"),
+    "offline": ("NO DATA", "ms-2 text-warning small fw-bold"),
+    "idle":    ("NO DATA", "ms-2 text-warning small fw-bold"),
+    "waiting": ("",        "ms-2 text-muted small fw-bold"),
+}
+
+
+def live_badge_display(status: dict) -> tuple[str, str]:
+    """Return ``(text, css_class)`` for the gauge's LIVE badge."""
+    return _LIVE_DISPLAY.get(status.get("state"), ("", "ms-2 text-muted small fw-bold"))
+
+
 def serve_page(pathname):
     if pathname == "/devices":
         return DevicesLayout
@@ -79,13 +102,17 @@ FOOTER = html.Footer(
     className="footer",
 )
 
+# app-shell is a full-height flex column so the footer sits at the BOTTOM of the
+# viewport on short pages (Devices, Settings, Diagnostics) instead of floating
+# directly under the content with several hundred px of empty page beneath it,
+# which read as a half-loaded screen.
 LAYOUT = html.Div([
     dcc.Location(id="url", refresh=False),
     NAVBAR,
     html.Div(id="page-content", className="p-4"),
     HelpModal(),
     FOOTER,
-])
+], className="app-shell")
 
 
 def register_footer_callbacks(app, finder, cfg, db):
@@ -110,7 +137,8 @@ def register_footer_callbacks(app, finder, cfg, db):
 
 def register_all_callbacks(app, finder, cfg, db, public_base_func=None, token=""):
     from components.dashboard_view import register_dashboard_callbacks
-    register_dashboard_callbacks(app, finder, cfg, db)
+    register_dashboard_callbacks(app, finder, cfg, db,
+                                 public_base_func=public_base_func, token=token)
     register_devices_callbacks(app, finder, cfg, db, public_base_func=public_base_func, token=token)
     register_diagnostics_callbacks(app, finder, cfg, db, public_base_func=public_base_func)
     register_setup_helper_callbacks(app)

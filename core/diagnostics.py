@@ -112,7 +112,10 @@ def build_diagnostics(cfg, db, finder, public_base: str, version: str,
     # Interval-aware bound, not the flat 120 s default: a slow-cadence fleet
     # writes less often than that and would render "Needs attention" directly
     # above its own probe table showing those probes online.
-    health = HEALTH.snapshot(hub_health_window(cfg))
+    # A hub holding no readings at all is new, not broken — see
+    # HealthState.snapshot's expect_data.
+    health = HEALTH.snapshot(hub_health_window(cfg),
+                             expect_data=bool(readings))
     db_path = getattr(db, "path", None)
     disk_free = None
     try:

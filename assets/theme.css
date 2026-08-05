@@ -43,7 +43,14 @@ body {
   color: var(--text);
   -webkit-font-smoothing: antialiased;
 }
-#page-content { max-width: 1400px; margin: 0 auto; }
+#page-content { max-width: 1400px; margin: 0 auto; width: 100%; }
+
+/* Sticky footer: the shell fills the viewport and the content region takes the
+   slack, so a short page (Devices with two probes, Settings) puts its footer on
+   the bottom edge rather than mid-screen above a void. */
+.app-shell { display: flex; flex-direction: column; min-height: 100vh; }
+.app-shell > #page-content { flex: 1 0 auto; }
+.app-shell > .footer { flex-shrink: 0; margin-top: auto; }
 ::selection { background: var(--brand-wash); }
 
 /* ---- navbar -------------------------------------------------------------- */
@@ -194,9 +201,17 @@ body {
 #live-badge::before {
   content: ""; display: inline-block;
   width: .5em; height: .5em; border-radius: 50%;
-  background: var(--ok); margin-right: .35em;
-  animation: live-pulse 2s infinite;
+  /* currentColor, not a pinned green: the badge now reports real hub state, so
+     the dot has to follow it into text-warning / text-muted instead of staying
+     green under the words "NO DATA". */
+  background: currentColor; margin-right: .35em;
 }
+/* Only a genuinely live hub pulses. A warning dot that breathes like a healthy
+   one is worse than a static one. */
+#live-badge.text-success::before { animation: live-pulse 2s infinite; }
+/* No status text means no status light — otherwise a hub waiting for its first
+   probe showed a lone pulsing dot next to the heading and nothing else. */
+#live-badge:empty::before { display: none; }
 @keyframes live-pulse {
   0%   { opacity: 1; }
   50%  { opacity: .35; }

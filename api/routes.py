@@ -239,6 +239,15 @@ def _parse_batch(req):
     return rows
 
 
+def _hub_has_data(db) -> bool:
+    """Has this hub ever stored a reading? Feeds HealthState.expect_data, so a
+    brand-new hub is not reported unhealthy merely for being new."""
+    try:
+        return bool(db.has_any())
+    except Exception:  # noqa: BLE001 - health must never raise
+        return True     # assume data exists: the stricter, safer reading
+
+
 def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str],
                server_token: str = "") -> Blueprint:
     bp = Blueprint("api", __name__, url_prefix="/api")
@@ -324,7 +333,8 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
             readings=readings,
             base=public_base(),
             time=datetime.datetime.now().isoformat(timespec="seconds"),
-            **HEALTH.snapshot(hub_health_window(cfg)),
+            **HEALTH.snapshot(hub_health_window(cfg),
+                              expect_data=_hub_has_data(db)),
         )
 
     @bp.get("/diagnostics")

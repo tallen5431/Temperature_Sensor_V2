@@ -229,6 +229,16 @@ app.index_string = """<!DOCTYPE html>
 WINDOW_SECONDS = {"1h": 3600, "6h": 21600, "24h": 86400, "7d": 604800, "30d": 2592000}
 
 
+def _has_readings() -> bool:
+    """Whether the store holds any reading, for HealthState.expect_data — a hub
+    with nothing in it yet is new, not unhealthy, and setpoint_healthy should not
+    flap 1->0->1 on every restart while it waits for the first probe report."""
+    try:
+        return bool(db.has_any())
+    except Exception:  # noqa: BLE001 - /metrics must never raise
+        return True
+
+
 @server.route("/metrics")
 def metrics():
     """Prometheus text exposition for a homelab Prometheus + Grafana stack."""
@@ -251,7 +261,9 @@ def metrics():
     # reporting".
     discovered = discovered_probe_ids(finder)
     total = len(discovered | reporting)
-    body = render_prometheus(HEALTH.snapshot(hub_health_window(cfg)), LATEST.snapshot(),
+    body = render_prometheus(HEALTH.snapshot(hub_health_window(cfg),
+                                             expect_data=_has_readings()),
+                             LATEST.snapshot(),
                              total, HUB_VERSION,
                              probes_online=len(reporting))
     return body, 200, {"Content-Type": "text/plain; version=0.0.4; charset=utf-8"}

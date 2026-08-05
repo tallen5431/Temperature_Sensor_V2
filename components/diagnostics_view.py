@@ -100,6 +100,27 @@ def _notif_summary(n):
     return (", ".join(channels) or "On (no channel selected)") + extra
 
 
+def _probe_sources(pr) -> str:
+    """How the hub knows about these probes, said accurately.
+
+    This read "N discovered (mDNS)" for the whole list, but the list also carries
+    probes known only from their ingest posts (build_diagnostics tags those
+    source="readings"). A deep-sleeping probe never answers mDNS at all, so on a
+    battery fleet the line claimed mDNS discovery for probes mDNS had never seen
+    — on the one page support asks a customer to send in.
+    """
+    items = pr.get("list") or []
+    via_readings = sum(1 for p in items if p.get("source") == "readings")
+    mdns = len(items) - via_readings
+    if not items:
+        return "none discovered yet"
+    if via_readings and mdns:
+        return f"{mdns} found on the network, {via_readings} known from their readings"
+    if via_readings:
+        return f"{via_readings} known from their readings (not seen on the network)"
+    return f"{mdns} found on the network (mDNS)"
+
+
 def _render(d):
     db = d["database"]
     pr = d["probes"]
@@ -111,7 +132,7 @@ def _render(d):
         ("Newest reading", db["newest_reading"] or "—"),
         ("Retention", f"{d['retention_days']} days" if d["retention_days"] else "Forever"),
         ("Probes", (f"{pr['reporting']} reporting" if pr.get("reporting") is not None
-                    else f"{pr['online']} online") + f" · {pr['total']} discovered (mDNS)"),
+                    else f"{pr['online']} online") + " · " + _probe_sources(pr)),
         ("Notifications", _notif_summary(d["notifications"])),
         ("Generated", d["time"]),
     ])
