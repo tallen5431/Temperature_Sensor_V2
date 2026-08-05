@@ -102,7 +102,7 @@ DevicesLayout = html.Div([
                             id='edit-probe-min-input',
                             type='number',
                             step=0.5,
-                            placeholder='e.g. 10',
+                            placeholder='e.g. 1',
                             className='mb-1'
                         ),
                         html.Small("Alert when below this value", className='text-muted'),
@@ -113,7 +113,7 @@ DevicesLayout = html.Div([
                             id='edit-probe-max-input',
                             type='number',
                             step=0.5,
-                            placeholder='e.g. 30',
+                            placeholder='e.g. 5',
                             className='mb-1'
                         ),
                         html.Small("Alert when above this value", className='text-muted'),
@@ -452,6 +452,12 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
         Output('edit-probe-thresholds-label', 'children'),
         Output('edit-probe-cal-label', 'children'),
         Output('edit-probe-alerts-breadcrumb', 'children'),
+        # Appended LAST because the handler appends them last. Dash matches
+        # Outputs to the returned tuple positionally, so an Output added in the
+        # middle silently takes a neighbour's value -- which is exactly what
+        # happened here: the placeholders received the calibration label.
+        Output('edit-probe-min-input', 'placeholder'),
+        Output('edit-probe-max-input', 'placeholder'),
         Input({'type': 'edit-probe-btn', 'index': ALL}, 'n_clicks'),
         Input('edit-probe-cancel', 'n_clicks'),
         Input('edit-probe-save', 'n_clicks'),
@@ -474,7 +480,8 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
         # Config always stores Celsius; the modal displays/accepts the unit the
         # dashboard is currently showing so users never convert by hand.
         unit = temp_unit or 'celsius'
-        noup = (no_update,) * 12
+        # Must equal the Output count of this callback.
+        noup = (no_update,) * 14
         if not callback_context.triggered:
             return noup
 
@@ -527,23 +534,46 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                 thresholds_label = f"Alert Thresholds ({sym}):"
                 cal_label = f"Calibration Offset ({sym}):"
 
+                # What is this probe reading RIGHT NOW? Setting a safety limit
+                # without it means doing arithmetic in your head against a number
+                # on the page behind the modal — and a range typed in the wrong
+                # unit looks perfectly reasonable until it is next to the reading.
+                now_note = ''
+                if db is not None:
+                    try:
+                        df = db.latest_per_probe(window_seconds=7 * 86400)
+                        row = df[df['probe_id'] == probe_id]
+                        if not row.empty:
+                            t_c = row.iloc[0]['temperature_c']
+                            if t_c is not None and pd.notna(t_c):
+                                now_note = (f"This probe currently reads "
+                                            f"{temp_c_to_unit(float(t_c), unit):.1f} {sym}. ")
+                    except Exception:  # noqa: BLE001 - a hint must not block editing
+                        now_note = ''
+
                 # Breadcrumb: where notifications live + the LIVE master-switch
                 # state, read from config at open so it is never stale.
                 alerts_on = bool((cfg.get('notifications', {}) or {}).get('enabled', False))
-                breadcrumb = ("Breaches always show on the dashboard; email/webhook "
+                breadcrumb = (now_note +
+                              "Breaches always show on the dashboard; email/webhook "
                               "notifications are configured in Settings → Alerts & notifications — "
                               f"currently {'On' if alerts_on else 'Off'}.")
 
+                # A walk-in cooler, in whichever unit the operator reads. Rounded:
+                # it is an EXAMPLE, and "e.g. 33.8" reads like a measurement
+                # someone should match rather than a number to replace.
+                ph_min = f"e.g. {round(temp_c_to_unit(1.0, unit)):g}"
+                ph_max = f"e.g. {round(temp_c_to_unit(5.0, unit)):g}"
                 return (True, probe_id, probe_id, current_name, current_interval_sec,
                         disp_min, disp_max, disp_cal, current_res,
-                        thresholds_label, cal_label, breadcrumb)
+                        thresholds_label, cal_label, breadcrumb, ph_min, ph_max)
             except Exception:
                 return noup
 
         # Cancel button clicked
         elif 'edit-probe-cancel' in button_id:
             return (False, None, '', '', no_update, no_update, no_update, no_update,
-                    no_update, no_update, no_update, no_update)
+                    no_update, no_update, no_update, no_update, no_update, no_update)
 
         # Save button clicked
         elif 'edit-probe-save' in button_id:
@@ -687,7 +717,7 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                         log.warning('Provision-on-save failed: %s', e)
 
             return (False, None, '', '', no_update, no_update, no_update, no_update,
-                    no_update, no_update, no_update, no_update)
+                    no_update, no_update, no_update, no_update, no_update, no_update)
 
         return noup
 
@@ -775,11 +805,35 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
         Input('edit-probe-save', 'n_clicks'),
         State('edit-probe-id-store', 'data'),
         State('edit-probe-interval-input', 'value'),
+        State('edit-probe-min-input', 'value'),
+        State('edit-probe-max-input', 'value'),
+        State('temp-unit-store', 'data'),
         prevent_initial_call=True,
     )
-    def report_save_delivery(n_clicks, probe_id, interval_value):
+    def report_save_delivery(n_clicks, probe_id, interval_value,
+                             min_value=None, max_value=None, temp_unit=None):
         if not n_clicks or not probe_id:
             return no_update
+
+        # An inverted range is silently swapped on save (see the save handler:
+        # threshold_breach tests 'value > max' first, so min>max would make every
+        # reading a breach forever). Swapping is right, but only the log said so
+        # -- the operator saw a plain "Saved" and a card showing limits they had
+        # not typed. On a product whose job is a safety limit, quietly storing
+        # something other than what was entered has to be said out loud.
+        swapped = None
+        try:
+            if min_value not in (None, '') and max_value not in (None, ''):
+                lo, hi = float(min_value), float(max_value)
+                if lo > hi:
+                    swapped = (hi, lo)
+        except (TypeError, ValueError):
+            swapped = None
+        sym = _unit_symbol(temp_unit)
+        swap_note = ([html.Br(),
+                      html.Strong("Note: Min was above Max, so they were swapped — "),
+                      f"this probe now alarms outside {swapped[0]:g} to {swapped[1]:g} {sym}."]
+                     if swapped else [])
 
         # The off-switch wins over everything else: with auto_provision false the
         # hub omits `config` from every /api/ingest reply, so a sleeping probe
@@ -802,8 +856,10 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
         # A probe that is awake most of the time picks the change up almost at
         # once and a "check back later" note would just be noise.
         if interval_sec < 60:
-            return dbc.Alert("✅ Saved. The probe applies this on its next reading.",
-                             color='success', dismissable=True, className='mb-0')
+            return dbc.Alert(["✅ Saved. The probe applies this on its next reading."]
+                             + swap_note,
+                             color='warning' if swapped else 'success',
+                             dismissable=True, className='mb-0')
 
         # Worst case is one full interval: the probe may have checked in just
         # before Save, so it reads the new value on the check-in after that.
@@ -813,5 +869,6 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
              f"It reports every {_humanize_seconds(interval_sec)}, so expect it to be "
              f"running the new settings by about {due.strftime('%H:%M')}. ",
              html.Span("The probe is asleep between check-ins, so the hub cannot "
-                       "confirm delivery until then.", className='text-muted')],
-            color='info', dismissable=True, className='mb-0')
+                       "confirm delivery until then.", className='text-muted')]
+            + swap_note,
+            color='warning' if swapped else 'info', dismissable=True, className='mb-0')

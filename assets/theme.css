@@ -203,7 +203,10 @@ body {
    .bg-info is covered too — the CYBORG base would otherwise render it magenta. */
 .badge.bg-secondary { background: var(--brand-wash) !important; }
 .badge.bg-success { background: rgba(47, 191, 113, .16) !important; color: var(--ok) !important; }
-.badge.bg-danger  { background: rgba(240, 90, 84, .16) !important; color: var(--bad) !important; }
+/* --bad on its own 16% tint is 4.18:1 -- the only badge variant that misses
+   AA (success 5.26, warning 6.35, info 5.28). Lightened here alone, so the
+   token stays correct everywhere else it is used. */
+.badge.bg-danger  { background: rgba(240, 90, 84, .16) !important; color: #F16762 !important; }
 .badge.bg-warning { background: rgba(239, 176, 46, .16) !important; color: var(--warn) !important; }
 .badge.bg-info    { background: rgba(56, 182, 217, .16) !important; color: var(--cool) !important; }
 #live-badge { font-family: var(--mono); letter-spacing: .08em; }
@@ -281,6 +284,26 @@ body {
 /* Cool-blue informational panel (onboarding, "low temperature" alerts). */
 .alert-info {
   background: rgba(56, 182, 217, .12); border-color: rgba(56, 182, 217, .35); color: var(--text);
+}
+/* The other variants were never themed, so they fell through to Bootstrap's
+   defaults — which on this surface render white on solid orange at 2.39:1, a
+   WCAG AA failure on the alerts a monitoring product uses to say something is
+   wrong. Same treatment as .alert-info above: a translucent tint of the semantic
+   colour, its own border, and the theme's own foreground. */
+.alert-warning {
+  background: rgba(239, 176, 46, .12); border-color: rgba(239, 176, 46, .38); color: var(--text);
+}
+.alert-success {
+  background: rgba(47, 191, 113, .12); border-color: rgba(47, 191, 113, .35); color: var(--text);
+}
+.alert-danger {
+  background: rgba(240, 90, 84, .12); border-color: rgba(240, 90, 84, .38); color: var(--text);
+}
+.alert-secondary {
+  background: rgba(130, 153, 171, .10); border-color: var(--border); color: var(--text);
+}
+.alert-primary {
+  background: rgba(23, 179, 204, .12); border-color: rgba(23, 179, 204, .35); color: var(--text);
 }
 .alert-heading { color: var(--text); font-weight: 700; }
 

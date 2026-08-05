@@ -186,3 +186,33 @@ def test_dashboard_callback_outputs_match_what_it_returns():
     assert len(out) + 2 == n_outputs, (
         f"build_dashboard returns {len(out)} values; the callback needs "
         f"{n_outputs - 2} before it appends logging_class and sig.")
+
+
+def test_no_callback_returns_the_wrong_number_of_no_updates():
+    """A `(no_update,) * N` literal has to track its callback's Output count, and
+    nothing in Python checks it: the mismatch surfaces only at runtime, as a Dash
+    SchemaLengthValidationError that 500s the whole callback. It shipped once on
+    update_dashboard when three Outputs were added and the literal stayed at 16,
+    so every 5 s tick failed. This checks every multi-output callback, not just
+    that one."""
+    import re, pathlib
+    root = pathlib.Path(__file__).resolve().parent.parent / "components"
+    problems = []
+    checked = 0
+    for f in sorted(root.glob("*.py")):
+        src = f.read_text(encoding="utf-8")
+        for m in re.finditer(r"@app\.callback\((.*?)\)\s*\n\s*def (\w+)\(", src, re.S):
+            head, fname = m.group(1), m.group(2)
+            n_out = len(re.findall(r"Output\(", head))
+            if n_out < 2:
+                continue
+            checked += 1
+            nxt = src.find("@app.callback", m.end())
+            body = src[m.end(): nxt if nxt > 0 else len(src)]
+            for lit in re.finditer(r"\(no_update,\)\s*\*\s*(\d+)", body):
+                if int(lit.group(1)) != n_out:
+                    problems.append(
+                        f"{f.name}:{fname} declares {n_out} Outputs but returns "
+                        f"{lit.group(1)} no_updates")
+    assert checked > 10, f"only inspected {checked} callbacks — did the regex rot?"
+    assert not problems, "\n".join(problems)

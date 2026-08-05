@@ -114,3 +114,24 @@ def test_no_probe_id_is_a_no_op():
 
 def test_no_click_is_a_no_op():
     assert _callback()(None, 'Setpoint-9A3F2C', 600) is dash.no_update
+
+
+def test_a_swapped_range_is_reported_not_just_logged():
+    """min > max is silently swapped on save, and correctly so — threshold_breach
+    tests 'value > max' first, so an inverted range makes EVERY reading a breach
+    forever. But only the log said it happened: the operator saw a plain "Saved"
+    and a card showing limits they never typed. On a product whose whole job is a
+    safety limit, storing something other than what was entered has to be said."""
+    body = _text(_callback()(1, 'Setpoint-9A3F2C', 5, 40, 2, 'celsius'))
+    assert 'swapped' in body.lower()
+    assert '2 to 40' in body
+
+
+def test_a_sane_range_says_nothing_about_swapping():
+    body = _text(_callback()(1, 'Setpoint-9A3F2C', 5, 2, 40, 'celsius'))
+    assert 'swap' not in body.lower()
+
+
+def test_the_swap_notice_speaks_the_operators_unit():
+    body = _text(_callback()(1, 'Setpoint-9A3F2C', 5, 40, 35, 'fahrenheit'))
+    assert '°F' in body and '35 to 40' in body
