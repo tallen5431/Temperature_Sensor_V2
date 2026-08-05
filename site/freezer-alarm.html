@@ -72,10 +72,10 @@
     --raised: #FBFCFA;
     --ink: #12181C;
     --slate: #59636B;
-    --faint: #8A939A;
+    --faint: #69727A;
     --line: #DEE2DE;
     --line-strong: #C9CFCA;
-    --signal: #0E94AB;
+    --signal: #0C7C90;
     --signal-soft: #E2F1F4;
     --warn: #C7860F;
     --cool: #1B8298;
@@ -97,7 +97,7 @@
       --raised: #18242F;
       --ink: #E9F1F7;
       --slate: #9DB0BE;
-      --faint: #6E8393;
+      --faint: #748897;
       --line: #22323F;
       --line-strong: #2F4454;
       --signal: #17B3CC;
@@ -110,12 +110,12 @@
   }
   :root[data-theme="light"] {
     --paper: #F5F6F4; --surface: #FFFFFF; --raised: #FBFCFA; --ink: #12181C;
-    --slate: #59636B; --faint: #8A939A; --line: #DEE2DE; --line-strong: #C9CFCA;
-    --signal: #0E94AB; --signal-soft: #E2F1F4; --warn: #C7860F; --cool: #1B8298; --ok: #2C9A66; --alert: #D24A43;
+    --slate: #59636B; --faint: #69727A; --line: #DEE2DE; --line-strong: #C9CFCA;
+    --signal: #0C7C90; --signal-soft: #E2F1F4; --warn: #C7860F; --cool: #1B8298; --ok: #2C9A66; --alert: #D24A43;
   }
   :root[data-theme="dark"] {
     --paper: #0B131B; --surface: #131F2B; --raised: #18242F; --ink: #E9F1F7;
-    --slate: #9DB0BE; --faint: #6E8393; --line: #22323F; --line-strong: #2F4454;
+    --slate: #9DB0BE; --faint: #748897; --line: #22323F; --line-strong: #2F4454;
     --signal: #17B3CC; --signal-soft: rgba(23,179,204,.14); --warn: #EFB02E; --cool: #38B6D9; --ok: #2FBF71; --alert: #F05A54;
   }
 
@@ -148,6 +148,16 @@
   }
   .tnum { font-variant-numeric: tabular-nums; }
 
+  /* Skip link: off-screen until focused, then pinned above the sticky header
+     (which is z-index 50) so the first Tab press reveals it. */
+  .skip { position: absolute; left: -9999px; }
+  .skip:focus {
+    left: 8px; top: 8px; z-index: 999; padding: 8px 12px;
+    background: var(--surface); color: var(--ink);
+    border: 2px solid var(--signal); border-radius: 4px;
+    width: auto; height: auto;
+  }
+
   /* ---------- top bar ---------- */
   header.bar {
     position: sticky; top: 0; z-index: 50;
@@ -176,7 +186,11 @@
   .mobile-nav[open] > summary { border-color: var(--signal); }
   .mobile-menu { position: absolute; right: 0; top: calc(100% + 12px); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 8px; display: flex; flex-direction: column; gap: 2px; min-width: 210px; box-shadow: 0 16px 44px -20px rgba(0,0,0,.55); z-index: 60; }
   .mobile-menu a { font-family: var(--font-mono); font-size: 14px; text-decoration: none; color: var(--ink); padding: 11px 12px; border-radius: var(--radius); }
-  .mobile-menu a:hover, .mobile-menu a:focus-visible { background: var(--signal-soft); outline: none; }
+  /* The tint alone is ~1.16:1 against the menu surface — nowhere near a visible
+     focus indicator, and this menu is the only nav below 1100px. Keep the tint
+     for both states, but give focus a real ring. */
+  .mobile-menu a:hover, .mobile-menu a:focus-visible { background: var(--signal-soft); }
+  .mobile-menu a:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
   .mobile-menu a.cta { color: var(--signal); }
   /* Must come AFTER the .mobile-nav base rule above: at a matching viewport both
      this and the base `display: none` apply with equal specificity, so source
@@ -363,6 +377,8 @@
 </head>
 <body>
 
+<a class="skip" href="#main">Skip to content</a>
+
 <header class="bar">
   <div class="wrap bar-inner">
     <div class="brand">
@@ -397,7 +413,7 @@
   </div>
 </header>
 
-<main>
+<main id="main">
 
   <section class="hero" style="border-top:none;">
     <div class="wrap">

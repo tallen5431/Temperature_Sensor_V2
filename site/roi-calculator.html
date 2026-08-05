@@ -33,6 +33,7 @@
 </style>
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
 <header class="rpt-bar">
   <a href="/" class="rpt-brand">Setpoint<span>by Datum Labs</span></a>
   <nav class="rpt-nav">
@@ -50,7 +51,7 @@
     --ground: #eef3f6; --paper: #ffffff; --paper-2: #f5fafb; --ink: #10202a;
     --ink-soft: #475966; --ink-faint: #7b909e;
     --line: #d6e1e8; --line-strong: #c2d2db;
-    --accent: #0a8ba1; --accent-bright: #0e9cb5; --accent-wash: #e3f4f7;
+    --accent: #098297; --accent-bright: #0e9cb5; --accent-wash: #e3f4f7;
     --loss: #b4460f; --loss-wash: #f8e6dc;        /* money at risk */
     --save: #157a54; --save-wash: #e0f2ea;        /* payback / savings */
     --gold: #9c6408;
@@ -80,7 +81,7 @@
   :root[data-theme="light"] {
     --ground: #eef3f6; --paper: #ffffff; --paper-2: #f5fafb; --ink: #10202a;
     --ink-soft: #475966; --ink-faint: #7b909e; --line: #d6e1e8; --line-strong: #c2d2db;
-    --accent: #0a8ba1; --accent-bright: #0e9cb5; --accent-wash: #e3f4f7;
+    --accent: #098297; --accent-bright: #0e9cb5; --accent-wash: #e3f4f7;
     --loss: #b4460f; --loss-wash: #f8e6dc; --save: #157a54; --save-wash: #e0f2ea; --gold: #9c6408;
     --shadow: 0 18px 44px -26px rgba(16,32,42,.42);
   }
@@ -90,6 +91,11 @@
   .wrap { max-width: 1000px; margin: 0 auto; padding: 28px 20px 56px; }
   a { color: var(--accent); }
   :focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 2px; border-radius: 4px; }
+  .skip { position: absolute; left: -9999px; }
+  .skip:focus { left: 8px; top: 8px; z-index: 999; padding: 8px 12px;
+    background: var(--paper); color: var(--ink);
+    border: 2px solid var(--accent); border-radius: 4px;
+    width: auto; height: auto; }
 
   header { margin-bottom: 26px; }
   .brandrow { display: flex; align-items: baseline; gap: 11px; }
@@ -148,7 +154,7 @@
   .preset:hover { border-color: var(--accent); color: var(--accent); }
 </style>
 
-<div class="wrap">
+<div class="wrap" id="main">
   <header>
     <!-- The fragment's own wordmark is dropped here: the site nav bar above
          already carries it, and two Setpoint marks stacked read as a mistake.

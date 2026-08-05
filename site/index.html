@@ -60,10 +60,10 @@
     --raised: #FBFCFA;
     --ink: #12181C;
     --slate: #59636B;
-    --faint: #8A939A;
+    --faint: #69727A;
     --line: #DEE2DE;
     --line-strong: #C9CFCA;
-    --signal: #0E94AB;
+    --signal: #0C7C90;
     --signal-soft: #E2F1F4;
     --warn: #C7860F;
     --cool: #1B8298;
@@ -85,7 +85,7 @@
       --raised: #18242F;
       --ink: #E9F1F7;
       --slate: #9DB0BE;
-      --faint: #6E8393;
+      --faint: #748897;
       --line: #22323F;
       --line-strong: #2F4454;
       --signal: #17B3CC;
@@ -98,12 +98,12 @@
   }
   :root[data-theme="light"] {
     --paper: #F5F6F4; --surface: #FFFFFF; --raised: #FBFCFA; --ink: #12181C;
-    --slate: #59636B; --faint: #8A939A; --line: #DEE2DE; --line-strong: #C9CFCA;
-    --signal: #0E94AB; --signal-soft: #E2F1F4; --warn: #C7860F; --cool: #1B8298; --ok: #2C9A66; --alert: #D24A43;
+    --slate: #59636B; --faint: #69727A; --line: #DEE2DE; --line-strong: #C9CFCA;
+    --signal: #0C7C90; --signal-soft: #E2F1F4; --warn: #C7860F; --cool: #1B8298; --ok: #2C9A66; --alert: #D24A43;
   }
   :root[data-theme="dark"] {
     --paper: #0B131B; --surface: #131F2B; --raised: #18242F; --ink: #E9F1F7;
-    --slate: #9DB0BE; --faint: #6E8393; --line: #22323F; --line-strong: #2F4454;
+    --slate: #9DB0BE; --faint: #748897; --line: #22323F; --line-strong: #2F4454;
     --signal: #17B3CC; --signal-soft: rgba(23,179,204,.14); --warn: #EFB02E; --cool: #38B6D9; --ok: #2FBF71; --alert: #F05A54;
   }
 
@@ -120,6 +120,15 @@
   }
   .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 28px; }
   a { color: inherit; }
+  /* Skip link: off-screen until focused, then pinned to the top-left. */
+  .skip { position: absolute; left: -9999px; }
+  .skip:focus { left: 8px; top: 8px; z-index: 999; padding: 8px 12px;
+    background: var(--surface); color: var(--ink);
+    border: 2px solid var(--signal); border-radius: 4px;
+    width: auto; height: auto; }
+  /* Same off-screen technique, for labels that must exist for assistive tech
+     without appearing in the layout. */
+  .vh { position: absolute; left: -9999px; }
   h1, h2, h3 { text-wrap: balance; letter-spacing: -0.02em; line-height: 1.08; margin: 0; }
   .mono { font-family: var(--font-mono); }
   .eyebrow {
@@ -306,7 +315,8 @@
   .wl-form { display: flex; gap: 10px; max-width: 460px; margin: 0 auto; }
   @media (max-width: 520px) { .wl-form { flex-direction: column; } }
   .wl-form input {
-    flex: 1; font-family: var(--font-mono); font-size: 14px; padding: 13px 16px;
+    /* 16px is the floor: below it, iOS Safari zooms the page on focus. */
+    flex: 1; font-family: var(--font-mono); font-size: 16px; padding: 13px 16px;
     border-radius: var(--radius);
     /* Colours are relative to the panel's foreground (--paper) so the field
        stays visible whether the inverted panel is dark (light theme) or light
@@ -333,6 +343,7 @@
 </head>
 <body>
 
+<a class="skip" href="#main">Skip to content</a>
 
 <header class="bar">
   <div class="wrap bar-inner">
@@ -368,7 +379,7 @@
   </div>
 </header>
 
-<main>
+<main id="main">
   <!-- HERO -->
   <section class="hero" style="border-top:none;">
     <div class="wrap hero-grid">
@@ -654,7 +665,8 @@
         <h2>Get an assembled unit first.</h2>
         <p>The DIY kit is <a href="https://www.tindie.com/products/datumlaboratories/setpoint-diy-kit-local-wi-fi-temperature-monitor/" target="_blank" rel="noopener" style="color:var(--signal);text-decoration:underline;">live on Tindie now</a>. Pre-built, pre-flashed <b>Setpoint USB &amp; Battery</b> units are not on sale yet — they ship once FCC Part 15B testing is complete. Join the list and I'll tell you when, with launch pricing.</p>
         <form class="wl-form" id="wlForm" novalidate>
-          <input type="email" id="wlEmail" placeholder="you@example.com" aria-label="Email address" required>
+          <label class="vh" for="wlEmail">Email address</label>
+          <input type="email" id="wlEmail" placeholder="you@example.com" required>
           <!-- Honeypot: off-screen rather than display:none, because the cruder
                bots skip hidden fields but fill everything they can see in the
                DOM. aria-hidden + tabindex=-1 keeps it away from screen readers
@@ -664,7 +676,7 @@
                  autocomplete="off" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
           <button type="submit" class="btn signal">Join the list</button>
         </form>
-        <p class="wl-note" id="wlNote">No spam — launch updates only. One email, then you decide.</p>
+        <p class="wl-note" id="wlNote" role="status" aria-live="polite">No spam — launch updates only. One email, then you decide.</p>
       </div>
     </div>
   </section>
@@ -845,19 +857,24 @@
   // waitlist -> POST /api/waitlist (Cloudflare Pages Function; functions/api/waitlist.js)
   var form = document.getElementById("wlForm");
   var note = document.getElementById("wlNote");
+  // Status text sits on the .waitlist panel, which is background:var(--ink) in
+  // BOTH themes — so the panel is dark in light theme and light in dark theme.
+  // var(--signal) only contrasts against one of those (2.20:1 in dark theme).
+  // var(--paper) is the panel's own foreground, so it lands at ~16.5:1 either
+  // way. Do not put --signal back here.
   form.addEventListener("submit", function (e) {
     e.preventDefault();
     var email = document.getElementById("wlEmail").value.trim();
     var ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
     if (!ok) {
       note.textContent = "That email doesn't look right — check and try again.";
-      note.style.color = "var(--signal)";
+      note.style.color = "var(--paper)";
       return;
     }
     var btn = form.querySelector("button");
     btn.disabled = true;
     note.textContent = "Adding you…";
-    note.style.color = "var(--signal)";
+    note.style.color = "var(--paper)";
     fetch("/api/waitlist", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -873,10 +890,10 @@
       } else {
         note.textContent = "That didn't go through — give it another try in a moment.";
       }
-      note.style.color = "var(--signal)";
+      note.style.color = "var(--paper)";
     }).catch(function () {
       note.textContent = "Network hiccup — please try again in a moment.";
-      note.style.color = "var(--signal)";
+      note.style.color = "var(--paper)";
     }).then(function () {
       btn.disabled = false;
     });
