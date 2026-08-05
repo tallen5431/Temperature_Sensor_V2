@@ -108,6 +108,13 @@ FOOTER = html.Footer(
 # which read as a half-loaded screen.
 LAYOUT = html.Div([
     dcc.Location(id="url", refresh=False),
+    # App-wide display preferences. No default: an empty store means "this
+    # browser has never chosen", which is what lets the clientside locale probe
+    # fill in °F / 12-hour for the people who expect them. They live here rather
+    # than in DashboardLayout so every page can read them — Devices renders
+    # temperatures too, and used to have no way to know the unit.
+    dcc.Store(id="temp-unit-store", storage_type="local"),
+    dcc.Store(id="clock-format-store", storage_type="local"),
     NAVBAR,
     html.Div(id="page-content", className="p-4"),
     HelpModal(),

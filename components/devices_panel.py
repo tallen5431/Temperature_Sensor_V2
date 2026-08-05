@@ -8,6 +8,7 @@ import dash_bootstrap_components as dbc
 from core.probes import discovered_probes, probe_address
 from core.status import probe_fresh_window
 from core.metrics import LATEST
+from core.alerts import HELD
 from core import units
 
 log = logging.getLogger("hub.devices")
@@ -211,8 +212,10 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
     def toggle_device_advanced(_n, is_open):
         return (not is_open), ('▾ Advanced' if not is_open else '▸ Advanced')
 
-    @app.callback(Output('device-grid', 'children'), Input('device-refresh', 'n_intervals'))
-    def update_devices(_):
+    @app.callback(Output('device-grid', 'children'),
+                  Input('device-refresh', 'n_intervals'),
+                  Input('temp-unit-store', 'data'))
+    def update_devices(_, temp_unit):
         try:
             now = datetime.datetime.now()
             probe_names = cfg.get('probe_names', {})
@@ -230,14 +233,15 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                                      'ip': probe_address(p) or 'N/A',
                                      'port': p['port'], 'last_seen': p['last_seen']}
 
-            # Add probes known only from ingest (e.g. deep-sleep probes whose radio
-            # is off between readings, so mDNS never discovers them) so they are
-            # still visible and manageable here.
+            # The latest reading for EVERY probe, not just the ones mDNS missed.
+            # This page is where an operator looks after a probe, and it could
+            # not tell them the one thing they came to find out — what it reads
+            # right now — so every question sent them back to the dashboard.
             if db is not None:
                 try:
                     for _, r in db.latest_per_probe(window_seconds=7 * 86400).iterrows():
                         pid = r['probe_id']
-                        if not str(pid).strip() or pid in merged:
+                        if not str(pid).strip():
                             continue
                         last = None
                         try:
@@ -245,9 +249,20 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                                 str(r['timestamp']).rstrip('Z')).timestamp()
                         except Exception:
                             pass
-                        merged[pid] = {'name': pid, 'probe_id': pid, 'ip': 'via readings',
-                                       'port': '', 'last_seen': last,
-                                       'battery_pct': r.get('battery_pct')}
+                        reading = {'temperature_c': r.get('temperature_c'),
+                                   'battery_pct': r.get('battery_pct')}
+                        if pid in merged:
+                            merged[pid].update(reading)
+                            # A probe reporting by ingest is live even when mDNS
+                            # last saw it minutes ago (deep sleep); take the newer
+                            # of the two so the status word matches the reading.
+                            if last and (not merged[pid].get('last_seen')
+                                         or last > merged[pid]['last_seen']):
+                                merged[pid]['last_seen'] = last
+                        else:
+                            merged[pid] = {'name': pid, 'probe_id': pid,
+                                           'ip': '', 'port': '', 'last_seen': last,
+                                           **reading}
                 except Exception:
                     log.debug('devices: DB probe merge failed', exc_info=True)
 
@@ -256,7 +271,6 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                 name = info['name']
                 probe_id = info['probe_id']
                 ip = info['ip']
-                port = info['port']
                 last = info['last_seen']
 
                 delta = ''
@@ -288,14 +302,6 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                 # Build display elements with friendly names and edit button
                 friendly_name = probe_names.get(probe_id, None) if probe_id else None
 
-                # Show current interval on the card if a per-probe override exists
-                interval_note = None
-                if probe_id and probe_id in probe_intervals:
-                    interval_note = html.Small(
-                        f'Interval: {probe_intervals[probe_id]} s',
-                        className='text-muted d-block'
-                    )
-
                 # Create edit button (only if we have a probe_id)
                 edit_button = dbc.Button(
                     'Edit',
@@ -323,12 +329,78 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                         ])
                     ]
 
-                card_body_children = [
-                    *title_elements,
-                    html.Small(f'{ip}:{port}' if port else str(ip), className='text-muted'),
-                ]
-                if interval_note:
-                    card_body_children.append(interval_note)
+                # --- the reading, which is why anyone opens this page ---------
+                t_c = info.get('temperature_c')
+                thr = (cfg.get('alert_thresholds', {}) or {}).get(probe_id) or {}
+                watched = thr.get('min') is not None or thr.get('max') is not None
+                reading_row = None
+                if t_c is not None and pd.notna(t_c):
+                    breach = HELD.get(probe_id) if probe_id else None
+                    if breach in ('high', 'low'):
+                        val_cls, badge, badge_cls = 'text-danger', 'ALARM', 'text-danger'
+                    elif status_color != 'success':
+                        val_cls, badge, badge_cls = 'text-muted', 'STALE', 'text-warning'
+                    elif not watched:
+                        # "OK" means "inside its limits". With no limits set,
+                        # nothing is checking this probe, and calling it OK is a
+                        # judgement the hub is not in a position to make -- it is
+                        # also the exact case an operator most wants flagged.
+                        val_cls, badge, badge_cls = 'text-body', 'NO ALARM SET', 'text-muted'
+                    else:
+                        val_cls, badge, badge_cls = 'text-success', 'OK', 'text-success'
+                    reading_row = html.Div([
+                        html.Span(f'{temp_c_to_unit(t_c, temp_unit):.1f} {_unit_symbol(temp_unit)}',
+                                  className=f'probe-reading {val_cls}'),
+                        html.Span(f'● {badge}',
+                                  className=f'{badge_cls} small fw-bold ms-2 align-middle'),
+                    ], className='d-flex align-items-baseline justify-content-between mt-1 mb-2')
+
+                # --- the range it is held to, and how often it reports ---------
+                facts = []
+                lo, hi = thr.get('min'), thr.get('max')
+                if lo is not None or hi is not None:
+                    lo_s = (f'{temp_c_to_unit(lo, temp_unit):.1f}' if lo is not None else '—')
+                    hi_s = (f'{temp_c_to_unit(hi, temp_unit):.1f}' if hi is not None else '—')
+                    facts.append(('Alarm range', f'{lo_s} to {hi_s} {_unit_symbol(temp_unit)}'))
+                else:
+                    facts.append(('Alarm range', 'not set'))
+                # Always shown. Previously only a per-probe OVERRIDE appeared, so
+                # the common case — every probe on the global interval — showed
+                # nothing, and the page looked like it did not know.
+                try:
+                    secs = float(probe_intervals.get(probe_id, cfg.get('interval_sec', 5)))
+                    facts.append(('Reports', f'every {_humanize_seconds(secs)}'))
+                except (TypeError, ValueError):
+                    pass
+                offset = (cfg.get('calibration_offsets', {}) or {}).get(probe_id)
+                if offset:
+                    try:
+                        facts.append(('Calibration',
+                                      f'{delta_c_to_unit(float(offset), temp_unit):+.2f} '
+                                      f'{_unit_symbol(temp_unit)}'))
+                    except (TypeError, ValueError):
+                        pass
+
+                card_body_children = [*title_elements]
+                if reading_row is not None:
+                    card_body_children.append(reading_row)
+                card_body_children.append(html.Div([
+                    html.Div([html.Span(k, className='probe-fact-k'),
+                              html.Span(v, className='probe-fact-v')],
+                             className='probe-fact')
+                    for k, v in facts
+                ], className='mb-2'))
+                # Identity last and muted: useful when it matters, never the
+                # headline. "via readings" was internal jargon for "mDNS never
+                # saw this one", which is not a fact a customer needs on a card.
+                # The IP only, never ip:port. core.probes.probe_port defaults to 80,
+                # so a probe the hub knows only from its ingest posts rendered
+                # "127.0.0.1:80" — a port it has never advertised, shown as fact.
+                addr = str(ip).strip() if ip else ''
+                if addr in ('N/A', 'via readings'):
+                    addr = ''
+                card_body_children.append(
+                    html.Small(addr or 'Reporting over Wi-Fi', className='text-muted d-block'))
                 # Battery level rides along DB-merged rows (latest_per_probe);
                 # mDNS-only entries have no reading and therefore no battery.
                 # Same presentation as the dashboard probe cards.

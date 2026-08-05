@@ -100,6 +100,15 @@ body {
 /* Only interactive probe cards lift on hover — not static stat/settings cards. */
 .probe-card { cursor: default; transition: transform .12s ease, border-color .12s ease; }
 .probe-card:hover { transform: translateY(-3px); border-color: var(--border-strong); }
+/* Devices card: the reading is the headline, the facts below it are a quiet
+   key/value list. Sized so a probe's state is legible across a kitchen, not
+   just from a desk chair. */
+.probe-reading { font-size: 1.9rem; font-weight: 700; line-height: 1.1; letter-spacing: -.02em; }
+.probe-fact { display: flex; justify-content: space-between; gap: 1rem;
+              font-size: .82rem; padding: .18rem 0; border-top: 1px solid var(--border); }
+.probe-fact:first-child { border-top: 0; }
+.probe-fact-k { color: var(--text-faint); }
+.probe-fact-v { color: var(--text); font-family: var(--mono); text-align: right; }
 .gauge-card, .graph-card { min-height: 400px; overflow: visible !important; }
 /* Centre the fixed-height gauge in whatever height the row gives the card. */
 .gauge-fill { flex: 1 1 auto; display: flex; flex-direction: column; justify-content: center; }

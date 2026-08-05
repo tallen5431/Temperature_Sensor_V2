@@ -341,13 +341,12 @@ DetailsSection = html.Div([
 # each probe → the chart → the numbers behind it → everything else on request.
 # The gauge and graph used to sit below five stacked sections, so the single most
 # looked-at element on the page was also the one furthest down it.
+# temp-unit-store and clock-format-store moved to the app-wide layout
+# (components/layout_main.LAYOUT): the unit a customer reads temperatures in is a
+# property of the PERSON, not of one page, and while they lived here the Devices
+# grid could not honour the choice at all — it had no such id to read. Anything
+# outside the dashboard that wants them can now take them as an Input.
 DashboardLayout = html.Div([
-    # No default: an empty store means "this browser has never chosen", which is
-    # what lets the clientside locale probe fill in °F / 12-hour for the people
-    # who expect them. _convert()/_fmt_clock() treat an unset value as °C / 24 h,
-    # so nothing renders wrong in the moment before it resolves.
-    dcc.Store(id="temp-unit-store", storage_type="local"),
-    dcc.Store(id="clock-format-store", storage_type="local"),
     dcc.Store(id="dash-details-store", storage_type="local", data=False),
     # Per-client render signature for the main refresh callback: when a 5 s tick
     # arrives and nothing it would draw has changed, the callback answers
