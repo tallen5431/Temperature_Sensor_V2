@@ -2,3 +2,7 @@
 -r requirements.txt
 pytest~=8.3
 pyinstaller~=6.11
+# Lint. Deliberately pyflakes and not flake8/ruff: it reports unused imports,
+# unused locals and undefined names -- real defects -- and says nothing about
+# style, so it needs no config file and cannot start bikeshedding arguments.
+pyflakes~=3.2

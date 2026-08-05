@@ -90,7 +90,7 @@ If interest is thin, iterate the pitch *before* buying parts.
 ## Phase 1 — Clear the one legal gate (parallel with Phase 0; ~2–4 weeks, ~$1–3k)
 
 You may **not** legally sell a Wi-Fi device in the US without this. A pre-certified ESP32 module
-saves the big cost — **rev 2 has one** (`ESP32-C3-MINI-1`, FCC ID `2AC7Z-ESPC3MINI1`), and it is built
+saves the big cost — **rev 2 has one** (`ESP32-C3-WROOM-02`, FCC ID `2AC7Z-ESPC3WROOM02`), and it is built
 and bench-verified ([`REV2_BUILD_GUIDE.md`](REV2_BUILD_GUIDE.md); zero firmware change), so this budget
 holds. **Rev 1 does not** — the SuperMini is a bare `ESP32-C3FH4` with no modular grant, and on that
 hardware the radio owes full intentional-radiator testing at ~$5,000–15,000+ instead, which is why

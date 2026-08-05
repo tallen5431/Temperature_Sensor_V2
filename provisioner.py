@@ -1,28 +1,13 @@
 from __future__ import annotations
 import logging
-import threading, time, socket
+import threading, time
 from typing import Callable, Optional
 from provisioning import (provision_probe, get_probe_status, desired_probe_config,
-                          usable_server_base)
+                          resolve_host, usable_server_base)
+from core.probes import normalize_probe, probe_address
 from core.status import probe_fresh_window, probe_prune_window
 
 log = logging.getLogger("hub.provisioner")
-
-
-def _resolve_with_timeout(host: str, timeout: float = 3.0) -> Optional[str]:
-    """Resolve hostname to IP in a background thread to avoid blocking the caller."""
-    result: list = [None]
-
-    def _do():
-        try:
-            result[0] = socket.gethostbyname(host)
-        except Exception:
-            pass
-
-    t = threading.Thread(target=_do, daemon=True)
-    t.start()
-    t.join(timeout)
-    return result[0]
 
 
 class AutoProvisioner(threading.Thread):
@@ -92,7 +77,7 @@ class AutoProvisioner(threading.Thread):
             mdns_host = mdns_host.rstrip(".")
             if not mdns_host:
                 return None
-            new_ip = _resolve_with_timeout(mdns_host)
+            new_ip = resolve_host(mdns_host)
             cur_ip = p.get("ip") if isinstance(p, dict) else getattr(p, "ip", None)
             if new_ip and new_ip != cur_ip:
                 return new_ip
@@ -112,6 +97,16 @@ class AutoProvisioner(threading.Thread):
     def _run_cycle(self):
         """One provisioning pass over the discovery list (factored out of
         :meth:`run` so tests can drive cycles synchronously)."""
+        # Re-read the switch every cycle rather than only at boot. Turning
+        # "automatically configure probes" off in Settings has to actually stop
+        # the claiming — otherwise the setting saves, the hub keeps re-pointing
+        # probes at itself, and the operator concludes the switch does nothing.
+        # It matters most on a head-office hub, where leaving this on means HQ
+        # and a store hub on the same network take turns stealing each other's
+        # probes. cfg is optional (tests construct without one) — absent means
+        # the old always-on behaviour.
+        if self.cfg is not None and not self.cfg.get("auto_provision", True):
+            return
         # Evict probes that have been gone long enough that they should
         # no longer occupy the Devices list (bounds memory over time).
         try:
@@ -172,19 +167,13 @@ class AutoProvisioner(threading.Thread):
 
         now = time.time()
         for key, p in (self.discovery.list_probes() or {}).items():
-            # 1) Handle both dict and object-style probes
-            if isinstance(p, dict):
-                props = p.get("properties", {}) or {}
-                probe_id = props.get("id") or p.get("probe_id") or p.get("id")
-                host = p.get("ip") or p.get("host") or ""
-                port = int(p.get("port", 80) or 80)
-                last_seen = p.get("last_seen")
-            else:
-                props = getattr(p, "properties", {}) or {}
-                probe_id = props.get("id") or getattr(p, "probe_id", None) or getattr(p, "id", None)
-                host = getattr(p, "ip", None) or getattr(p, "host", None) or ""
-                port = int(getattr(p, "port", 80) or 80)
-                last_seen = getattr(p, "last_seen", None)
+            # 1) core.probes reads a probe record the same way on every surface,
+            # whether the registry holds a ProbeInfo or a dict.
+            fields = normalize_probe(p)
+            probe_id = fields["probe_id"] or None
+            host = probe_address(p)
+            port = fields["port"]
+            last_seen = fields["last_seen"]
 
             # 2) A probe silent longer than its fresh window is asleep (or
             # gone) — resolving and GETting it would just burn a 3 s
@@ -214,17 +203,25 @@ class AutoProvisioner(threading.Thread):
             # probe should be running.
             interval_ms = default_interval_ms
             resolution_bits = None
+            watch = (None, None, 0)
             if self.cfg is not None and probe_id:
                 desired_cfg = desired_probe_config(self.cfg, probe_id)
                 interval_ms = desired_cfg["interval_ms"]
                 resolution_bits = desired_cfg["resolution_bits"]
+                # Part of "what should this probe be running", so it belongs in
+                # the change-detection tuple below — otherwise editing a
+                # threshold on the dashboard would never reach a probe this
+                # session, and the probe would keep watching the old limit.
+                watch = (desired_cfg.get("alert_min_c"),
+                         desired_cfg.get("alert_max_c"),
+                         desired_cfg.get("sample_ms", 0))
 
             host = (host or "").rstrip(".")
             if not host:
                 continue
 
             target_url = f"{base}/api/ingest"
-            desired = (base, interval_ms, resolution_bits, self.token)
+            desired = (base, interval_ms, resolution_bits, self.token, watch)
             # Once we've provisioned this probe this session, only
             # re-provision when its visible config (server_url /
             # interval) differs — this avoids the ESP32 doing an
@@ -247,10 +244,23 @@ class AutoProvisioner(threading.Thread):
                     # re-provision every cycle.
                     res_ok = status.get("resolution_bits") in (None, resolution_bits) \
                         if status else False
+                    # The watch has to be compared here too, not just in the
+                    # `desired` tuple above. Changing a threshold leaves
+                    # server_url, interval and resolution all identical, so
+                    # without this the shortcut declares the probe "already
+                    # configured correctly" and the new limit never ships — the
+                    # probe keeps watching the old one until the hub restarts.
+                    # Absent keys mean firmware that predates the watch: treat as
+                    # a match so an old probe isn't re-provisioned every cycle.
+                    watch_ok = True
+                    if status is not None and "sample_ms" in status:
+                        watch_ok = (status.get("alert_min_c") == watch[0] and
+                                    status.get("alert_max_c") == watch[1] and
+                                    status.get("sample_ms") == watch[2])
                     if (status and
                             status.get("server_url") == target_url and
                             status.get("interval_ms") == interval_ms and
-                            res_ok):
+                            res_ok and watch_ok):
                         continue  # already configured correctly
                 except Exception:
                     pass  # can't check — fall through and provision
@@ -263,6 +273,7 @@ class AutoProvisioner(threading.Thread):
                     token=self.token,
                     interval_ms=interval_ms,
                     resolution_bits=resolution_bits,
+                    watch=watch,
                 ):
                     self._provisioned.add(key)
                     self._pushed[key] = desired

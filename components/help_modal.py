@@ -35,9 +35,14 @@ def _help_body():
 
             _section("3 · Alerts & notifications", [
                 html.P([html.B("Devices → Edit"), " sets a min/max threshold per probe. ",
-                        html.B("Settings → Alerts"), " turns on email and/or webhook (Slack, Discord, "
-                        "Zapier, SMS relays). Alerts run on the hub, so they fire even with no browser open — "
-                        "and you’re told when a probe goes ", html.B("offline"), " too."], className="mb-1"),
+                        html.B("Settings → Alerts & notifications"), " turns on email and/or "
+                        "webhook (Slack, Discord, Teams, Zapier, SMS relays). Alerts run on the "
+                        "hub, so they fire even with no browser open — and you’re told when a "
+                        "probe goes ", html.B("offline"), " too."], className="mb-1"),
+                html.P(["For email, type your address and password — the hub works out the mail "
+                        "server for you and sends alerts to that same address unless you name "
+                        "someone else. Timing and damping already have sensible defaults and "
+                        "sit under ", html.B("Advanced settings"), "."], className="mb-1"),
                 html.Small("Use “Send test” to confirm your settings before you rely on them.",
                            className="text-muted"),
             ]),

@@ -13,6 +13,7 @@ import datetime
 import math
 import re
 import time
+from core.units import c_to_f, f_to_c
 
 # A probe with a bad clock (failed NTP / drifted RTC) can stamp a reading in the
 # future. The hub's clock is authoritative, so a timestamp more than this many
@@ -46,13 +47,27 @@ def sanitize_probe_id(probe_id) -> str:
     return _PROBE_ID_STRIP.sub("", str(probe_id))[:32]
 
 
+def sanitize_site(site) -> str:
+    """Coerce a site name to a safe token, same charset and cap as a probe id.
+
+    ``site`` labels which building a reading came from. It is empty for every
+    locally-ingested reading and set only on rows a store hub forwarded to an
+    aggregating hub, so an HQ dashboard can tell six stores apart. Sanitised
+    rather than rejected for the same reason probe ids are: a bad label must not
+    cost a good temperature reading.
+    """
+    if not site:
+        return ""
+    return _PROBE_ID_STRIP.sub("", str(site))[:32]
+
+
 def _local_iso_now() -> str:
     """Current local machine time as a naive ISO 8601 string (no tz suffix).
 
     Millisecond precision: this stamps a payload that arrives WITHOUT its own
     timestamp (a probe whose clock hasn't synced yet). Two such readings from
     one probe within the same wall-clock second would collapse onto an identical
-    whole-second stamp — and the UNIQUE(probe_id, epoch) ingest index would then
+    whole-second stamp — and the UNIQUE(probe_id, epoch, site) ingest index would then
     treat the second as a duplicate and drop it. Sub-second precision keeps them
     distinct so no legitimate reading is ever discarded.
     """
@@ -119,7 +134,7 @@ def _clamp_future(ts: str) -> str:
     every correct probe stamp looks "far in the future" and would be overwritten
     with the hub's wrong time — destroying the good data in favour of the bad
     clock. Worse, a whole replayed backlog then collapses onto near-identical
-    stamps and the UNIQUE(probe_id, epoch) index drops all but a couple of rows.
+    stamps and the UNIQUE(probe_id, epoch, site) index drops all but a couple of rows.
     So below the trust floor we keep the probe's stamp: the probe only stamps a
     reading once its own clock is NTP-valid, making it the better source.
     """
@@ -143,7 +158,7 @@ def absolute_epoch(raw_ts) -> float | None:
     (01:30 EDT and 01:30 EST are both "01:30"). Re-deriving the epoch from that
     string then gives both readings the SAME epoch, which
 
-      * makes them collide on the ``UNIQUE(probe_id, epoch)`` ingest index, so
+      * makes them collide on the ``UNIQUE(probe_id, epoch, site)`` ingest index, so
         one is silently discarded, and
       * interleaves the whole repeated hour when anything sorts by epoch — the
         chart, the exports, the rate-of-change window.
@@ -177,7 +192,7 @@ def is_future_stamp(raw_ts, now: float | None = None) -> bool:
     that must know a row WILL be clamped before it happens — notably the bulk
     ``/ingest_csv`` drain, which has to re-stamp such rows itself (spread 1 ms
     apart) instead of letting every row clamp independently to the same
-    millisecond and be swallowed by the UNIQUE(probe_id, epoch) index.
+    millisecond and be swallowed by the UNIQUE(probe_id, epoch, site) index.
 
     Returns ``False`` when the hub's own clock is below the trust floor: an
     unsynced hub must never classify a correctly-stamped probe reading as
@@ -216,9 +231,9 @@ def normalize_payload(payload: dict):
         raise ValueError("No temperature value found")
 
     if t_c is None:  # compute from F
-        t_c = (t_f - 32.0) * 5.0 / 9.0
+        t_c = f_to_c(t_f)
     if t_f is None:  # compute from C
-        t_f = (t_c * 9.0 / 5.0) + 32.0
+        t_f = c_to_f(t_c)
 
     # Enforce the ingest contract (PROTOCOL.md §6): the resolved value must be a
     # finite number in a physically sane band. This rejects NaN/inf (which would

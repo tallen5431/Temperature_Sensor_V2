@@ -34,7 +34,7 @@ approval, which saves the biggest cost — but the **finished product is still n
 > (~**$5,000–15,000+**), not the SDoC quoted below — see
 > [`STARTUP_CHECKLIST.md`](STARTUP_CHECKLIST.md) §"the FCC gotcha". **Everything in §1 and Phase 0b
 > assumes the rev-2 board** ([`PCB_REV2_MODULE.md`](PCB_REV2_MODULE.md)), which swaps in a
-> soldered-down `ESP32-C3-MINI-1` (FCC ID `2AC7Z-ESPC3MINI1`) for **zero firmware change**. Rev 2 is
+> soldered-down `ESP32-C3-WROOM-02` (FCC ID `2AC7Z-ESPC3WROOM02`) for **zero firmware change**. Rev 2 is
 > a prerequisite for the cheap path, not a later refinement. Rev-1 boards remain fine for loaner
 > pilots, dev, and DIY kits.
 
@@ -152,7 +152,7 @@ a *feature* to them, not a limitation — lead with it.
 
 - **Phase 0a — build rev 2 first.** The SDoC path below is only available on a board that inherits a
   modular grant, and **rev 1 does not** (bare `ESP32-C3FH4`, no grant — see the callout in §1). Swap
-  to the `ESP32-C3-MINI-1` per [`PCB_REV2_MODULE.md`](PCB_REV2_MODULE.md); the firmware is unchanged.
+  to the `ESP32-C3-WROOM-02` per [`PCB_REV2_MODULE.md`](PCB_REV2_MODULE.md); the firmware is unchanged.
   Skipping this doesn't make Phase 0b cheaper, it makes it impossible at the quoted price.
 - **Phase 0b — clear the one gate.** FCC Part 15B **SDoC** on the finished host (budget $1–3k for a
   multi-port hub), a US responsible party, and the "Contains FCC ID" + §15.19(a)(3) labeling.

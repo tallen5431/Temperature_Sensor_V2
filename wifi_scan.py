@@ -7,7 +7,7 @@ Exposes:
   - SSIDWatcher: background refresher with latest set
 """
 from __future__ import annotations
-import subprocess, sys, time, threading, shutil, re
+import subprocess, sys, threading, shutil, re
 from typing import Set, List
 
 def _run(cmd: List[str]) -> str:
@@ -80,6 +80,16 @@ def scan_ssids() -> Set[str]:
     return set()
 
 class SSIDWatcher:
+    """Background SSID scanner that can be started and stopped repeatedly.
+
+    Scanning shells out to netsh/nmcli/iwlist every ``interval_sec``, so it runs
+    only while something is actually watching for a probe's setup network — the
+    Settings page starts it when that section is opened and stops it when it is
+    closed. Both halves of that have to work more than once, which is why
+    ``start()`` clears the stop flag and ``stop()`` interrupts the sleep instead
+    of leaving the thread to notice up to an interval later.
+    """
+
     def __init__(self, target_ssid: str, interval_sec: float = 5.0):
         self.target = target_ssid
         self.interval = interval_sec
@@ -88,20 +98,44 @@ class SSIDWatcher:
         self._th: threading.Thread | None = None
 
     def start(self) -> None:
-        if self._th and self._th.is_alive():
+        # Already scanning — nothing to do. The `not self._stop.is_set()` half
+        # matters: after a stop() the previous thread can still be alive for a
+        # moment while it winds down, and treating that as "already running"
+        # would return without starting anything, leaving a watcher that looks
+        # started and never scans again.
+        if self._th and self._th.is_alive() and not self._stop.is_set():
             return
+        # A FRESH event per thread, closed over by the loop. Re-using one event
+        # and clearing it could revive a thread that had already decided to exit
+        # (or leave a new thread racing a stale set flag); this way a retired
+        # thread keeps its own set event and dies, and the new one starts clean.
+        self._stop = stop = threading.Event()
+
         def _loop():
-            while not self._stop.is_set():
+            while not stop.is_set():
                 try:
                     self.latest = scan_ssids()
                 except Exception:
                     self.latest = set()
-                time.sleep(self.interval)
-        self._th = threading.Thread(target=_loop, daemon=True)
+                # wait(), not sleep(): stop() then takes effect at once rather
+                # than after up to one full interval of further scanning.
+                stop.wait(self.interval)
+
+        self._th = threading.Thread(target=_loop, name="ssid-watcher", daemon=True)
         self._th.start()
 
     def stop(self) -> None:
+        """Stop scanning and forget what was last seen.
+
+        Dropping ``latest`` matters: the question this answers is "is the probe's
+        setup network nearby *right now*", so a sighting from before the watcher
+        was stopped must not be reported as current when it starts again.
+        """
         self._stop.set()
+        self.latest = set()
+
+    def running(self) -> bool:
+        return bool(self._th and self._th.is_alive() and not self._stop.is_set())
 
     def matched(self) -> List[str]:
         # The concrete SSIDs that matched — the exact target or any SSID that

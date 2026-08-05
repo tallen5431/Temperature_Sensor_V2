@@ -9,15 +9,17 @@ from flask import Blueprint, jsonify, request
 
 from provisioning import provision_probe, resolve_host, desired_probe_config
 from core.diagnostics import build_diagnostics
+from core.units import c_to_f
 from core.secret_compare import constant_time_eq
 from core.storage import (normalize_payload, extract_humidity, compute_vpd,
-                          sanitize_probe_id, is_future_stamp,
+                          sanitize_probe_id, sanitize_site, is_future_stamp,
                           absolute_epoch)
 try:  # battery telemetry helper — may be absent on an older core.storage build
     from core.storage import extract_battery
 except ImportError:
     def extract_battery(payload):
         return None
+from core.probes import discovered_probes
 from core.status import reporting_probe_ids, hub_health_window
 from core.alerts import threshold_for
 from core.storage import threshold_breach
@@ -26,19 +28,18 @@ from core.applog import HEALTH, get_logger
 from core.metrics import LATEST
 from core.mqtt_publish import MQTT
 from core.audit import AUDIT
+from core.protocol import MAX_BATCH_ROWS, MAX_INGEST_BYTES
 
 log = get_logger("api")
 
 # A probe is considered "online" if it has been seen within this many seconds.
 DEFAULT_ONLINE_TIMEOUT_SEC = 60
 
-# Reject absurdly large ingest bodies (DoS / disk-fill protection).
-MAX_INGEST_BYTES = 64 * 1024
-
-# Hard cap on readings accepted in one /ingest_csv call (the ≤1000-rows/request
-# contract in PROTOCOL.md §7). The 64 KB byte limit already bounds this in
-# practice; this is a belt-and-suspenders guard against a small-but-dense body.
-MAX_BATCH_ROWS = 1000
+# The two ingest limits (a 64 KB body for DoS/disk-fill protection, and the
+# ≤1000-rows/request contract in PROTOCOL.md §7) live in core.protocol because
+# the forwarder is the other side of this contract and has to respect them when
+# it builds a batch. Re-declaring them here is how a sender and a receiver drift
+# into "head office rejects every batch".
 
 # Named rolling windows accepted by ``GET /api/readings`` (mirrors the CSV
 # download's ?window= values in app.py). ``all`` / unknown -> no window.
@@ -191,6 +192,21 @@ def _is_safe_provision_target(host: str) -> bool:
                 and not ip.is_multicast)
 
 
+def _batch_events(req) -> list:
+    """Optional ``events`` array from a bulk-ingest body. ``[]`` if absent.
+
+    JSON only, and deliberately so: the CSV form is the probe's on-flash buffer
+    format, and probes have no event log. Only a forwarding hub sends these.
+    """
+    if "application/json" not in (req.headers.get("Content-Type") or "").lower():
+        return []
+    body = req.get_json(silent=True)
+    if not isinstance(body, dict):
+        return []
+    events = body.get("events")
+    return [e for e in events if isinstance(e, dict)] if isinstance(events, list) else []
+
+
 def _parse_batch(req):
     """Parse a bulk-ingest body into a list of reading dicts, or None if unusable.
 
@@ -250,37 +266,18 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
 
     # --- discovery listing ---
     def _iter_probes() -> List[Dict[str, Any]]:
-        if discovery is None:
-            return []
-        try:
-            vals = discovery.list_probes().values()
-        except Exception:
-            vals = []
         timeout = _online_timeout()
         now = time.time()
         out: List[Dict[str, Any]] = []
-        for obj in vals:
-            is_dict = isinstance(obj, dict)
-            get = (lambda k, d=None: (obj.get(k, d) if is_dict else getattr(obj, k, d)))
-            props = get("properties", {}) or {}
-            host = get("host")
-            ip = get("ip")
-            port = get("port", 80) or 80
-            name = get("name") or get("id") or props.get("name")
-            pid = props.get("id") or get("probe_id") or get("id") or name
-            last_seen = get("last_seen")
-            age = None
-            try:
-                if isinstance(last_seen, (int, float)):
-                    age = max(0.0, now - float(last_seen))
-            except Exception:
-                age = None
+        for p in discovered_probes(discovery):
+            last_seen = p["last_seen"]
+            age = None if last_seen is None else max(0.0, now - last_seen)
             out.append({
-                "host": host,
-                "ip": ip,
-                "port": port,
-                "name": name,
-                "probe_id": pid,
+                "host": p["host"],
+                "ip": p["ip"],
+                "port": p["port"],
+                "name": p["name"],
+                "probe_id": p["probe_id"] or p["name"],
                 "last_seen": last_seen,
                 "age_sec": round(age, 1) if age is not None else None,
                 "online": (age is not None and age <= timeout),
@@ -539,7 +536,7 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
         offset = _calibration_offset(probe_id)
         if offset:
             t_c += offset
-            t_f = (t_c * 9.0 / 5.0) + 32.0
+            t_f = c_to_f(t_c)
 
         # Optional humidity -> Vapour Pressure Deficit (grow variant). A
         # temperature-only probe simply omits humidity and stores NULL.
@@ -556,7 +553,7 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
         battery = extract_battery(data)
 
         db.append(ts, t_c, t_f, probe_id=probe_id, humidity=humidity, vpd=vpd,
-                  battery=battery,
+                  battery=battery, site=sanitize_site(request.headers.get("X-Site")),
                   # Carry the unambiguous instant when the probe sent one (it
                   # stamps in UTC), so the DST fall-back hour doesn't collapse
                   # two readings onto one epoch.
@@ -661,7 +658,7 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
         # Receipt-stamp bulk rows the hub must stamp itself, spread 1 ms apart.
         # Two cases need this, and both are silent data loss without it, because
         # every such row would otherwise land on the SAME millisecond and all but
-        # the first would be dropped by the UNIQUE(probe_id, epoch) index while
+        # the first would be dropped by the UNIQUE(probe_id, epoch, site) index while
         # the endpoint still answered 200 — so the probe advances its checkpoint
         # and deletes the buffer it just lost:
         #   1. a row with NO timestamp at all, and
@@ -700,7 +697,7 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
             offset = _calibration_offset(pid)
             if offset:
                 t_c += offset
-                t_f = (t_c * 9.0 / 5.0) + 32.0
+                t_f = c_to_f(t_c)
             # Carry the optional telemetry the live path stores, so a grow probe
             # draining a backlog doesn't come back as temperature-only.
             humidity = extract_humidity(row)
@@ -731,7 +728,13 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
         accepted = 0
         if valid:
             try:
-                accepted = db.bulk_insert(valid)
+                # Batch-level site (X-Site), not per-row: a forwarding hub sends
+                # only its own readings, so one label per batch cannot disagree
+                # with itself, and it works for the CSV body format too. Empty
+                # for a probe posting directly — every reading on a single-site
+                # hub — which is what keeps those rows eligible to forward.
+                accepted = db.bulk_insert(
+                    valid, site=sanitize_site(request.headers.get("X-Site")))
             except Exception:
                 HEALTH.record_failure()
                 log.exception("batch ingest write failed")
@@ -750,6 +753,17 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
             # live notification: it is old news by definition, and this runs on a
             # request thread.
             for pid, (kind, t_c, limit, when) in worst.items():
+                # ...but ONLY for excursions the alert engine will not see. If the
+                # worst excursion IS this probe's newest row, the engine evaluates
+                # it on its next pass and logs it live, so recording it here too
+                # double-logs the same breach. That was invisible while
+                # /ingest_csv only ever served probes draining a buffer; a
+                # FORWARDING hub sends every batch through this endpoint, so on an
+                # HQ hub every single store breach was landing in the event log
+                # twice. Backfill exists for breaches that are already old news —
+                # those still get their entry.
+                if newest.get(pid) and newest[pid][0] == when:
+                    continue
                 try:
                     db.record_event(kind, pid, temperature_c=t_c, limit=limit, ts=when)
                     log.info("backfilled %s breach for probe=%r at %s (%.2f C)",
@@ -782,7 +796,28 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
             log.warning("ingest_csv: re-stamped %d/%d future-dated row(s) from probe=%r "
                         "— check the probe's clock (NTP) or the hub's",
                         restamped, len(rows), header_pid or "?")
+        # Alert-lifecycle events, optional and JSON-only. A probe never sends
+        # these — only a forwarding hub does, carrying what its OWN alert engine
+        # decided against its OWN thresholds. That is a different record from the
+        # readings beside them and the one an auditor asks for, so it rides the
+        # same request rather than needing its own endpoint, auth path and
+        # failure mode: one round trip, and either both land or neither does.
+        events_in = _batch_events(request)
+        events_ok = 0
+        if events_in:
+            site = sanitize_site(request.headers.get("X-Site"))
+            for ev in events_in[:MAX_BATCH_ROWS]:
+                try:
+                    db.record_event(str(ev.get("kind") or ""),
+                                    sanitize_probe_id(ev.get("probe_id") or ""),
+                                    temperature_c=ev.get("temperature_c"),
+                                    limit=ev.get("limit_c"),
+                                    ts=ev.get("timestamp") or ev.get("ts"),
+                                    site=site)
+                    events_ok += 1
+                except Exception:  # noqa: BLE001 - an event must never fail readings
+                    pass
         return jsonify(ok=True, accepted=accepted, rejected=rejected,
-                       restamped=restamped)
+                       restamped=restamped, events=events_ok)
 
     return bp

@@ -49,6 +49,45 @@ def test_corrupt_config_is_preserved_not_silently_discarded(tmp_path):
     assert c.get("interval_sec") == 5
 
 
+def test_separate_corrupt_startups_preserve_both_payloads(tmp_path):
+    p = tmp_path / "config.json"
+    first_payload = "{ first corrupt payload"
+    second_payload = "{ second corrupt payload"
+
+    p.write_text(first_payload, encoding="utf-8")
+    Config(p)
+    p.write_text(second_payload, encoding="utf-8")
+    Config(p)
+
+    assert (tmp_path / "config.json.corrupt").read_text(encoding="utf-8") == first_payload
+    assert (tmp_path / "config.json.corrupt.1").read_text(encoding="utf-8") == second_payload
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX file modes")
+def test_corrupt_recovery_files_are_owner_only(tmp_path):
+    p = tmp_path / "config.json"
+    p.write_text("{ secret but invalid", encoding="utf-8")
+
+    Config(p)
+
+    assert stat.S_IMODE(os.stat(tmp_path / "config.json.corrupt").st_mode) == 0o600
+
+
+def test_backup_creation_failure_does_not_prevent_startup(tmp_path, monkeypatch):
+    p = tmp_path / "config.json"
+    payload = "{ cannot be backed up"
+    p.write_text(payload, encoding="utf-8")
+
+    def deny_backup(*args, **kwargs):
+        raise PermissionError("read-only filesystem")
+
+    monkeypatch.setattr("core.config.os.open", deny_backup)
+    config = Config(p)
+
+    assert config.get("interval_sec") == 5
+    assert p.read_text(encoding="utf-8") == payload
+
+
 def test_programmatic_write_is_renormalised(tmp_path):
     # A POST /api/config-style write with a numeric ui_auth username must be
     # coerced on the way in, so it can't brick the next startup.
@@ -65,6 +104,26 @@ def test_get_returns_copy_not_live_reference(tmp_path):
     d["p1"] = "TAMPERED"
     d["p2"] = "Injected"
     assert c.get("probe_names") == {"p1": "Fridge"}  # unchanged
+
+
+def test_to_dict_returns_deep_snapshot_without_changing_live_or_persisted_data(tmp_path):
+    p = tmp_path / "config.json"
+    c = Config(p)
+    original = {
+        "nested_snapshot_test": {
+            "metadata": {"location": "walk-in"},
+            "channels": ["email", {"name": "webhook", "enabled": True}],
+        }
+    }
+    c.update(original)
+
+    snapshot = c.to_dict()
+    snapshot["nested_snapshot_test"]["metadata"]["location"] = "TAMPERED"
+    snapshot["nested_snapshot_test"]["channels"].append("injected")
+    snapshot["nested_snapshot_test"]["channels"][1]["enabled"] = False
+
+    assert c.to_dict()["nested_snapshot_test"] == original["nested_snapshot_test"]
+    assert json.loads(p.read_text(encoding="utf-8"))["nested_snapshot_test"] == original["nested_snapshot_test"]
 
 
 def test_concurrent_mutate_and_save_does_not_race(tmp_path):

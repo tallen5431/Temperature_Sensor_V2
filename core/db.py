@@ -28,12 +28,44 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 import pandas as pd
+from core.units import c_to_f
 
 log = logging.getLogger("hub.db")
 
 # Columns exposed to the rest of the app.  ``timestamp`` is aliased from the
 # ``ts`` column so existing dashboard code keeps working unchanged.
 _SELECT_COLS = "ts AS timestamp, temperature_c, temperature_f, probe_id"
+
+
+def _reading_filters(cutoff=None, probe_id=None, site=None):
+    """Conjunction + params for the readings filters the dashboard queries share.
+
+    Returns ``(clauses, params)`` rather than a finished ``WHERE`` string because
+    one caller needs the bare conjunction: ``latest_per_probe`` appends it after
+    its own ``probe_id = ?`` in the per-probe seek. :func:`_where` renders the
+    ordinary case.
+
+    The two easy-to-get-wrong parts, in one place instead of five:
+
+    * ``site is not None``, not truthiness — ``''`` is a real site (this hub's
+      own probes) and must filter rather than mean "no filter". Getting that
+      inconsistent across siblings is how the chart ends up showing six stores
+      while the cards beside it correctly show one.
+    * ``params`` order must track ``clauses`` order, which is why they are built
+      together and returned together.
+    """
+    clauses, params = [], []
+    if cutoff is not None:
+        clauses.append("epoch >= ?"); params.append(cutoff)
+    if probe_id:
+        clauses.append("probe_id = ?"); params.append(probe_id)
+    if site is not None:
+        clauses.append("site = ?"); params.append(site)
+    return clauses, tuple(params)
+
+
+def _where(clauses) -> str:
+    return ("WHERE " + " AND ".join(clauses)) if clauses else ""
 
 
 _FORMULA_LEAD = ("=", "+", "-", "@", "\t", "\r")
@@ -149,53 +181,29 @@ class Database:
                     conn.execute(f"ALTER TABLE readings ADD COLUMN {col} REAL")
                 except sqlite3.OperationalError:
                     pass  # column already present
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_readings_epoch ON readings(epoch)")
-            # One physical reading per (probe, instant): a UNIQUE index makes
-            # ingest idempotent, so a re-sent bulk chunk (a dropped ACK on a
-            # /ingest_csv flush) or a replayed single POST cannot create
-            # duplicate rows that would inflate COUNT/AVG/min-max and CSV
-            # exports. Every reading carries a millisecond-precision timestamp
-            # (the probe's nowIso(), or the hub's own ms stamp when a payload
-            # omits one), so two DISTINCT readings never share an epoch — only a
-            # byte-identical replay collides, and INSERT OR IGNORE drops it.
-            # Replaces the old non-unique (probe_id, epoch) index, which this
-            # supersedes for the same query patterns.
-            conn.execute("DROP INDEX IF EXISTS idx_readings_probe_epoch")
+            # ``site`` names which building a reading came from. Empty for every
+            # locally-ingested reading (the overwhelmingly common case, and what
+            # a single-site hub stays forever); set only on rows an upstream
+            # forwarder pushed here from another hub. TEXT, not REAL, so it gets
+            # its own ALTER — see core/forwarder.py and docs/MULTI_SITE.md.
             try:
-                conn.execute(
-                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_readings_probe_epoch_uniq "
-                    "ON readings(probe_id, epoch)"
-                )
-            except sqlite3.IntegrityError:
-                # A pre-existing database from the older non-idempotent path may
-                # hold rows that share a (probe_id, epoch). Collapse ONLY
-                # byte-identical duplicates — every reading column equal — keeping
-                # the earliest id. Rows that share an epoch but differ in any
-                # value are DISTINCT measurements (old whole-second stamping of a
-                # sub-1 s cadence, before ms timestamps) and MUST be preserved:
-                # grouping on the full row, not just (probe_id, epoch), is what
-                # keeps this from silently deleting real readings.
-                conn.execute(
-                    "DELETE FROM readings WHERE id NOT IN ("
-                    " SELECT MIN(id) FROM readings GROUP BY probe_id, epoch, "
-                    " temperature_c, temperature_f, humidity_pct, vpd_kpa, battery_pct)"
-                )
-                try:
-                    conn.execute(
-                        "CREATE UNIQUE INDEX IF NOT EXISTS idx_readings_probe_epoch_uniq "
-                        "ON readings(probe_id, epoch)"
-                    )
-                except sqlite3.IntegrityError:
-                    # Genuinely-distinct readings still collide on (probe_id,
-                    # epoch), so uniqueness cannot be enforced without discarding
-                    # real data. Keep the old NON-unique index instead: ingest
-                    # idempotency just doesn't apply retroactively to this legacy
-                    # DB (new readings carry ms-precision epochs and don't
-                    # collide), which is strictly better than losing history.
-                    conn.execute(
-                        "CREATE INDEX IF NOT EXISTS idx_readings_probe_epoch "
-                        "ON readings(probe_id, epoch)"
-                    )
+                conn.execute("ALTER TABLE readings ADD COLUMN site TEXT NOT NULL DEFAULT \'\'")
+            except sqlite3.OperationalError:
+                pass
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_readings_epoch ON readings(epoch)")
+            # PARTIAL index, and the `WHERE site != ''` is the whole point: on a
+            # single-site hub no row qualifies, so the index is empty and costs
+            # nothing in disk or insert time — measured identical DB size at 1.5M
+            # rows. On an HQ hub it indexes only the forwarded rows and turns
+            # ``sites()`` from a full table scan into a handful of seeks.
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_readings_site "
+                         "ON readings(site) WHERE site != ''")
+            # Small durable key/value scratchpad. The upstream forwarder keeps
+            # its high-water mark here so a hub restart neither re-sends the
+            # whole history nor silently skips the rows written while it was
+            # down. Deliberately generic — a second consumer beats a second table.
+            conn.execute("CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)")
+            self._ensure_reading_uniqueness(conn)
             # Alert-lifecycle event log (threshold breach/recovery, probe
             # offline/online, rate-of-change) — powers the dashboard's recent
             # events feed without re-deriving history from raw readings.
@@ -213,32 +221,148 @@ class Database:
                 """
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_events_epoch ON events(epoch)")
+            # Which hub RECORDED this event. '' is this one; a store's label on a
+            # row its hub forwarded here. Readings answer "what was the
+            # temperature"; events answer "what did that store's own hub decide
+            # about it, against its own thresholds" — a different record, and the
+            # one a food-safety auditor actually asks for.
+            try:
+                conn.execute("ALTER TABLE events ADD COLUMN site TEXT NOT NULL DEFAULT ''")
+            except sqlite3.OperationalError:
+                pass
+            # Idempotency for FORWARDED events only — hence `WHERE site != ''`,
+            # and that restriction is load-bearing rather than an optimisation.
+            # Event epochs are whole seconds (readings carry milliseconds), so a
+            # blanket unique key would treat two genuinely distinct same-second
+            # events for one probe as a replay and silently drop the second. The
+            # only place a replay can actually happen is a forwarded batch re-sent
+            # after a dropped response, so constrain exactly that and leave every
+            # locally-recorded event alone. Being partial also makes the index
+            # empty on a hub nobody forwards to, which is nearly all of them.
+            try:
+                conn.execute(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_events_fwd_dedup "
+                    "ON events(kind, probe_id, epoch, site) WHERE site != ''")
+            except sqlite3.IntegrityError:
+                # A log that already holds forwarded duplicates: keep the history,
+                # lose only the constraint.
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_events_fwd_dedup "
+                    "ON events(kind, probe_id, epoch, site) WHERE site != ''")
             conn.commit()
+
+    # Set in ``meta`` once a database is proven to hold genuinely-distinct
+    # readings that share a (probe_id, epoch, site), so uniqueness can never be
+    # enforced on it. Without the marker every startup re-ran the dedupe scan
+    # below — a full-table GROUP BY plus a failed index build — on precisely the
+    # oldest and largest databases.
+    _NO_UNIQUE_KEY = "schema.readings_not_unique"
+    _UNIQUE_INDEX = "idx_readings_probe_epoch_site_uniq"
+
+    def _ensure_reading_uniqueness(self, conn: sqlite3.Connection) -> None:
+        """Enforce one physical reading per (probe, instant, site).
+
+        The UNIQUE index makes ingest idempotent: a re-sent bulk chunk (a dropped
+        ACK on an ``/ingest_csv`` flush) or a replayed single POST cannot create
+        duplicate rows that would inflate COUNT/AVG/min-max and the CSV exports.
+        Every reading carries a millisecond-precision timestamp — the probe's
+        ``nowIso()``, or the hub's own ms stamp when a payload omits one — so two
+        DISTINCT readings never share an epoch; only a byte-identical replay
+        collides, and ``INSERT OR IGNORE`` drops it.
+
+        ``site`` is in the key, and its POSITION is the whole trick. Two stores
+        whose operators both named a probe "walkin" produce the same
+        (probe_id, epoch) at head office, and a two-column key made INSERT OR
+        IGNORE silently discard the second store's reading — a hole in a
+        food-safety record, created by nothing worse than two people picking the
+        same obvious name. Adding site as the THIRD column fixes that while
+        leaving (probe_id, epoch) as the leading prefix, so the per-probe "newest
+        row" seek in :meth:`latest_per_probe` still uses this index as before.
+
+        Caller holds the write lock.
+        """
+        have_unique = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='index' AND name=?",
+            (self._UNIQUE_INDEX,)).fetchone() is not None
+        if have_unique:
+            return  # already migrated — the overwhelmingly common path
+        gave_up = conn.execute("SELECT 1 FROM meta WHERE k=?",
+                               (self._NO_UNIQUE_KEY,)).fetchone() is not None
+        if gave_up:
+            # A previous run already proved this database can't take the unique
+            # index. Just make sure the non-unique one serving the same query
+            # patterns is present, and skip the scan.
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_readings_probe_epoch "
+                         "ON readings(probe_id, epoch)")
+            return
+
+        conn.execute("DROP INDEX IF EXISTS idx_readings_probe_epoch")
+        conn.execute("DROP INDEX IF EXISTS idx_readings_probe_epoch_uniq")
+        try:
+            conn.execute(f"CREATE UNIQUE INDEX {self._UNIQUE_INDEX} "
+                         "ON readings(probe_id, epoch, site)")
+            return
+        except sqlite3.IntegrityError:
+            pass
+
+        # A pre-existing database from the older non-idempotent path may hold
+        # rows that share a (probe_id, epoch). Collapse ONLY byte-identical
+        # duplicates — every reading column equal — keeping the earliest id. Rows
+        # that share an epoch but differ in any value are DISTINCT measurements
+        # (old whole-second stamping of a sub-1 s cadence, before ms timestamps)
+        # and MUST be preserved: grouping on the full row, not just
+        # (probe_id, epoch), is what keeps this from deleting real readings.
+        conn.execute(
+            "DELETE FROM readings WHERE id NOT IN ("
+            " SELECT MIN(id) FROM readings GROUP BY probe_id, epoch, site, "
+            " temperature_c, temperature_f, humidity_pct, vpd_kpa, battery_pct)"
+        )
+        try:
+            conn.execute(f"CREATE UNIQUE INDEX {self._UNIQUE_INDEX} "
+                         "ON readings(probe_id, epoch, site)")
+        except sqlite3.IntegrityError:
+            # Genuinely-distinct readings still collide, so uniqueness cannot be
+            # enforced without discarding real data. Keep the old NON-unique
+            # index instead: ingest idempotency just doesn't apply retroactively
+            # to this legacy DB (new readings carry ms-precision epochs and don't
+            # collide), which is strictly better than losing history. Record the
+            # verdict so the next startup doesn't repeat this scan.
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_readings_probe_epoch "
+                         "ON readings(probe_id, epoch)")
+            conn.execute("INSERT OR REPLACE INTO meta (k, v) VALUES (?, '1')",
+                         (self._NO_UNIQUE_KEY,))
+            log.warning(
+                "This database holds readings that share a probe id and instant "
+                "but differ in value (pre-millisecond timestamps), so duplicate "
+                "ingests cannot be de-duplicated retroactively. New readings are "
+                "unaffected.")
 
     # -- writes ----------------------------------------------------------------
     def append(self, ts: str, t_c: float, t_f: float, probe_id: str = "",
                humidity: float | None = None, vpd: float | None = None,
-               battery: float | None = None, epoch: float | None = None) -> None:
+               battery: float | None = None, epoch: float | None = None,
+               site: str = "") -> None:
         # ``epoch`` lets the caller supply the TRUE instant when the incoming
         # timestamp carried timezone info. Re-deriving it from the local-naive
         # ``ts`` is ambiguous during the DST fall-back hour, where two readings an
         # hour apart share one wall time — they would collide on
-        # UNIQUE(probe_id, epoch) and sort interleaved. See storage.absolute_epoch.
+        # UNIQUE(probe_id, epoch, site) and sort interleaved. See storage.absolute_epoch.
         epoch = iso_to_epoch(ts) if epoch is None else float(epoch)
         conn = self._conn()
         with self._write_lock:
             conn.execute(
                 "INSERT OR IGNORE INTO readings (ts, epoch, temperature_c, temperature_f, probe_id, "
-                "humidity_pct, vpd_kpa, battery_pct) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "humidity_pct, vpd_kpa, battery_pct, site) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (str(ts), epoch, float(t_c), float(t_f), probe_id or "",
                  (float(humidity) if humidity is not None else None),
                  (float(vpd) if vpd is not None else None),
-                 (float(battery) if battery is not None else None)),
+                 (float(battery) if battery is not None else None),
+                 site or ""),
             )
             conn.commit()
 
     def record_event(self, kind: str, probe_id: str, temperature_c=None,
-                     limit=None, ts=None) -> None:
+                     limit=None, ts=None, site: str = "") -> None:
         """Append one alert-lifecycle event to the events log.
 
         ``kind`` is one of ``'high' 'low' 'recovery' 'offline' 'online' 'rate'``;
@@ -260,16 +384,17 @@ class Database:
             conn = self._conn()
             with self._write_lock:
                 conn.execute(
-                    "INSERT INTO events (ts, epoch, kind, probe_id, temperature_c, limit_c) "
-                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    "INSERT OR IGNORE INTO events "
+                    "(ts, epoch, kind, probe_id, temperature_c, limit_c, site) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
                     (ts, int(iso_to_epoch(ts)), kind, str(probe_id or ""),
-                     _f(temperature_c), _f(limit)),
+                     _f(temperature_c), _f(limit), site or ""),
                 )
                 conn.commit()
         except Exception:
             pass  # an event is telemetry — never worth failing the caller over
 
-    def bulk_insert(self, rows) -> int:
+    def bulk_insert(self, rows, site: str = "") -> int:
         """Insert many readings in one transaction.
 
         Accepts either ``(ts, t_c, t_f, probe_id)`` or the richer
@@ -284,7 +409,7 @@ class Database:
         Used for the legacy-CSV migration and the probe's bulk backlog drain
         (``/api/ingest_csv``) so importing tens of thousands of rows is a single
         commit rather than one per row.  Uses ``INSERT OR IGNORE`` against the
-        UNIQUE(probe_id, epoch) index, so a re-sent chunk (a dropped ACK on a
+        UNIQUE(probe_id, epoch, site) index, so a re-sent chunk (a dropped ACK on a
         flush) does not duplicate already-stored readings.  Returns the number of
         rows actually inserted (replayed duplicates are skipped, not counted).
         """
@@ -305,7 +430,7 @@ class Database:
             exact = row[7] if len(row) > 7 else None
             epoch = iso_to_epoch(ts) if exact is None else float(exact)
             params.append((str(ts), epoch, float(t_c), float(t_f),
-                           (pid or ""), _f(hum), _f(vpd), _f(bat)))
+                           (pid or ""), _f(hum), _f(vpd), _f(bat), site or ""))
         if not params:
             return 0
         conn = self._conn()
@@ -313,8 +438,8 @@ class Database:
             before = conn.total_changes
             conn.executemany(
                 "INSERT OR IGNORE INTO readings (ts, epoch, temperature_c, temperature_f, "
-                "probe_id, humidity_pct, vpd_kpa, battery_pct) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "probe_id, humidity_pct, vpd_kpa, battery_pct, site) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 params,
             )
             conn.commit()
@@ -336,10 +461,12 @@ class Database:
     def has_probe_prefix(self, prefix: str) -> bool:
         """True if any reading's ``probe_id`` starts with ``prefix``.
 
-        The GLOB prefix pattern rewrites to a range seek on
-        ``idx_readings_probe_epoch`` (verified via EXPLAIN QUERY PLAN in the
-        tests), so answering "is demo data loaded?" on every settings render is
-        O(log N) instead of scanning/grouping the whole readings table the way
+        The GLOB prefix pattern rewrites to a range seek on whichever index leads
+        with ``probe_id`` — ``idx_readings_probe_epoch_site_uniq``, or the legacy
+        ``idx_readings_probe_epoch`` on a database that could not take the unique
+        one (verified via EXPLAIN QUERY PLAN in the tests) — so answering "is demo
+        data loaded?" on every settings render is O(log N) instead of
+        scanning/grouping the whole readings table the way
         ``last_reading_epoch_per_probe`` does.  ``prefix`` is expected to be a
         plain probe-id token (no GLOB metacharacters).
         """
@@ -358,17 +485,21 @@ class Database:
         ).fetchone()
         return dict(row) if row else None
 
-    def last_reading_epoch_per_probe(self, window_seconds: Optional[int] = None) -> dict:
+    def last_reading_epoch_per_probe(self, window_seconds: Optional[int] = None,
+                                     site: Optional[str] = None) -> dict:
         """Map ``probe_id -> epoch of its most recent reading`` within the window.
 
         Used for offline detection: a probe whose newest reading is older than
         the offline threshold has gone silent.  The window bounds which probes
         are tracked, so long-retired probes drop out instead of alerting forever.
+
+        ``site`` narrows to one forwarding store on an HQ hub; ``None`` (the
+        default, and what offline detection passes) covers every site.
         """
         conn = self._conn()
         cutoff = self._cutoff(window_seconds)
-        where = "WHERE epoch >= ?" if cutoff is not None else ""
-        params: tuple = (cutoff,) if cutoff is not None else ()
+        clauses, params = _reading_filters(cutoff, site=site)
+        where = _where(clauses)
         rows = conn.execute(
             f"SELECT probe_id, MAX(epoch) AS last_epoch FROM readings {where} GROUP BY probe_id",
             params,
@@ -381,7 +512,8 @@ class Database:
         return int(time.time()) - int(window_seconds)
 
     def window_df(self, window_seconds: Optional[int] = None, max_points: int = 6000,
-                  probe_id: Optional[str] = None) -> pd.DataFrame:
+                  probe_id: Optional[str] = None,
+                  site: Optional[str] = None) -> pd.DataFrame:
         """Return readings within a rolling window as a DataFrame.
 
         When the window contains more than ``max_points`` rows the result is
@@ -398,13 +530,8 @@ class Database:
         """
         conn = self._conn()
         cutoff = self._cutoff(window_seconds)
-        clauses, params_list = [], []
-        if cutoff is not None:
-            clauses.append("epoch >= ?"); params_list.append(cutoff)
-        if probe_id:
-            clauses.append("probe_id = ?"); params_list.append(probe_id)
-        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
-        params: tuple = tuple(params_list)
+        clauses, params = _reading_filters(cutoff, probe_id, site)
+        where = _where(clauses)
 
         total = conn.execute(f"SELECT COUNT(*) AS n FROM readings {where}", params).fetchone()["n"]
         if total == 0:
@@ -439,7 +566,8 @@ class Database:
                             columns=["timestamp", "temperature_c", "temperature_f", "probe_id"])
 
     def window_stats(self, window_seconds: Optional[int] = None,
-                     probe_id: Optional[str] = None) -> dict:
+                     probe_id: Optional[str] = None,
+                     site: Optional[str] = None) -> dict:
         """Accurate min/max/avg/count over the full (un-downsampled) window.
 
         When ``probe_id`` is given, the stats cover only that probe — used by the
@@ -448,13 +576,8 @@ class Database:
         """
         conn = self._conn()
         cutoff = self._cutoff(window_seconds)
-        clauses, params_list = [], []
-        if cutoff is not None:
-            clauses.append("epoch >= ?"); params_list.append(cutoff)
-        if probe_id:
-            clauses.append("probe_id = ?"); params_list.append(probe_id)
-        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
-        params: tuple = tuple(params_list)
+        clauses, params = _reading_filters(cutoff, probe_id, site)
+        where = _where(clauses)
 
         agg = conn.execute(
             f"SELECT COUNT(*) AS n, MIN(temperature_c) AS mn, MAX(temperature_c) AS mx, "
@@ -480,18 +603,22 @@ class Database:
             "max_ts": max_ts["ts"] if max_ts else None,
         }
 
-    def stats_per_probe(self, window_seconds: Optional[int] = None) -> dict:
+    def stats_per_probe(self, window_seconds: Optional[int] = None,
+                        site: Optional[str] = None) -> dict:
         """Per-probe min/max/avg/count over the full (un-downsampled) window.
 
         Returns ``{probe_id: {count, min, max, avg}}``. Used for the dashboard's
         per-probe statistics breakdown, where a single global average across
         probes of different ranges (a −18 °C freezer + a 22 °C room) would be
         meaningless. Rows with an empty ``probe_id`` are grouped under ``""``.
+
+        ``site`` narrows to one forwarding store on an HQ hub; ``''`` selects
+        this hub's own probes, ``None`` (the default) every site at once.
         """
         conn = self._conn()
         cutoff = self._cutoff(window_seconds)
-        where = "WHERE epoch >= ?" if cutoff is not None else ""
-        params: tuple = (cutoff,) if cutoff is not None else ()
+        clauses, params = _reading_filters(cutoff, site=site)
+        where = _where(clauses)
         rows = conn.execute(
             f"SELECT probe_id, COUNT(*) AS n, MIN(temperature_c) AS mn, "
             f"MAX(temperature_c) AS mx, AVG(temperature_c) AS av "
@@ -505,7 +632,8 @@ class Database:
             for r in rows if r["n"]
         }
 
-    def latest_per_probe(self, window_seconds: Optional[int] = None) -> pd.DataFrame:
+    def latest_per_probe(self, window_seconds: Optional[int] = None,
+                         site: Optional[str] = None) -> pd.DataFrame:
         """Latest reading for each probe within the window (for alerts/display).
 
         Ties on ``epoch`` (two readings in the same second) are broken by
@@ -517,22 +645,37 @@ class Database:
         is the rowid, so the index order breaks epoch ties for free).  That is
         O(probes x log N) per call, replacing a ROW_NUMBER() window scan that
         touched every row in the window on every dashboard tick.
+
+        ``site`` narrows to one forwarding store on an HQ hub; ``''`` selects
+        this hub's own probes, ``None`` (the default) every site at once. Alerts
+        pass ``None`` — a breach in store 3 is still a breach when head office
+        happens to be looking at store 1.
         """
         conn = self._conn()
         cutoff = self._cutoff(window_seconds)
-        where = "WHERE epoch >= ?" if cutoff is not None else ""
-        params: tuple = (cutoff,) if cutoff is not None else ()
-        pids = [r["probe_id"] for r in conn.execute(
-            f"SELECT DISTINCT probe_id FROM readings {where}", params).fetchall()]
+        clauses, params = _reading_filters(cutoff, site=site)
+        # The probe list comes from a loose index scan over the WHOLE table, not
+        # a windowed SELECT DISTINCT. The seeks below were always the cheap half;
+        # the DISTINCT was the expensive one, because deduplicating a
+        # low-cardinality column means visiting every row in the window — 64 ms
+        # of a 78 ms call on a 2M-row store, on every 5 s dashboard tick, from
+        # four callbacks and the alert monitor. Walking the index one probe at a
+        # time is O(probes x log N), which is what this method always claimed to
+        # be.
+        #
+        # Dropping the window from THIS query changes nothing: each seek still
+        # carries the window, and a probe with no row inside it returns None and
+        # is skipped below. It costs one extra seek per long-retired probe.
+        pids = self.probe_ids()
         cols = ["timestamp", "temperature_c", "temperature_f", "probe_id",
-                "humidity_pct", "vpd_kpa", "battery_pct"]
-        epoch_clause = " AND epoch >= ?" if cutoff is not None else ""
+                "humidity_pct", "vpd_kpa", "battery_pct", "site"]
+        seek_clause = ("" if not clauses else " AND " + " AND ".join(clauses))
         out = []
         for pid in pids:
             row = conn.execute(
                 f"SELECT ts AS timestamp, temperature_c, temperature_f, probe_id, "
-                f"humidity_pct, vpd_kpa, battery_pct FROM readings "
-                f"WHERE probe_id = ?{epoch_clause} ORDER BY epoch DESC, id DESC LIMIT 1",
+                f"humidity_pct, vpd_kpa, battery_pct, site FROM readings "
+                f"WHERE probe_id = ?{seek_clause} ORDER BY epoch DESC, id DESC LIMIT 1",
                 (pid,) + params,
             ).fetchone()
             if row is not None:
@@ -556,21 +699,11 @@ class Database:
         months-long store can never emit an unbounded payload over the API.
         """
         conn = self._conn()
-        clauses, params_list = [], []
-        cutoff = self._cutoff(window_seconds)
-        if cutoff is not None:
-            clauses.append("epoch >= ?"); params_list.append(cutoff)
-        if start_epoch is not None:
-            clauses.append("epoch >= ?"); params_list.append(float(start_epoch))
-        if end_epoch is not None:
-            # float(), not int(): a `to=YYYY-MM-DD` filter resolves to the
-            # fractional end-of-day epoch (…23:59:59.999999) so that
-            # `epoch <= bound` keeps the final second's millisecond rows. int()
-            # truncated the bound to …59 and silently dropped 23:59:59.001–.999.
-            clauses.append("epoch <= ?"); params_list.append(float(end_epoch))
-        if probe_id:
-            clauses.append("probe_id = ?"); params_list.append(probe_id)
-        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        # Same filters as every export variant, so they share the builder — this
+        # was a byte-identical copy, comment included, and the end_epoch float()
+        # subtlety it documents is exactly the kind that gets fixed in one copy.
+        where, params_list = self._export_where(window_seconds, probe_id,
+                                                start_epoch, end_epoch)
         try:
             cap = int(limit) if limit else int(max_points)
         except (TypeError, ValueError):
@@ -580,7 +713,7 @@ class Database:
             f"SELECT ts AS timestamp, temperature_c, temperature_f, probe_id, "
             f"humidity_pct, vpd_kpa, battery_pct FROM readings {where} "
             f"ORDER BY epoch DESC, id DESC LIMIT ?",
-            tuple(params_list) + (cap,),
+            params_list + (cap,),
         ).fetchall()
         out = [dict(r) for r in rows]
         out.reverse()  # oldest-first for charting/time-series consumers
@@ -608,10 +741,14 @@ class Database:
 
     def list_events(self, limit: int = 50, window_seconds: Optional[int] = None,
                     kinds: Optional[Iterable[str]] = None,
-                    exclude_kinds: Optional[Iterable[str]] = None) -> list:
+                    exclude_kinds: Optional[Iterable[str]] = None,
+                    site: Optional[str] = None) -> list:
         """Most recent alert-lifecycle events as dict rows, newest first.
 
-        Row keys: ``timestamp, epoch, kind, probe_id, temperature_c, limit_c``.
+        Row keys: ``timestamp, epoch, kind, probe_id, temperature_c, limit_c,
+        site``. ``site`` filters to the hub that recorded them — ``''`` for this
+        hub's own, a store label for the events that store forwarded, ``None``
+        (default) for every hub at once.
         ``window_seconds`` bounds the log to a rolling window (index-backed via
         ``idx_events_epoch``); ``limit`` caps the payload for the UI/API.
         ``kinds`` restricts the result to those event kinds (whitelist);
@@ -635,13 +772,16 @@ class Database:
         if drop_list:
             clauses.append(f"kind NOT IN ({','.join('?' * len(drop_list))})")
             params.extend(drop_list)
-        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        if site is not None:
+            clauses.append("site = ?")
+            params.append(site)
+        where = _where(clauses)
         try:
             cap = max(1, int(limit))
         except (TypeError, ValueError):
             cap = 50
         rows = conn.execute(
-            f"SELECT ts AS timestamp, epoch, kind, probe_id, temperature_c, limit_c "
+            f"SELECT ts AS timestamp, epoch, kind, probe_id, temperature_c, limit_c, site "
             f"FROM events {where} ORDER BY epoch DESC, id DESC LIMIT ?",
             tuple(params) + (cap,),
         ).fetchall()
@@ -807,20 +947,34 @@ class Database:
         """
         conn = self._conn()
         where, params = self._export_where(window_seconds, probe_id, start_epoch, end_epoch)
+        # A `site` column appears only on a hub that actually holds forwarded
+        # readings. Without it, head office's export of six stores is rows of
+        # "walkin" at 4 C, -18 C and 21 C with nothing to tell them apart — and
+        # this file is the artefact that goes to an inspector. Adding it
+        # unconditionally would instead change the shape of every existing
+        # customer's export and break whatever imports it, so it is conditional,
+        # exactly like the dashboard's site picker.
+        multi = bool(self.sites())
         writer = _csv.writer(file_obj)
-        writer.writerow(["timestamp", "timestamp_utc", "temperature_c", "temperature_f",
-                         "probe_id", "humidity_pct", "vpd_kpa"])
+        header = ["timestamp", "timestamp_utc", "temperature_c", "temperature_f",
+                  "probe_id", "humidity_pct", "vpd_kpa"]
+        if multi:
+            header.append("site")
+        writer.writerow(header)
         n = 0
         for r in conn.execute(
-            f"SELECT ts, epoch, temperature_c, temperature_f, probe_id, humidity_pct, vpd_kpa "
-            f"FROM readings {where} ORDER BY epoch ASC",
+            f"SELECT ts, epoch, temperature_c, temperature_f, probe_id, humidity_pct, "
+            f"vpd_kpa, site FROM readings {where} ORDER BY epoch ASC",
             params,
         ):
             hum = "" if r["humidity_pct"] is None else f"{r['humidity_pct']:.2f}"
             vpd = "" if r["vpd_kpa"] is None else f"{r['vpd_kpa']:.3f}"
-            writer.writerow([_csv_safe(r["ts"]), self._utc_string(r["epoch"]),
-                             f"{r['temperature_c']:.3f}", f"{r['temperature_f']:.3f}",
-                             _csv_safe(r["probe_id"]), hum, vpd])
+            row = [_csv_safe(r["ts"]), self._utc_string(r["epoch"]),
+                   f"{r['temperature_c']:.3f}", f"{r['temperature_f']:.3f}",
+                   _csv_safe(r["probe_id"]), hum, vpd]
+            if multi:
+                row.append(_csv_safe(r["site"] or "(this hub)"))
+            writer.writerow(row)
             n += 1
         return n
 
@@ -851,20 +1005,27 @@ class Database:
         names = name_map or {}
         conn = self._conn()
         where, params = self._export_where(window_seconds, probe_id, start_epoch, end_epoch)
+        # See export_csv: `site` only on a hub that holds forwarded readings, and
+        # it matters MORE here — this variant leads with the friendly name, and
+        # six stores all calling a probe "Walk-in" is the ordinary case.
+        multi = bool(self.sites())
         writer = _csv.writer(file_obj)
-        writer.writerow(self._FRIENDLY_HEADERS)
+        writer.writerow(self._FRIENDLY_HEADERS + (["site"] if multi else []))
         n = 0
         for r in conn.execute(
-            f"SELECT ts, epoch, temperature_c, temperature_f, probe_id "
+            f"SELECT ts, epoch, temperature_c, temperature_f, probe_id, site "
             f"FROM readings {where} ORDER BY epoch ASC",
             params,
         ):
             d, t = self._local_date_time(r["ts"], r["epoch"])
             pid = r["probe_id"] or ""
             friendly = names.get(pid, pid) if isinstance(names, dict) else pid
-            writer.writerow([d.isoformat(), t.isoformat(), _csv_safe(friendly),
-                             f"{r['temperature_c']:.3f}", f"{r['temperature_f']:.3f}",
-                             _csv_safe(pid), self._utc_string(r["epoch"])])
+            row = [d.isoformat(), t.isoformat(), _csv_safe(friendly),
+                   f"{r['temperature_c']:.3f}", f"{r['temperature_f']:.3f}",
+                   _csv_safe(pid), self._utc_string(r["epoch"])]
+            if multi:
+                row.append(_csv_safe(r["site"] or "(this hub)"))
+            writer.writerow(row)
             n += 1
         return n
 
@@ -908,15 +1069,20 @@ class Database:
         wb = Workbook(write_only=True)
         ws = wb.create_sheet("Readings")
         ws.freeze_panes = "A2"  # keep the header visible while scrolling
-        widths = [12, 11, 22, 15, 15, 20, 26]
+        # See export_csv for why `site` is conditional. The auto-filter and
+        # column widths have to track it, or the dropdowns stop one column short
+        # of the data and the new column renders at default width.
+        multi = bool(self.sites())
+        headers = self._FRIENDLY_HEADERS + (["site"] if multi else [])
+        widths = [12, 11, 22, 15, 15, 20, 26] + ([16] if multi else [])
         for i, w in enumerate(widths, start=1):
             ws.column_dimensions[get_column_letter(i)].width = w
         # Filter dropdowns over the whole populated table (header + data rows).
-        ws.auto_filter.ref = f"A1:{get_column_letter(len(self._FRIENDLY_HEADERS))}{total + 1}"
+        ws.auto_filter.ref = f"A1:{get_column_letter(len(headers))}{total + 1}"
 
         bold = Font(bold=True)
         header = []
-        for label in self._FRIENDLY_HEADERS:
+        for label in headers:
             c = WriteOnlyCell(ws, value=label)
             c.font = bold
             header.append(c)
@@ -926,7 +1092,7 @@ class Database:
         where, params = self._export_where(window_seconds, probe_id, start_epoch, end_epoch)
         n = 0
         for r in conn.execute(
-            f"SELECT ts, epoch, temperature_c, temperature_f, probe_id "
+            f"SELECT ts, epoch, temperature_c, temperature_f, probe_id, site "
             f"FROM readings {where} ORDER BY epoch ASC",
             params,
         ):
@@ -941,11 +1107,116 @@ class Database:
             c_cell.number_format = "0.000"
             f_cell = WriteOnlyCell(ws, value=round(float(r["temperature_f"]), 3))
             f_cell.number_format = "0.000"
-            ws.append([date_cell, time_cell, _xlsx_safe(friendly),
-                       c_cell, f_cell, _xlsx_safe(pid), self._utc_string(r["epoch"])])
+            row = [date_cell, time_cell, _xlsx_safe(friendly),
+                   c_cell, f_cell, _xlsx_safe(pid), self._utc_string(r["epoch"])]
+            if multi:
+                row.append(_xlsx_safe(r["site"] or "(this hub)"))
+            ws.append(row)
             n += 1
         wb.save(file_obj)
         return n
+
+
+
+    # ---- multi-site forwarding support (see core/forwarder.py) ---------------
+
+    def meta_get(self, key: str, default: str = "") -> str:
+        """Read a durable scratchpad value. Missing key -> ``default``."""
+        row = self._conn().execute("SELECT v FROM meta WHERE k = ?", (key,)).fetchone()
+        return row[0] if row else default
+
+    def meta_set(self, key: str, value: str) -> None:
+        conn = self._conn()
+        with self._write_lock:
+            conn.execute("INSERT INTO meta (k, v) VALUES (?, ?) "
+                         "ON CONFLICT(k) DO UPDATE SET v = excluded.v", (key, str(value)))
+            conn.commit()
+
+    def rows_after(self, after_id: int, limit: int = 500, local_only: bool = True):
+        """Readings with ``id > after_id``, oldest first, for upstream forwarding.
+
+        ``local_only`` skips rows that arrived here *from* another hub (site set),
+        which is what stops two hubs pointed at each other from ping-ponging the
+        same readings forever. A store hub only ever forwards its own.
+
+        Ordering by the autoincrement id — not epoch — is deliberate: it is the
+        insertion order, so a probe draining a backlog of old readings still gets
+        forwarded, where an epoch-based cursor would skip anything older than the
+        high-water mark.
+        """
+        sql = ("SELECT id, ts, epoch, temperature_c, temperature_f, probe_id, "
+               "humidity_pct, vpd_kpa, battery_pct FROM readings WHERE id > ?")
+        if local_only:
+            sql += " AND (site IS NULL OR site = '')"
+        sql += " ORDER BY id LIMIT ?"
+        return self._conn().execute(sql, (int(after_id), int(limit))).fetchall()
+
+    def events_after(self, after_id: int, limit: int = 500, local_only: bool = True):
+        """Events with ``id > after_id``, oldest first, for upstream forwarding.
+
+        Same contract as :meth:`rows_after` — insertion-order cursor, and
+        ``local_only`` excludes events that arrived here from another hub so two
+        hubs pointed at each other cannot ping-pong them.
+        """
+        sql = ("SELECT id, ts, epoch, kind, probe_id, temperature_c, limit_c "
+               "FROM events WHERE id > ?")
+        if local_only:
+            sql += " AND (site IS NULL OR site = '')"
+        sql += " ORDER BY id LIMIT ?"
+        return self._conn().execute(sql, (int(after_id), int(limit))).fetchall()
+
+    def count_local_after(self, after_id: int) -> int:
+        """How many locally-ingested readings are past the forwarding cursor.
+
+        The Settings page shows this as the backlog waiting to reach head office,
+        so "it says enabled but is anything happening?" has an answer.
+        """
+        row = self._conn().execute(
+            "SELECT COUNT(*) FROM readings WHERE id > ? AND (site IS NULL OR site = '')",
+            (int(after_id),)).fetchone()
+        return int(row[0]) if row else 0
+
+    def probe_ids(self):
+        """Every distinct probe id in the store, ascending.
+
+        Loose index scan for the same reason :meth:`sites` uses one: SELECT
+        DISTINCT over a low-cardinality column visits every row, and this is on
+        the dashboard's 5 s path. ``idx_readings_probe_epoch_site_uniq`` leads
+        with ``probe_id``, so MIN-then-MIN-of-what-is-greater walks it a probe at
+        a time.
+        """
+        rows = self._conn().execute(
+            "WITH RECURSIVE t(p) AS ("
+            "  SELECT MIN(probe_id) FROM readings"
+            "  UNION ALL"
+            "  SELECT (SELECT MIN(probe_id) FROM readings WHERE probe_id > t.p)"
+            "    FROM t WHERE t.p IS NOT NULL"
+            ") SELECT p FROM t WHERE p IS NOT NULL ORDER BY p").fetchall()
+        return [r[0] for r in rows]
+
+    def sites(self):
+        """Distinct non-empty site names present in the store, alphabetically.
+
+        A "loose index scan", not ``SELECT DISTINCT``. The dashboard's site picker
+        re-reads this on every 5 s refresh tick, and plain DISTINCT over a
+        low-cardinality column is a full table scan — 883 ms on a six-store HQ
+        with 1.5M rows, every tick, on the callback thread. The recursive form
+        walks ``idx_readings_site`` one key at a time (MIN, then MIN of what is
+        greater), so the cost is O(sites x log N) instead of O(rows): the same
+        query on the same data measured 0.31 ms.
+
+        ``site != ''`` in both arms is not just a filter — it is what lets the
+        PARTIAL index serve the query, since a partial index is only usable when
+        the query repeats its WHERE clause.
+        """
+        rows = self._conn().execute(
+            "WITH RECURSIVE t(s) AS ("
+            "  SELECT MIN(site) FROM readings WHERE site != ''"
+            "  UNION ALL"
+            "  SELECT (SELECT MIN(site) FROM readings WHERE site > t.s AND site != '')"
+            "    FROM t WHERE t.s IS NOT NULL"
+            ") SELECT s FROM t WHERE s IS NOT NULL ORDER BY s").fetchall()
+        return [r[0] for r in rows]
 
 
 def migrate_csv_if_present(db: "Database", csv_path: str | Path) -> int:
@@ -972,7 +1243,7 @@ def migrate_csv_if_present(db: "Database", csv_path: str | Path) -> int:
                 try:
                     t_f = float(row.get("temperature_f"))
                 except (TypeError, ValueError):
-                    t_f = (t_c * 9.0 / 5.0) + 32.0
+                    t_f = c_to_f(t_c)
                 rows.append((ts, t_c, t_f, (row.get("probe_id") or "").strip()))
         return db.bulk_insert(rows)
     except Exception:

@@ -16,7 +16,7 @@ parts have no per-part loading fee, so prefer them where possible).
 
 | Ref | Part | Value / MPN | Pkg | JLC note |
 |---|---|---|---|---|
-| **U1** | **ESP32-C3-MINI-1-N4** (FCC ID `2AC7Z-ESPC3MINI1`) | genuine Espressif, 4 MB | module | The enabling part. Use `-1U` for a U.FL external antenna. |
+| **U1** | **ESP32-C3-WROOM-02-N4** (FCC ID `2AC7Z-ESPC3WROOM02`) | genuine Espressif, 4 MB | module | The enabling part. Use `-1U` for a U.FL external antenna. |
 | U2 | **3.3 V LDO**, low-dropout ≥500 mA | ME6211C33M5G-N *or* RT9013-33GB | SOT-23-5 | ME6211 is JLC Basic. (AMS1117-3.3 only if USB/5 V-only — browns out on battery.) |
 | C1 | LDO input cap | 10 µF | 0805 | |
 | C2, C3 | 3V3 decoupling (at module) | 10 µF + 100 nF | 0603/0402 | Place at U1's 3V3 pin. |
@@ -49,7 +49,7 @@ KiCad then draws a **ratsnest** telling you exactly what connects to what, and E
 mistakes before you spend money.
 
 1. **New project** in KiCad → open the **Schematic Editor**.
-2. **Place symbols** (press `A`): `RF_Module:ESP32-C3-MINI-1`, the LDO (`Regulator_Linear`), caps,
+2. **Place symbols** (press `A`): `RF_Module:ESP32-C3-WROOM-02`, the LDO (`Regulator_Linear`), caps,
    resistors, LED, the DS18B20 connector (`Connector`), the two tact switches, and your program
    header/USB-C.
 3. **Wire it** per this connection list:
@@ -62,7 +62,7 @@ mistakes before you spend money.
    - **IO5** → R3 (4.7 kΩ) to 3V3, and → J1 pin 2 (DS18B20 data). J1 pin 1 = 3V3, pin 3 = GND.
    - Program header/USB-C per §1.
    - Tie the module's **GND pins + center pad** to GND; **3V3 pin** to the 3V3 net.
-4. **Assign footprints** (Tools → Assign Footprints): `RF_Module:ESP32-C3-MINI-1` for U1, `SOT-23-5`
+4. **Assign footprints** (Tools → Assign Footprints): `RF_Module:ESP32-C3-WROOM-02` for U1, `SOT-23-5`
    for the LDO, `0402/0603` for passives, your existing DS18B20/switch footprints.
 5. **Run ERC** (Inspect → Electrical Rules Check); fix any unconnected-pin errors.
 6. **Push to PCB**: open PCB Editor → **Update PCB from Schematic** (`F8`). Your parts drop in joined
@@ -97,7 +97,7 @@ mistakes before you spend money.
 | Board | Radio | Sell assembled? | Sell as DIY kit? |
 |---|---|---|---|
 | **Rev 1** (SuperMini socket) | bare `ESP32-C3FH4` + PCB antenna, **no grant** | ❌ not without ~$5–15k full test | ✅ yes (buyer assembles) |
-| **Rev 2** (`ESP32-C3-MINI-1`) | pre-certified module, grant transfers | ✅ yes, after ~$300–1,500 Part 15B SDoC | ✅ yes |
+| **Rev 2** (`ESP32-C3-WROOM-02`) | pre-certified module, grant transfers | ✅ yes, after ~$300–1,500 Part 15B SDoC | ✅ yes |
 
 **Do the rev-2 respin only when pilots prove people will pay** — until then, rev-1 kits + pilots cost
 you nothing and teach you the same lessons.
@@ -113,7 +113,7 @@ the unit you intend to sell, then test that.
 
 A 3D-printed case is fine here, with three constraints worth designing around from the start:
 
-**Keep the antenna end clear.** The `ESP32-C3-MINI-1`'s antenna is at the module edge. Do not
+**Keep the antenna end clear.** The `ESP32-C3-WROOM-02`'s antenna is at the module edge. Do not
 run infill, a metal insert, a magnet or a battery directly across it, and keep the module edge
 at or near the wall of the case. Plain PLA/PETG is RF-transparent; **carbon-fibre filament is
 not** — CF-PETG is conductive enough to detune the antenna and will change the result you paid
@@ -130,4 +130,4 @@ mounting ears are where a printed case cracks when someone yanks the probe. Orie
 features are loaded across layers, not along them.
 
 Once the case is frozen and a unit is built in it: SDoC → label ("Contains FCC ID:
-2AC7Z-ESPC3MINI1" + the §15.19(a)(3) statement) → then list assembled.
+2AC7Z-ESPC3WROOM02" + the §15.19(a)(3) statement) → then list assembled.

@@ -38,7 +38,7 @@ def test_force_provisions_matching_probe_once_to_deliver_token(monkeypatch):
                         lambda h, p, timeout=3.0: {"server_url": "http://hub/api/ingest",
                                                    "interval_ms": 5000})
     monkeypatch.setattr(prov_mod, "provision_probe",
-                        lambda h, p, base, token="", interval_ms=5000, resolution_bits=None, timeout=3.0:
+                        lambda h, p, base, token="", interval_ms=5000, resolution_bits=None, timeout=3.0, **kw:
                         (calls.append((h, token)) or True))
 
     disc = _FakeDiscovery({"A": {"ip": "192.168.1.9", "host": "192.168.1.9",
@@ -79,14 +79,19 @@ def _patch_net(monkeypatch, resolves=None, statuses=None, provisions=None,
         return status_result
 
     def _provision(h, p, base, token="", interval_ms=5000, resolution_bits=None,
-                   timeout=3.0):
+                   timeout=3.0, **kw):
+        # **kw so widening the real signature (e.g. the threshold-watch fields)
+        # cannot silently turn every provision into a TypeError the production
+        # code swallows as "provision failed" — which is how this double failed
+        # once already.
         if provisions is not None:
             provisions.append({"host": h, "token": token,
                                "interval_ms": interval_ms,
-                               "resolution_bits": resolution_bits})
+                               "resolution_bits": resolution_bits,
+                               "watch": kw.get("watch")})
         return True
 
-    monkeypatch.setattr(prov_mod, "_resolve_with_timeout", _resolve)
+    monkeypatch.setattr(prov_mod, "resolve_host", _resolve)
     monkeypatch.setattr(prov_mod, "get_probe_status", _status)
     monkeypatch.setattr(prov_mod, "provision_probe", _provision)
 

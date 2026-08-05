@@ -1,7 +1,7 @@
 # Setpoint — Rev 2 Schematic (net-by-net, wireable in KiCad)
 
-> The full connection list for the `ESP32-C3-MINI-1` board. Wire the KiCad symbols by **pin name**
-> (the `RF_Module:ESP32-C3-MINI-1` symbol labels pins by function — you connect to `IO5`, `EN`, `3V3`,
+> The full connection list for the `ESP32-C3-WROOM-02` board. Wire the KiCad symbols by **pin name**
+> (the `RF_Module:ESP32-C3-WROOM-02` symbol labels pins by function — you connect to `IO5`, `EN`, `3V3`,
 > etc., not by castellation number). Reference designators match
 > [`REV2_BUILD_GUIDE.md`](REV2_BUILD_GUIDE.md) §1. Confirm LDO/ESD pin numbers on their datasheets.
 
@@ -16,8 +16,39 @@
                                           |             |            |             |
                                      U1 3V3 pin    R1 10k->EN   R2 10k->IO8   R3 4.7k->IO5
                                                         |            |             |
-                                     [ESP32-C3-MINI-1]  EN net    LED(active-low) DS18B20 data
+                                     [ESP32-C3-WROOM-02]  EN net    LED(active-low) DS18B20 data
 ```
+
+> ## ⚠️ As-built, read from the KiCad files
+>
+> The board that exists differs from the plan below in one way that matters and several that
+> do not. Extracted from `hardware/rev2/` (`Setpoint_Rev2.kicad_sch` / `.kicad_pcb`):
+>
+> - **`U1` is an `ESP32-C3-WROOM-02`, not the `ESP32-C3-MINI-1` this plan specified.** Same
+>   ESP32-C3 die and the same pre-certified-module strategy, but a **different FCC ID** — see
+>   [`LABEL_TEMPLATE.md`](LABEL_TEMPLATE.md), which now carries a verification gate.
+> - **Board: 30 × 70 mm, 2-layer, 35 footprints, all on the top side.** The entire bottom is
+>   empty, so the rev-3 additions need no size change.
+> - **There is an I²C bus.** `J3` is a 4-pin header: 1 = 3V3, 2 = GND, 3 = `SCL` (`IO6`),
+>   4 = `SDA` (`IO7`), pulled up by `R5`/`R6` (4.7 kΩ). This is the "I²C header reserved" the
+>   site mentions. There is no `J2`.
+> - **Free GPIOs — KiCad marks these unconnected:** `IO0`, `IO1`, `IO3`, `IO4`, `IO10`,
+>   `IO20/RXD`, `IO21/TXD`. `IO0/1/3/4` are **ADC1**, which is the only ADC usable while Wi-Fi
+>   is on.
+> - **Actual refdes** (the numbering below is the plan's, not the board's): `R4` 4.7 kΩ is the
+>   1-Wire pull-up on `IO5`; `R3` 10 kΩ holds `IO8` high at boot and `R2` 470 Ω feeds `D1`;
+>   `R13` 10 kΩ is the `IO2` strap; `SW1` is BOOT on `IO9`, `SW2` is reset on `EN`.
+> - **`R9`/`R10` are 0 Ω build options** — `R9` links VBUS→VSYS (USB build), `R10` links
+>   VBAT→VSYS (battery build). **Fit one, never both**: stuffing both ties USB 5 V to the cell.
+> - **`SW3` switches the LDO's `EN`, not the supply rail**, so the slide switch carries no load
+>   current. Good.
+> - **`U5` pin 6 (`STDBY`) is unconnected** — literally `unconnected-(U5-~{STDBY}-Pad6)` in the
+>   PCB net table. That is why there is no charge-complete indication.
+>
+> **Planning a respin?** [`REV3_NOTES.md`](REV3_NOTES.md) collects the changes worth making
+> before the SDoC is signed — charge-complete detection (TP4056 `STDBY` is no-connected here),
+> a battery-sense divider that switches on the hub's already-built battery UI, and the charge
+> current / enclosure thermal trade-off. All of it is free now and costly after the test.
 
 ## Net 1 — VIN (raw supply, ~3.0–4.2 V battery or 5 V USB)
 

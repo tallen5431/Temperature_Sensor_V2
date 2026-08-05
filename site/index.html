@@ -60,10 +60,10 @@
     --raised: #FBFCFA;
     --ink: #12181C;
     --slate: #59636B;
-    --faint: #8A939A;
+    --faint: #69727A;
     --line: #DEE2DE;
     --line-strong: #C9CFCA;
-    --signal: #0E94AB;
+    --signal: #0B7689; --on-signal: #FFFFFF;
     --signal-soft: #E2F1F4;
     --warn: #C7860F;
     --cool: #1B8298;
@@ -72,6 +72,10 @@
     --screen-bg: #0B1418;
     --screen-grid: rgba(120,150,160,0.10);
     --screen-ink: #E7F0F1;
+    /* The device mock is a dark screen in BOTH themes, so it cannot use
+       --signal: that token is tuned for light backgrounds and measures 3.5:1
+       here. 7.4:1 on --screen-bg. */
+    --screen-accent: #17B3CC;
     --screen-slate: #7E939A;
     --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     --font-mono: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Menlo, Consolas, monospace;
@@ -85,10 +89,10 @@
       --raised: #18242F;
       --ink: #E9F1F7;
       --slate: #9DB0BE;
-      --faint: #6E8393;
+      --faint: #7A8D9B;
       --line: #22323F;
       --line-strong: #2F4454;
-      --signal: #17B3CC;
+      --signal: #17B3CC; --on-signal: #04222A;
       --signal-soft: rgba(23,179,204,.14);
       --warn: #EFB02E;
       --cool: #38B6D9;
@@ -98,13 +102,13 @@
   }
   :root[data-theme="light"] {
     --paper: #F5F6F4; --surface: #FFFFFF; --raised: #FBFCFA; --ink: #12181C;
-    --slate: #59636B; --faint: #8A939A; --line: #DEE2DE; --line-strong: #C9CFCA;
-    --signal: #0E94AB; --signal-soft: #E2F1F4; --warn: #C7860F; --cool: #1B8298; --ok: #2C9A66; --alert: #D24A43;
+    --slate: #59636B; --faint: #69727A; --line: #DEE2DE; --line-strong: #C9CFCA;
+    --signal: #0B7689; --on-signal: #FFFFFF; --signal-soft: #E2F1F4; --warn: #C7860F; --cool: #1B8298; --ok: #2C9A66; --alert: #D24A43;
   }
   :root[data-theme="dark"] {
     --paper: #0B131B; --surface: #131F2B; --raised: #18242F; --ink: #E9F1F7;
-    --slate: #9DB0BE; --faint: #6E8393; --line: #22323F; --line-strong: #2F4454;
-    --signal: #17B3CC; --signal-soft: rgba(23,179,204,.14); --warn: #EFB02E; --cool: #38B6D9; --ok: #2FBF71; --alert: #F05A54;
+    --slate: #9DB0BE; --faint: #7A8D9B; --line: #22323F; --line-strong: #2F4454;
+    --signal: #17B3CC; --on-signal: #04222A; --signal-soft: rgba(23,179,204,.14); --warn: #EFB02E; --cool: #38B6D9; --ok: #2FBF71; --alert: #F05A54;
   }
 
   * { box-sizing: border-box; }
@@ -120,6 +124,15 @@
   }
   .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 28px; }
   a { color: inherit; }
+  /* Skip link: off-screen until focused, then pinned to the top-left. */
+  .skip { position: absolute; left: -9999px; }
+  .skip:focus { left: 8px; top: 8px; z-index: 999; padding: 8px 12px;
+    background: var(--surface); color: var(--ink);
+    border: 2px solid var(--signal); border-radius: 4px;
+    width: auto; height: auto; }
+  /* Same off-screen technique, for labels that must exist for assistive tech
+     without appearing in the layout. */
+  .vh { position: absolute; left: -9999px; }
   h1, h2, h3 { text-wrap: balance; letter-spacing: -0.02em; line-height: 1.08; margin: 0; }
   .mono { font-family: var(--font-mono); }
   .eyebrow {
@@ -143,12 +156,18 @@
     backdrop-filter: saturate(1.2) blur(8px);
     border-bottom: 1px solid var(--line);
   }
-  .bar-inner { display: flex; align-items: center; justify-content: space-between; height: 62px; }
-  .brand { display: flex; align-items: baseline; gap: 10px; font-weight: 700; letter-spacing: -0.02em; }
+  /* gap, not just space-between: once the nav fills the row there is no free
+     space left to distribute and the brand collides with the first link
+     ("BY DATUM LABSOverview"). */
+  .bar-inner { display: flex; align-items: center; justify-content: space-between; gap: 24px; height: 62px; }
+  .brand { display: flex; align-items: baseline; gap: 10px; font-weight: 700; letter-spacing: -0.02em; white-space: nowrap; }
   .brand .mk { font-size: 19px; }
   .brand .by { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.08em; color: var(--faint); text-transform: uppercase; }
-  nav.top { display: flex; gap: 26px; align-items: center; }
-  nav.top a { font-family: var(--font-mono); font-size: 13px; letter-spacing: 0.02em; text-decoration: none; color: var(--slate); }
+  /* 26px gap suited eight items; nine wrap mid-phrase ("Free / pilot") at
+     1280px. Tighten the gap and keep each label on one line — a nav item
+     broken across two lines reads as two items. */
+  nav.top { display: flex; gap: 18px; align-items: center; }
+  nav.top a { font-family: var(--font-mono); font-size: 13px; letter-spacing: 0.02em; text-decoration: none; color: var(--slate); white-space: nowrap; }
   nav.top a:hover { color: var(--ink); }
 
   /* mobile menu (hamburger) — takes over from nav.top at <=720px */
@@ -163,7 +182,10 @@
   /* Must come AFTER the .mobile-nav base rule above: at a matching viewport both
      this and the base `display: none` apply with equal specificity, so source
      order decides — declaring this last is what makes the override win. */
-  @media (max-width: 720px) { nav.top { display: none; } .mobile-nav { display: block; } }
+  /* The hamburger has to take over BEFORE the desktop nav outgrows the row.
+     Eight page routes plus a CTA need ~1150px; at 720px the bar overflowed
+     horizontally through the whole 721-1100px band. */
+  @media (max-width: 1100px) { nav.top { display: none; } .mobile-nav { display: block; } }
 
   .btn {
     display: inline-flex; align-items: center; gap: 8px;
@@ -175,7 +197,7 @@
   .btn:hover { transform: translateY(-1px); }
   .btn:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
   .btn.ghost { background: transparent; color: var(--ink); border-color: var(--line-strong); }
-  .btn.signal { background: var(--signal); border-color: var(--signal); color: #04222A; }
+  .btn.signal { background: var(--signal); border-color: var(--signal); color: var(--on-signal); }
 
   /* ---------- hero ---------- */
   .hero { padding: 78px 0 70px; }
@@ -214,7 +236,7 @@
   .readout .val { font-family: var(--font-mono); font-size: 58px; font-weight: 600; color: var(--screen-ink); letter-spacing: -0.03em; line-height: 1; font-variant-numeric: tabular-nums; }
   .readout .unit { font-family: var(--font-mono); font-size: 22px; color: var(--screen-slate); }
   .subreadout { font-family: var(--font-mono); font-size: 12px; color: var(--screen-slate); letter-spacing: 0.04em; display: flex; gap: 16px; margin-bottom: 12px; }
-  .subreadout b { color: var(--signal); font-weight: 600; }
+  .subreadout b { color: var(--screen-accent); font-weight: 600; }
   canvas#trace { display: block; width: 100%; height: 168px; }
   .device-foot { display: flex; justify-content: space-between; margin-top: 10px; font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.06em; color: var(--screen-slate); text-transform: uppercase; }
 
@@ -297,7 +319,8 @@
   .wl-form { display: flex; gap: 10px; max-width: 460px; margin: 0 auto; }
   @media (max-width: 520px) { .wl-form { flex-direction: column; } }
   .wl-form input {
-    flex: 1; font-family: var(--font-mono); font-size: 14px; padding: 13px 16px;
+    /* 16px is the floor: below it, iOS Safari zooms the page on focus. */
+    flex: 1; font-family: var(--font-mono); font-size: 16px; padding: 13px 16px;
     border-radius: var(--radius);
     /* Colours are relative to the panel's foreground (--paper) so the field
        stays visible whether the inverted panel is dark (light theme) or light
@@ -324,6 +347,7 @@
 </head>
 <body>
 
+<a class="skip" href="#main">Skip to content</a>
 
 <header class="bar">
   <div class="wrap bar-inner">
@@ -332,34 +356,34 @@
       <span class="by">by Datum Labs</span>
     </div>
     <nav class="top">
-      <a href="#how">How it works</a>
-      <a href="#specs">Specs</a>
-      <a href="#versions">Versions</a>
-      <a href="#kit">DIY kit</a>
-      <a href="/services">Services</a>
-      <a href="/replacement-parts">Parts</a>
+      <a href="/" aria-current="page">Overview</a>
+      <a href="/pilot">Free pilot</a>
+      <a href="/walk-in-cooler">Walk-in cooler</a>
+      <a href="/freezer-alarm">Freezer &amp; fridge</a>
+      <a href="/field-test">Field test</a>
+      <a href="/roi-calculator">ROI</a>
       <a href="/about">About</a>
-      <a href="https://setpoint.datumlaboratories.com">Setup</a>
-      <a href="#reserve" class="btn ghost" style="padding:8px 14px;">Reserve</a>
+      <a href="/services">Datum Labs</a>
+      <a href="#kit" class="btn ghost" style="padding:8px 14px;">DIY kit $39</a>
     </nav>
     <details class="mobile-nav">
       <summary aria-label="Open menu">☰</summary>
       <nav class="mobile-menu" aria-label="Menu">
-        <a href="#how">How it works</a>
-        <a href="#specs">Specs</a>
-        <a href="#versions">Versions</a>
-        <a href="#kit">DIY kit</a>
-        <a href="/services">Services</a>
-        <a href="/replacement-parts">Replacement parts</a>
+        <a href="/" aria-current="page">Overview</a>
+        <a href="/pilot">Free pilot</a>
+        <a href="/walk-in-cooler">Walk-in cooler</a>
+        <a href="/freezer-alarm">Freezer &amp; fridge</a>
+        <a href="/field-test">Field test</a>
+        <a href="/roi-calculator">ROI</a>
         <a href="/about">About</a>
-        <a href="https://setpoint.datumlaboratories.com">Setup</a>
-        <a href="#reserve" class="cta">Reserve →</a>
+        <a href="/services">Datum Labs</a>
+        <a href="#kit" class="cta">DIY kit $39 &rarr;</a>
       </nav>
     </details>
   </div>
 </header>
 
-<main>
+<main id="main">
   <!-- HERO -->
   <section class="hero" style="border-top:none;">
     <div class="wrap hero-grid">
@@ -396,7 +420,12 @@
         <canvas id="trace" aria-label="Live temperature trace crossing a setpoint threshold"></canvas>
         <div class="device-foot">
           <span>● LIVE · 2.4 GHz</span>
-          <span id="linkText">RSSI −52 dBm · BATT 87%</span>
+          <!-- Only show readouts the shipping product actually has. RSSI and
+               battery % were here, and neither reaches the hub: the ingest
+               payload is timestamp/temperature_c/temperature_f/probe_id, the
+               hub has no RSSI concept, and no board revision has a battery-sense
+               circuit. "Last reading" is on every real probe card. -->
+          <span id="linkText">UPDATED 4s AGO</span>
         </div>
       </div>
     </div>
@@ -515,7 +544,7 @@
       </div>
       <div class="tiers">
         <div class="tier">
-          <div class="badge">Fixed</div>
+          <div class="badge">Fixed · not yet for sale</div>
           <h3>Setpoint USB</h3>
           <div class="price">$59 <small>est.</small></div>
           <div class="pfor">Always-on spots with power nearby — racks, benches, enclosures.</div>
@@ -638,12 +667,20 @@
     <div class="wrap">
       <div class="waitlist">
         <h2>Get an assembled unit first.</h2>
-        <p>The DIY kit is <a href="https://www.tindie.com/products/datumlaboratories/setpoint-diy-kit-local-wi-fi-temperature-monitor/" target="_blank" rel="noopener" style="color:var(--signal);text-decoration:underline;">live on Tindie now</a>. Pre-built, pre-flashed <b>Setpoint USB &amp; Battery</b> units are not on sale yet — they ship once FCC Part 15B testing is complete. Join the list and I'll tell you when, with launch pricing.</p>
+        <p>The DIY kit is <a href="https://www.tindie.com/products/datumlaboratories/setpoint-diy-kit-local-wi-fi-temperature-monitor/" target="_blank" rel="noopener" style="color:var(--paper);text-decoration:underline;">live on Tindie now</a>. Pre-built, pre-flashed <b>Setpoint USB &amp; Battery</b> units are not on sale yet — they ship once FCC Part 15B testing is complete. Join the list and I'll tell you when, with launch pricing.</p>
         <form class="wl-form" id="wlForm" novalidate>
-          <input type="email" id="wlEmail" placeholder="you@example.com" aria-label="Email address" required>
+          <label class="vh" for="wlEmail">Email address</label>
+          <input type="email" id="wlEmail" placeholder="you@example.com" required>
+          <!-- Honeypot: off-screen rather than display:none, because the cruder
+               bots skip hidden fields but fill everything they can see in the
+               DOM. aria-hidden + tabindex=-1 keeps it away from screen readers
+               and the tab order. A human never fills it; /api/waitlist discards
+               any submission that has it set. -->
+          <input type="text" id="wlCompany" name="company" tabindex="-1" aria-hidden="true"
+                 autocomplete="off" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
           <button type="submit" class="btn signal">Join the list</button>
         </form>
-        <p class="wl-note" id="wlNote">No spam — launch updates only. One email, then you decide.</p>
+        <p class="wl-note" id="wlNote" role="status" aria-live="polite">No spam — launch updates only. One email, then you decide.</p>
       </div>
     </div>
   </section>
@@ -668,7 +705,7 @@
         <a href="#reserve">Reserve</a>
       </div>
     </div>
-    <p class="fineprint">Setpoint is a Wi-Fi temperature sensor with threshold alarms. The DIY kit ships as parts you assemble and flash yourself. Assembled units will ship on a pre-certified radio module (FCC ID 2AC7Z-ESPC3MINI1) once Part 15B testing is complete, and are not offered for sale before then. Not a certified medical, food-safety, or life-safety device — use appropriate redundancy for critical applications. Specifications describe rev-2 prototype hardware and may change before general availability. © 2026 Datum Laboratories LLC.</p>
+    <p class="fineprint">Setpoint is a Wi-Fi temperature sensor with threshold alarms. The DIY kit ships as parts you assemble and flash yourself. Assembled units will ship on a pre-certified radio module once Part 15B testing is complete, and are not offered for sale before then. Not a certified medical, food-safety, or life-safety device — use appropriate redundancy for critical applications. Specifications describe rev-2 prototype hardware and may change before general availability. © 2026 Datum Laboratories LLC.</p>
   </div>
 </footer>
 
@@ -801,14 +838,14 @@
     return c;
   }
 
-  var batt = 87;
   function tick() {
     t += 1;
     data.push(sample(t));
     data.shift();
-    if (t % 40 === 0) { batt = Math.max(11, batt - 1); }
-    var rssi = -50 - Math.round(6 + 5 * Math.sin(t * 0.05));
-    linkText.textContent = "RSSI " + rssi + " dBm · BATT " + batt + "%";
+    // Counts up to the read interval, then resets — the same "last reading"
+    // freshness every real probe card shows. Nothing here claims a readout the
+    // hardware cannot produce.
+    linkText.textContent = "UPDATED " + (t % 30) + "s AGO";
     draw();
   }
 
@@ -824,23 +861,28 @@
   // waitlist -> POST /api/waitlist (Cloudflare Pages Function; functions/api/waitlist.js)
   var form = document.getElementById("wlForm");
   var note = document.getElementById("wlNote");
+  // Status text sits on the .waitlist panel, which is background:var(--ink) in
+  // BOTH themes — so the panel is dark in light theme and light in dark theme.
+  // var(--signal) only contrasts against one of those (2.20:1 in dark theme).
+  // var(--paper) is the panel's own foreground, so it lands at ~16.5:1 either
+  // way. Do not put --signal back here.
   form.addEventListener("submit", function (e) {
     e.preventDefault();
     var email = document.getElementById("wlEmail").value.trim();
     var ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
     if (!ok) {
       note.textContent = "That email doesn't look right — check and try again.";
-      note.style.color = "var(--signal)";
+      note.style.color = "var(--paper)";
       return;
     }
     var btn = form.querySelector("button");
     btn.disabled = true;
     note.textContent = "Adding you…";
-    note.style.color = "var(--signal)";
+    note.style.color = "var(--paper)";
     fetch("/api/waitlist", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: email })
+      body: JSON.stringify({ email: email, company: document.getElementById("wlCompany").value })
     }).then(function (r) {
       return r.json().catch(function () { return {}; });
     }).then(function (body) {
@@ -852,10 +894,10 @@
       } else {
         note.textContent = "That didn't go through — give it another try in a moment.";
       }
-      note.style.color = "var(--signal)";
+      note.style.color = "var(--paper)";
     }).catch(function () {
       note.textContent = "Network hiccup — please try again in a moment.";
-      note.style.color = "var(--signal)";
+      note.style.color = "var(--paper)";
     }).then(function () {
       btn.disabled = false;
     });

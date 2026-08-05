@@ -11,6 +11,7 @@ from core.storage import threshold_breach
 from core.status import (probe_fresh_window as _probe_fresh_window,
                          reporting_probe_ids, ONLINE_TIMEOUT_SEC)
 from core.demo import has_demo_data, load_demo_data, clear_demo_data
+from core import units
 
 # Held-breach registry: the AlertMonitor's hysteresis can hold a probe "in
 # breach" after its raw reading is back inside the limit. The probe cards read
@@ -41,6 +42,9 @@ FONT_STACK = ("-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, "
               "'Helvetica Neue', Arial, sans-serif")
 
 # --- Gauge Card ---
+# The gauge is a fixed 230 px inside a card stretched to the graph's height, so
+# it used to sit pinned to the top over ~250 px of dead space. gauge-fill takes
+# the leftover height and centres it (see theme.css).
 GaugeCard = dbc.Card(
     dbc.CardBody([
         html.H5(
@@ -48,36 +52,36 @@ GaugeCard = dbc.Card(
              html.Span("LIVE", id="live-badge", className="ms-2 text-success small fw-bold")],
             className="card-title",
         ),
-        dcc.Graph(id="temp-gauge", style={"height": "230px"},
-                  config={"displayModeBar": False}),
-    ]),
+        html.Div(
+            dcc.Graph(id="temp-gauge", style={"height": "260px"},
+                      config={"displayModeBar": False}),
+            className="gauge-fill",
+        ),
+    ], className="d-flex flex-column"),
     className="h-100 gauge-card",
 )
 
 # --- Metrics Row ---
-# Responsive widths (xs=6, lg=3) so the KPI cards form a clean 2×2 grid on a
-# phone instead of a single 4-wide row whose long labels wrap mid-word.
+# Three KPIs, not four: the °C/°F/K picker used to sit here dressed as a metric,
+# which put a control the eye reads as a readout in the middle of the readouts.
+# It now lives with the other view controls in the toolbar above, leaving this
+# row showing only things that are actually measured.
+#
+# Responsive widths (xs=6, md=4) keep the two that matter most side by side on a
+# phone, and give a clean 3-across row from tablets up.
 MetricsRow = dbc.Row([
     dbc.Col(dbc.Card(dbc.CardBody([
         html.H6("Connected Probes", className="text-muted mb-1"),
         html.H2(id="metric-probes", className="fw-bold mb-0 kpi-value"),
-    ]), className="h-100"), xs=6, lg=3),
+    ]), className="h-100"), xs=6, md=4),
     dbc.Col(dbc.Card(dbc.CardBody([
         html.H6("Last Update", className="text-muted mb-1"),
         html.H2(id="metric-lastupdate", className="fw-bold mb-0 kpi-value"),
-    ]), className="h-100"), xs=6, lg=3),
+    ]), className="h-100"), xs=6, md=4),
     dbc.Col(dbc.Card(dbc.CardBody([
         html.H6("Logging Status", className="text-muted mb-1"),
         html.H2(id="metric-logging", className="fw-bold text-success mb-0 kpi-value"),
-    ]), className="h-100"), xs=6, lg=3),
-    dbc.Col(dbc.Card(dbc.CardBody([
-        html.H6("Unit", className="text-muted mb-1"),
-        dbc.ButtonGroup([
-            dbc.Button("°C", id="unit-celsius", size="sm", color="primary", outline=False),
-            dbc.Button("°F", id="unit-fahrenheit", size="sm", color="primary", outline=True),
-            dbc.Button("K", id="unit-kelvin", size="sm", color="primary", outline=True),
-        ], size="sm"),
-    ]), className="h-100"), xs=6, lg=3),
+    ]), className="h-100"), xs=12, md=4),
 ], className="g-3 mb-3 metric-row")
 
 # --- Statistics Row ---
@@ -216,21 +220,41 @@ FocusBar = dbc.Row([
         ], size="sm"),
         xl=4, lg=5, md=6, sm=12, className="mb-2 mb-lg-0",
     ),
-    # Clock format toggle — every absolute time on the dashboard (Last Update,
-    # the Min/Max "at ..." times, and the graph's ticks/hover) follows this, so
-    # a customer can flip between 24h and 12h for fast comparison against other
-    # clocks/logs without digging into Settings.
+    # Site picker — only rendered on a hub that actually holds forwarded data
+    # (see core/forwarder.py). A single-site hub never sees it, so the common
+    # case gains no chrome; an HQ hub gets "all stores / one store" without a
+    # separate roll-up screen. Hidden by an inline style rather than omitted, so
+    # the callback's Output always has a target to write to.
     dbc.Col(
         dbc.InputGroup([
-            dbc.InputGroupText("Clock"),
-            dbc.ButtonGroup([
-                dbc.Button("24h", id="clock-24h", size="sm", color="secondary", outline=False),
-                dbc.Button("12h", id="clock-12h", size="sm", color="secondary", outline=True),
-            ]),
+            dbc.InputGroupText("Site"),
+            dbc.Select(id="site-selector", value="all",
+                       options=[{"label": "All sites", "value": "all"}]),
+        ], size="sm"),
+        id="site-selector-col", style={"display": "none"},
+        xl=3, lg=4, md=6, sm=12, className="mb-2 mb-lg-0",
+    ),
+    # Display unit and clock format. Both start from the browser's own locale
+    # (see the clientside callback in register_dashboard_callbacks), so a US
+    # customer opens the page already in °F on a 12-hour clock and never has to
+    # find these; they sit here, next to the other view controls, for the times
+    # someone wants to override that.
+    dbc.Col(
+        dbc.ButtonGroup([
+            dbc.Button("°C", id="unit-celsius", size="sm", color="primary", outline=False),
+            dbc.Button("°F", id="unit-fahrenheit", size="sm", color="primary", outline=True),
+            dbc.Button("K", id="unit-kelvin", size="sm", color="primary", outline=True),
         ], size="sm"),
         width="auto",
     ),
-], className="mb-3 justify-content-end g-2 align-items-center")
+    dbc.Col(
+        dbc.ButtonGroup([
+            dbc.Button("24h", id="clock-24h", size="sm", color="secondary", outline=False),
+            dbc.Button("12h", id="clock-12h", size="sm", color="secondary", outline=True),
+        ], size="sm"),
+        width="auto",
+    ),
+], className="mb-3 justify-content-end g-2 align-items-center dash-toolbar")
 
 # Hub's local timezone label, shown so a user knows what the on-screen and
 # exported local timestamps mean (the CSV also carries an unambiguous UTC column).
@@ -271,10 +295,40 @@ ExportModal = dbc.Modal([
 ], id="export-modal", is_open=False)
 
 
+# --- "More detail" -----------------------------------------------------------
+# The secondary reads — recent events, the per-probe breakdown, humidity/VPD —
+# folded behind one toggle. They are genuinely useful and none of them is the
+# question someone opens the dashboard to answer, so they used to sit between
+# the operator and the chart. Collapsed, the page ends at the numbers that
+# matter; the choice is remembered per browser.
+#
+# Their callbacks are gated on this being open (see register_dashboard_callbacks)
+# so a closed section costs nothing at all — no per-probe GROUP BY every 5 s.
+DetailsSection = html.Div([
+    dbc.Button("▸ More detail", id="dash-details-toggle", color="link", size="sm",
+               className="px-0 details-toggle"),
+    dbc.Collapse([
+        html.Div(id="details-empty", className="mb-2"),
+        ProbeStatsRow,
+        EnvironmentRow,
+        EventsRow,
+    ], id="dash-details-collapse", is_open=False),
+], className="mt-2 mb-3")
+
+
 # --- Dashboard Layout ---
+# Reading order is now urgency order: anything wrong → how the hub is doing →
+# each probe → the chart → the numbers behind it → everything else on request.
+# The gauge and graph used to sit below five stacked sections, so the single most
+# looked-at element on the page was also the one furthest down it.
 DashboardLayout = html.Div([
-    dcc.Store(id="temp-unit-store", storage_type="local", data="celsius"),
-    dcc.Store(id="clock-format-store", storage_type="local", data="24h"),
+    # No default: an empty store means "this browser has never chosen", which is
+    # what lets the clientside locale probe fill in °F / 12-hour for the people
+    # who expect them. _convert()/_fmt_clock() treat an unset value as °C / 24 h,
+    # so nothing renders wrong in the moment before it resolves.
+    dcc.Store(id="temp-unit-store", storage_type="local"),
+    dcc.Store(id="clock-format-store", storage_type="local"),
+    dcc.Store(id="dash-details-store", storage_type="local", data=False),
     # Per-client render signature for the main refresh callback: when a 5 s tick
     # arrives and nothing it would draw has changed, the callback answers
     # no_update instead of re-rendering both figures (see update_dashboard).
@@ -284,35 +338,25 @@ DashboardLayout = html.Div([
     html.Div(id="demo-banner"),
     ExportModal,
     FocusBar,
-    MetricsRow,
     AlertsRow,
-    EventsRow,
+    MetricsRow,
     ProbesRow,
-    StatsRow,
-    ProbeStatsRow,
-    EnvironmentRow,
     dbc.Row([
         dbc.Col(GaugeCard, xs=12, lg=4),
         dbc.Col(GraphCard, xs=12, lg=8),
-    ], className="g-3 align-items-stretch"),
+    ], className="g-3 align-items-stretch mb-3"),
+    StatsRow,
+    DetailsSection,
 ])
 
 
 # --- Helpers -----------------------------------------------------------------
-def _convert(temp_c, unit):
-    if unit == "fahrenheit":
-        return (temp_c * 9.0 / 5.0) + 32.0
-    if unit == "kelvin":
-        return temp_c + 273.15
-    return temp_c
-
-
-def _unit_symbol(unit):
-    if unit == "fahrenheit":
-        return "°F"
-    if unit == "kelvin":
-        return "K"
-    return "°C"
+# Display conversion. The arithmetic lives in core.units (shared with the
+# Devices edit form, which rounds; the dashboard keeps full precision until
+# format time). Aliased rather than imported under their own names so the ~15
+# call sites below read the same as they always have.
+_convert = units.to_unit
+_unit_symbol = units.unit_symbol
 
 
 def _fmt(temp_c, unit):
@@ -370,19 +414,27 @@ def _row_age_seconds(row, now_dt=None):
         return None
 
 
-def _reporting_probe_count(db, cfg, finder):
+def _reporting_probe_count(db, cfg, finder, site=None):
     """Count probes that reported recently — each judged against its OWN freshness
     window (interval-aware), keyed off ingest not mDNS.
 
     A deep-sleep battery probe keeps its radio off between readings so it is never
     mDNS-discovered, and a fixed 60 s timeout would flag it stale between wakes;
     both are handled here. Falls back to mDNS discovery if the DB query fails.
+
+    ``site`` narrows the count to the store the dashboard is showing. Leaving the
+    KPI global while every other number on the page filtered would read as data
+    loss — "Connected Probes 12" over three cards. The mDNS fallback cannot be
+    scoped (a forwarded probe is on another LAN and was never discoverable here),
+    so a selected site reports 0 rather than a number that means something else.
     """
     try:
         # Shared with Diagnostics, the API and /metrics so every surface counts
         # the same probes as "connected".
-        return len(reporting_probe_ids(cfg, db))
+        return len(reporting_probe_ids(cfg, db, site=site))
     except Exception:
+        if site is not None:
+            return 0
         return _online_probe_count(
             finder, cfg.get("probe_online_timeout_sec", ONLINE_TIMEOUT_SEC))
 
@@ -392,6 +444,18 @@ def _empty_fig():
     fig.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
                       xaxis={"visible": False}, yaxis={"visible": False})
     return fig
+
+
+def _site_filter(site):
+    """Translate the site picker's value into a database filter.
+
+    The picker says ``"all"`` (or nothing at all, on a hub that has never seen a
+    forwarded reading and keeps the control hidden); the database layer says
+    ``None`` for "every site". Distinct vocabularies, and ``''`` means something
+    different again — this hub's OWN probes — so the conversion is not a cast and
+    lives in one place rather than at each of the six query sites.
+    """
+    return None if (not site or site == "all") else str(site)
 
 
 def _friendly_name(cfg, probe_id):
@@ -457,7 +521,8 @@ def _make_gauge(name, t_c, lo, hi, temp_unit, suffix):
     return fig
 
 
-def _render_sig(latest, time_range, temp_unit, focus_probe, clock_format, now=None):
+def _render_sig(latest, time_range, temp_unit, focus_probe, clock_format, now=None,
+                site="all"):
     """Cheap change signature for the main dashboard refresh.
 
     Combines everything the big callback's output depends on: the newest
@@ -468,7 +533,7 @@ def _render_sig(latest, time_range, temp_unit, focus_probe, clock_format, now=No
     """
     ts = (latest or {}).get("timestamp")
     bucket = int((now if now is not None else time.time()) // 15)
-    return f"{ts}|{time_range}|{temp_unit}|{focus_probe}|{clock_format}|{bucket}"
+    return f"{ts}|{time_range}|{temp_unit}|{focus_probe}|{clock_format}|{site}|{bucket}"
 
 
 # Badge colour per event kind: breaches read as alerts (high hot-red, low
@@ -511,7 +576,7 @@ def _event_row(badge_kind, bits):
     ], className="d-flex align-items-center mb-1")
 
 
-def build_events(db, cfg, temp_unit, limit=8, window_seconds=86400):
+def build_events(db, cfg, temp_unit, limit=8, window_seconds=86400, site="all"):
     """Compact "Recent events" feed from the alert-lifecycle event log.
 
     Threshold/rate events (high/low/recovery/rate) render individually, newest
@@ -521,8 +586,18 @@ def build_events(db, cfg, temp_unit, limit=8, window_seconds=86400):
     dropping on a weak link (e.g. Wi-Fi from inside a metal fridge) shows one row
     instead of burying the real alerts under a wall of online/offline entries.
     Returns ``[]`` when there's nothing to show. Dash-callback-free for tests.
+
+    ``site`` narrows the feed to the hub that RECORDED the events — a store's own
+    alert engine's decisions against its own thresholds, forwarded here. That is
+    the record an auditor asks for, and it is why this filters on the event's own
+    site rather than inferring membership from which probes report where.
+
+    Note this filters the *scrollback*, not the live alert banner: a breach in
+    another store still raises, it just does not clutter the page while someone
+    is reading a different store.
     """
     temp_unit = temp_unit or "celsius"
+    site_filter = _site_filter(site)
     try:
         # Fetch alerts and connectivity in SEPARATE, kind-filtered queries. A
         # flapping probe can emit hundreds of online/offline rows; if we pulled
@@ -532,9 +607,9 @@ def build_events(db, cfg, temp_unit, limit=8, window_seconds=86400):
         # `limit` of them are always fetched; connectivity gets a wider slice
         # that we then collapse to one row per probe below.
         alerts = db.list_events(limit=limit, window_seconds=window_seconds,
-                                exclude_kinds=_CONNECTIVITY_KINDS)
+                                exclude_kinds=_CONNECTIVITY_KINDS, site=site_filter)
         conn_events = db.list_events(limit=max(limit * 8, 64), window_seconds=window_seconds,
-                                     kinds=_CONNECTIVITY_KINDS)
+                                     kinds=_CONNECTIVITY_KINDS, site=site_filter)
     except Exception:
         return []  # events log unavailable — hide the section rather than break
     if not alerts and not conn_events:
@@ -583,19 +658,22 @@ def build_events(db, cfg, temp_unit, limit=8, window_seconds=86400):
     ])
 
 
-def build_probe_cards(db, cfg, temp_unit, focus_probe="all"):
+def build_probe_cards(db, cfg, temp_unit, focus_probe="all", site="all"):
     """One status card per probe: current temperature + OK/HIGH/LOW/stale.
 
-    In focus mode only the selected probe's card is shown. A probe whose raw
-    reading is back inside the limits but which the alert monitor's hysteresis
-    still holds in breach shows amber "recovering" instead of green OK, so the
-    card agrees with the (held) alert banner. Kept Dash-callback-free so tests
-    can call it directly.
+    In focus mode only the selected probe's card is shown, and on an HQ hub
+    ``site`` narrows the grid to one store. A probe whose raw reading is back
+    inside the limits but which the alert monitor's hysteresis still holds in
+    breach shows amber "recovering" instead of green OK, so the card agrees with
+    the (held) alert banner. Kept Dash-callback-free so tests can call it
+    directly.
     """
     temp_unit = temp_unit or "celsius"
     focus = focus_probe if (focus_probe and focus_probe != "all") else None
+    site_filter = _site_filter(site)
     try:
-        latest = db.latest_per_probe(window_seconds=PROBE_PRESENCE_WINDOW)
+        latest = db.latest_per_probe(window_seconds=PROBE_PRESENCE_WINDOW,
+                                     site=site_filter)
     except Exception:
         return []
     if latest is None or latest.empty:
@@ -638,6 +716,13 @@ def build_probe_cards(db, cfg, temp_unit, focus_probe="all"):
             html.H3(_fmt(t_c, temp_unit), className=f"fw-bold text-{color} my-1"),
             html.Small(_age_text(age), className="text-muted"),
         ]
+        # Which building this probe is in. Present only on a hub that another hub
+        # forwards to, so a single-site card is unchanged — but on an HQ hub with
+        # six stores reporting, "Walk-in" alone is ambiguous and this is the line
+        # that makes the card mean anything.
+        site_name = row.get("site")
+        if site_name is not None and not pd.isna(site_name) and str(site_name).strip():
+            body.append(html.Small(f"⌂ {site_name}", className="d-block text-info"))
         batt = row.get("battery_pct")
         if batt is not None and not pd.isna(batt):
             batt_cls = "text-warning" if float(batt) < 20 else "text-muted"
@@ -648,16 +733,18 @@ def build_probe_cards(db, cfg, temp_unit, focus_probe="all"):
     return dbc.Row(cards, className="g-3")
 
 
-def build_probe_stats(db, cfg, time_range, temp_unit):
+def build_probe_stats(db, cfg, time_range, temp_unit, site="all"):
     """Per-probe Min / Avg / Max cards, shown only when 2+ probes have data in
     the window — so a mixed deployment (a −18 °C freezer + a 22 °C room) isn't
     reduced to one meaningless aggregate. A single probe returns ``[]``; the
-    global StatsRow already tells that story. Kept Dash-free for direct testing.
+    global StatsRow already tells that story. On an HQ hub ``site`` narrows the
+    breakdown to one store. Kept Dash-free for direct testing.
     """
     temp_unit = temp_unit or "celsius"
     window = RANGE_SECONDS.get(time_range or "24h", 86400)
+    site_filter = _site_filter(site)
     try:
-        stats = db.stats_per_probe(window_seconds=window)
+        stats = db.stats_per_probe(window_seconds=window, site=site_filter)
     except Exception:
         return []
     named = {pid: s for pid, s in stats.items() if str(pid).strip()}
@@ -690,7 +777,7 @@ def build_probe_stats(db, cfg, time_range, temp_unit):
 
 
 def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", clock_format="24h",
-                    latest=None):
+                    latest=None, site="all"):
     """Pure(ish) computation behind the dashboard refresh callback.
 
     Returns the 14-tuple the Dash callback emits.  Kept free of Dash specifics
@@ -715,7 +802,8 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
     window = RANGE_SECONDS.get(time_range, 86400)
     suffix = " " + _unit_symbol(temp_unit)
     logging_status = "ON" if cfg.get("pull_enabled", True) else "OFF"
-    probes_online = _reporting_probe_count(db, cfg, finder)
+    site_filter = _site_filter(site)
+    probes_online = _reporting_probe_count(db, cfg, finder, site=site_filter)
     focus = focus_probe if (focus_probe and focus_probe != "all") else None
     focus_ts = None  # the focused probe's OWN latest timestamp (for "Last Update")
 
@@ -785,17 +873,34 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
             except Exception:
                 latest_each = None
 
+        # The GAUGE follows the store the operator selected; the ALERTS loop below
+        # deliberately does not. A breach in Savannah is still a breach while head
+        # office is looking at Atlanta, so it keeps the unfiltered scan — but a
+        # gauge captioned with a Savannah probe over an Atlanta chart would just
+        # be wrong. Filtered in pandas off the column that is already loaded, so
+        # the split costs no extra query.
+        gauge_rows = latest_each
+        site_newest = None      # this store's most recent row, for the gauge + KPI
+        if site_filter is not None and latest_each is not None and not latest_each.empty:
+            gauge_rows = latest_each[latest_each["site"].fillna("") == site_filter]
+            if not gauge_rows.empty:
+                site_newest = gauge_rows.sort_values("timestamp").iloc[-1]
+
         if focus is None:
             # --- Overview: the probe that needs attention (worst active breach),
             # else the latest reading overall — shown with its own threshold zones.
             focus_pid = latest.get("probe_id")
             focus_c = float(latest["temperature_c"])
+            if site_newest is not None:
+                # ...and "latest overall" means latest IN THIS STORE.
+                focus_pid = site_newest["probe_id"]
+                focus_c = float(site_newest["temperature_c"])
             thr = thresholds.get(focus_pid, thresholds.get("default", {})) or {}
             focus_lo, focus_hi = thr.get("min"), thr.get("max")
             try:
                 best = None  # (severity, pid, t_c, lo, hi)
                 now_dt = datetime.datetime.now()
-                for _, r in (latest_each.iterrows() if latest_each is not None else ()):
+                for _, r in (gauge_rows.iterrows() if gauge_rows is not None else ()):
                     pid = r["probe_id"]
                     age = _row_age_seconds(r, now_dt)
                     if age is not None and age > _probe_fresh_window(cfg, pid):
@@ -821,19 +926,26 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
         # mode its scan AND its stride track the focused probe's own volume (not
         # the global all-probe count, which used to decimate a quiet probe to a
         # point or two). The SQL filter also removes the old post-filter step.
-        stats = db.window_stats(window_seconds=window, probe_id=focus)
+        # site_filter is computed at the top of this function, not here, because
+        # the Connected-Probes KPI needs it before any of this runs.
+        stats = db.window_stats(window_seconds=window, probe_id=focus, site=site_filter)
         filtered_points = stats["count"]
         if time_range != "all" and not filtered_points:
             df = pd.DataFrame(columns=["timestamp", "temperature_c",
                                        "temperature_f", "probe_id"])
         else:
-            df = db.window_df(window_seconds=window, probe_id=focus)
+            df = db.window_df(window_seconds=window, probe_id=focus, site=site_filter)
         # "all" renders the same figure for filtered and total; otherwise the
         # "of Y" denominator is scoped to match the numerator — the focused
         # probe's own all-time total in focus mode, the whole store in overview —
         # so a quiet focused probe never reads "Showing 20 of 60,020".
         if time_range == "all":
             total_points = filtered_points
+        elif site_filter is not None:
+            # A site is selected, so the denominator has to be scoped to it too —
+            # otherwise "Showing 40 of 60,020" compares one store's window against
+            # every store's history and reads as catastrophic data loss.
+            total_points = db.window_stats(probe_id=focus, site=site_filter)["count"]
         elif focus is not None:
             total_points = db.count_readings(probe_id=focus)
         else:
@@ -989,7 +1101,10 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
                 # breakdown just below instead. Global Min/Max stay meaningful as
                 # the coldest / hottest reading anywhere.
                 stat_avg = "Per-probe"
-                stat_avg_info = "see per-probe stats below"
+                # Names where the breakdown now lives: it moved behind the
+                # dashboard's "More detail" fold, so "below" would send someone
+                # looking at a section that is closed.
+                stat_avg_info = "per-probe breakdown under “More detail”"
             else:
                 stat_avg = _fmt(stats["avg"], temp_unit)
                 stat_avg_info = f"{filtered_points:,} readings"
@@ -1035,7 +1150,14 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
         # In focus mode, base "Last Update"/heartbeat on the FOCUSED probe's own
         # latest reading, not the hub-wide newest — otherwise a silent focused
         # probe would read "Just now" because a different probe is still reporting.
-        ts = focus_ts if (focus is not None and focus_ts is not None) else latest["timestamp"]
+        # A selected site is the same failure one level up: a store whose link has
+        # dropped would read "Just now" off a sibling store that is still arriving.
+        if focus is not None and focus_ts is not None:
+            ts = focus_ts
+        elif site_newest is not None:
+            ts = site_newest["timestamp"]
+        else:
+            ts = latest["timestamp"]
         last_update = str(ts)
         try:
             last_dt = datetime.datetime.fromisoformat(str(ts).rstrip("Z"))
@@ -1121,6 +1243,52 @@ def register_dashboard_callbacks(app, finder, cfg, db):
         except Exception:
             log.exception("demo data clear failed")
             return no_update
+
+    # --- Locale defaults ------------------------------------------------------
+    # Both stores start empty, meaning "this browser has never chosen". While
+    # that holds, take the answer from the browser instead of asking: a US
+    # customer's first view is already °F on a 12-hour clock, and everyone else
+    # keeps °C / 24 h. Runs clientside because the locale only exists there — the
+    # server sees a request, not the reader. Once either store holds a value the
+    # callback answers no_update forever, so an explicit choice is never
+    # second-guessed, and any failure just leaves the °C / 24 h defaults.
+    app.clientside_callback(
+        """
+        function (_n, unit, clock) {
+            var nu = window.dash_clientside.no_update;
+            var out = [nu, nu];
+            try {
+                if (!unit) {
+                    var tag = (navigator.languages && navigator.languages[0])
+                              || navigator.language || "";
+                    var region = "";
+                    try {
+                        region = (new Intl.Locale(tag)).maximize().region || "";
+                    } catch (e) {
+                        var m = /[-_]([A-Za-z]{2})(?![A-Za-z])/.exec(tag);
+                        region = m ? m[1] : "";
+                    }
+                    // The countries that use Fahrenheit for everyday temperature.
+                    var F = ["US", "LR", "MM", "BS", "BZ", "KY", "PW", "FM", "MH"];
+                    out[0] = (F.indexOf(region.toUpperCase()) >= 0)
+                             ? "fahrenheit" : "celsius";
+                }
+                if (!clock) {
+                    var h12 = (new Intl.DateTimeFormat(undefined, {hour: "numeric"}))
+                              .resolvedOptions().hour12;
+                    out[1] = h12 ? "12h" : "24h";
+                }
+            } catch (e) { /* leave the stores empty; the °C / 24 h defaults apply */ }
+            return out;
+        }
+        """,
+        Output("temp-unit-store", "data", allow_duplicate=True),
+        Output("clock-format-store", "data", allow_duplicate=True),
+        Input("dash-refresh", "n_intervals"),
+        State("temp-unit-store", "data"),
+        State("clock-format-store", "data"),
+        prevent_initial_call=True,
+    )
 
     @app.callback(
         Output("temp-unit-store", "data"),
@@ -1257,11 +1425,12 @@ def register_dashboard_callbacks(app, finder, cfg, db):
         Input("dash-refresh", "n_intervals"),
         Input("temp-unit-store", "data"),
         Input("focus-probe-selector", "value"),
+        Input("site-selector", "value"),
     )
-    def _update_probe_cards(_n, temp_unit, focus_probe):
+    def _update_probe_cards(_n, temp_unit, focus_probe, site):
         # Logic lives in build_probe_cards (module level) so tests can call it
         # directly — e.g. with the HELD registry stubbed.
-        return build_probe_cards(db, cfg, temp_unit, focus_probe)
+        return build_probe_cards(db, cfg, temp_unit, focus_probe, site)
 
     @app.callback(
         Output("probe-stats-row", "children"),
@@ -1269,25 +1438,38 @@ def register_dashboard_callbacks(app, finder, cfg, db):
         Input("time-range-selector", "value"),
         Input("temp-unit-store", "data"),
         Input("focus-probe-selector", "value"),
+        Input("site-selector", "value"),
+        # An Input, not a State: opening "More detail" has to draw the section
+        # now, not on the next tick. Closed, this skips a per-probe GROUP BY that
+        # otherwise ran every 5 s over the whole selected range for nobody.
+        Input("dash-details-collapse", "is_open"),
     )
-    def _update_probe_stats(_n, time_range, temp_unit, focus_probe):
+    def _update_probe_stats(_n, time_range, temp_unit, focus_probe, site, details_open):
+        if not details_open:
+            return []
         # In focus mode the global StatsRow already shows the selected probe's
         # min/avg/max, so the per-probe breakdown would be redundant.
         if focus_probe and focus_probe != "all":
             return []
-        return build_probe_stats(db, cfg, time_range, temp_unit)
+        return build_probe_stats(db, cfg, time_range, temp_unit, site)
 
     @app.callback(
         Output("env-row", "children"),
         Input("dash-refresh", "n_intervals"),
         Input("focus-probe-selector", "value"),
+        Input("site-selector", "value"),
+        Input("dash-details-collapse", "is_open"),
     )
-    def _update_environment(_n, focus_probe):
+    def _update_environment(_n, focus_probe, site, details_open):
         """Humidity + VPD cards for grow-variant probes (SHT4x). Empty for a
         temperature-only deployment so the layout is unchanged for most users."""
+        if not details_open:
+            return []
         focus = focus_probe if (focus_probe and focus_probe != "all") else None
+        site_filter = _site_filter(site)
         try:
-            latest_each = db.latest_per_probe(window_seconds=PROBE_PRESENCE_WINDOW)
+            latest_each = db.latest_per_probe(window_seconds=PROBE_PRESENCE_WINDOW,
+                                              site=site_filter)
         except Exception:
             return []
         cards = []
@@ -1311,12 +1493,69 @@ def register_dashboard_callbacks(app, finder, cfg, db):
     @app.callback(
         Output("events-row", "children"),
         Input("events-refresh", "n_intervals"),
-        State("temp-unit-store", "data"),
+        Input("site-selector", "value"),
+        Input("dash-details-collapse", "is_open"),
+        Input("temp-unit-store", "data"),
     )
-    def _update_events(_n, temp_unit):
+    def _update_events(_n, site, details_open, temp_unit):
         """Recent alert-lifecycle events, refreshed on their own 30 s interval.
-        Renders nothing (invisible section) while the event log is empty."""
-        return build_events(db, cfg, temp_unit)
+        Renders nothing (invisible section) while the event log is empty.
+
+        Site is an Input, not State: switching store is a context switch the
+        operator expects to see immediately, not up to 30 s later. So is the
+        "More detail" state — otherwise opening the section could sit blank for
+        30 s and read as "no events" when there are plenty.
+
+        The unit is an Input for the same reason, and it stopped being optional
+        once the unit could change by itself: locale inference sets °F shortly
+        after first paint, which does not re-run a State-only callback, so this
+        feed rendered "15.0 °C (limit 8.0)" beside cards already reading °F and
+        only agreed with them 30 s later. Re-rendering on a unit change costs one
+        pass of a section that is gated behind the fold anyway.
+        """
+        if not details_open:
+            return []
+        return build_events(db, cfg, temp_unit, site=site)
+
+    # --- "More detail" toggle -------------------------------------------------
+    @app.callback(
+        Output("dash-details-store", "data"),
+        Input("dash-details-toggle", "n_clicks"),
+        State("dash-details-store", "data"),
+        prevent_initial_call=True,
+    )
+    def _toggle_details(_n, is_open):
+        return not bool(is_open)
+
+    @app.callback(
+        Output("dash-details-collapse", "is_open"),
+        Output("dash-details-toggle", "children"),
+        Input("dash-details-store", "data"),
+    )
+    def _sync_details(is_open):
+        # Driven off the persisted store rather than the click, so the choice
+        # survives a reload instead of snapping shut on every refresh.
+        return bool(is_open), ("▾ Hide detail" if is_open else "▸ More detail")
+
+    @app.callback(
+        Output("details-empty", "children"),
+        Input("events-row", "children"),
+        Input("probe-stats-row", "children"),
+        Input("env-row", "children"),
+        Input("dash-details-collapse", "is_open"),
+    )
+    def _details_placeholder(events, stats, env, is_open):
+        """Explain an empty "More detail" instead of opening onto nothing.
+
+        All three sections legitimately render nothing on a young or single-probe
+        hub, so without this the toggle can look broken the first time it's used.
+        """
+        if not is_open or any(bool(x) for x in (events, stats, env)):
+            return None
+        return html.Small(
+            "Nothing extra yet — the per-probe breakdown appears once two or more "
+            "probes are reporting, recent events once an alert has fired, and "
+            "humidity for probes that measure it.", className="text-muted")
 
     @app.callback(
         Output("temp-gauge", "figure"),
@@ -1340,9 +1579,10 @@ def register_dashboard_callbacks(app, finder, cfg, db):
         Input("temp-unit-store", "data"),
         Input("focus-probe-selector", "value"),
         Input("clock-format-store", "data"),
+        Input("site-selector", "value"),
         State("dash-render-sig", "data"),
     )
-    def update_dashboard(_n, time_range, temp_unit, focus_probe, clock_format, prev_sig):
+    def update_dashboard(_n, time_range, temp_unit, focus_probe, clock_format, site, prev_sig):
         from dash import callback_context
         # Tick gating: a 5 s interval tick that would redraw exactly what the
         # client already shows (no new reading, same view selectors, same 15 s
@@ -1353,13 +1593,13 @@ def register_dashboard_callbacks(app, finder, cfg, db):
             latest = db.latest()  # cheap LIMIT 1, shared with build_dashboard
         except Exception:
             latest = None
-        sig = _render_sig(latest, time_range, temp_unit, focus_probe, clock_format)
+        sig = _render_sig(latest, time_range, temp_unit, focus_probe, clock_format, site=site)
         trigger = (callback_context.triggered[0]["prop_id"].split(".")[0]
                    if callback_context.triggered else "")
         if trigger == "dash-refresh" and prev_sig == sig:
             return (no_update,) * 16
         out = build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe,
-                              clock_format, latest=latest)
+                              clock_format, latest=latest, site=site)
         # Colour the Logging KPI by state (its value is out[4]): green when ON,
         # amber when OFF — so "OFF" no longer renders in success-green.
         logging_class = "fw-bold mb-0 kpi-value " + ("text-success" if out[4] == "ON"
@@ -1367,18 +1607,58 @@ def register_dashboard_callbacks(app, finder, cfg, db):
         return (*out, logging_class, sig)
 
     @app.callback(
-        Output("focus-probe-selector", "options"),
+        Output("site-selector", "options"),
+        Output("site-selector-col", "style"),
         Input("dash-refresh", "n_intervals"),
     )
-    def _focus_options(_n):
-        """Populate the focus dropdown with every probe that has data, keeping
-        'All probes' first. Values are probe ids; labels are friendly names."""
-        opts = [{"label": "All probes (overview)", "value": "all"}]
+    def _site_options(_n):
+        """Populate the site picker from whatever sites the store actually holds.
+
+        A hub only has sites if another hub has forwarded readings to it, so a
+        single-site hub — every hub, until someone runs a chain — keeps the row
+        it always had and never learns this control exists. Returning a style of
+        display:none rather than omitting the column keeps the Output target
+        alive for the callback.
+        """
         try:
-            latest = db.latest_per_probe(window_seconds=PROBE_PRESENCE_WINDOW)
+            sites = db.sites()
+        except Exception:  # noqa: BLE001 - a picker must not break the dashboard
+            sites = []
+        if not sites:
+            return [{"label": "All sites", "value": "all"}], {"display": "none"}
+        opts = [{"label": f"All sites ({len(sites)})", "value": "all"}]
+        opts += [{"label": s, "value": s} for s in sites]
+        return opts, {}
+
+    @app.callback(
+        Output("focus-probe-selector", "options"),
+        Output("focus-probe-selector", "value"),
+        Input("dash-refresh", "n_intervals"),
+        Input("site-selector", "value"),
+        State("focus-probe-selector", "value"),
+    )
+    def _focus_options(_n, site, focus):
+        """Populate the focus dropdown with every probe that has data, keeping
+        'All probes' first. Values are probe ids; labels are friendly names.
+
+        Scoped to the selected site: focusing a Savannah probe while the site
+        picker says Atlanta would AND two contradictory filters and draw an empty
+        chart, so a site change that orphans the current focus resets it to
+        'All probes' rather than leaving a dropdown pointing at nothing.
+        """
+        site_filter = _site_filter(site)
+        opts = [{"label": "All probes (overview)", "value": "all"}]
+        pids = []
+        try:
+            latest = db.latest_per_probe(window_seconds=PROBE_PRESENCE_WINDOW,
+                                         site=site_filter)
             pids = [p for p in latest["probe_id"].tolist() if str(p).strip()]
             for pid in sorted(pids, key=lambda p: _friendly_name(cfg, p).lower()):
                 opts.append({"label": _friendly_name(cfg, pid), "value": pid})
         except Exception:
             pass
-        return opts
+        # Only ever WRITE the value when the current one has become invalid —
+        # re-emitting it on every 5 s tick would fight the user's own selection.
+        if focus and focus != "all" and focus not in pids:
+            return opts, "all"
+        return opts, no_update

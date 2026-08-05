@@ -44,8 +44,11 @@ flash — the page shows a note and points those users to manual flashing.
    pip install esptool
    ./flash/build_merged_bin.sh          # writes flash/setpoint-esp32c3.merged.bin
    ```
-   Keep `manifest.json`'s `version` in sync with `FW_VERSION`
-   (`esp32_temp_probe/esp32_temp_probe.ino`).
+   Bump `manifest.json`'s `version` **and** the `firmware v…` on `index.html`
+   to match `FW_VERSION` (`esp32_temp_probe/esp32_temp_probe.ino`).
+   `tests/test_version_sync.py` fails if you forget — this drifted twice while
+   it was only a note here, and a stale `version` tells ESP Web Tools a probe
+   on old firmware is already current.
 
 2. **Host the `flash/` folder over HTTPS.** The easiest free option is **GitHub
    Pages**: enable Pages for this repo (Settings → Pages → deploy from the default

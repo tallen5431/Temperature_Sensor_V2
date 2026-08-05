@@ -205,3 +205,44 @@ def test_flap_grace_sec_normalization():
     clean, warns = normalize_config({"notifications": {"flap_grace_sec": "soon"}})
     assert "flap_grace_sec" not in clean["notifications"]
     assert any("flap_grace_sec" in w for w in warns)
+
+
+def test_tuning_knobs_are_normalized_not_just_defended():
+    """probe_sample_sec / health_fresh_sec / probe_prune_after_sec are read by
+    consumers that each fall back on a bad value, which is exactly why they need
+    normalising: without it the bad value stays in config.json and on screen
+    while something else is actually in force."""
+    clean, warns = normalize_config(
+        {"probe_sample_sec": "not-a-number", "health_fresh_sec": -5,
+         "probe_prune_after_sec": "7200"})
+    assert clean["probe_sample_sec"] == 60           # unparseable -> default
+    assert clean["health_fresh_sec"] == 1            # floored, not left negative
+    assert clean["probe_prune_after_sec"] == 7200 and \
+        isinstance(clean["probe_prune_after_sec"], int)
+    assert any("probe_sample_sec" in w for w in warns)
+
+
+def test_ceilings_clamp_or_substitute_per_field():
+    # A real sensor/protocol limit clamps to itself...
+    assert normalize_config({"resolution_bits": 99})[0]["resolution_bits"] == 12
+    assert normalize_config(
+        {"upstream": {"batch": 5000}})[0]["upstream"]["batch"] == 1000
+    # ...while a ceiling that only marks the value as nonsense substitutes the
+    # default, because a clamped 65535 would be just as unusable as 99999.
+    assert normalize_config({"mqtt": {"port": 99999}})[0]["mqtt"]["port"] == 1883
+
+
+def test_nested_number_warnings_name_the_full_path():
+    """Three subtrees have an 'enabled' and two have a port, so a bare key name
+    in a warning does not say which field was corrected."""
+    _, warns = normalize_config({
+        "mqtt": {"port": 99999},
+        "notifications": {"email": {"smtp_port": 0},
+                          "daily_summary": {"hour": 99}},
+        "upstream": {"batch": 5000, "interval_sec": 1},
+    })
+    joined = " | ".join(warns)
+    for path in ("mqtt.port", "notifications.email.smtp_port",
+                 "notifications.daily_summary.hour", "upstream.batch",
+                 "upstream.interval_sec"):
+        assert path in joined, f"{path} missing from: {joined}"

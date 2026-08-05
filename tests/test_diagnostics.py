@@ -91,6 +91,30 @@ def test_probe_rows_overlay_db_reporting_freshness():
     assert d["probes"]["reporting"] == 1
 
 
+def test_probe_table_lists_probes_known_only_from_readings():
+    """A deep-sleep probe keeps its radio off between readings, so it is never
+    mDNS-discovered. The summary counted it under "reporting" while the table
+    below omitted it — a support engineer read "2 reporting" above a table of
+    one, with no way to tell which was missing. /api/probes has always appended
+    these; the snapshot now does the same."""
+    class _ReportingDB(_FakeDB):
+        def last_reading_epoch_per_probe(self, window_seconds=None):
+            return {"p1": 990, "deep-sleeper": 960}
+
+    probes = {"p1": {"name": "Fridge", "ip": "10.0.0.2",
+                     "properties": {"id": "p1"}, "last_seen": 995}}
+    d = build_diagnostics({"probe_online_timeout_sec": 60}, _ReportingDB(9),
+                          _FakeFinder(probes), "http://hub", "2.6.2", "Setpoint",
+                          now=1000.0)
+    rows = {p["probe_id"]: p for p in d["probes"]["list"]}
+    assert set(rows) == {"p1", "deep-sleeper"}
+    assert rows["deep-sleeper"]["online"] is True
+    assert rows["deep-sleeper"]["source"] == "readings"
+    assert rows["deep-sleeper"]["ip"] is None      # never seen over the network
+    assert d["probes"]["reporting"] == 2
+    assert d["probes"]["online"] == 2
+
+
 def test_build_contains_no_secrets():
     # Notification host/url/password/token must never appear in the snapshot.
     cfg = {

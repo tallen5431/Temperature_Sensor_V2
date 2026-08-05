@@ -23,8 +23,10 @@ default. The threat model below assumes an attacker who is **another device/user
   size capped.
 - **Tamper-evident audit trail** (`logs/audit.log`) hash-chains config changes and data exports;
   its integrity is verifiable at `GET /api/audit/verify`.
-- **Optional dashboard login** (`ui_auth`) adds HTTP Basic auth to the dashboard and CSV download
-  for shared office/lab LANs (config, or `UI_USERNAME`/`UI_PASSWORD`), off by default.
+- **Optional dashboard login** (`ui_auth`) adds HTTP Basic auth to the dashboard and **every**
+  `/download/*` route — the CSV/Excel exports *and* `/download/backup.db`, which is a full SQLite
+  snapshot of every reading — for shared office/lab LANs (config, or `UI_USERNAME`/`UI_PASSWORD`),
+  off by default. Only the operational endpoints below are exempt.
 
 ## Operational endpoints (unauthenticated by design)
 

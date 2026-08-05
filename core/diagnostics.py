@@ -13,6 +13,7 @@ import shutil
 from typing import Any, Dict, List, Optional
 
 from core.applog import HEALTH, PROCESS_START
+from core.probes import discovered_probes
 from core.status import reporting_probe_ids, hub_health_window
 
 
@@ -54,10 +55,7 @@ def build_diagnostics(cfg, db, finder, public_base: str, version: str,
                       product: str, now: Optional[float] = None) -> Dict[str, Any]:
     now = datetime.datetime.now().timestamp() if now is None else now
 
-    try:
-        probes = list((finder.list_probes() or {}).values())
-    except Exception:
-        probes = []
+    probes = discovered_probes(finder)
     timeout = _int(cfg.get("probe_online_timeout_sec", 60), 60)
 
     # Probes freshly REPORTING to the database — matches the dashboard's
@@ -74,16 +72,28 @@ def build_diagnostics(cfg, db, finder, public_base: str, version: str,
 
     probe_list: List[Dict[str, Any]] = []
     online = 0
+    seen = set()
     for p in probes:
-        get = (lambda k, d=None: (p.get(k, d) if isinstance(p, dict) else getattr(p, k, d)))
-        props = get("properties", {}) or {}
-        pid = props.get("id") or get("probe_id") or get("name")
-        last = get("last_seen")
-        age = round(now - float(last), 1) if isinstance(last, (int, float)) else None
+        pid = p["probe_id"] or p["name"]
+        last = p["last_seen"]
+        age = round(now - last, 1) if last is not None else None
         is_online = (age is not None and age <= timeout) or (pid in reporting_ids)
         online += 1 if is_online else 0
-        probe_list.append({"name": get("name"), "probe_id": pid, "ip": get("ip"),
+        if pid:
+            seen.add(pid)
+        probe_list.append({"name": p["name"], "probe_id": pid, "ip": p["ip"],
                            "age_sec": age, "online": is_online})
+
+    # Probes known only from ingest — a deep-sleep battery probe keeps its radio
+    # off between readings, so it is never mDNS-discovered. The summary line
+    # already counted them under "reporting", but the table below it did not list
+    # them: a support engineer reading this snapshot saw "3 reporting" above a
+    # table of one, with no way to tell which two were missing. /api/probes has
+    # always appended them; this is the same overlay, on the same rule.
+    for pid in sorted(reporting_ids - seen):
+        probe_list.append({"name": pid, "probe_id": pid, "ip": None,
+                           "age_sec": None, "online": True, "source": "readings"})
+        online += 1
 
     try:
         readings = db.count()
@@ -122,9 +132,9 @@ def build_diagnostics(cfg, db, finder, public_base: str, version: str,
         "server": {"base": public_base},
         "database": {
             "readings": readings,
-            "size_bytes": db_size_bytes(getattr(db, "path", None)),
+            "size_bytes": db_size_bytes(db_path),
             "newest_reading": newest,
-            },
+        },
         "probes": {"total": len(probe_list), "online": online,
                    "reporting": reporting, "list": probe_list},
         "health": {
@@ -155,4 +165,33 @@ def build_diagnostics(cfg, db, finder, public_base: str, version: str,
             "dropped": health["notify_dropped"],
             "last_failure_age_sec": health["last_notify_failure_age_sec"],
         },
+        # Multi-site forwarding. Same principle as notifications above: whether
+        # it is CONFIGURED is a different question from whether readings are
+        # ARRIVING, and "head office can't see my store" is the support ticket
+        # this has to answer. `pending` climbing with a `last_error` set is the
+        # whole diagnosis. The token is deliberately absent — this blob is meant
+        # to be pasted into an email.
+        "upstream": _upstream_diag(cfg, now),
     }
+
+
+def _upstream_diag(cfg, now: float) -> Dict[str, Any]:
+    up = cfg.get("upstream", {}) or {}
+    out: Dict[str, Any] = {
+        "enabled": bool(up.get("enabled")),
+        "url": str(up.get("url") or ""),
+        "site": str(up.get("site") or ""),
+        "interval_sec": _int(up.get("interval_sec", 30), 30),
+    }
+    if not out["enabled"]:
+        return out
+    try:
+        from core.forwarder import FORWARDER
+        st = FORWARDER.status()
+        out["pending"] = st["pending"]
+        out["last_send_age_sec"] = (round(now - st["last_sent_epoch"], 1)
+                                    if st["last_sent_epoch"] else None)
+        out["last_error"] = st["last_error"]
+    except Exception:  # noqa: BLE001 - diagnostics must never raise
+        pass
+    return out

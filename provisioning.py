@@ -70,7 +70,7 @@ def get_probe_status(base_host: str, port: int, timeout: float = 3.0) -> Optiona
 
 def provision_probe(base_host: str, port: int, server_base: str, token: str = "",
                     interval_ms: int = 5000, resolution_bits=None,
-                    timeout: float = 3.0) -> bool:
+                    timeout: float = 3.0, watch=None) -> bool:
     """POST the hub's ingest URL + token + interval to a probe's /provision.
 
     ``resolution_bits`` (9..12), when given, sets the probe's DS18B20 resolution;
@@ -92,6 +92,14 @@ def provision_probe(base_host: str, port: int, server_base: str, token: str = ""
     }
     if resolution_bits is not None:
         body["resolution_bits"] = clamp_resolution_bits(resolution_bits)
+    if watch is not None:
+        # Sent even when the values are None: an explicit null is how a deleted
+        # threshold disarms a probe that is still watching the old one. Omitting
+        # the keys would leave it sampling every minute for a limit the hub no
+        # longer holds. Older firmware ignores keys it doesn't know.
+        body["alert_min_c"] = watch[0]
+        body["alert_max_c"] = watch[1]
+        body["sample_ms"] = int(watch[2] or 0)
     try:
         r = requests.post(f"http://{ip}:{port}/provision", json=body, timeout=timeout)
         if r.ok:
@@ -157,7 +165,53 @@ def desired_probe_config(cfg, probe_id: str) -> dict:
     except Exception:  # noqa: BLE001 - config is user-editable; never break ingest
         resolution_bits = clamp_resolution_bits(None)
 
-    return {"interval_ms": interval_ms, "resolution_bits": resolution_bits}
+    # --- threshold watch ------------------------------------------------------
+    # Give the probe its own limits so it can notice an excursion between
+    # reports instead of sitting on it. Reading the sensor is cheap; the radio
+    # is what costs, so the probe samples at `sample_ms` with the radio off and
+    # only transmits early when a reading crosses a limit. Without this a probe
+    # on a 15-minute interval can be 15 minutes late to a thawing freezer, and
+    # the firmware's disturbance burst does not cover it: that fires on a sudden
+    # CHANGE, and a slow thaw has none.
+    #
+    # Sent as explicit nulls when the hub has no limit for this probe, so
+    # deleting a threshold on the dashboard actually disarms the probe rather
+    # than leaving it watching a limit nobody holds.
+    alert_min_c = alert_max_c = None
+    try:
+        thresholds = cfg.get("alert_thresholds", {}) or {}
+        thr = thresholds.get(probe_id) or thresholds.get("default") or {}
+        for key, name in (("min", "alert_min_c"), ("max", "alert_max_c")):
+            raw = thr.get(key)
+            if raw is None:
+                continue
+            val = float(raw)
+            if val != val or val in (float("inf"), float("-inf")):
+                continue                      # NaN/inf: no limit is better than a wrong one
+            if name == "alert_min_c":
+                alert_min_c = val
+            else:
+                alert_max_c = val
+    except Exception:  # noqa: BLE001 - config is user-editable; never break ingest
+        alert_min_c = alert_max_c = None
+
+    # How often to READ. Only meaningful below the report interval, and the
+    # firmware ignores it otherwise. Default: a minute, or the report interval
+    # itself when that is already shorter — sampling faster than you report is
+    # the entire point, sampling faster than a minute is not worth the wakes.
+    sample_ms = 0
+    if alert_min_c is not None or alert_max_c is not None:
+        try:
+            sample_ms = int(cfg.get("probe_sample_sec", 60) or 60) * 1000
+        except (TypeError, ValueError, OverflowError):
+            sample_ms = 60_000
+        sample_ms = max(5_000, min(sample_ms, 4_294_967_295))
+        if sample_ms >= interval_ms:
+            sample_ms = 0     # nothing to gain; let the probe report as it reads
+
+    return {"interval_ms": interval_ms, "resolution_bits": resolution_bits,
+            "alert_min_c": alert_min_c, "alert_max_c": alert_max_c,
+            "sample_ms": sample_ms}
 
 
 def usable_server_base(base: str) -> bool:

@@ -46,7 +46,7 @@ pass/fail per firmware version.
 - [ ] Power a probe with no saved Wi-Fi → it starts the `Setpoint-XXXX` SoftAP.
 - [ ] Join it, set home Wi-Fi at `192.168.4.1`, save.
 - [ ] Within ~20 s the probe appears on the hub **Devices** page and readings start.
-- [ ] Settings → Probe Setup Helper detects the SoftAP SSID.
+- [ ] Settings → Set up a new probe detects the SoftAP SSID (and only scans while that section is open).
 
 **Accuracy & calibration**
 - [ ] Compare the probe against a reference thermometer in ice water (0 °C) and

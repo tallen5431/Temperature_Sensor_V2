@@ -117,7 +117,7 @@ def test_latest_per_probe_window_and_dedup(db):
     db.append(ts, 21.0, 0.0, "A")  # same (probe, instant): idempotent — ignored
     db.append(_iso(now - datetime.timedelta(hours=2)), 5.0, 0.0, "OLD")
     # The duplicate second is not stored (INSERT OR IGNORE on UNIQUE(probe_id,
-    # epoch)): a re-sent reading can't create a second row. The first write wins.
+    # epoch, site)): a re-sent reading can't create a second row. First write wins.
     assert db.count() == 2
     latest = db.latest_per_probe(window_seconds=3600)
     by_probe = {r["probe_id"]: r["temperature_c"] for _, r in latest.iterrows()}
@@ -183,7 +183,7 @@ def test_record_and_list_events(db):
     events = db.list_events()
     assert [e["kind"] for e in events] == ["offline", "recovery", "high"]  # newest first
     assert set(events[0]) == {"timestamp", "epoch", "kind", "probe_id",
-                              "temperature_c", "limit_c"}
+                              "temperature_c", "limit_c", "site"}
     assert events[2]["probe_id"] == "A"
     assert events[2]["temperature_c"] == 30.0 and events[2]["limit_c"] == 25.0
     assert events[0]["temperature_c"] is None and events[0]["limit_c"] is None
@@ -322,6 +322,40 @@ def test_migration_preserves_distinct_same_epoch_readings(tmp_path):
     db = Database(path)  # opening runs _init_schema -> migration
     temps = sorted(r["temperature_c"] for r in db.fetch_readings(probe_id="P1"))
     assert temps == [4.0, 22.0]   # nothing deleted
+
+
+def test_migration_does_not_re_scan_on_every_open(tmp_path):
+    """A database that genuinely cannot take the unique index used to re-run the
+    whole dedupe — a full-table GROUP BY plus a failed index build — on EVERY
+    startup, i.e. on precisely the oldest and largest stores. The verdict is
+    recorded once and honoured after that."""
+    path = tmp_path / "legacy.db"
+    _legacy_db(path, [
+        ("2026-01-01T00:00:05", 1767225605, 4.0, 39.2, "P1"),
+        ("2026-01-01T00:00:05", 1767225605, 22.0, 71.6, "P1"),  # distinct, same epoch
+    ])
+    first = Database(path)
+    assert first.meta_get(Database._NO_UNIQUE_KEY) == "1"
+
+    # Re-open: the scan must be skipped, the data untouched, and the index that
+    # serves the same queries still in place.
+    again = Database(path)
+    assert sorted(r["temperature_c"] for r in again.fetch_readings(probe_id="P1")) \
+        == [4.0, 22.0]
+    idx = {r[0] for r in again._conn().execute(
+        "SELECT name FROM sqlite_master WHERE type='index'").fetchall()}
+    assert "idx_readings_probe_epoch" in idx
+
+
+def test_a_migrated_database_skips_the_migration_next_time(tmp_path):
+    """The common path: once the unique index exists there is nothing to do."""
+    path = tmp_path / "clean.db"
+    Database(path).append("2026-01-01T00:00:05.000", 4.0, 39.2, "P1")
+    db = Database(path)
+    assert db.meta_get(Database._NO_UNIQUE_KEY) == ""     # never marked
+    idx = {r[0] for r in db._conn().execute(
+        "SELECT name FROM sqlite_master WHERE type='index'").fetchall()}
+    assert Database._UNIQUE_INDEX in idx
 
 
 def test_migration_collapses_byte_identical_duplicates(tmp_path):
@@ -560,7 +594,7 @@ def test_stats_per_probe(db):
     now = datetime.datetime.now()
     # Freezer probe A: cold range; room probe B: warm range. Distinct timestamps
     # per reading — one probe cannot hold two readings at the same instant (the
-    # UNIQUE(probe_id, epoch) ingest index dedupes those).
+    # UNIQUE(probe_id, epoch, site) ingest index dedupes those).
     for i, t in enumerate((-20.0, -18.0, -16.0)):
         db.append(_iso(now - datetime.timedelta(seconds=i)), t, 0.0, "A")
     for i, t in enumerate((20.0, 22.0, 24.0)):
@@ -692,3 +726,36 @@ def test_migrate_csv(tmp_path):
     assert db.count() == 2
     # second call is a no-op because the db is no longer empty
     assert migrate_csv_if_present(db, csv_path) == 0
+
+
+def test_latest_per_probe_does_not_scan_the_window(db):
+    """It runs from four dashboard callbacks and the alert monitor, every 5 s.
+
+    The per-probe seeks were always cheap; the SELECT DISTINCT that fed them was
+    not — deduplicating a low-cardinality column visits every row in the window,
+    which measured 64 ms of a 78 ms call on a 2M-row store. The probe list now
+    comes from a loose index scan, so no plan here may contain a table or
+    index SCAN.
+    """
+    for i in range(200):
+        db.append(_iso(datetime.datetime.now() - datetime.timedelta(seconds=200 - i)),
+                  4.0, 39.2, f"P{i % 4}")
+    conn = db._conn()
+    plan = " ".join(str(r[-1]) for r in conn.execute(
+        "EXPLAIN QUERY PLAN "
+        "WITH RECURSIVE t(p) AS (SELECT MIN(probe_id) FROM readings"
+        " UNION ALL SELECT (SELECT MIN(probe_id) FROM readings WHERE probe_id > t.p)"
+        " FROM t WHERE t.p IS NOT NULL) SELECT p FROM t WHERE p IS NOT NULL ORDER BY p"))
+    assert "SEARCH" in plan and "SCAN readings" not in plan, plan
+    assert sorted(db.probe_ids()) == ["P0", "P1", "P2", "P3"]
+
+
+def test_latest_per_probe_still_drops_probes_outside_the_window(db):
+    """Widening the probe source to the whole table must not widen the RESULT:
+    the per-probe seek still carries the window, and a probe with no row inside
+    it is skipped. Otherwise a probe retired a year ago returns to the cards."""
+    db.append(_iso(datetime.datetime.now()), 4.0, 39.2, "LIVE")
+    db.append("2020-01-01T00:00:00.000", 4.0, 39.2, "RETIRED")
+    got = sorted(db.latest_per_probe(window_seconds=3600)["probe_id"])
+    assert got == ["LIVE"]
+    assert "RETIRED" in db.probe_ids()      # still known, just not recent

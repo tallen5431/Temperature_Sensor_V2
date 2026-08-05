@@ -99,7 +99,7 @@ Full motion: **[docs/PILOT_OFFER.md](PILOT_OFFER.md)** + [docs/GO_TO_MARKET.md](
 
 ## TRACK B — Scale later (gated on Track A proving demand)
 
-Rev-2 respin around the pre-certified **ESP32-C3-MINI-1** module (FCC ID `2AC7Z-ESPC3MINI1`) → cheap **Part 15B SDoC** → sell **assembled** units. Firmware is unchanged. Full guide: **[docs/REV2_BUILD_GUIDE.md](REV2_BUILD_GUIDE.md)**, [docs/REV2_SCHEMATIC.md](REV2_SCHEMATIC.md), [docs/PCB_REV2_MODULE.md](PCB_REV2_MODULE.md).
+Rev-2 respin around the pre-certified **ESP32-C3-WROOM-02** module (FCC ID `2AC7Z-ESPC3WROOM02`) → cheap **Part 15B SDoC** → sell **assembled** units. Firmware is unchanged. Full guide: **[docs/REV2_BUILD_GUIDE.md](REV2_BUILD_GUIDE.md)**, [docs/REV2_SCHEMATIC.md](REV2_SCHEMATIC.md), [docs/PCB_REV2_MODULE.md](PCB_REV2_MODULE.md).
 
 **The money discipline — design early, spend late:**
 
@@ -145,7 +145,7 @@ Rev-2 respin around the pre-certified **ESP32-C3-MINI-1** module (FCC ID `2AC7Z-
 ### When demand is proven — THE GATE
 *Trigger: pilots convert to deposits/signed intent, or Tindie kits sell steadily. Only now spend on certification.*
 1. **Run the FCC Part 15B SDoC** (~$300–1,500, 2–4 wks) on a QC-passed rev-2 unit; keep the signed test report on file.
-2. **Label every unit** "Contains FCC ID: 2AC7Z-ESPC3MINI1" + the §15.19(a)(3) statement; update [docs/LABEL_TEMPLATE.md](LABEL_TEMPLATE.md).
+2. **Label every unit** "Contains FCC ID: 2AC7Z-ESPC3WROOM02" + the §15.19(a)(3) statement; update [docs/LABEL_TEMPLATE.md](LABEL_TEMPLATE.md).
 3. **Confirm insurance is bound; have COI + W-9 ready** for procurement.
 4. **Deliver certified rev-2 units** to the reserved pilots (loaner stays in place until you do); **sell assembled** B2B + the homelab variant on Tindie.
 5. **Only now consider financing** — and only for *inventory scaling*, never certification. Sequence: **validate → certify → sell → then finance growth.**

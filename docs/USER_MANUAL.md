@@ -77,10 +77,10 @@ That's it — the hub found the probe and set it up for you automatically. Readi
 ## 7. Read and export your data
 
 - **Live view:** each probe shows its current temperature, a chart over time, and summary statistics.
-- **Pick your unit:** use the **°C / °F / K** buttons on the dashboard to choose how temperatures are shown. This changes the display only — your data is stored the same either way — and any temperature you type elsewhere (such as alert limits, Section 10) is understood in the unit you picked, so you never convert by hand.
+- **Pick your unit:** the dashboard starts in the unit your computer already uses — °F and a 12-hour clock in the United States, °C and a 24-hour clock nearly everywhere else — so there is usually nothing to set. The **°C / °F / K** and **24h / 12h** buttons in the toolbar override that, and your choice is remembered in that browser. It changes the display only — your data is stored the same either way — and any temperature you type elsewhere (such as alert limits, Section 10) is understood in the unit you picked, so you never convert by hand.
 - **See your limits on the chart:** when the chart is focused on a single probe, that probe's alert limits (Section 10) appear as shaded bands, so you can see at a glance how close the readings are to the line.
-- **Recent events:** the dashboard keeps a short **Recent events** list — when a probe went over or under its limits, rose too fast, went offline, or came back to normal, each with the time it happened.
-- **Battery level:** a battery-powered probe that reports its charge shows **Batt NN%** on its card, on the dashboard and on the Devices page. It turns amber when the battery drops below 20% — time to recharge.
+- **More detail:** below the statistics, the **More detail** link opens the extras — a **per-probe breakdown** of min/average/max, humidity readouts for probes that measure it, and a short **Recent events** list showing when a probe went over or under its limits, rose too fast, went offline, or came back to normal. It stays open once you open it, so the dashboard shows either the short version or the full one, whichever you prefer.
+- **Battery level:** if a probe reports its charge, **Batt NN%** appears on its card, on the dashboard and on the Devices page, turning amber below 20%. **Setpoint probes do not report it yet** — the hub supports it (`PROTOCOL.md` §7) but the rev-1 and rev-2 boards have no battery-sense circuit, so no **Batt** figure is shown. Judge remaining charge from the charger's own LED instead.
 - **Export to a spreadsheet:** click **Export…** on the dashboard, pick a probe and (optionally) a date range, then choose a **format** and download:
     - **Excel-friendly CSV** (recommended) — opens straight into Excel or Google Sheets ready to work with: the **date** and **time** are in their own columns so you can sort and filter them like normal dates, each probe shows the **friendly name** you gave it, and the clutter columns are left out. This is the easiest choice for most people.
     - **Excel workbook (`.xlsx`)** — a real Excel file: double-click and the dates, times and temperatures are already the right types, with a frozen header row and filter buttons. (For very large date ranges, use a CSV instead — a single Excel sheet can't hold more than about a million rows.)
@@ -146,20 +146,38 @@ Get warned when a probe goes out of a safe range (for example, a fridge that get
 
 When a reading crosses your limits, the dashboard shows the breach right away. To also get an **email or webhook message**, turn on notifications:
 
-**Turn on notifications (Settings → Alerts):**
+**Turn on notifications (Settings → Alerts & notifications):**
 
-1. Open **Settings** and find the **Alerts** card.
+The Settings page is a list of sections, each showing what it is currently set to. Click one to open it.
+
+1. Open **Settings** and click **Alerts & notifications**.
 2. Turn on **Enable alerts**.
 3. Switch on **Email** and/or **Webhook**, and fill in the boxes that appear:
-   - **Email:** your mail provider's server name (for example `smtp.gmail.com`) and port, your username and password, and the From and To addresses. If you've saved a password here before, leaving the password box blank keeps the saved one.
-   - **Webhook:** paste a URL from Slack, Discord, Zapier or a similar service.
+   - **Email:** type your **email address** and its **password** — that's all. The hub recognises the address and fills in the mail server, port and encryption for you, and sends the alerts to that same address unless you enter someone else in **Send alerts to**. If you've saved a password here before, leaving the password box blank keeps the saved one.
+   - **Webhook:** paste a URL from Slack, Discord, Teams, Zapier or a similar service. The hub names the service back to you so you know it recognised it.
 4. Click **Save**, then click **Send test**. A test message goes to every channel you switched on, so you know it works before you rely on it.
 
-Alerts are spaced out (debounced) so you aren't flooded with repeats — **"Re-alert every"** sets how often you're reminded while a probe stays out of range, and the small **deadband** stops a probe sitting right on the line from alerting over and over. You can also be told when a probe **goes offline** and when it **returns to normal**, using the switches on the same card.
+> **If your provider needs an "app password".** Gmail, Yahoo, iCloud, Fastmail and
+> others reject your normal account password from programs like this and require a
+> separate app password generated in your account's security settings. When you type
+> an address at one of those providers, the hub says so on the spot — that message is
+> the most common reason a correct-looking email setup never delivers.
+>
+> Using your own mail server, or a provider the hub doesn't recognise? Open **Server
+> settings** under the password box and enter the host, port and encryption yourself.
+> Anything you type there is kept exactly as you typed it.
 
-**Catch a failing fridge or freezer early (rate-of-change alert):** on the same Alerts card, **"Rate alert (°C rise)"** warns you when a probe's temperature *climbs quickly* — for example, rises 3 °C within 10 minutes — which a failing freezer does long before it crosses your maximum limit. Set it to **0** to turn it off (the default).
+You can also be told when a probe **stops reporting**, using the switch under *When to send them*.
 
-**Daily summary email:** with Email switched on, you can also turn on **"Send a daily summary email"** and pick the hour it's sent. You'll get one email a day with each probe's minimum, average and maximum — a nice way to confirm everything stayed in range without watching the dashboard.
+**Fine-tuning (Advanced settings):** everything else already has a sensible default, and lives behind **Advanced settings** at the bottom of the Alerts section for when a deployment alerts too often or not soon enough:
+
+- **"Re-alert every"** — how often you're reminded while a probe stays out of range.
+- **Deadband** — stops a probe sitting right on the line from alerting over and over.
+- **"Notify when a probe returns to normal"**, and how long the hub waits before it believes a flaky probe is really back.
+- **"Offline after"** — how long a probe may go quiet before it counts as offline. Probes that report on a slower cadence get proportionally longer automatically, so this rarely needs touching.
+- **"Rate alert (°C rise)"** — warns you when a probe's temperature *climbs quickly*, for example rises 3 °C within 10 minutes, which a failing freezer does long before it crosses your maximum limit. **0** turns it off (the default).
+
+**Daily summary email:** with Email switched on, you can also turn on **"Also send a daily summary email"** and pick the hour it's sent. You'll get one email a day with each probe's minimum, average and maximum — a nice way to confirm everything stayed in range without watching the dashboard.
 
 ---
 
@@ -197,7 +215,7 @@ Make sure the hub program (`Start.bat` / `Start.sh`) is still running. Look for 
 - Restart the probe by unplugging it for 10 seconds and plugging it back in.
 
 **A probe shows "stale" or "offline" on the dashboard.**
-Check its **power first**: is the light on? If it runs on a battery, check the battery level on its card and recharge if it's low. Then check **Wi-Fi** — did the router restart, or did the Wi-Fi name or password change? A **router restart or brief outage fixes itself**: the probe keeps trying its saved network and rejoins on its own (it will *not* jump to its own setup network over a passing hiccup), then battery probes **back-fill the readings they saved up while out of reach**, so a gap on the chart usually fills itself in. If you actually **changed your Wi-Fi name or password**, the probe can't rejoin the old network — put it back into setup mode (next answer).
+Check its **power first**: is the light on? If it runs on a battery, recharge it — the probe reports no battery figure to the hub, so a flat cell looks exactly like a probe that went offline. Then check **Wi-Fi** — did the router restart, or did the Wi-Fi name or password change? A **router restart or brief outage fixes itself**: the probe keeps trying its saved network and rejoins on its own (it will *not* jump to its own setup network over a passing hiccup), then battery probes **back-fill the readings they saved up while out of reach**, so a gap on the chart usually fills itself in. If you actually **changed your Wi-Fi name or password**, the probe can't rejoin the old network — put it back into setup mode (next answer).
 
 **The probe joined the wrong Wi-Fi, or my Wi-Fi name/password changed.**
 No reset button needed. The probe now tries hard to rejoin the network it already knows, so a single restart won't kick it into setup mode — that's deliberate, so a rebooting router doesn't turn it into an open Wi-Fi network. To force setup mode, **power-cycle it three times** (unplug ~10 seconds and plug back in, three times; give each try up to a minute). On the third boot that can't reach the saved network, the **`Setpoint-XXXXXX`** setup network reappears — join it and repeat the setup steps (Sections 4–5) to pick the right Wi-Fi.

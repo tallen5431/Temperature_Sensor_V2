@@ -3,9 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable, Dict, Optional
 from zeroconf import ServiceBrowser, Zeroconf, ServiceStateChange, ServiceInfo
+import logging
 import socket
 import threading
 import time
+
+log = logging.getLogger("hub.discovery")
 
 SERVICE_TYPE = "_temps-probe._tcp.local."
 
@@ -59,6 +62,46 @@ def dedupe_probes_by_ip(probes: Dict[str, "ProbeInfo"]) -> Dict[str, "ProbeInfo"
     return out
 
 
+def _quiet_zeroconf_cache_race(loop) -> None:
+    """Stop zeroconf's cache-expiry race from printing tracebacks in the log.
+
+    python-zeroconf can raise ``KeyError`` from its own DNSCache cleanup when a
+    record is removed while ``async_expire()`` is walking it — the traceback ends
+    in ``zeroconf._cache._remove_key`` and names some host on the LAN, e.g.::
+
+        ERROR:asyncio:Exception in callback AsyncEngine._async_cache_cleanup()
+        KeyError: '6c999dba4d16.local.'
+
+    It is entirely inside the dependency, it is a stale-cache-entry race rather
+    than data loss, and nothing in Setpoint can prevent it. But asyncio's default
+    handler prints it at ERROR with a full traceback, so a customer's log fills
+    with alarming noise from a library they have never heard of — which costs a
+    support email and undermines confidence in a hub that is actually fine.
+
+    Downgrade *only* this exact shape (KeyError raised from zeroconf's cache) to
+    a one-line debug note, and let every other asyncio exception through
+    untouched, since silencing the whole handler would hide real faults.
+    """
+    prev = loop.get_exception_handler()
+
+    def handler(lp, context):
+        exc = context.get("exception")
+        if isinstance(exc, KeyError):
+            tb = exc.__traceback__
+            while tb is not None:
+                if "zeroconf" in (tb.tb_frame.f_code.co_filename or "") and \
+                        "_cache" in (tb.tb_frame.f_code.co_filename or ""):
+                    log.debug("zeroconf cache-expiry race on %s (harmless, ignored)", exc)
+                    return
+                tb = tb.tb_next
+        if prev is not None:
+            prev(lp, context)
+        else:
+            lp.default_exception_handler(context)
+
+    loop.set_exception_handler(handler)
+
+
 class ProbeDiscovery:
     def __init__(self):
         # Zeroconf() opens multicast sockets and raises OSError when no usable
@@ -69,6 +112,14 @@ class ProbeDiscovery:
             self._zc = Zeroconf()
         except Exception:  # noqa: BLE001
             self._zc = None
+        # zeroconf runs its own asyncio loop on a background thread; attach the
+        # filter above to it so its cache race stops spamming the log.
+        try:
+            loop = getattr(getattr(self._zc, "engine", None), "loop", None)
+            if loop is not None:
+                loop.call_soon_threadsafe(_quiet_zeroconf_cache_race, loop)
+        except Exception:  # noqa: BLE001
+            pass
         self._browser = None
         self._lock = threading.RLock()
         self._probes: Dict[str, ProbeInfo] = {}  # key by host
@@ -201,13 +252,19 @@ class ProbeDiscovery:
                 browser.join(timeout=2.0)
             except Exception:
                 pass
-        try:
-            self._zc.close()
-        except Exception:
-            pass
+        # _zc is None when Zeroconf() could not open a multicast socket (a
+        # container without host networking); calling close() on it would raise
+        # into a bare except and read as a real failure being swallowed.
+        if self._zc is not None:
+            try:
+                self._zc.close()
+            except Exception:
+                pass
 
     def scan(self):
         """Manual refresh: restart the browser to prompt immediate updates."""
+        if self._zc is None:
+            return
         try:
             old_browser, self._browser = self._browser, None
             if old_browser:

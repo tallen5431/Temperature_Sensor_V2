@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import datetime
 import math
+from core.units import c_to_f
 
 DEMO_PREFIX = "DEMO-"
 
@@ -44,7 +45,7 @@ def load_demo_data(db, cfg, hours: int = 24, step_min: int = 5) -> int:
             t = now - datetime.timedelta(minutes=(n_points - 1 - i) * step_min)
             c = spec["base"] + spec["amp"] * math.sin(i / 12.0)
             db.append(t.isoformat(timespec="seconds"), round(c, 2),
-                      round(c * 9.0 / 5.0 + 32.0, 2), pid)
+                      round(c_to_f(c), 2), pid)
             rows += 1
         names[pid] = spec["name"]
     cfg.update({"probe_names": names})

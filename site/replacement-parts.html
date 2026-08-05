@@ -69,31 +69,38 @@
 <style>
   :root {
     --paper:#F5F6F4; --surface:#FFFFFF; --raised:#FBFCFA; --ink:#12181C; --slate:#59636B;
-    --faint:#8A939A; --line:#DEE2DE; --line-strong:#C9CFCA; --signal:#0E94AB;
-    --signal-soft:#E2F1F4; --warn:#C7860F; --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --faint:#656D75; --line:#DEE2DE; --line-strong:#C9CFCA; --signal:#0B7689;
+    --signal-soft:#E2F1F4; --on-signal:#FFFFFF; --warn:#95650B; --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     --font-mono:ui-monospace,"SF Mono","Cascadia Code","Roboto Mono",Menlo,Consolas,monospace;
     --maxw:1140px; --radius:4px;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --paper:#0B131B; --surface:#131F2B; --raised:#18242F; --ink:#E9F1F7; --slate:#9DB0BE;
-      --faint:#6E8393; --line:#22323F; --line-strong:#2F4454; --signal:#17B3CC;
-      --signal-soft:rgba(23,179,204,.14); --warn:#EFB02E;
+      --faint:#889AA7; --line:#22323F; --line-strong:#2F4454; --signal:#17B3CC;
+      --signal-soft:rgba(23,179,204,.14); --on-signal:#04222A; --warn:#EFB02E;
     }
   }
   :root[data-theme="light"] {
     --paper:#F5F6F4; --surface:#FFFFFF; --raised:#FBFCFA; --ink:#12181C; --slate:#59636B;
-    --faint:#8A939A; --line:#DEE2DE; --line-strong:#C9CFCA; --signal:#0E94AB; --signal-soft:#E2F1F4; --warn:#C7860F;
+    --faint:#656D75; --line:#DEE2DE; --line-strong:#C9CFCA; --signal:#0B7689; --signal-soft:#E2F1F4; --on-signal:#FFFFFF; --warn:#95650B;
   }
   :root[data-theme="dark"] {
     --paper:#0B131B; --surface:#131F2B; --raised:#18242F; --ink:#E9F1F7; --slate:#9DB0BE;
-    --faint:#6E8393; --line:#22323F; --line-strong:#2F4454; --signal:#17B3CC; --signal-soft:rgba(23,179,204,.14); --warn:#EFB02E;
+    --faint:#889AA7; --line:#22323F; --line-strong:#2F4454; --signal:#17B3CC; --signal-soft:rgba(23,179,204,.14); --on-signal:#04222A; --warn:#EFB02E;
   }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--paper); color:var(--ink); font-family:var(--font-sans); font-size:17px; line-height:1.6; -webkit-font-smoothing:antialiased; }
   .wrap { max-width:var(--maxw); margin:0 auto; padding:0 22px; }
   a { color:inherit; }
   h1,h2,h3 { text-wrap:balance; letter-spacing:-0.02em; line-height:1.1; margin:0; }
+
+  /* Skip link — off-screen until keyboard-focused. */
+  .skip { position:absolute; left:-9999px; }
+  .skip:focus { left:8px; top:8px; z-index:999; padding:8px 12px;
+    background:var(--surface); color:var(--ink);
+    border:2px solid var(--signal); border-radius:4px;
+    width:auto; height:auto; }
   .eyebrow { font-family:var(--font-mono); font-size:12px; letter-spacing:0.16em; text-transform:uppercase; color:var(--signal); margin:0 0 16px; display:flex; align-items:center; gap:10px; }
   .eyebrow::before { content:""; width:22px; height:1px; background:var(--signal); display:inline-block; }
 
@@ -104,7 +111,7 @@
   .brand .by { font-family:var(--font-mono); font-size:11px; letter-spacing:0.08em; color:var(--faint); text-transform:uppercase; }
   @media (max-width:520px){ .brand .by { display:none; } }
   nav.top { display:flex; gap:22px; align-items:center; }
-  nav.top a { font-family:var(--font-mono); font-size:13px; text-decoration:none; color:var(--slate); white-space:nowrap; }
+  nav.top a { font-family:var(--font-mono); font-size:13px; text-decoration:none; color:var(--slate); white-space:nowrap;  white-space: nowrap; }
   nav.top a:hover, nav.top a.active { color:var(--ink); }
 
   /* mobile menu (hamburger) — takes over from nav.top at <=720px */
@@ -114,7 +121,9 @@
   .mobile-nav[open] > summary { border-color:var(--signal); }
   .mobile-menu { position:absolute; right:0; top:calc(100% + 12px); background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:8px; display:flex; flex-direction:column; gap:2px; min-width:210px; box-shadow:0 16px 44px -20px rgba(0,0,0,.55); z-index:60; }
   .mobile-menu a { font-family:var(--font-mono); font-size:14px; text-decoration:none; color:var(--ink); padding:11px 12px; border-radius:var(--radius); }
-  .mobile-menu a:hover, .mobile-menu a:focus-visible { background:var(--signal-soft); outline:none; }
+  .mobile-menu a:hover, .mobile-menu a:focus-visible { background:var(--signal-soft); }
+  /* The tint alone is not a focus indicator — keyboard focus gets a real outline. */
+  .mobile-menu a:focus-visible { outline:2px solid var(--signal); outline-offset:2px; }
   .mobile-menu a.cta { color:var(--signal); }
   /* Must come AFTER the .mobile-nav base rule above: at a matching viewport both
      this and the base `display:none` apply with equal specificity, so source
@@ -124,7 +133,7 @@
   .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; font-family:var(--font-mono); font-size:14px; padding:13px 20px; border-radius:var(--radius); text-decoration:none; border:1px solid var(--ink); background:var(--ink); color:var(--paper); cursor:pointer; min-height:46px; }
   .btn:focus-visible { outline:2px solid var(--signal); outline-offset:2px; }
   .btn.ghost { background:transparent; color:var(--ink); border-color:var(--line-strong); }
-  .btn.signal { background:var(--signal); border-color:var(--signal); color:#04222A; font-weight:600; }
+  .btn.signal { background:var(--signal); border-color:var(--signal); color:var(--on-signal); font-weight:600; }
   .btn[disabled] { opacity:.55; cursor:default; }
 
   section { padding:52px 0; border-top:1px solid var(--line); }
@@ -195,8 +204,10 @@
   .row2 { display:flex; gap:14px; }
   @media (max-width:560px){ .row2 { flex-direction:column; gap:16px; } }
   .field { flex:1; margin-bottom:16px; }
-  .field label { font-family:var(--font-mono); font-size:11.5px; letter-spacing:0.06em; text-transform:uppercase; color:var(--slate); display:block; margin-bottom:6px; }
-  .field label .req { color:var(--signal); }
+  /* .field-label is the same thing for a GROUP of controls (the photo grid), where a
+     <label> would have nothing to point at — it names the group via aria-labelledby. */
+  .field label, .field .field-label { font-family:var(--font-mono); font-size:11.5px; letter-spacing:0.06em; text-transform:uppercase; color:var(--slate); display:block; margin-bottom:6px; }
+  .field label .req, .field .field-label .req { color:var(--signal); }
   .field label .opt { color:var(--faint); text-transform:none; letter-spacing:0; }
   .field input[type=text], .field input[type=email], .field input[type=tel], .field textarea {
     width:100%; font-family:var(--font-sans); font-size:16px; padding:13px 14px; min-height:48px;
@@ -225,6 +236,9 @@
   .angle-tile input[type=file] { position:absolute; width:1px; height:1px; opacity:0; overflow:hidden; }
   .angle-inner { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; width:100%; height:100%; border:2px dashed var(--line-strong); border-radius:10px; background:var(--paper); cursor:pointer; text-align:center; overflow:hidden; }
   .angle-inner:hover, .angle-tile input[type=file]:focus-visible + .angle-inner { border-color:var(--signal); background:var(--signal-soft); }
+  /* The file input is 1px/transparent, so its own focus ring is invisible — and a border
+     tint that also fires on hover is not a focus indicator. Draw a real one on the tile. */
+  .angle-tile input[type=file]:focus-visible + .angle-inner { outline:2px solid var(--signal); outline-offset:2px; }
   .angle-tile.filled .angle-inner { border-style:solid; border-color:var(--signal); }
   .angle-inner img { width:100%; height:100%; object-fit:cover; display:block; }
   .angle-icon { font-size:24px; line-height:1; }
@@ -232,7 +246,11 @@
   .angle-add { font-family:var(--font-mono); font-size:11px; color:var(--faint); }
   .angle-cap { position:absolute; left:0; right:0; bottom:0; font-family:var(--font-mono); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; background:rgba(0,0,0,.6); color:#fff; padding:3px 0; text-align:center; }
   .angle-rm { position:absolute; top:4px; right:4px; width:24px; height:24px; border-radius:50%; border:none; background:rgba(0,0,0,.7); color:#fff; font-size:15px; line-height:1; cursor:pointer; padding:0; z-index:2; }
-  .angle-zoom { position:absolute; top:4px; left:4px; min-width:24px; height:24px; padding:0 5px; border-radius:12px; background:rgba(0,0,0,.55); color:#fff; font-size:12px; line-height:24px; text-align:center; z-index:2; pointer-events:none; }
+  /* A real <button>, not a decoration: it is the keyboard route into the preview
+     (the tile itself is a <label>, which cannot take focus). Styled to look exactly
+     as the old static badge did. */
+  .angle-zoom { position:absolute; top:4px; left:4px; min-width:24px; height:24px; padding:0 5px; border:none; border-radius:12px; background:rgba(0,0,0,.55); color:#fff; font-family:inherit; font-size:12px; line-height:24px; text-align:center; z-index:2; cursor:pointer; }
+  .angle-zoom:focus-visible { outline:2px solid var(--signal); outline-offset:2px; }
 
   /* Full-size scan preview (verify calibration before submitting) */
   .scan-modal { position:fixed; inset:0; z-index:200; background:rgba(6,10,13,.93); display:flex; flex-direction:column; padding:16px; }
@@ -243,7 +261,11 @@
   .scan-stage { flex:1; display:flex; align-items:center; justify-content:center; min-height:0; margin:12px 0; }
   .scan-stage img { max-width:100%; max-height:100%; object-fit:contain; border-radius:6px; background:#0f1417; }
   .scan-info { color:#cdd9e2; font-family:var(--font-mono); font-size:12.5px; line-height:1.7; max-height:26vh; overflow:auto; }
-  .scan-info .ok { color:#3ecf8e; } .scan-info .warn { color:var(--warn); }
+  .scan-info .ok { color:#3ecf8e; }
+  /* The modal is a fixed dark surface in BOTH themes (like #e9f1f7 / #cdd9e2 / #3ecf8e
+     above), so it takes the dark-theme amber literally. var(--warn) would hand it the
+     light-theme value, which is tuned for dark text on white and goes muddy here. */
+  .scan-info .warn { color:#EFB02E; }
   .scan-actions { display:flex; gap:10px; margin-top:12px; flex-wrap:wrap; }
   .scan-actions .btn { color:#e9f1f7; border-color:rgba(255,255,255,.35); background:transparent; }
   .hint { font-family:var(--font-mono); font-size:12px; color:var(--slate); margin:9px 0 0; }
@@ -282,6 +304,7 @@
 </style>
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
 
 <!--
   /replacement-parts — cold-outreach landing page. ONE conversion action: upload a
@@ -301,7 +324,7 @@
 
 <header class="bar">
   <div class="wrap bar-inner">
-    <a class="brand" href="/"><span class="mk">Datum Labs</span><span class="by">Setpoint &amp; custom builds</span></a>
+    <a class="brand" href="/services"><span class="mk">Datum Labs</span><span class="by">Setpoint &amp; custom builds</span></a>
     <nav class="top">
       <a href="#how" class="hide-sm">How it works</a>
       <a href="#pricing" class="hide-sm">Pricing</a>
@@ -320,7 +343,7 @@
   </div>
 </header>
 
-<main>
+<main id="main">
 
   <!-- ============ 1. Headline ============ -->
   <section class="hero">
@@ -407,11 +430,15 @@
         </div>
 
         <div class="field">
-          <label>Photos of the part <span class="req">*</span></label>
-          <p class="hint" style="margin:0 0 12px">Measured photos from the tool above land here automatically — or tap a tile to add one directly (no measuring needed). At least one is required. A ruler or coin in the shot helps; tap a filled tile to preview it full-size.</p>
+          <!-- Deliberately NOT a <label>: this names a GROUP of six file inputs, not one
+               control, so there is nothing for a `for` attribute to point at. The grid
+               below carries role=group + aria-labelledby, which gives the group a real
+               accessible name ("Photos of the part *") and the hints as its description. -->
+          <span class="field-label" id="photosLabel">Photos of the part <span class="req">*</span></span>
+          <p class="hint" id="photosHelp" style="margin:0 0 12px">Measured photos from the tool above land here automatically — or tap a tile to add one directly (no measuring needed). At least one is required. A ruler or coin in the shot helps; tap a filled tile to preview it full-size.</p>
           <!-- Tiles (with their hidden file inputs) are built in JS; accept has no capture
                attr so mobile offers BOTH the camera and the photo library. -->
-          <div class="angles" id="angleGrid"></div>
+          <div class="angles" id="angleGrid" role="group" aria-labelledby="photosLabel" aria-describedby="photosHelp photoHint"></div>
           <p class="hint" id="photoHint">JPG, PNG, WebP or HEIC. Resized on your phone before upload, so it works on bad signal.</p>
         </div>
 
@@ -420,11 +447,22 @@
           <textarea id="qDesc" name="description" placeholder="Equipment make and model, the old part number if you have it, rough dimensions, how many you need…"></textarea>
         </div>
 
+        <!-- Honeypot — see the matching field on index.html. Off-screen rather than
+             display:none (cruder bots skip hidden fields but fill what is in the DOM);
+             aria-hidden + tabindex=-1 keeps it out of the tab order and off screen
+             readers. NOTE: /api/quote does not check `company` yet — the server-side
+             discard still has to be added there before this actually blocks anything. -->
+        <input type="text" id="qCompany" name="company" tabindex="-1" aria-hidden="true"
+               autocomplete="off" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
         <button type="submit" class="btn signal" id="qSubmit" style="width:100%;">Send for a quote</button>
-        <p class="note" id="qNote">No account, no spam, no sharing your details. Photos are used only to quote your part.</p>
+        <!-- The one element say() writes into: status and errors both land here, so it is
+             the live region. It holds no fields, so nothing else gets re-announced. -->
+        <p class="note" id="qNote" role="status" aria-live="polite">No account, no spam, no sharing your details. Photos are used only to quote your part.</p>
       </form>
 
-      <div class="success" id="qSuccess" hidden>
+      <!-- tabindex=-1: submitting hides the form, which would drop keyboard focus onto
+           nothing — the handler moves focus here instead. -->
+      <div class="success" id="qSuccess" tabindex="-1" hidden>
         <h3>Got it — your photos are with me.</h3>
         <p><b>I'll reply with a fixed price and a ship date within one business day.</b> If it's urgent, call or text and say you sent a part through the site.</p>
         <p>Quote goes to the email you entered. Nothing else to do on your end.</p>
@@ -772,7 +810,9 @@
     lab.className = "angle-inner";
     // Clicks are JS-routed (no native for=) so a FILLED tile opens a full-size preview to
     // verify the scan/calibration, while an EMPTY tile opens the camera / file picker.
-    // (The hidden input stays keyboard-focusable, so add/replace is still reachable.)
+    // This path is POINTER-ONLY — a label can't take focus. Keyboard equivalents: the
+    // hidden input (add/replace) and the .angle-zoom button render() adds (preview).
+    // If you change this, keep a focusable control for every action a tap can trigger.
     lab.addEventListener("click", function (e) {
       e.preventDefault();
       if (photos[slot.key]) openPreview(slot.key);
@@ -800,6 +840,8 @@
 
   // ---- Full-size scan preview (verify the calibration ran cleanly before submitting) ----
   var scanModal = null;
+  var previewKey = null;       // which slot is on screen
+  var previewTrigger = null;   // what opened it, so focus can go back there on close
   function escHtml(s){ return String(s).replace(/[&<>]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]; }); }
   function previewInfo(p) {
     if (!p.measured) {
@@ -815,14 +857,27 @@
       : '<br>No measurements were marked on this view.';
     return head + body;
   }
-  function closePreview(){ if (scanModal) scanModal.hidden = true; }
-  function openPreview(key) {
+  function closePreview(){
+    if (!scanModal || scanModal.hidden) return;
+    scanModal.hidden = true;
+    var back = previewTrigger, key = previewKey;
+    previewTrigger = null; previewKey = null;
+    // Focus goes back where it came from. If that button is gone — the photo was just
+    // removed or replaced, so render() rebuilt the tile — fall back to the tile's own
+    // file input, which keeps focus on the same tile instead of dumping it on <body>.
+    if (!back || !document.body.contains(back)) back = document.getElementById("ph-" + key);
+    if (back && back.focus) { try { back.focus(); } catch (_) {} }
+  }
+  function openPreview(key, trigger) {
     var p = photos[key]; if (!p) return;
     if (!scanModal) {
       scanModal = document.createElement("div");
       scanModal.className = "scan-modal"; scanModal.hidden = true;
+      scanModal.setAttribute("role", "dialog");
+      scanModal.setAttribute("aria-modal", "true");
+      scanModal.setAttribute("aria-labelledby", "scanTitle");
       scanModal.innerHTML =
-        '<div class="scan-modal-bar"><b class="scan-title"></b><span class="grow"></span>' +
+        '<div class="scan-modal-bar"><b class="scan-title" id="scanTitle"></b><span class="grow"></span>' +
           '<button type="button" class="scan-modal-close">Close ✕</button></div>' +
         '<div class="scan-stage"><img alt="Scan preview"></div>' +
         '<div class="scan-info"></div>' +
@@ -835,12 +890,22 @@
       scanModal.querySelector(".scan-modal-close").addEventListener("click", closePreview);
       document.addEventListener("keydown", function (e) { if (scanModal && !scanModal.hidden && e.key === "Escape") closePreview(); });
     }
+    previewKey = key;
+    previewTrigger = trigger ||
+      (document.activeElement && document.activeElement !== document.body ? document.activeElement : null);
     scanModal.querySelector(".scan-title").textContent = (p.angle || LABEL[key] || key) + " — preview";
     scanModal.querySelector(".scan-stage img").src = p.url;
     scanModal.querySelector(".scan-info").innerHTML = previewInfo(p);
-    scanModal.querySelector(".scan-replace").onclick = function () { closePreview(); var inp = document.getElementById("ph-" + key); if (inp) inp.click(); };
+    scanModal.querySelector(".scan-replace").onclick = function () {
+      closePreview();                                        // hands focus back to the tile…
+      var inp = document.getElementById("ph-" + key);
+      if (inp) { try { inp.focus(); } catch (_) {} inp.click(); }   // …then onto the picker
+    };
     scanModal.querySelector(".scan-remove").onclick = function () { if (p.url) URL.revokeObjectURL(p.url); delete photos[key]; render(); closePreview(); };
     scanModal.hidden = false;
+    // Move focus into the dialog so Escape, Tab and a screen reader all act on it.
+    var closeBtn = scanModal.querySelector(".scan-modal-close");
+    if (closeBtn) { try { closeBtn.focus(); } catch (_) {} }
   }
 
   function render() {
@@ -854,16 +919,27 @@
         var img = document.createElement("img"); img.src = p.url; img.alt = t.slot.label + " photo"; img.title = "Tap to preview";
         var cap = document.createElement("span"); cap.className = "angle-cap"; cap.textContent = p.angle || t.slot.label;
         t.lab.appendChild(img); t.lab.appendChild(cap);
-        // Magnifier cue that the filled tile opens a preview — purely visual
-        // (pointer-events:none), so the tap falls through to the label's preview handler.
-        var zoom = document.createElement("span"); zoom.className = "angle-zoom"; zoom.textContent = "🔍"; zoom.setAttribute("aria-hidden", "true");
+        // The magnifier is a real button, not a cue: the tile itself is a <label>, which
+        // can't take focus, so this is the only way to reach the preview from a keyboard.
+        // A sibling of the <label> (like the remove button below) so a tap on it doesn't
+        // also fire the label and open the preview twice.
+        var zoom = document.createElement("button");
+        zoom.type = "button"; zoom.className = "angle-zoom"; zoom.textContent = "🔍";
+        zoom.setAttribute("aria-label", "Preview the " + t.slot.label + " photo");
+        zoom.addEventListener("click", function () { openPreview(t.slot.key, zoom); });
         t.tile.appendChild(zoom);
         // The remove button is a sibling of the <label>, not a child — otherwise a tap on it
         // would also fire the label and open the preview.
         var rm = document.createElement("button");
         rm.type = "button"; rm.className = "angle-rm"; rm.textContent = "×";
         rm.setAttribute("aria-label", "Remove the " + t.slot.label + " photo");
-        rm.addEventListener("click", function () { URL.revokeObjectURL(p.url); delete photos[t.slot.key]; render(); });
+        rm.addEventListener("click", function () {
+          URL.revokeObjectURL(p.url); delete photos[t.slot.key]; render();
+          // render() just destroyed this button — without this, keyboard focus would be
+          // dropped onto <body>. Keep it on the tile the photo was removed from.
+          var inp = document.getElementById("ph-" + t.slot.key);
+          if (inp) { try { inp.focus(); } catch (_) {} }
+        });
         t.tile.appendChild(rm);
       } else {
         t.lab.innerHTML = '<span class="angle-icon" aria-hidden="true">📷</span>' +
@@ -897,6 +973,9 @@
     fd.append("email", email);
     fd.append("phone", document.getElementById("qPhone").value.trim());
     fd.append("description", document.getElementById("qDesc").value.trim());
+    // Honeypot, always sent — same field name the waitlist and contact forms use, so the
+    // server can discard anything that filled it. /api/quote does NOT check it yet.
+    fd.append("company", document.getElementById("qCompany").value);
     var angles = [];
     keys.forEach(function (k) { fd.append("photos", photos[k].blob, photos[k].name); angles.push(photos[k].angle || LABEL[k]); });
     fd.append("angles", JSON.stringify(angles));
@@ -914,6 +993,9 @@
           form.hidden = true;
           success.hidden = false;
           success.scrollIntoView({ block: "center" });
+          // Hiding the form takes the focused submit button with it, which would strand
+          // keyboard focus on <body> — move it to the confirmation, which also announces it.
+          try { success.focus({ preventScroll: true }); } catch (_) { success.focus(); }
         } else {
           submit.disabled = false;
           var map = {

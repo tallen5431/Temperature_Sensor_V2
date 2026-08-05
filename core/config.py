@@ -1,6 +1,6 @@
 # core/config.py
 from __future__ import annotations
-import copy, json, logging, os, threading
+import copy, json, logging, os, shutil, threading
 from pathlib import Path
 
 from core.config_schema import normalize_config
@@ -8,6 +8,49 @@ from core.config_schema import normalize_config
 log = logging.getLogger("hub.config")
 
 class Config:
+    @staticmethod
+    def _preserve_corrupt(path: Path) -> None:
+        """Move *path* to a new, owner-only recovery file without collisions."""
+        suffix = 0
+        while True:
+            name = path.name + ".corrupt"
+            if suffix:
+                name += f".{suffix}"
+            backup = path.with_name(name)
+            try:
+                # Reserving the destination with O_EXCL makes the selection safe
+                # even when two processes discover a corrupt config together.
+                fd = os.open(backup, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                break
+            except FileExistsError:
+                suffix += 1
+
+        try:
+            with path.open("rb") as source, os.fdopen(fd, "wb") as destination:
+                shutil.copyfileobj(source, destination)
+                destination.flush()
+                os.fsync(destination.fileno())
+        except OSError:
+            # This path was created by this attempt, not an older recovery. Do
+            # not leave an incomplete file which could be mistaken for one.
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+            try:
+                backup.unlink()
+            except OSError:
+                pass
+            raise
+
+        # Only remove the broken live config after its complete contents are
+        # durable in the owner-only recovery file.
+        try:
+            path.unlink()
+        except OSError as e:
+            log.warning("could not remove corrupt config after copying it to %s: %s", backup, e)
+        log.error("moved unparseable config to %s", backup)
+
     def __init__(self, path: Path):
         self.path = path
         self.lock = threading.RLock()
@@ -25,11 +68,11 @@ class Config:
                 # the next save, and start from defaults.
                 log.error("config.json could not be parsed (%s); preserving it and using defaults", e)
                 try:
-                    corrupt = self.path.with_name(self.path.name + ".corrupt")
-                    os.replace(self.path, corrupt)
-                    log.error("moved unparseable config to %s", corrupt.name)
-                except OSError:
-                    pass
+                    self._preserve_corrupt(self.path)
+                except OSError as backup_error:
+                    # Recovery is best-effort: a read-only/full filesystem must
+                    # not prevent the hub from starting with safe defaults.
+                    log.error("could not preserve unparseable config %s: %s", self.path, backup_error)
         # Coerce hand-edited values to safe types/ranges so a bad file can't
         # crash the hub; surface every correction in the log.
         self.data, _warnings = normalize_config(self.data)
@@ -117,4 +160,4 @@ class Config:
 
     def to_dict(self) -> dict:
         with self.lock:
-            return dict(self.data)
+            return copy.deepcopy(self.data)

@@ -72,10 +72,10 @@
     --raised: #FBFCFA;
     --ink: #12181C;
     --slate: #59636B;
-    --faint: #8A939A;
+    --faint: #69727A;
     --line: #DEE2DE;
     --line-strong: #C9CFCA;
-    --signal: #0E94AB;
+    --signal: #0B7689; --on-signal: #FFFFFF;
     --signal-soft: #E2F1F4;
     --warn: #C7860F;
     --cool: #1B8298;
@@ -97,10 +97,10 @@
       --raised: #18242F;
       --ink: #E9F1F7;
       --slate: #9DB0BE;
-      --faint: #6E8393;
+      --faint: #7A8D9B;
       --line: #22323F;
       --line-strong: #2F4454;
-      --signal: #17B3CC;
+      --signal: #17B3CC; --on-signal: #04222A;
       --signal-soft: rgba(23,179,204,.14);
       --warn: #EFB02E;
       --cool: #38B6D9;
@@ -110,13 +110,13 @@
   }
   :root[data-theme="light"] {
     --paper: #F5F6F4; --surface: #FFFFFF; --raised: #FBFCFA; --ink: #12181C;
-    --slate: #59636B; --faint: #8A939A; --line: #DEE2DE; --line-strong: #C9CFCA;
-    --signal: #0E94AB; --signal-soft: #E2F1F4; --warn: #C7860F; --cool: #1B8298; --ok: #2C9A66; --alert: #D24A43;
+    --slate: #59636B; --faint: #69727A; --line: #DEE2DE; --line-strong: #C9CFCA;
+    --signal: #0B7689; --on-signal: #FFFFFF; --signal-soft: #E2F1F4; --warn: #C7860F; --cool: #1B8298; --ok: #2C9A66; --alert: #D24A43;
   }
   :root[data-theme="dark"] {
     --paper: #0B131B; --surface: #131F2B; --raised: #18242F; --ink: #E9F1F7;
-    --slate: #9DB0BE; --faint: #6E8393; --line: #22323F; --line-strong: #2F4454;
-    --signal: #17B3CC; --signal-soft: rgba(23,179,204,.14); --warn: #EFB02E; --cool: #38B6D9; --ok: #2FBF71; --alert: #F05A54;
+    --slate: #9DB0BE; --faint: #7A8D9B; --line: #22323F; --line-strong: #2F4454;
+    --signal: #17B3CC; --on-signal: #04222A; --signal-soft: rgba(23,179,204,.14); --warn: #EFB02E; --cool: #38B6D9; --ok: #2FBF71; --alert: #F05A54;
   }
 
   * { box-sizing: border-box; }
@@ -148,6 +148,16 @@
   }
   .tnum { font-variant-numeric: tabular-nums; }
 
+  /* Skip link: off-screen until focused, then pinned above the sticky header
+     (which is z-index 50) so the first Tab press reveals it. */
+  .skip { position: absolute; left: -9999px; }
+  .skip:focus {
+    left: 8px; top: 8px; z-index: 999; padding: 8px 12px;
+    background: var(--surface); color: var(--ink);
+    border: 2px solid var(--signal); border-radius: 4px;
+    width: auto; height: auto;
+  }
+
   /* ---------- top bar ---------- */
   header.bar {
     position: sticky; top: 0; z-index: 50;
@@ -155,12 +165,18 @@
     backdrop-filter: saturate(1.2) blur(8px);
     border-bottom: 1px solid var(--line);
   }
-  .bar-inner { display: flex; align-items: center; justify-content: space-between; height: 62px; }
-  .brand { display: flex; align-items: baseline; gap: 10px; font-weight: 700; letter-spacing: -0.02em; }
+  /* gap, not just space-between: once the nav fills the row there is no free
+     space left to distribute and the brand collides with the first link
+     ("BY DATUM LABSOverview"). */
+  .bar-inner { display: flex; align-items: center; justify-content: space-between; gap: 24px; height: 62px; }
+  .brand { display: flex; align-items: baseline; gap: 10px; font-weight: 700; letter-spacing: -0.02em; white-space: nowrap; }
   .brand .mk { font-size: 19px; }
   .brand .by { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.08em; color: var(--faint); text-transform: uppercase; }
-  nav.top { display: flex; gap: 26px; align-items: center; }
-  nav.top a { font-family: var(--font-mono); font-size: 13px; letter-spacing: 0.02em; text-decoration: none; color: var(--slate); }
+  /* 26px gap suited eight items; nine wrap mid-phrase ("Free / pilot") at
+     1280px. Tighten the gap and keep each label on one line — a nav item
+     broken across two lines reads as two items. */
+  nav.top { display: flex; gap: 18px; align-items: center; }
+  nav.top a { font-family: var(--font-mono); font-size: 13px; letter-spacing: 0.02em; text-decoration: none; color: var(--slate); white-space: nowrap; }
   nav.top a:hover { color: var(--ink); }
 
   /* mobile menu (hamburger) — takes over from nav.top at <=720px */
@@ -170,12 +186,19 @@
   .mobile-nav[open] > summary { border-color: var(--signal); }
   .mobile-menu { position: absolute; right: 0; top: calc(100% + 12px); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 8px; display: flex; flex-direction: column; gap: 2px; min-width: 210px; box-shadow: 0 16px 44px -20px rgba(0,0,0,.55); z-index: 60; }
   .mobile-menu a { font-family: var(--font-mono); font-size: 14px; text-decoration: none; color: var(--ink); padding: 11px 12px; border-radius: var(--radius); }
-  .mobile-menu a:hover, .mobile-menu a:focus-visible { background: var(--signal-soft); outline: none; }
+  /* The tint alone is ~1.16:1 against the menu surface — nowhere near a visible
+     focus indicator, and this menu is the only nav below 1100px. Keep the tint
+     for both states, but give focus a real ring. */
+  .mobile-menu a:hover, .mobile-menu a:focus-visible { background: var(--signal-soft); }
+  .mobile-menu a:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
   .mobile-menu a.cta { color: var(--signal); }
   /* Must come AFTER the .mobile-nav base rule above: at a matching viewport both
      this and the base `display: none` apply with equal specificity, so source
      order decides — declaring this last is what makes the override win. */
-  @media (max-width: 720px) { nav.top { display: none; } .mobile-nav { display: block; } }
+  /* The hamburger has to take over BEFORE the desktop nav outgrows the row.
+     Eight page routes plus a CTA need ~1150px; at 720px the bar overflowed
+     horizontally through the whole 721-1100px band. */
+  @media (max-width: 1100px) { nav.top { display: none; } .mobile-nav { display: block; } }
 
   .btn {
     display: inline-flex; align-items: center; gap: 8px;
@@ -187,7 +210,7 @@
   .btn:hover { transform: translateY(-1px); }
   .btn:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
   .btn.ghost { background: transparent; color: var(--ink); border-color: var(--line-strong); }
-  .btn.signal { background: var(--signal); border-color: var(--signal); color: #04222A; }
+  .btn.signal { background: var(--signal); border-color: var(--signal); color: var(--on-signal); }
 
   /* ---------- hero ---------- */
   .hero { padding: 78px 0 70px; }
@@ -354,6 +377,8 @@
 </head>
 <body>
 
+<a class="skip" href="#main">Skip to content</a>
+
 <header class="bar">
   <div class="wrap bar-inner">
     <div class="brand">
@@ -361,34 +386,34 @@
       <span class="by">by Datum Labs</span>
     </div>
     <nav class="top">
-      <a href="/#how">How it works</a>
-      <a href="/#specs">Specs</a>
-      <a href="/#versions">Versions</a>
-      <a href="/#kit">DIY kit</a>
-      <a href="/services">Services</a>
-      <a href="/replacement-parts">Parts</a>
+      <a href="/">Overview</a>
+      <a href="/pilot">Free pilot</a>
+      <a href="/walk-in-cooler">Walk-in cooler</a>
+      <a href="/freezer-alarm" aria-current="page">Freezer &amp; fridge</a>
+      <a href="/field-test">Field test</a>
+      <a href="/roi-calculator">ROI</a>
       <a href="/about">About</a>
-      <a href="https://setpoint.datumlaboratories.com">Setup</a>
-      <a href="/#reserve" class="btn ghost" style="padding:8px 14px;">Reserve</a>
+      <a href="/services">Datum Labs</a>
+      <a href="https://www.tindie.com/products/datumlaboratories/setpoint-diy-kit-local-wi-fi-temperature-monitor/" class="btn ghost" style="padding:8px 14px;">DIY kit $39</a>
     </nav>
     <details class="mobile-nav">
       <summary aria-label="Open menu">☰</summary>
       <nav class="mobile-menu" aria-label="Menu">
-        <a href="/#how">How it works</a>
-        <a href="/#specs">Specs</a>
-        <a href="/#versions">Versions</a>
-        <a href="/#kit">DIY kit</a>
-        <a href="/services">Services</a>
-        <a href="/replacement-parts">Replacement parts</a>
+        <a href="/">Overview</a>
+        <a href="/pilot">Free pilot</a>
+        <a href="/walk-in-cooler">Walk-in cooler</a>
+        <a href="/freezer-alarm" aria-current="page">Freezer &amp; fridge</a>
+        <a href="/field-test">Field test</a>
+        <a href="/roi-calculator">ROI</a>
         <a href="/about">About</a>
-        <a href="https://setpoint.datumlaboratories.com">Setup</a>
-        <a href="/#reserve" class="cta">Reserve →</a>
+        <a href="/services">Datum Labs</a>
+        <a href="https://www.tindie.com/products/datumlaboratories/setpoint-diy-kit-local-wi-fi-temperature-monitor/" class="cta">DIY kit $39 &rarr;</a>
       </nav>
     </details>
   </div>
 </header>
 
-<main>
+<main id="main">
 
   <section class="hero" style="border-top:none;">
     <div class="wrap">
@@ -397,7 +422,7 @@
       <p class="lede">Setpoint watches the temperature in your freezer, fridge or walk-in around the clock and emails you the moment it crosses a threshold you set &mdash; while there is still time to save what is inside. No subscription, no cloud account, and no vendor who can switch it off.</p>
       <div class="cta-row">
         <a href="https://www.tindie.com/products/datumlaboratories/setpoint-diy-kit-local-wi-fi-temperature-monitor/" class="btn signal" target="_blank" rel="noopener">Get the DIY kit &mdash; $39 &rarr;</a>
-        <a href="/#reserve" class="btn ghost">Reserve assembled</a>
+        <a href="#kit" class="btn ghost">Reserve assembled</a>
       </div>
       <div class="trust">
         <div><b>Email or webhook</b> on threshold</div>
@@ -441,7 +466,7 @@
     </div>
   </section>
 
-  <section>
+  <section id="specs">
     <div class="wrap">
       <div class="sec-head">
         <p class="eyebrow">Accuracy, honestly</p>
@@ -501,7 +526,7 @@
     </div>
   </section>
 
-  <section>
+  <section id="faq">
     <div class="wrap">
       <div class="sec-head">
         <p class="eyebrow">FAQ</p>
@@ -540,7 +565,7 @@
     </div>
   </section>
 
-  <section>
+  <section id="kit">
     <div class="wrap">
       <div class="sec-head" style="margin-bottom:26px;">
         <p class="eyebrow">Get started</p>
@@ -562,14 +587,14 @@
       <div class="fmk">Setpoint<span>by Datum Labs</span></div>
       <div class="foot-links">
         <a href="/">Setpoint</a>
-        <a href="/#specs">Specs</a>
-        <a href="/#faq">FAQ</a>
+        <a href="#specs">Specs</a>
+        <a href="#faq">FAQ</a>
         <a href="/services">Services</a>
         <a href="/replacement-parts">Replacement parts</a>
         <a href="/about">About</a>
       </div>
     </div>
-    <p class="fineprint">Setpoint is a Wi-Fi temperature sensor with threshold alarms. Probe accuracy is &plusmn;0.5 &deg;C typical from &minus;10 to +85 &deg;C and &plusmn;2 &deg;C outside that band, uncalibrated. The DIY kit ships as parts you assemble and flash yourself. Assembled units will ship on a pre-certified radio module (FCC ID 2AC7Z-ESPC3MINI1) once Part 15B testing is complete, and are not offered for sale before then. Not a certified medical, food-safety, or life-safety device &mdash; use appropriate redundancy for critical applications. &copy; 2026 Datum Laboratories LLC.</p>
+    <p class="fineprint">Setpoint is a Wi-Fi temperature sensor with threshold alarms. Probe accuracy is &plusmn;0.5 &deg;C typical from &minus;10 to +85 &deg;C and &plusmn;2 &deg;C outside that band, uncalibrated. The DIY kit ships as parts you assemble and flash yourself. Assembled units will ship on a pre-certified radio module once Part 15B testing is complete, and are not offered for sale before then. Not a certified medical, food-safety, or life-safety device &mdash; use appropriate redundancy for critical applications. &copy; 2026 Datum Laboratories LLC.</p>
   </div>
 </footer>
 

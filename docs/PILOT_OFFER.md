@@ -73,8 +73,12 @@ which means nobody is watching the hours when failures actually happen.
 - **Quoted separately, up front, and only if you want them:** a dedicated mini-PC if you'd rather
   not use your own machine, and the install itself if you want the cable routing and probe
   placement done for you rather than doing it yourselves.
-- At the end, if you want to keep it, we'll quote a simple **buy-the-probes-once** price with
-  **no subscription and no monthly fee** — the software stays free.
+- **At the end the probes come back.** They are loaner equipment throughout, and assembled units are
+  **not offered for sale** until FCC authorisation is complete — so there is no price to quote you
+  yet, and quoting one would undercut the very thing that keeps this arrangement clean. Say the word
+  and you'll hear the day that changes; the DIY kit is available now if you'd rather not wait. When
+  assembled units do become available the model is **buy once** — no subscription, no monthly fee,
+  and the software stays free either way.
 
 ### Next step
 

@@ -33,3 +33,26 @@ logs/
 
 # Generated firmware image for browser flashing (build with flash/build_merged_bin.sh)
 flash/*.bin
+
+# ---- KiCad ----
+# Commit the sources (.kicad_pro / .kicad_sch / .kicad_pcb / project-local
+# libraries / *-lib-table). Everything below is either regenerable output,
+# per-user state, or an editor backup — see hardware/README.md.
+*-backups/
+*.kicad_prl
+fp-info-cache
+~*.*
+*.bak
+*.kicad_pcb-bak
+*.kicad_sch-bak
+*-cache.lib
+*-rescue.lib
+# Fabrication + export outputs (regenerate from the sources; large and churny)
+gerbers/
+*.gbr
+*.gbrjob
+*.drl
+*.step
+*.stp
+*.wrl
+*.net

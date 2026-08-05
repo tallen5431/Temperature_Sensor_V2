@@ -56,7 +56,8 @@ def probe_fresh_window(cfg, probe_id) -> float:
     return max(base, interval * STALE_INTERVAL_MULTIPLIER)
 
 
-def reporting_probe_ids(cfg, db, now: float | None = None) -> set:
+def reporting_probe_ids(cfg, db, now: float | None = None,
+                        site: str | None = None) -> set:
     """Set of probe ids whose most recent DB reading is within their own fresh
     window (see :func:`probe_fresh_window`).
 
@@ -68,10 +69,21 @@ def reporting_probe_ids(cfg, db, now: float | None = None) -> set:
     connected on every screen or none. Judged off ingest (the database), not
     mDNS, so a probe whose radio sleeps between readings still counts.
     Returns an empty set if the store can't be read.
+
+    ``site`` narrows the *input set* to one forwarding store, for the dashboard's
+    KPI while a store is selected — the freshness rule itself is unchanged, so a
+    narrowed count still agrees probe-for-probe with every other surface. Every
+    machine-facing caller (``/metrics``, ``/api/health``) leaves it ``None``: a
+    scraper wants the whole hub, not whatever a browser tab happens to show.
     """
     now = time.time() if now is None else now
+    # The site kwarg is passed ONLY when a site is actually selected, so the call
+    # every existing caller makes is byte-for-byte what it always was — a stand-in
+    # db (tests, /metrics' cached wrapper) needn't grow a parameter it never uses.
+    extra = {} if site is None else {"site": site}
     try:
-        epochs = db.last_reading_epoch_per_probe(window_seconds=REPORTING_LOOKBACK_SEC) or {}
+        epochs = db.last_reading_epoch_per_probe(
+            window_seconds=REPORTING_LOOKBACK_SEC, **extra) or {}
     except Exception:
         return set()
     out = set()

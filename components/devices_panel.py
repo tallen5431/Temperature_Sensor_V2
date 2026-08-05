@@ -5,69 +5,45 @@ import pandas as pd
 from dash import html, dcc, Output, Input, State, no_update, ALL
 import dash_bootstrap_components as dbc
 
+from core.probes import discovered_probes, probe_address
 from core.status import probe_fresh_window
 from core.metrics import LATEST
+from core import units
 
 log = logging.getLogger("hub.devices")
 
 
 # --- Unit conversion helpers -------------------------------------------------
 # The dashboard's unit toggle (temp-unit-store) affects DISPLAY only; config
-# always stores Celsius. Absolute temperatures (thresholds) and temperature
-# DELTAS (the calibration offset) convert differently: a delta scales but never
-# shifts (-0.5 °C of correction is -0.9 °F, NOT 31.1 °F), and a Kelvin delta
-# equals a Celsius delta. Pure and module-level so they can be unit-tested.
+# always stores Celsius. The arithmetic lives in core.units; these thin aliases
+# pin the 2-decimal rounding the edit form wants, so an operator sees 35.6 in a
+# number input rather than 35.60000000000001. Absolute temperatures (thresholds)
+# and temperature DELTAS (the calibration offset) convert differently -- see
+# core.units for why.
 
 def _unit_symbol(unit):
-    if unit == 'fahrenheit':
-        return '°F'
-    if unit == 'kelvin':
-        return 'K'
-    return '°C'
+    return units.unit_symbol(unit)
 
 
 def temp_c_to_unit(temp_c, unit):
     """Convert an absolute Celsius temperature to ``unit`` for display."""
-    if temp_c is None:
-        return None
-    t = float(temp_c)
-    if unit == 'fahrenheit':
-        return round(t * 9.0 / 5.0 + 32.0, 2)
-    if unit == 'kelvin':
-        return round(t + 273.15, 2)
-    return t
+    return units.to_unit(temp_c, unit, ndigits=2)
 
 
 def temp_unit_to_c(value, unit):
     """Convert an absolute temperature entered in ``unit`` back to Celsius."""
-    if value is None:
-        return None
-    v = float(value)
-    if unit == 'fahrenheit':
-        return round((v - 32.0) * 5.0 / 9.0, 2)
-    if unit == 'kelvin':
-        return round(v - 273.15, 2)
-    return v
+    return units.from_unit(value, unit, ndigits=2)
 
 
 def delta_c_to_unit(delta_c, unit):
     """Convert a Celsius temperature DELTA (calibration offset) to ``unit``."""
-    if delta_c is None:
-        return None
-    d = float(delta_c)
-    if unit == 'fahrenheit':
-        return round(d * 9.0 / 5.0, 2)
-    return d
+    return units.delta_to_unit(delta_c, unit, ndigits=2)
 
 
 def delta_unit_to_c(value, unit):
     """Convert a temperature DELTA entered in ``unit`` back to Celsius."""
-    if value is None:
-        return None
-    v = float(value)
-    if unit == 'fahrenheit':
-        return round(v * 5.0 / 9.0, 2)
-    return v
+    return units.delta_from_unit(value, unit, ndigits=2)
+
 
 def _humanize_seconds(seconds):
     """Render a reporting interval the way an operator would say it.
@@ -95,10 +71,17 @@ DevicesLayout = html.Div([
     # the id never collides; storage_type='local' means both stores read the
     # SAME persisted browser value, letting the edit modal know the active unit
     # even though the dashboard (and its store) is not mounted on this page.
-    dcc.Store(id='temp-unit-store', storage_type='local', data='celsius'),
+    # No default, matching the dashboard's store: seeding 'celsius' here would
+    # write a choice the user never made, and the dashboard's locale probe would
+    # then never run for anyone who happened to open Devices first.
+    dcc.Store(id='temp-unit-store', storage_type='local'),
     dcc.Interval(id='device-refresh', interval=5000, n_intervals=0),
     html.Div(id='device-grid', className='row g-3'),
-    # Modal for editing probe name and read interval
+    # Modal for editing a probe. What almost every edit is actually for — the
+    # name and the two alert limits — is visible; the sensor-level tuning that
+    # only a handful of deployments ever touch (resolution, calibration) is
+    # folded behind "Advanced". The fields stay mounted either way, so the Save
+    # callback's States resolve whether or not it was opened.
     dbc.Modal([
         dbc.ModalHeader(dbc.ModalTitle("Edit Probe")),
         dbc.ModalBody([
@@ -108,34 +91,6 @@ DevicesLayout = html.Div([
                 html.Label("Friendly Name:", className='fw-bold mb-2'),
                 dbc.Input(id='edit-probe-name-input', type='text', placeholder='Enter friendly name...', className='mb-2'),
                 html.Small("Leave empty to use probe ID as display name", className='text-muted'),
-                html.Hr(),
-                html.Label("Read Interval (seconds):", className='fw-bold mb-2 mt-1 d-block'),
-                dbc.Input(
-                    id='edit-probe-interval-input',
-                    type='number',
-                    min=0.5,
-                    step=0.5,
-                    placeholder='e.g. 5',
-                    className='mb-2'
-                ),
-                html.Small("How often the probe sends a reading (minimum 0.5 s)", className='text-muted'),
-                html.Hr(),
-                html.Label("Sensor Resolution:", className='fw-bold mb-2 mt-1 d-block'),
-                dbc.Select(
-                    id='edit-probe-resolution-input',
-                    options=[
-                        {'label': '9-bit — 0.5 °C steps (fastest, ~94 ms)', 'value': '9'},
-                        {'label': '10-bit — 0.25 °C steps (~188 ms)', 'value': '10'},
-                        {'label': '11-bit — 0.125 °C steps (default, ~375 ms)', 'value': '11'},
-                        {'label': '12-bit — 0.0625 °C steps (finest, ~750 ms)', 'value': '12'},
-                    ],
-                    value='11',
-                    className='mb-1',
-                ),
-                html.Small("Higher resolution resolves finer detail but converts slower. "
-                           "12-bit (750 ms) exceeds a 0.5 s interval and caps the max sample "
-                           "rate. Changes the step size, not absolute accuracy (~±0.5 °C).",
-                           className='text-muted'),
                 html.Hr(),
                 html.Label("Alert Thresholds (°C):", id='edit-probe-thresholds-label',
                            className='fw-bold mb-2 mt-1 d-block'),
@@ -166,19 +121,55 @@ DevicesLayout = html.Div([
                 html.Small("Leave blank to disable threshold alerts for this probe", className='text-muted d-block mt-1'),
                 html.Small(
                     "Breaches always show on the dashboard; email/webhook "
-                    "notifications are configured in Settings → Alerts.",
+                    "notifications are configured in Settings → Alerts & notifications.",
                     id='edit-probe-alerts-breadcrumb', className='text-muted d-block mt-1'),
                 html.Hr(),
-                html.Label("Calibration Offset (°C):", id='edit-probe-cal-label',
-                           className='fw-bold mb-2 mt-1 d-block'),
+                html.Label("Read Interval (seconds):", className='fw-bold mb-2 mt-1 d-block'),
                 dbc.Input(
-                    id='edit-probe-cal-input',
+                    id='edit-probe-interval-input',
                     type='number',
-                    step=0.1,
-                    placeholder='e.g. -0.5',
-                    className='mb-1'
+                    min=0.5,
+                    step=0.5,
+                    placeholder='e.g. 5',
+                    className='mb-2'
                 ),
-                html.Small("Added to every reading from this probe to correct sensor error", className='text-muted'),
+                html.Small("How often the probe sends a reading (minimum 0.5 s)", className='text-muted'),
+
+                # Wrapped so the toggle starts its own line rather than tucking
+                # itself onto the end of the interval field's help text.
+                html.Div(dbc.Button("▸ Advanced", id='device-advanced-toggle',
+                                    color='link', size='sm',
+                                    className='p-0 advanced-toggle'),
+                         className='mt-3'),
+                dbc.Collapse(html.Div([
+                    html.Label("Sensor Resolution:", className='fw-bold mb-2 mt-1 d-block'),
+                    dbc.Select(
+                        id='edit-probe-resolution-input',
+                        options=[
+                            {'label': '9-bit — 0.5 °C steps (fastest, ~94 ms)', 'value': '9'},
+                            {'label': '10-bit — 0.25 °C steps (~188 ms)', 'value': '10'},
+                            {'label': '11-bit — 0.125 °C steps (default, ~375 ms)', 'value': '11'},
+                            {'label': '12-bit — 0.0625 °C steps (finest, ~750 ms)', 'value': '12'},
+                        ],
+                        value='11',
+                        className='mb-1',
+                    ),
+                    html.Small("Higher resolution resolves finer detail but converts slower. "
+                               "12-bit (750 ms) exceeds a 0.5 s interval and caps the max sample "
+                               "rate. Changes the step size, not absolute accuracy (~±0.5 °C).",
+                               className='text-muted'),
+                    html.Hr(),
+                    html.Label("Calibration Offset (°C):", id='edit-probe-cal-label',
+                               className='fw-bold mb-2 mt-1 d-block'),
+                    dbc.Input(
+                        id='edit-probe-cal-input',
+                        type='number',
+                        step=0.1,
+                        placeholder='e.g. -0.5',
+                        className='mb-1'
+                    ),
+                    html.Small("Added to every reading from this probe to correct sensor error", className='text-muted'),
+                ], className='advanced-body'), id='device-advanced-collapse', is_open=False),
             ])
         ]),
         dbc.ModalFooter([
@@ -210,6 +201,16 @@ DevicesLayout = html.Div([
 
 
 def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None, token=""):
+    @app.callback(
+        Output('device-advanced-collapse', 'is_open'),
+        Output('device-advanced-toggle', 'children'),
+        Input('device-advanced-toggle', 'n_clicks'),
+        State('device-advanced-collapse', 'is_open'),
+        prevent_initial_call=True,
+    )
+    def toggle_device_advanced(_n, is_open):
+        return (not is_open), ('▾ Advanced' if not is_open else '▸ Advanced')
+
     @app.callback(Output('device-grid', 'children'), Input('device-refresh', 'n_intervals'))
     def update_devices(_):
         try:
@@ -218,24 +219,16 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
             probe_intervals = cfg.get('probe_intervals', {})
 
             # Normalise every mDNS-discovered probe into a plain dict, keyed by id.
+            # core.probes owns the dict-or-dataclass reading rule for every
+            # surface, so this grid can never disagree with /api/probes or
+            # Diagnostics about which probe it is looking at.
             merged = {}
-            for p in (finder.list_probes() or {}).values():
-                if isinstance(p, dict):
-                    props = p.get('properties', {}) or {}
-                    nm = p.get('name') or props.get('name') or props.get('id') or p.get('id') or 'Unknown'
-                    pid = props.get('id') or p.get('probe_id') or p.get('id')
-                    ipx = p.get('ip') or p.get('host') or 'N/A'
-                    prt = p.get('port', 80)
-                    lst = p.get('last_seen')
-                else:
-                    props = getattr(p, 'properties', {}) or {}
-                    nm = getattr(p, 'name', None) or getattr(p, 'id', None) or props.get('name') or props.get('id') or 'Unknown'
-                    pid = props.get('id') or getattr(p, 'probe_id', None) or getattr(p, 'id', None)
-                    ipx = getattr(p, 'ip', None) or getattr(p, 'host', None) or 'N/A'
-                    prt = getattr(p, 'port', 80)
-                    lst = getattr(p, 'last_seen', None)
-                key = pid or nm
-                merged[key] = {'name': nm, 'probe_id': pid, 'ip': ipx, 'port': prt, 'last_seen': lst}
+            for p in discovered_probes(finder):
+                nm = p['name'] or 'Unknown'
+                pid = p['probe_id'] or None
+                merged[pid or nm] = {'name': nm, 'probe_id': pid,
+                                     'ip': probe_address(p) or 'N/A',
+                                     'port': p['port'], 'last_seen': p['last_seen']}
 
             # Add probes known only from ingest (e.g. deep-sleep probes whose radio
             # is off between readings, so mDNS never discovers them) so they are
@@ -365,7 +358,7 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                     html.H6('No probes discovered yet', className='alert-heading'),
                     html.P('Power on a probe on the same Wi-Fi network — it appears here '
                            'within ~20 seconds.', className='mb-1'),
-                    html.Small('First-time setup? See Settings → Probe Setup Helper.',
+                    html.Small('First-time setup? See Settings → Set up a new probe.',
                                className='text-muted'),
                 ], color='secondary')]
             return cards
@@ -466,7 +459,7 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                 # state, read from config at open so it is never stale.
                 alerts_on = bool((cfg.get('notifications', {}) or {}).get('enabled', False))
                 breadcrumb = ("Breaches always show on the dashboard; email/webhook "
-                              "notifications are configured in Settings → Alerts — "
+                              "notifications are configured in Settings → Alerts & notifications — "
                               f"currently {'On' if alerts_on else 'Off'}.")
 
                 return (True, probe_id, probe_id, current_name, current_interval_sec,
@@ -591,19 +584,10 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                 if (interval_changed or resolution_changed) and public_base_func is not None:
                     try:
                         from provisioning import provision_probe
-                        probes = (finder.list_probes() or {}).values()
-                        for p in probes:
-                            if isinstance(p, dict):
-                                props = p.get('properties', {}) or {}
-                                pid = props.get('id') or p.get('probe_id') or p.get('id')
-                                host = p.get('ip') or p.get('host') or ''
-                                port = int(p.get('port', 80) or 80)
-                            else:
-                                props = getattr(p, 'properties', {}) or {}
-                                pid = props.get('id') or getattr(p, 'probe_id', None) or getattr(p, 'id', None)
-                                host = getattr(p, 'ip', None) or getattr(p, 'host', None) or ''
-                                port = int(getattr(p, 'port', 80) or 80)
-
+                        for p in discovered_probes(finder):
+                            pid = p['probe_id']
+                            host = probe_address(p)
+                            port = p['port']
                             if pid == stored_probe_id and host:
                                 base = public_base_func()
                                 ok = provision_probe(

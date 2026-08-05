@@ -75,3 +75,75 @@ def test_no_duplicate_callback_outputs(tmp_path):
         "Duplicate Dash callback outputs (without allow_duplicate) freeze the "
         f"whole dashboard on load — each of these is claimed by >1 callback: {dupes}"
     )
+
+
+# --- Every callback must point at a component that exists --------------------
+_ROUTES = ["/", "/devices", "/settings", "/diagnostics", "/help"]
+
+
+def _walk(node):
+    """Yield every component in a Dash tree, following children and lists."""
+    if isinstance(node, (list, tuple)):
+        for item in node:
+            yield from _walk(item)
+        return
+    if not hasattr(node, "_prop_names"):
+        return  # a plain string / number leaf
+    yield node
+    yield from _walk(getattr(node, "children", None))
+
+
+def _layout_ids():
+    """Every string id rendered by the app shell plus any page it can serve.
+
+    Includes the two fragments a callback (not the layout) puts on the page —
+    the first-run onboarding card and the demo-data banner — since their buttons
+    are wired to real callbacks and would otherwise read as dangling.
+    """
+    from components.dashboard_view import _onboarding_card, _demo_alert
+
+    ids = set()
+    trees = [LAYOUT] + [serve_page(r) for r in _ROUTES]
+    trees += [_onboarding_card(), _demo_alert()]
+    for tree in trees:
+        for comp in _walk(tree):
+            cid = getattr(comp, "id", None)
+            if isinstance(cid, str):
+                ids.add(cid)
+    return ids
+
+
+def test_every_callback_target_exists_in_a_page(tmp_path):
+    """A callback wired to an id no page renders is silently dead.
+
+    ``suppress_callback_exceptions=True`` is required here — the pages are served
+    per route, so Dash cannot validate them at startup — and its cost is that
+    renaming or removing a component id breaks the callback that reads it with no
+    error anywhere: the control simply stops doing anything. This walks every
+    route's real component tree and fails on the first dangling reference, which
+    is what makes a Settings/Dashboard re-layout safe to do.
+
+    Pattern-matching (dict) ids are skipped: they match by shape at runtime and
+    have no single literal id to look for.
+    """
+    app = _build_app(tmp_path)
+    known = _layout_ids()
+    dangling = set()
+    for cb in app._callback_list:
+        refs = [dep["id"] for dep in (cb.get("inputs", []) + cb.get("state", []))]
+        refs += [part.strip(".").split("@")[0].rsplit(".", 1)[0]
+                 for part in ((cb.get("output", "") or "").split("...")
+                              if (cb.get("output") or "").startswith("..")
+                              else [cb.get("output", "") or ""])
+                 if part.strip(".")]
+        for ref in refs:
+            # Dict ids serialise to a JSON object string ({"index":...}); they
+            # match by shape at runtime, so there is nothing literal to look up.
+            if not isinstance(ref, str) or not ref or ref.startswith("{"):
+                continue
+            if ref not in known:
+                dangling.add(ref)
+    assert not dangling, (
+        "These callback ids are not rendered by any page, so those callbacks can "
+        f"never fire (or can never write anywhere): {sorted(dangling)}"
+    )

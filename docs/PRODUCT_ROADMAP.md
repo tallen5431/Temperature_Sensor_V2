@@ -43,10 +43,10 @@ No FCC needed yet.
 replies. If yes → Phase 2. If not → fix the pitch *before* spending on FCC or a respin.
 
 ### Phase 2 — Certify (the respin is already done)
-~~Respin the board to the pre-certified **ESP32-C3-MINI-1**~~ — **done and bench-verified**
+~~Respin the board to the pre-certified **ESP32-C3-WROOM-02**~~ — **done and bench-verified**
 ([`REV2_BUILD_GUIDE.md`](REV2_BUILD_GUIDE.md)). What remains: **freeze the enclosure**, order a small
 **JLCPCB PCBA** batch, get the **FCC Part 15B SDoC** (~$300–1,500) on the unit *in its case*, and
-label per [`LABEL_TEMPLATE.md`](LABEL_TEMPLATE.md) — "Contains FCC ID: 2AC7Z-ESPC3MINI1" + the
+label per [`LABEL_TEMPLATE.md`](LABEL_TEMPLATE.md) — "Contains FCC ID: 2AC7Z-ESPC3WROOM02" + the
 §15.19(a)(3) statement + Datum Laboratories LLC as responsible party. Then sell **assembled** units —
 direct/B2B to restaurants (full margin) and assembled homelab units on Tindie.
 
@@ -104,7 +104,7 @@ certification. EU/UK is a separate, later decision ([`COMPLIANCE.md`](COMPLIANCE
 ## What makes the *assembled* unit possible (rev-2 parts)
 
 You can only sell **fully assembled** on the **rev-2 board**, and the linchpin part is the
-**pre-certified `ESP32-C3-MINI-1` module** (FCC ID `2AC7Z-ESPC3MINI1`) — its modular grant is what
+**pre-certified `ESP32-C3-WROOM-02` module** (FCC ID `2AC7Z-ESPC3WROOM02`) — its modular grant is what
 lets a finished unit take the cheap Part 15B SDoC instead of a $5–15k full test. The complete rev-2
 parts list (module + LDO + support circuit + connectors) and the KiCad/JLC build steps are in
 [`REV2_BUILD_GUIDE.md`](REV2_BUILD_GUIDE.md).

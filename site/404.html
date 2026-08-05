@@ -8,16 +8,16 @@
 <meta name="robots" content="noindex" />
 <style>
   :root {
-    --paper:#F5F6F4; --ink:#12181C; --slate:#59636B; --faint:#8A939A; --line-strong:#C9CFCA;
-    --signal:#0E94AB; --radius:4px;
+    --paper:#F5F6F4; --ink:#12181C; --slate:#59636B; --faint:#69727A; --line-strong:#C9CFCA;
+    --signal:#0B7486; --on-signal:#FFFFFF; --radius:4px;
     --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     --font-mono:ui-monospace,"SF Mono","Cascadia Code","Roboto Mono",Menlo,Consolas,monospace;
   }
   @media (prefers-color-scheme: dark) {
-    :root { --paper:#0B131B; --ink:#E9F1F7; --slate:#9DB0BE; --faint:#6E8393; --line-strong:#2F4454; --signal:#17B3CC; }
+    :root { --paper:#0B131B; --ink:#E9F1F7; --slate:#9DB0BE; --faint:#7A8D9B; --line-strong:#2F4454; --signal:#17B3CC; --on-signal:#04222A; }
   }
-  :root[data-theme="light"] { --paper:#F5F6F4; --ink:#12181C; --slate:#59636B; --faint:#8A939A; --line-strong:#C9CFCA; --signal:#0E94AB; }
-  :root[data-theme="dark"] { --paper:#0B131B; --ink:#E9F1F7; --slate:#9DB0BE; --faint:#6E8393; --line-strong:#2F4454; --signal:#17B3CC; }
+  :root[data-theme="light"] { --paper:#F5F6F4; --ink:#12181C; --slate:#59636B; --faint:#69727A; --line-strong:#C9CFCA; --signal:#0B7486; --on-signal:#FFFFFF; }
+  :root[data-theme="dark"] { --paper:#0B131B; --ink:#E9F1F7; --slate:#9DB0BE; --faint:#7A8D9B; --line-strong:#2F4454; --signal:#17B3CC; --on-signal:#04222A; }
   * { box-sizing:border-box; }
   body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; text-align:center; padding:24px;
     background:var(--paper); color:var(--ink); font-family:var(--font-sans);
@@ -30,7 +30,7 @@
   .btn { display:inline-flex; align-items:center; font-family:var(--font-mono); font-size:13px; letter-spacing:0.02em;
     padding:11px 18px; border-radius:var(--radius); text-decoration:none; border:1px solid var(--ink); background:var(--ink); color:var(--paper); }
   .btn.ghost { background:transparent; color:var(--ink); border-color:var(--line-strong); }
-  .btn.signal { background:var(--signal); border-color:var(--signal); color:#04222A; }
+  .btn.signal { background:var(--signal); border-color:var(--signal); color:var(--on-signal); }
   .btn:focus-visible { outline:2px solid var(--signal); outline-offset:2px; }
 </style>
 </head>
@@ -41,6 +41,8 @@
     <p>The link may be old or mistyped — nothing to see at this address. Here's the way back.</p>
     <div class="cta-row">
       <a href="/" class="btn signal">Setpoint home</a>
+      <a href="/pilot" class="btn ghost">Free 30-day pilot</a>
+      <a href="/replacement-parts" class="btn ghost">Replacement parts</a>
       <a href="/services" class="btn ghost">Datum Labs services</a>
     </div>
   </main>

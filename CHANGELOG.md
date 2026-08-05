@@ -9,7 +9,137 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Settings is a collapsed index instead of six stacked forms.** Every area —
+  Alerts & notifications, Probes, Set up a new probe, Data & storage,
+  Integrations, Multi-site — is now a card that opens on click, with a one-line
+  description and a live badge saying what it is set to right now ("Off",
+  "Email + Webhook", "Keep 90 days", "Sending as *atlanta*"). The page opens as
+  six readable lines, so the answer to "what is this hub actually doing?" no
+  longer requires scrolling past every setting the hub has. Badges deliberately
+  reflect **saved** config, and read "On · no channel" / "Email not finished"
+  rather than green, so a half-configured section can never look finished. All
+  section bodies stay mounted, so nothing about how settings save changed.
+- **Alerts asks for three things instead of eighteen.** Visible: enable, where
+  to send (email/webhook), and whether to alert when a probe stops reporting.
+  Re-alert interval, deadband, offline window, back-online confirmation, rate
+  alert and recovery notices all already had sensible defaults and now live
+  behind **Advanced settings** in the same card.
+- **The Devices edit modal leads with what edits are for.** Friendly name and
+  the two alert limits are visible; sensor resolution and calibration offset —
+  and their several paragraphs of explanation — moved behind **Advanced**.
+- **Dashboard reading order is now urgency order.** Alerts → hub KPIs → per-probe
+  cards → gauge and chart → statistics. The gauge and chart previously sat below
+  five stacked sections, making the most-looked-at element on the page also the
+  furthest down it. Secondary reads (per-probe breakdown, humidity/VPD, Recent
+  events) fold behind one **More detail** toggle whose state persists per
+  browser — and their callbacks are gated on it, so a closed section no longer
+  runs a per-probe `GROUP BY` over the selected range every 5 seconds.
+- **The °C/°F/K picker left the KPI row.** It was a control dressed as a metric,
+  sitting among the readouts; it now sits with the other view controls in the
+  toolbar next to the clock format.
+
+### Added
+
+- **SMTP settings are inferred from the email address.** Typing
+  `you@gmail.com` fills in `smtp.gmail.com:587` with STARTTLS; ~30 provider
+  domains are covered (Gmail, Outlook, Yahoo, iCloud, Fastmail, Zoho, Proton
+  Bridge, the major US ISPs, …) and anything else falls back to
+  `smtp.<domain>:587`, clearly labelled as a guess rather than stated as fact.
+  Providers that reject account passwords say so on the spot — "Gmail needs an
+  App Password" is the single most common reason a correct-looking email setup
+  never delivers. The host/port/encryption stay editable under **Server
+  settings** and a hand-entered host is never overwritten.
+- **Blank From/To addresses fall back to the account address.** A blank `to` was
+  not a neutral default: `send_email` refuses to send without a recipient, so it
+  produced an email channel that looked configured and silently never delivered.
+- **The webhook URL is recognised** — Slack, Discord, Teams, Google Chat,
+  Zapier, IFTTT, PagerDuty, Pushover, ntfy — and named back to the operator, so
+  a typo'd URL is visible before the test send rather than after it.
+- **Unit and clock format default to the browser's locale.** A US customer's
+  first view is already °F on a 12-hour clock; everyone else keeps °C / 24 h.
+  Detected clientside, only while the browser has never chosen, and an explicit
+  choice is never second-guessed.
+- **A new site's name defaults to this machine's hostname** (slugged, with a
+  trailing `-hub`/`-pi`/`-server` trimmed), instead of asking for a label the
+  hub already knows.
+- **A regression guard for dangling callback ids.** `suppress_callback_exceptions`
+  is required here (pages are served per route), and its cost is that renaming a
+  component id breaks the callback reading it with no error anywhere — the
+  control simply stops working. A new test walks every route's real component
+  tree and fails on the first callback pointing at an id no page renders.
+
 ### Fixed
+
+- **Multi-site forwarding respected a row limit but not the receiver's byte
+  limit.** `/api/ingest_csv` refuses a body over 64 KB, and a row count cannot
+  honour a byte budget: 500 readings — the shipped default — encode to ~62 KB of
+  the 63.5 KB budget with a bare temperature, and to ~92 KB once a grow probe
+  adds humidity and battery. So the default already 413s forever for the probes
+  that report most, and the configured maximum of 1000 rows (124 KB) 413s for
+  everyone. Nothing retried its way out: the same bytes were rebuilt every cycle,
+  so forwarding simply stopped. Batches are now trimmed to prefixes that fit
+  before the round trip is spent, by binary search (the obvious pop-and-re-encode
+  loop measured 480 encodes and ~0.5 s of CPU per cycle at a 1000-row batch, on
+  the forwarder thread, forever). Trimming takes from the tail only — both
+  cursors advance to the last id accepted, so dropping from anywhere else would
+  step past records that were never sent — and readings give way before events,
+  which are the record an auditor asks for. A size-trimmed batch still counts as
+  full for the fast drain, since what it dropped is still waiting.
+- **The Wi-Fi scan behind "Set up a new probe" now only runs while that section
+  is open.** It shells out to `netsh`/`nmcli` every few seconds, and previously
+  started on any visit to the Settings page — opening Settings to change a
+  retention day is not consent to scan the airwaves. `SSIDWatcher` also survives
+  being stopped and started again: it re-used one `Event` that `start()` never
+  cleared, so every restart spawned a thread that exited before its first scan,
+  leaving a watcher that looked running and reported nothing. Each thread now
+  owns its own event (so a retired one can't be revived by a later `clear()`,
+  and a new one can't race a stale flag), and `stop()` interrupts the sleep
+  rather than letting it run out — previously up to a full interval of further
+  scanning — and drops the last sighting, which is not current once scanning has
+  stopped.
+- **Changing the MQTT base topic no longer silently kills every Home Assistant
+  sensor.** Saving Integrations restarts the publisher, but the set of
+  already-announced probes survived the restart, so nothing re-announced. Home
+  Assistant learns a probe's state topic from a *retained* discovery message, so
+  it stayed subscribed to the old topic while the hub published to the new one —
+  every existing sensor going stale, until the hub was restarted. `stop()` now
+  clears the announce set (and the cap flag), so the next reading re-announces
+  each probe against the topics actually in effect.
+- **A multi-site backlog now drains fast at any configured batch size.** The
+  forwarder's "a full batch means there is more waiting, don't sleep" check
+  compared against the 500-row `DEFAULT_BATCH` constant instead of the batch it
+  had actually used, so with `upstream.batch` set below 500 a full batch could
+  never reach it. A store hub back from an outage caught up at one batch per
+  interval — hours instead of minutes. Both sites now derive the size from one
+  `batch_size()` helper.
+- **Diagnostics lists probes known only from readings.** A deep-sleep probe
+  keeps its radio off between readings and is never mDNS-discovered. The summary
+  counted it under "reporting" while the table below omitted it, so the snapshot
+  read "3 reporting" above a table of one with no way to tell which two were
+  missing. `/api/probes` has always appended them; the snapshot now applies the
+  same overlay.
+- **A legacy database no longer re-runs its schema migration on every startup.**
+  When a store holds genuinely-distinct readings that share a probe id and
+  instant (pre-millisecond timestamps), the unique index cannot be built — and
+  the failed attempt re-ran a full-table `GROUP BY` dedupe plus a failed index
+  build on every single open, i.e. on precisely the oldest and largest
+  databases. The verdict is now recorded in `meta` and honoured thereafter.
+
+### Internal
+
+- **`core/probes.py`: one definition of how to read a probe record.** The
+  discovery registry holds `ProbeInfo` dataclasses *and* plain dicts, so
+  `/metrics`, `/api/probes`, the Diagnostics snapshot, the Devices grid and the
+  auto-provisioner each carried their own attribute-or-key dance — and one had
+  already drifted, which is how `setpoint_probes_total` came to equal
+  `setpoint_probes_online` on every scrape. The five copies are now one helper,
+  and the test that covers it calls the real function instead of re-implementing
+  it (which is why that regression survived its own test).
+- Removed `core.applog.setup_logging`, dead since loggers moved to the `hub`
+  tree: nothing called it, and anything that had would have split the log across
+  a second file.
 
 - **The chart range selector could silence a live alert.** The alert banner and
   the "needs attention" gauge share one latest-per-probe scan, and that scan was

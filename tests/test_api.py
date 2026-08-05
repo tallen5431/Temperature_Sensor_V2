@@ -233,7 +233,7 @@ def test_ingest_single_replay_is_idempotent(tmp_path):
 
 def test_ingest_batch_without_timestamps_keeps_all_rows(tmp_path):
     # Timestamp-less bulk rows must be receipt-stamped 1 ms apart, not collapsed
-    # onto one epoch and silently dropped by the UNIQUE(probe_id, epoch) index.
+    # onto one epoch and silently dropped by the UNIQUE(probe_id, epoch, site) index.
     client, db, _ = _make_client(tmp_path)
     r = client.post("/api/ingest_csv", json={"readings": [
         {"temperature_c": 4.0, "probe_id": "p1"},
@@ -353,7 +353,7 @@ def test_bulk_drain_future_stamps_are_restamped_not_collapsed(tmp_path):
     # Data-loss regression: a probe whose clock ran ahead during the outage that
     # filled its buffer drains rows stamped in the future. normalize_payload
     # clamped each row to its own "now", so a 100-row chunk collapsed onto ~1 ms
-    # and UNIQUE(probe_id, epoch) silently dropped almost all of it — while the
+    # and UNIQUE(probe_id, epoch, site) silently dropped almost all of it — while the
     # hub still answered 200, so the probe advanced its checkpoint and deleted
     # the buffer. Such rows are now receipt-stamped 1 ms apart like
     # timestamp-less rows, and the count is reported.
@@ -465,7 +465,7 @@ def test_bulk_drain_accepts_clockless_buffer_lines(tmp_path):
 def test_dst_fallback_hour_keeps_both_readings(tmp_path, monkeypatch):
     # During the DST fall-back hour two UTC instants an hour apart map to the
     # SAME local wall time. Re-deriving the epoch from that local-naive string
-    # gave them one epoch, so UNIQUE(probe_id, epoch) dropped one and everything
+    # gave them one epoch, so UNIQUE(probe_id, epoch, site) dropped one and everything
     # that sorts by epoch interleaved the whole repeated hour. The probe stamps
     # in UTC, so the unambiguous instant is carried through instead.
     import os, time as _time
@@ -527,3 +527,44 @@ def test_backlog_breach_is_recorded_even_though_probe_recovered(tmp_path):
     assert ev["kind"] == "high" and ev["probe_id"] == "Freezer"
     assert float(ev["temperature_c"]) == -5.0        # the WORST excursion
     assert float(ev["limit_c"]) == -15.0
+
+
+def test_backfill_logs_an_old_breach_but_not_the_newest_row(tmp_path):
+    """/ingest_csv records the worst excursion in a batch, because the alert
+    engine only ever evaluates a probe's LATEST reading and would miss a freezer
+    that thawed while the hub was down.
+
+    But it must NOT record one for the batch's newest row: the engine sees that
+    one and logs it live, so recording it here too double-logs the breach. This
+    was invisible while /ingest_csv only served probes draining a buffer — a
+    FORWARDING hub (multi-site) sends every batch through it, so on an HQ hub
+    every store breach landed in the event log twice.
+    """
+    db = Database(tmp_path / "api.db")
+    cfg = Config(tmp_path / "config.json")
+    cfg.update({"provision_token": "supersecret",
+                "alert_thresholds": {"default": {"min": 0.0, "max": 8.0}}})
+    app = Flask(__name__)
+    app.register_blueprint(create_api(cfg, db, FakeDiscovery(),
+                                      lambda: "http://hub:8088", ""))
+    client = app.test_client()
+
+    # A backlog whose breach is in the MIDDLE and whose newest row is in spec:
+    # the engine will never see the 12 C row, so backfill must log it.
+    client.post("/api/ingest_csv", json={"readings": [
+        {"timestamp": "2026-01-01T10:00:00", "temperature_c": 4.0, "probe_id": "P"},
+        {"timestamp": "2026-01-01T10:01:00", "temperature_c": 12.0, "probe_id": "P"},
+        {"timestamp": "2026-01-01T10:02:00", "temperature_c": 4.2, "probe_id": "P"},
+    ]})
+    p_events = [e for e in db.list_events(limit=20) if e["probe_id"] == "P"]
+    assert [e["kind"] for e in p_events] == ["high"], \
+        f"an excursion the engine cannot see must be logged, got {p_events}"
+
+    # A batch whose breach IS the newest row: the engine will evaluate it, so
+    # backfill must stay quiet rather than duplicating it.
+    client.post("/api/ingest_csv", json={"readings": [
+        {"timestamp": "2026-01-01T11:00:00", "temperature_c": 4.0, "probe_id": "Q"},
+        {"timestamp": "2026-01-01T11:01:00", "temperature_c": 13.0, "probe_id": "Q"},
+    ]})
+    q_events = [e for e in db.list_events(limit=20) if e["probe_id"] == "Q"]
+    assert q_events == [], f"newest-row breach must be left to the alert engine, got {q_events}"
