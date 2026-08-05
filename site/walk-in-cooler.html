@@ -138,12 +138,18 @@
     backdrop-filter: saturate(1.2) blur(8px);
     border-bottom: 1px solid var(--line);
   }
-  .bar-inner { display: flex; align-items: center; justify-content: space-between; height: 62px; }
-  .brand { display: flex; align-items: baseline; gap: 10px; font-weight: 700; letter-spacing: -0.02em; }
+  /* gap, not just space-between: once the nav fills the row there is no free
+     space left to distribute and the brand collides with the first link
+     ("BY DATUM LABSOverview"). */
+  .bar-inner { display: flex; align-items: center; justify-content: space-between; gap: 24px; height: 62px; }
+  .brand { display: flex; align-items: baseline; gap: 10px; font-weight: 700; letter-spacing: -0.02em; white-space: nowrap; }
   .brand .mk { font-size: 19px; }
   .brand .by { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.08em; color: var(--faint); text-transform: uppercase; }
-  nav.top { display: flex; gap: 26px; align-items: center; }
-  nav.top a { font-family: var(--font-mono); font-size: 13px; letter-spacing: 0.02em; text-decoration: none; color: var(--slate); }
+  /* 26px gap suited eight items; nine wrap mid-phrase ("Free / pilot") at
+     1280px. Tighten the gap and keep each label on one line — a nav item
+     broken across two lines reads as two items. */
+  nav.top { display: flex; gap: 18px; align-items: center; }
+  nav.top a { font-family: var(--font-mono); font-size: 13px; letter-spacing: 0.02em; text-decoration: none; color: var(--slate); white-space: nowrap; }
   nav.top a:hover { color: var(--ink); }
 
   /* mobile menu (hamburger) — takes over from nav.top at <=720px */
@@ -158,7 +164,10 @@
   /* Must come AFTER the .mobile-nav base rule above: at a matching viewport both
      this and the base `display: none` apply with equal specificity, so source
      order decides — declaring this last is what makes the override win. */
-  @media (max-width: 720px) { nav.top { display: none; } .mobile-nav { display: block; } }
+  /* The hamburger has to take over BEFORE the desktop nav outgrows the row.
+     Eight page routes plus a CTA need ~1150px; at 720px the bar overflowed
+     horizontally through the whole 721-1100px band. */
+  @media (max-width: 1100px) { nav.top { display: none; } .mobile-nav { display: block; } }
 
   .btn {
     display: inline-flex; align-items: center; gap: 8px;
@@ -354,28 +363,28 @@
       <span class="by">by Datum Labs</span>
     </div>
     <nav class="top">
-      <a href="/#how">How it works</a>
-      <a href="/#specs">Specs</a>
-      <a href="/#versions">Versions</a>
-      <a href="/#kit">DIY kit</a>
-      <a href="/services">Services</a>
-      <a href="/replacement-parts">Parts</a>
+      <a href="/">Overview</a>
+      <a href="/pilot">Free pilot</a>
+      <a href="/walk-in-cooler" aria-current="page">Walk-in cooler</a>
+      <a href="/freezer-alarm">Freezer &amp; fridge</a>
+      <a href="/field-test">Field test</a>
+      <a href="/roi-calculator">ROI</a>
       <a href="/about">About</a>
-      <a href="https://setpoint.datumlaboratories.com">Setup</a>
-      <a href="/#reserve" class="btn ghost" style="padding:8px 14px;">Reserve</a>
+      <a href="/services">Datum Labs</a>
+      <a href="/pilot" class="btn ghost" style="padding:8px 14px;">Free pilot</a>
     </nav>
     <details class="mobile-nav">
       <summary aria-label="Open menu">☰</summary>
       <nav class="mobile-menu" aria-label="Menu">
-        <a href="/#how">How it works</a>
-        <a href="/#specs">Specs</a>
-        <a href="/#versions">Versions</a>
-        <a href="/#kit">DIY kit</a>
-        <a href="/services">Services</a>
-        <a href="/replacement-parts">Replacement parts</a>
+        <a href="/">Overview</a>
+        <a href="/pilot">Free pilot</a>
+        <a href="/walk-in-cooler" aria-current="page">Walk-in cooler</a>
+        <a href="/freezer-alarm">Freezer &amp; fridge</a>
+        <a href="/field-test">Field test</a>
+        <a href="/roi-calculator">ROI</a>
         <a href="/about">About</a>
-        <a href="https://setpoint.datumlaboratories.com">Setup</a>
-        <a href="/#reserve" class="cta">Reserve →</a>
+        <a href="/services">Datum Labs</a>
+        <a href="/pilot" class="cta">Free pilot &rarr;</a>
       </nav>
     </details>
   </div>

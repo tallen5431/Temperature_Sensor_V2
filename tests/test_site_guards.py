@@ -105,3 +105,70 @@ def test_roi_calculator_never_destroys_the_ids_it_updates(path):
     written = set(re.findall(r'\$\("([A-Za-z0-9_]+)"\)\.(?:textContent|innerHTML|style)', script))
     missing = sorted(written - static_ids)
     assert not missing, f"{path.name}: script writes to ids absent from the markup: {missing}"
+
+
+# --- navigation ------------------------------------------------------------
+# The site grew by accretion over eleven days and each new page copied whichever
+# page was nearest, so four different nav link-sets ended up in circulation and
+# /pilot -- the README's "highest-value offer available today" -- was in none of
+# them. These pin the shape so it cannot drift apart again.
+
+SETPOINT_PAGES = ["index.html", "pilot.html", "walk-in-cooler.html", "freezer-alarm.html"]
+REPORT_PAGES = ["field-test.html", "roi-calculator.html"]
+
+
+def _hrefs(html, nav_class):
+    m = re.search(rf'<nav class="{nav_class}"[^>]*>(.*?)</nav>', html, re.S)
+    assert m, f"no nav.{nav_class} found"
+    return re.findall(r'href="([^"]+)"', m.group(1))
+
+
+def test_every_setpoint_page_offers_the_same_destinations():
+    """Desktop and mobile must agree, and all four pages must agree with each
+    other. Only the trailing per-page CTA may differ."""
+    seen = {}
+    for name in SETPOINT_PAGES:
+        html = (SITE / name).read_text(encoding="utf-8")
+        top, mob = _hrefs(html, "top"), _hrefs(html, "mobile-menu")
+        assert top == mob, f"{name}: desktop and mobile navs disagree\n{top}\n{mob}"
+        seen[name] = top[:-1]          # drop the CTA, which is page-specific
+    routes = list(seen.values())
+    assert all(r == routes[0] for r in routes), f"nav link-sets diverged: {seen}"
+
+
+def test_no_setpoint_nav_uses_a_cross_page_anchor():
+    """`/#how` and `/#specs` looked like section jumps and were full navigations
+    to another document. On pilot.html the styled nav button was `/#reserve`,
+    which lands on the homepage section headed "Get an assembled unit first." —
+    the wrong offer, on the wrong page, from the site's best page."""
+    for name in SETPOINT_PAGES + REPORT_PAGES:
+        html = (SITE / name).read_text(encoding="utf-8")
+        assert not re.search(r'href="/#', html), \
+            f"{name} still routes to a homepage anchor from a subpage"
+
+
+@pytest.mark.parametrize("name", SETPOINT_PAGES + REPORT_PAGES)
+def test_pilot_is_reachable_from_every_setpoint_page(name):
+    html = (SITE / name).read_text(encoding="utf-8")
+    assert 'href="/pilot"' in html, (
+        f"{name} has no link to /pilot. site/README.md calls it the "
+        f"highest-value offer available today; it was previously in no <nav> "
+        f"on any page and linked from only two files.")
+
+
+def test_every_internal_link_and_anchor_resolves():
+    pages = {p.name: p.read_text(encoding="utf-8") for p in SITE.glob("*.html")}
+    ids = {n: set(re.findall(r'id="([A-Za-z0-9_-]+)"', s)) for n, s in pages.items()}
+    by_route = {"/" + ("" if n == "index.html" else n[:-5]): n for n in pages}
+    bad = []
+    for name, s in pages.items():
+        for href in re.findall(r'href="([^"]+)"', s):
+            if href.startswith(("http", "mailto:", "tel:", "data:", "//")) or "+" in href:
+                continue                      # last clause skips JS-built hrefs
+            path, _, frag = href.partition("#")
+            target = name if not path else by_route.get(path.rstrip("/") or "/")
+            if path and target is None:
+                bad.append(f"{name} -> {href} (no such page)")
+            elif frag and frag not in ids.get(target, set()):
+                bad.append(f"{name} -> {href} (no id '{frag}' in {target})")
+    assert not bad, "broken internal links:\n  " + "\n  ".join(bad)

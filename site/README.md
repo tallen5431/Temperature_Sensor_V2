@@ -17,6 +17,35 @@ deliberate.
 | `about.html` | Anyone checking who is behind it | — |
 | `404.html` | — | `noindex` |
 
+## Navigation
+
+Three shells, and which one a page uses is deliberate:
+
+* **Nav A — Setpoint product shell** (`/`, `/pilot`, `/walk-in-cooler`,
+  `/freezer-alarm`, `/field-test`, `/roi-calculator`). One identical list of
+  **page routes** — Overview · Free pilot · Walk-in cooler · Freezer & fridge ·
+  Field test · ROI · About · Datum Labs — plus **one page-local CTA button**,
+  which is the only thing that varies. Desktop (`nav.top`) and mobile
+  (`.mobile-menu`) must stay identical; `field-test`/`roi-calculator` use
+  `.rpt-nav` with the same destinations.
+* **Nav B — company shell** (`/services`, `/about`): Setpoint · Services ·
+  Parts · About · Contact.
+* **Nav C — `/replacement-parts`**: its own `#anchors` only. This page is
+  deliberately a single-conversion silo for cold outreach; its one exit is the
+  brand link, which goes to `/services` (same business), not `/`.
+
+**No cross-page `#anchors` in nav.** `/#how`, `/#specs`, `/#kit`, `/#reserve`
+looked like section jumps and were full navigations to another document. On
+`pilot.html` the styled nav button was `/#reserve`, which lands on the homepage
+section headed *"Get an assembled unit first."* — the wrong offer, reached from
+the site's best page. Subpages link to sibling **pages**, or to their own ids.
+
+**The hamburger takes over at 1100px, not 720px.** Eight routes plus a CTA need
+about 1150px; below that the bar overflowed horizontally. If you add a nav item,
+re-check the overflow sweep in `tests/test_site_guards.py`.
+
+`tests/test_site_guards.py` enforces all of the above, plus the two rules below.
+
 **Two rules that are load-bearing:**
 
 1. **Assembled units may not be offered for sale** until the FCC Part 15B SDoC is complete. The
