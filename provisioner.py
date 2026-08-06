@@ -5,7 +5,7 @@ from typing import Callable, Optional
 from provisioning import (provision_probe, get_probe_status, desired_probe_config,
                           resolve_host, usable_server_base)
 from core.probes import normalize_probe, probe_address
-from core.netaddr import token_safe_target
+from core.netaddr import checked_lan_target
 from core.status import probe_fresh_window, probe_prune_window
 
 log = logging.getLogger("hub.provisioner")
@@ -228,11 +228,19 @@ class AutoProvisioner(threading.Thread):
             # the secret is actually handed over. A probe lives on the LAN; a
             # target that does not is a poisoned record or a hijacked resolver,
             # not a device to configure.
-            if not token_safe_target(host):
+            #
+            # Take the ADDRESS back, not just a verdict, and send to that. Both
+            # this check and provision_probe used to resolve the name
+            # independently — two answers to one question, which a hostile mDNS
+            # responder only has to make differ: a LAN address while being
+            # checked, a public one a moment later. One lookup, no window.
+            checked = checked_lan_target(host)
+            if checked is None:
                 log.warning("Refusing to provision %s: not a LAN address. The "
                             "hub's device token is only ever sent to probes on "
                             "the local network.", host)
                 continue
+            host = checked
 
             target_url = f"{base}/api/ingest"
             desired = (base, interval_ms, resolution_bits, self.token, watch)

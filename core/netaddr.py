@@ -85,22 +85,35 @@ def is_mdns_hostname(value) -> bool:
     return host.endswith(MDNS_SUFFIX) and len(host) > len(MDNS_SUFFIX)
 
 
-def token_safe_target(host, resolver=None) -> bool:
-    """May the hub send its device token to ``host``?
+def checked_lan_target(host, resolver=None):
+    """The LAN address the hub may send its device token to, or ``None``.
 
-    Yes only if it is a LAN address, or an mDNS name that RESOLVES to one — the
-    check is on the address the request will actually reach, so a ``.local`` name
-    poisoned to answer with a public address is refused just like an off-domain
-    one. ``resolver`` is injected for testing; it defaults to the bounded
-    resolver the provisioner already uses.
+    Returns the ADDRESS, not just a verdict, so the caller can send to the exact
+    thing that was checked. Resolving once here and again at the point of sending
+    is two answers to one question, and a hostile mDNS responder only has to make
+    them differ — it says a LAN address while being checked and a public one a
+    moment later. Handing back the verified address removes the second lookup,
+    and with it the window.
+
+    A ``.local`` name that answers with an off-LAN address is refused exactly
+    like an off-domain one: the check is on where the packet goes, not on how the
+    name is spelled. ``resolver`` is injected for testing; it defaults to the
+    bounded resolver the provisioner already uses.
     """
     host = str(host or "").strip().rstrip(".")
     if not host:
-        return False
+        return None
     if is_lan_address(host):
-        return True
+        return host                     # already an address; nothing to resolve
     if not is_mdns_hostname(host):
-        return False
+        return None
     if resolver is None:
         from provisioning import resolve_host as resolver
-    return is_lan_address(resolver(host))
+    resolved = resolver(host)
+    return resolved if is_lan_address(resolved) else None
+
+
+def token_safe_target(host, resolver=None) -> bool:
+    """May the hub send its device token to ``host``? See :func:`checked_lan_target`,
+    which this is the yes/no form of."""
+    return checked_lan_target(host, resolver) is not None

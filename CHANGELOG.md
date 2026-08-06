@@ -178,7 +178,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   re-resolved every cycle, so the check has to live where the secret is handed
   over as well. The LAN ranges are written out explicitly rather than using
   `ipaddress.is_private`, which calls RFC 5737 documentation space private and
-  calls `100.64/10` — what Tailscale hands out — public.
+  calls `100.64/10` — what Tailscale hands out — public. The gate also hands the
+  *verified address* back to the caller rather than a yes/no, so the token goes
+  to exactly what was checked: `provision_probe` resolved the name a second time
+  at the point of sending, and two answers to one question is all a hostile mDNS
+  responder needs — a LAN address while being checked, a public one a moment
+  later.
 - **A probe with a friendly mDNS name could never leave the Devices grid.** The
   discovery registry matched a `ServiceStateChange.Removed` event against
   `ProbeInfo.name` — which is the TXT `name` key, and PROTOCOL.md §3 defines that

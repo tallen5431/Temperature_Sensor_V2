@@ -206,3 +206,64 @@ def test_the_provisioner_refuses_an_off_lan_target(monkeypatch):
         ap._refresh_ip_best_effort = lambda key, p: None
         ap._run_cycle()
         assert sent == expected, f"target {ip}: token went to {sent}"
+
+
+# --- one lookup, not two ---------------------------------------------------
+
+def test_the_checked_address_is_handed_back_for_the_caller_to_use():
+    """Returning a verdict alone left the caller to resolve the name a SECOND
+    time at the point of sending. Two answers to one question is all a hostile
+    mDNS responder needs: say a LAN address while being checked, a public one a
+    moment later. The caller now sends to exactly what was verified."""
+    from core.netaddr import checked_lan_target
+    assert checked_lan_target("Setpoint-9A3F2C.local",
+                              resolver=lambda h: "192.168.1.40") == "192.168.1.40"
+    assert checked_lan_target("192.168.1.40", resolver=lambda h: None) == "192.168.1.40"
+    assert checked_lan_target("Setpoint-9A3F2C.local",
+                              resolver=lambda h: "203.0.113.7") is None
+    assert checked_lan_target("collector.example.net",
+                              resolver=lambda h: "192.168.1.40") is None
+
+
+def test_the_provisioner_resolves_the_name_exactly_once(monkeypatch):
+    """The window this closes: with two independent lookups, a resolver that
+    flips its answer between them sends the token to the second one."""
+    import provisioner as provisioner_mod
+    from probe_discovery import ProbeInfo
+
+    answers = iter(["192.168.1.40", "203.0.113.7", "203.0.113.7"])
+    lookups = []
+
+    def flipping(host, timeout=3.0):
+        a = next(answers, "203.0.113.7")
+        lookups.append((host, a))
+        return a
+
+    sent = []
+    monkeypatch.setattr(provisioner_mod, "resolve_host", flipping)
+    monkeypatch.setattr(provisioner_mod, "usable_server_base", lambda base: True)
+    monkeypatch.setattr(provisioner_mod, "provision_probe",
+                        lambda host, port, base, **kw: sent.append(host) or True)
+    # core.netaddr resolves through provisioning.resolve_host by default.
+    import provisioning
+    monkeypatch.setattr(provisioning, "resolve_host", flipping)
+
+    class Finder:
+        def list_probes(self):
+            import time as _t
+            return {"k": ProbeInfo("Setpoint-9A3F2C", "Setpoint-9A3F2C.local.",
+                                   "", 80, {"id": "Setpoint-9A3F2C"}, _t.time())}
+
+        def prune_stale(self, *a):
+            return 0
+
+        def update_probe_ip(self, *a):
+            pass
+
+    ap = provisioner_mod.AutoProvisioner(
+        Finder(), lambda: "http://192.168.1.2:8088", token="s3cr3t")
+    ap._refresh_ip_best_effort = lambda key, p: None
+    ap._run_cycle()
+
+    assert sent == ["192.168.1.40"], (
+        f"the token went somewhere other than the address that was checked: {sent}")
