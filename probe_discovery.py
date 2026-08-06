@@ -62,6 +62,50 @@ def dedupe_probes_by_ip(probes: Dict[str, "ProbeInfo"]) -> Dict[str, "ProbeInfo"
     return out
 
 
+def _service_label(service_name: str) -> str:
+    """The instance label out of a full mDNS service name.
+
+    ``Setpoint-9A3F2C._temps-probe._tcp.local.`` -> ``Setpoint-9A3F2C``. Returns
+    the input unchanged if it does not carry the service type, so a handler
+    called with a bare label still works.
+    """
+    s = (service_name or "").strip()
+    if s.endswith("." + SERVICE_TYPE):
+        return s[:-(len(SERVICE_TYPE) + 1)]
+    return s.rstrip(".")
+
+
+def _probe_identities(p) -> set:
+    """Every string that IDENTIFIES a registry entry — never its display label.
+
+    A removal used to be matched against ``ProbeInfo.name``, which is the TXT
+    ``name`` key: PROTOCOL.md §3 defines that as "friendly name, else probe_id",
+    a HUMAN label that is only equal to the id by convention. The shipping
+    firmware happens to set them equal (``g_instanceName = g_probeId``), so the
+    match worked by coincidence; give a probe an actual friendly name — which the
+    protocol expressly allows — and its ServiceStateChange.Removed matched
+    nothing, so the probe stayed on the Devices grid and in the hub's probe total
+    until the hourly prune eventually noticed it had gone quiet.
+
+    Identity is the probe id (TXT ``id``), the hostname (``probe_id + ".local."``
+    by §2), and the registry key. The display name is kept as a last resort so a
+    record carrying none of those still matches as it did before.
+    """
+    if isinstance(p, dict):
+        name = p.get("name") or ""
+        host = p.get("host") or ""
+        props = p.get("properties") or {}
+    else:
+        name = getattr(p, "name", "") or ""
+        host = getattr(p, "host", "") or ""
+        props = getattr(p, "properties", {}) or {}
+    host = str(host).rstrip(".")
+    ids = {str(props.get("id") or ""), host, name}
+    if host.endswith(".local"):
+        ids.add(host[:-len(".local")])
+    return {i for i in ids if i}
+
+
 def _quiet_zeroconf_cache_race(loop) -> None:
     """Stop zeroconf's cache-expiry race from printing tracebacks in the log.
 
@@ -209,14 +253,17 @@ class ProbeDiscovery:
 
         elif state_change == ServiceStateChange.Removed:
             with self._lock:
-                # name is like "Setpoint-9A3F._temps-probe._tcp.local."
-                # Match only when the probe name is followed by "." or is an
-                # exact match, so "Setpoint-9A" never removes "Setpoint-9A3F".
-                to_delete = []
-                for host, p in self._probes.items():
-                    probe_name = p.name if not isinstance(p, dict) else p.get('name', '')
-                    if name == probe_name or name.startswith(probe_name + "."):
-                        to_delete.append(host)
+                # `name` is the service INSTANCE name, e.g.
+                # "Setpoint-9A3F2C._temps-probe._tcp.local.", so the label that
+                # identifies the departing probe is everything before the type.
+                # Exact membership, not a prefix test: the old code matched
+                # `name.startswith(probe_name + ".")` and needed that trailing
+                # dot precisely so "Setpoint-9A" could not remove
+                # "Setpoint-9A3F2C". Comparing whole identities cannot have that
+                # problem in the first place.
+                label = _service_label(name)
+                to_delete = [key for key, p in self._probes.items()
+                             if label and label in (_probe_identities(p) | {key})]
                 for host in to_delete:
                     self._probes.pop(host, None)
                 snapshot = dict(self._probes)

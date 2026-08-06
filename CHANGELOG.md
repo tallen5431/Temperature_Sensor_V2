@@ -80,6 +80,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A probe with a friendly mDNS name could never leave the Devices grid.** The
+  discovery registry matched a `ServiceStateChange.Removed` event against
+  `ProbeInfo.name` — which is the TXT `name` key, and PROTOCOL.md §3 defines that
+  as "friendly name, else `probe_id`": a *human label*, equal to the id only by
+  convention. The shipping firmware happens to set them equal
+  (`g_instanceName = g_probeId`), so removal worked by coincidence. Give a probe
+  the friendly name the protocol expressly allows and its departure matched
+  nothing, so an unplugged probe stayed on the Devices grid and in the hub's
+  probe total until the hourly prune eventually noticed it had gone quiet.
+  Removal now compares the service instance label against a probe's *identities*
+  — TXT `id`, hostname, registry key — with the display name kept only as a last
+  resort. Matching whole identities instead of prefixes also makes the old
+  "`Setpoint-9A` must not remove `Setpoint-9A3F2C`" hazard impossible rather than
+  guarded against.
 - **"Set up a new probe" claimed the probe was not there on machines that could
   not look.** The helper watches for the probe's `Setpoint-XXXXXX` setup network
   and reported "Setpoint-XXXXXX: not found — power the probe with no saved
@@ -211,6 +225,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- **`probe_discovery.py` covered, 35% → 88%.** It was the least-tested module in
+  the repo and the only one that parses bytes it did not produce, arriving from
+  any host on the LAN, before they reach the Devices grid, `/api/probes`,
+  Diagnostics and the auto-provisioner — which then POSTs the hub's device token
+  to what it finds. Writing the tests is what surfaced the friendly-name removal
+  bug above. Now pinned: TXT parsing (including a value that is not UTF-8, which
+  must cost that key and not the probe), the two-identities merge, removal, the
+  zeroconf calling-convention shim, prune/forget/last-seen, the registry ceiling
+  against an mDNS flood, browser lifecycle, and the resolver's bounded wait and
+  its promise not to touch the process-wide socket timeout. Also pinned: the
+  asyncio filter that quiets zeroconf's own cache-expiry race does *not* swallow
+  a `KeyError` from the hub's own code, or anything that is not that race.
 - **`core/probes.py`: one definition of how to read a probe record.** The
   discovery registry holds `ProbeInfo` dataclasses *and* plain dicts, so
   `/metrics`, `/api/probes`, the Diagnostics snapshot, the Devices grid and the
