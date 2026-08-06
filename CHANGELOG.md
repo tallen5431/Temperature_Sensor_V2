@@ -80,6 +80,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Firmware v2.9.2 — the deep-sleep clock ran slow by the shutdown tail on
+  every wake.** `enterDeepSleep()` checkpointed the pre-sleep instant at the top
+  of the function, then flushed Serial, tore down HTTP and mDNS, called
+  `WiFi.disconnect()` and waited 20 ms — all of it after the recorded instant and
+  before the wake timer started. The wake-side reconstruction
+  (`rtc_epochMsAtSleep + rtc_sleepMs + millis()`) never added that back, so the
+  clock lost it on every single wake, in one direction, accumulating rather than
+  averaging out. The checkpoint is now taken last, immediately before the timer
+  is armed. An NTP resync bounds the error while the probe is **online**, but a
+  resync needs a connected wake — so through a router or hub outage, which is
+  exactly when readings are being buffered and their timestamps are the only
+  record of when they were taken, it free-ran.
+
+  A second uncounted interval remains and is **not** fixed: the ROM and
+  second-stage bootloader run before `millis()` starts counting, so each wake
+  also loses ~100–300 ms. On the numbers that is the larger of the two.
+  Measuring it needs the continuously-running RTC tick counter instead of
+  `millis()`, which is worth doing on a bench where the result can be checked
+  against a reference clock rather than changed blind. Documented at the restore
+  site so it is recorded rather than folklore.
 - **Replaying a drained buffer chunk is only free for rows that carry a
   timestamp.** Three places — `bufferFlush()`'s comment, the firmware's v2.8.1
   header note, and PROTOCOL.md §7 — stated that a re-sent chunk after a dropped

@@ -1,4 +1,18 @@
 // ESP32 + DS18B20 + WiFiManager + mDNS + OTA + WebServer
+// v2.9.2 — deep-sleep clock: the pre-sleep instant is now checkpointed LAST,
+//           immediately before the wake timer is armed. It was taken at the top
+//           of enterDeepSleep(), so the Serial flush, HTTP/mDNS teardown,
+//           WiFi.disconnect() and its 20 ms settle all elapsed after the
+//           recorded instant and before the timer started — time the wake-side
+//           reconstruction never added back. The clock ran slow by that
+//           shutdown tail on every wake, in one direction, so it accumulated.
+//           An NTP resync bounds it while the probe is ONLINE; a resync needs a
+//           connected wake, so through a router or hub outage — exactly when
+//           readings are being buffered and their stamps are the only record of
+//           when they were taken — it free-ran. A second uncounted interval
+//           remains (the bootloader runs before millis() starts) and is
+//           documented at the restore site: measuring it needs the RTC tick
+//           counter and belongs on a bench with a reference clock.
 // v2.9.1 — threshold-watch sleep: a report is no longer delayed by a short
 //           remainder. The sleep clamps the sample gap to whatever is left
 //           before the next report, then a guard meant for "the report just
@@ -174,7 +188,7 @@ inline void ledBlink(uint8_t n, uint16_t onMs = 60, uint16_t offMs = 120) {
 
 // ---------------- Identity --------------------------------------------------
 static const char* SENSOR_NAME = "Setpoint";
-static const char* FW_VERSION  = "2.9.1";
+static const char* FW_VERSION  = "2.9.2";
 
 // The setup SoftAP is intentionally OPEN (no password): it only exists during
 // first-time Wi-Fi setup and is torn down once the probe joins the home network,
@@ -1353,14 +1367,7 @@ void enterDeepSleep(uint32_t durationMs) {
   // counter) BEFORE the clock is checkpointed below.
   ntpService(WiFi.status() == WL_CONNECTED);
 
-  // Checkpoint the pre-sleep instant to MILLISECOND precision so setup() can
-  // restore system time on wake without an NTP round-trip. The old
-  // whole-second time(nullptr) checkpoint truncated up to ~1 s per cycle,
-  // and that drift compounded across the hundreds of wakes between resyncs.
-  struct timeval tv;
-  gettimeofday(&tv, nullptr);
-  rtc_epochMsAtSleep = (int64_t)tv.tv_sec * 1000LL + (int64_t)(tv.tv_usec / 1000L);
-  rtc_sleepMs        = durationMs;
+  rtc_sleepMs = durationMs;
 
   Serial.printf("[Sleep] Deep sleep %.1f s  (next wake #%u)\n",
                 durationMs / 1000.0f, rtc_bootCount + 1);
@@ -1370,6 +1377,27 @@ void enterDeepSleep(uint32_t durationMs) {
   MDNS.end();
   WiFi.disconnect(true);
   delay(20);
+
+  // Checkpoint the pre-sleep instant to MILLISECOND precision so setup() can
+  // restore system time on wake without an NTP round-trip. The old
+  // whole-second time(nullptr) checkpoint truncated up to ~1 s per cycle,
+  // and that drift compounded across the hundreds of wakes between resyncs.
+  //
+  // Taken LAST, immediately before the timer is armed. It used to be taken at
+  // the top of this function, so everything below it — the Serial.flush(), the
+  // HTTP/mDNS teardown, WiFi.disconnect() and its 20 ms settle — elapsed after
+  // the recorded instant but before the sleep timer started, and setup()'s
+  // `rtc_epochMsAtSleep + rtc_sleepMs + millis()` never accounted for it. The
+  // clock therefore ran SLOW by that shutdown tail every single wake, in one
+  // direction, so it accumulated rather than averaging out.
+  //
+  // Bounded to ~30 wakes while the probe is online (NTP_RESYNC_INTERVAL), but a
+  // resync needs a CONNECTED wake — so through a router outage or a hub that is
+  // down, which is exactly when readings are being buffered and their stamps are
+  // the only record of when they were taken, it free-ran.
+  struct timeval tv;
+  gettimeofday(&tv, nullptr);
+  rtc_epochMsAtSleep = (int64_t)tv.tv_sec * 1000LL + (int64_t)(tv.tv_usec / 1000L);
 
   esp_sleep_enable_timer_wakeup((uint64_t)durationMs * 1000ULL);
   esp_deep_sleep_start();
@@ -1443,6 +1471,17 @@ void setup() {
   // MILLISECOND precision; adding the programmed sleep length plus the
   // milliseconds since this boot started reconstructs "now" without the old
   // whole-second truncation that drifted the clock by up to ~1 s per wake.
+  //
+  // One interval is still unaccounted: the ROM and second-stage bootloader run
+  // before millis() starts counting, so each wake loses that (~100-300 ms on an
+  // ESP32-C3) and the clock runs slow by it. Like the shutdown tail that
+  // enterDeepSleep() used to lose, it is one-directional and accumulates.
+  // Measuring it needs the continuously-running RTC tick counter rather than
+  // millis(), which is a change worth making on a bench where the result can be
+  // checked against a reference clock — not blind. While the probe is online an
+  // NTP resync every NTP_RESYNC_INTERVAL wakes bounds it; through an outage it
+  // does not, which is the case that matters, so it is written down here rather
+  // than left as folklore.
   if (fromDeepSleep && rtc_timeValid && rtc_epochMsAtSleep > 0) {
     int64_t nowMs = rtc_epochMsAtSleep + (int64_t)rtc_sleepMs + (int64_t)millis();
     struct timeval tv;
