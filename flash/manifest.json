@@ -1,12 +1,15 @@
 {
   "name": "Setpoint",
-  "version": "2.9.0",
+  "version": "2.9.1",
   "new_install_prompt_erase": true,
   "builds": [
     {
       "chipFamily": "ESP32-C3",
       "parts": [
-        { "path": "setpoint-esp32c3.merged.bin", "offset": 0 }
+        {
+          "path": "setpoint-esp32c3.merged.bin",
+          "offset": 0
+        }
       ]
     }
   ]

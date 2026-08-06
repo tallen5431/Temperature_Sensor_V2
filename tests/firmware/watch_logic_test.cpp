@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstdint>
 #include <cassert>
+#include <initializer_list>
 
 // ---- verbatim from the .ino -------------------------------------------------
 static const float    WATCH_UNSET_C       = -999.0f;
@@ -28,6 +29,17 @@ static bool outsideLimits(float tC) {
   if (cfg_alert_max_c > WATCH_UNSET_C && tC > cfg_alert_max_c - slack) return true;
   if (cfg_alert_min_c > WATCH_UNSET_C && tC < cfg_alert_min_c + slack) return true;
   return false;
+}
+
+// The watchArmed() branch of the deep-sleep duration, from the bottom of loop().
+// This decides how often the probe wakes, which is battery life, and how late a
+// report lands. It had no test at all.
+static uint32_t watchSleepMs(uint32_t elapsed) {
+  uint32_t untilReport = rtc_msSinceReport < cfg_interval
+                         ? cfg_interval - rtc_msSinceReport : 0UL;
+  uint32_t gap = cfg_sample_ms < untilReport ? cfg_sample_ms : untilReport;
+  if (untilReport == 0UL) gap = cfg_sample_ms;   // report just fired
+  return gap > elapsed ? (gap - elapsed) : 100UL;
 }
 // ---- end verbatim -----------------------------------------------------------
 
@@ -98,6 +110,49 @@ int main() {
   cfg_alert_min_c = WATCH_UNSET_C; cfg_alert_max_c = 8.0f;
   CHECK(!step(-40.0f), "no min limit means arbitrarily cold is not a breach");
   CHECK(step(9.0f), "the max limit still applies");
+
+  // --- how long to sleep, which is battery life and report punctuality ------
+  printf("sleeping to the next sample, but never past the report\n");
+  cfg_interval = 900000; cfg_sample_ms = 60000;
+  const uint32_t awake = 300;
+
+  rtc_msSinceReport = 0;
+  CHECK(watchSleepMs(awake) == 60000 - awake, "a full sample gap when the report is far off");
+
+  rtc_msSinceReport = 840000;                     // exactly one sample to go
+  CHECK(watchSleepMs(awake) == 60000 - awake, "one sample left sleeps one sample");
+
+  rtc_msSinceReport = 890000;                     // 10 s to the report
+  CHECK(watchSleepMs(awake) == 10000 - awake, "a short remainder is honoured");
+
+  // The regression. `if (gap < WATCH_SAMPLE_MIN_MS)` also fired for any
+  // remainder of 1..4999 ms, undoing the clamp above it: the probe slept a
+  // whole sample gap and the report landed up to cfg_sample_ms late, every
+  // cycle, whenever cfg_interval % cfg_sample_ms fell in that band.
+  printf("a remainder under the sample floor must not delay the report\n");
+  // The property is that the probe never sleeps a WHOLE SAMPLE GAP when only a
+  // short remainder is left — not that it hits the deadline exactly, which it
+  // cannot: a remainder shorter than the wake itself floors at 100 ms, and no
+  // probe can report sooner than it takes to wake and read the sensor.
+  for (uint32_t left : {1u, 100u, 3000u, 4999u}) {
+    rtc_msSinceReport = cfg_interval - left;
+    uint32_t s = watchSleepMs(awake);
+    uint32_t bound = left > 100UL ? left : 100UL;
+    CHECK(s <= bound, "slept past the report when a shorter remainder was left");
+    if (s > bound)
+      printf("    left=%u ms -> slept %u ms (report %u ms late)\n",
+             left, s, s + awake - left);
+  }
+
+  printf("a report that is already due sleeps a sample, not zero\n");
+  rtc_msSinceReport = cfg_interval;               // due now
+  CHECK(watchSleepMs(awake) == 60000 - awake, "report due must sleep one sample gap");
+  rtc_msSinceReport = cfg_interval + 5000;        // overshot
+  CHECK(watchSleepMs(awake) == 60000 - awake, "an overshoot must not underflow");
+
+  printf("the sleep never collapses to zero\n");
+  rtc_msSinceReport = 0;
+  CHECK(watchSleepMs(999999) == 100UL, "a wake longer than the gap floors at 100 ms");
 
   printf("\n%s\n", failures ? "FAILURES ABOVE" : "all watch-logic checks passed");
   return failures ? 1 : 0;

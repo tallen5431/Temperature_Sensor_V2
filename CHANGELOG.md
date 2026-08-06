@@ -80,6 +80,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Firmware v2.9.1 — a threshold-watch report could land a full sample gap
+  late.** When the watch is armed the probe sleeps to the next *sample* rather
+  than the next report, clamped to whatever is left before the report is due so
+  the report is not delayed. A guard meant for the "report just fired" case
+  (`untilReport == 0`) tested `gap < WATCH_SAMPLE_MIN_MS` instead — which also
+  fires for any remainder of 1..4999 ms, undoing the clamp on the line
+  immediately above. The probe then slept a whole `cfg_sample_ms` instead of the
+  short remainder, landing the report up to one sample gap late (60 s on a 60 s
+  sample cadence) on **every cycle** where `cfg_interval % cfg_sample_ms` fell in
+  that band — roughly one arbitrary interval/sample pairing in twelve. The hub's
+  freshness windows (2.5× interval) absorb it, so nothing showed offline; the
+  reporting cadence was simply not the one the operator set. The sleep
+  arithmetic now has host-side coverage alongside the watch predicates: it
+  decides both battery life and report punctuality and had none.
 - **A busy hub buried its own log under waitress queue warnings.** Waitress logs
   a WARNING for every queued request while its worker pool is saturated, and
   saturation is a sustained condition — a 45-second burst produced **13,383 of

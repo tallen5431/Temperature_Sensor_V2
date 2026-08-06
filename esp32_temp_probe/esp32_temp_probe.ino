@@ -1,4 +1,16 @@
 // ESP32 + DS18B20 + WiFiManager + mDNS + OTA + WebServer
+// v2.9.1 — threshold-watch sleep: a report is no longer delayed by a short
+//           remainder. The sleep clamps the sample gap to whatever is left
+//           before the next report, then a guard meant for "the report just
+//           fired" (untilReport == 0) tested `gap < WATCH_SAMPLE_MIN_MS`
+//           instead — which also fired for any remainder of 1..4999 ms and
+//           undid the clamp immediately above it. The probe then slept a whole
+//           cfg_sample_ms rather than the short remainder, landing the report
+//           up to one sample gap late (60 s on a 60 s sample cadence), on every
+//           cycle where cfg_interval %% cfg_sample_ms fell in that band. The
+//           sleep arithmetic now has host-side coverage alongside the watch
+//           predicates (tests/firmware/watch_logic_test.cpp) -- it decides both
+//           battery life and report punctuality and had none.
 // v2.9.0 — threshold watch: sample often, transmit rarely. Reading the sensor
 //           costs a conversion; associating and POSTing costs seconds of radio,
 //           so the two are now decoupled. Given limits by the hub (from
@@ -160,7 +172,7 @@ inline void ledBlink(uint8_t n, uint16_t onMs = 60, uint16_t offMs = 120) {
 
 // ---------------- Identity --------------------------------------------------
 static const char* SENSOR_NAME = "Setpoint";
-static const char* FW_VERSION  = "2.9.0";
+static const char* FW_VERSION  = "2.9.1";
 
 // The setup SoftAP is intentionally OPEN (no password): it only exists during
 // first-time Wi-Fi setup and is torn down once the probe joins the home network,
@@ -1849,7 +1861,14 @@ void loop() {
         uint32_t untilReport = rtc_msSinceReport < cfg_interval
                                ? cfg_interval - rtc_msSinceReport : 0UL;
         uint32_t gap = cfg_sample_ms < untilReport ? cfg_sample_ms : untilReport;
-        if (gap < WATCH_SAMPLE_MIN_MS) gap = cfg_sample_ms;   // report just fired
+        // Only when the report is ALREADY DUE. This used to read
+        // `gap < WATCH_SAMPLE_MIN_MS`, which also fired for any remainder of
+        // 1..4999 ms — undoing the clamp on the line above, which exists
+        // precisely so a report is not delayed. The probe then slept a whole
+        // sample gap instead of the short remainder and the report landed up to
+        // cfg_sample_ms late, every cycle, whenever cfg_interval % cfg_sample_ms
+        // happened to fall in that band.
+        if (untilReport == 0UL) gap = cfg_sample_ms;   // report just fired
         sleepMs = gap > (uint32_t)elapsed ? (uint32_t)(gap - elapsed) : 100UL;
       } else {
         sleepMs = cfg_interval > (uint32_t)elapsed
