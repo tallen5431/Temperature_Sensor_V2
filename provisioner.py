@@ -5,6 +5,7 @@ from typing import Callable, Optional
 from provisioning import (provision_probe, get_probe_status, desired_probe_config,
                           resolve_host, usable_server_base)
 from core.probes import normalize_probe, probe_address
+from core.netaddr import token_safe_target
 from core.status import probe_fresh_window, probe_prune_window
 
 log = logging.getLogger("hub.provisioner")
@@ -218,6 +219,19 @@ class AutoProvisioner(threading.Thread):
 
             host = (host or "").rstrip(".")
             if not host:
+                continue
+
+            # The last gate before the device token leaves this machine. The
+            # discovery boundary already refuses off-domain records, but the
+            # address can still change after that — _refresh_ip_best_effort
+            # re-resolves it every cycle — so the check belongs here too, where
+            # the secret is actually handed over. A probe lives on the LAN; a
+            # target that does not is a poisoned record or a hijacked resolver,
+            # not a device to configure.
+            if not token_safe_target(host):
+                log.warning("Refusing to provision %s: not a LAN address. The "
+                            "hub's device token is only ever sent to probes on "
+                            "the local network.", host)
                 continue
 
             target_url = f"{base}/api/ingest"

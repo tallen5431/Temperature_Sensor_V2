@@ -8,6 +8,8 @@ import socket
 import threading
 import time
 
+from core.netaddr import is_lan_address, is_mdns_hostname
+
 log = logging.getLogger("hub.discovery")
 
 SERVICE_TYPE = "_temps-probe._tcp.local."
@@ -199,7 +201,28 @@ class ProbeDiscovery:
     def _info_to_probe(self, info: ServiceInfo) -> Optional[ProbeInfo]:
         try:
             host = info.server or ""
+            # A record under _temps-probe._tcp.local. that advertises a host
+            # OUTSIDE .local is malformed by definition (RFC 6762 §3) — and it is
+            # the shape that matters most, because the auto-provisioner resolves
+            # this field and POSTs the hub's device token to whatever it points
+            # at. getaddrinfo falls through to unicast DNS for anything not in
+            # .local, so such a record resolved to a public address and received
+            # the token. api/routes.py already refuses body-supplied hostnames on
+            # the ingest path for exactly this reason; this is the same door.
+            if not is_mdns_hostname(host):
+                log.warning("ignoring mDNS record %r: host %r is not a .local "
+                            "name or a LAN address", info.name, host)
+                return None
             ip = self._resolve_ip(host) or ""
+            if ip and not is_lan_address(ip):
+                # A .local name that answers with an off-LAN address — a hostile
+                # responder, or an ISP resolver with wildcard NXDOMAIN hijacking
+                # answering a name that briefly stopped resolving over mDNS. Keep
+                # the probe visible so the operator can see it is announcing
+                # itself, but do not carry the address any further.
+                log.warning("mDNS host %r resolved to %s, which is not a LAN "
+                            "address; ignoring the address", host, ip)
+                ip = ""
             props = {}
             for k, v in (info.properties or {}).items():
                 try:

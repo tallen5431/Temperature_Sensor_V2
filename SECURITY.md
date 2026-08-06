@@ -12,6 +12,15 @@ default. The threat model below assumes an attacker who is **another device/user
   `config.json`, or pin your own via `SERVER_TOKEN`) and pushed to probes by the
   provisioner as the `X-Token` header, so plug-and-play works without leaving the API open.
   Token comparison is constant-time.
+- **The device token only ever leaves for a LAN address.** The provisioner POSTs the token to
+  whatever address discovery reports, and that address originates in an mDNS record any device on
+  the network can broadcast. Two gates now stand in front of it: a `_temps-probe._tcp.local.`
+  record advertising a host outside `.local` is dropped (RFC 6762 says mDNS answers `.local` and
+  nothing else), and the resolved address must be inside a LAN range before the token is sent —
+  checked again at the point of sending, because the address is re-resolved every cycle. Without
+  the second gate a `.local` name is still enough: a hostile responder, or an ISP resolver with
+  wildcard NXDOMAIN hijacking answering a probe name that briefly stopped resolving over mDNS,
+  points it anywhere. See `core/netaddr.py`.
 - **`/download` is restricted** to the log file and the database backup only (exact-path check),
   resolved against the configured data location.
 - **Secrets are recursively redacted** from `GET /api/config` — nested values too (`provision_token`,

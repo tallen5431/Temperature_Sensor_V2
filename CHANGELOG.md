@@ -80,6 +80,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The hub's device token could be sent off the LAN.** `api/routes.py` refuses a
+  body-supplied hostname on the ingest path, and its comment says why: it "lands
+  in the discovery registry, and the auto-provisioner then resolves it and POSTs
+  the hub's device token to whatever it points at". That closed the ingest route
+  in; the mDNS route it came from was left open. A `_temps-probe._tcp.local.`
+  record's `server` field was taken verbatim and resolved with `getaddrinfo`,
+  which falls through to unicast DNS for anything outside `.local` — so a record
+  advertising `collector.example.net` resolved to a public address and received
+  the token, which is write access to the reading log from anywhere. No attacker
+  is needed either: an ISP resolver with wildcard NXDOMAIN hijacking answers every
+  name, including a probe hostname that has momentarily stopped resolving over
+  mDNS. Now two gates (`core/netaddr.py`): discovery drops a record whose host is
+  outside `.local` (RFC 6762 §3) and drops an answer outside LAN ranges, and the
+  provisioner re-checks the target immediately before sending — the address is
+  re-resolved every cycle, so the check has to live where the secret is handed
+  over as well. The LAN ranges are written out explicitly rather than using
+  `ipaddress.is_private`, which calls RFC 5737 documentation space private and
+  calls `100.64/10` — what Tailscale hands out — public.
 - **A probe with a friendly mDNS name could never leave the Devices grid.** The
   discovery registry matched a `ServiceStateChange.Removed` event against
   `ProbeInfo.name` — which is the TXT `name` key, and PROTOCOL.md §3 defines that

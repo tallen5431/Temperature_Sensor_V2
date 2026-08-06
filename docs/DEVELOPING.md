@@ -83,6 +83,7 @@ Setpoint ──POST /api/ingest {temperature_c, probe_id, timestamp}──▶ Hu
 | `core/protocol.py` | Wire limits shared with the firmware (`MAX_INGEST_BYTES`, `MAX_BATCH_ROWS`); see `PROTOCOL.md`. |
 | `core/probes.py` | `normalize_probe`/`probe_address` — read a probe record the same way whether the registry holds a `ProbeInfo` or a dict. |
 | `core/secret_compare.py` | `constant_time_eq` — token comparison that tolerates non-ASCII input (`hmac.compare_digest` raises on it). |
+| `core/netaddr.py` | `token_safe_target` — may the hub send its device token here? Discovery and the auto-provisioner both ask before an address gets the credential. |
 | `core/demo.py` | Seeds/clears clearly-labelled `DEMO-` readings so a new user can explore before any probe exists. |
 | `core/metrics.py` | Prometheus `/metrics` exposition + the in-memory `LATEST` per-probe registry. |
 | `core/mqtt_publish.py` | Optional MQTT publishing + Home Assistant auto-discovery (`MQTT`). |
