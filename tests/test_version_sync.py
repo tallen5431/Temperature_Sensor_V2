@@ -122,3 +122,35 @@ def test_the_developer_file_map_covers_every_core_module():
     ghosts = [p for p in listed
               if (p.endswith((".py", ".sh")) and "*" not in p and not (REPO / p).exists())]
     assert not ghosts, f"file map names missing files: {ghosts}"
+
+
+def test_the_firmware_header_matches_the_ino():
+    """`firmware/src/protocol.h` declares the firmware version a SECOND time, and
+    its own comment says "== FW_VERSION in the .ino". It was 2.8.2 against an .ino
+    on 2.9.2 — drifted silently, because nothing compared them.
+
+    That is the third copy of this number to drift (the flash manifest twice, now
+    this), and the pattern is always the same: a comment asks a human to keep two
+    files in step. RELEASE.md's bump list named this file and NOT the two the
+    tests already enforce, so following the runbook exactly moved the one nothing
+    checked and left the two that are checked behind."""
+    header = (REPO / "firmware" / "src" / "protocol.h").read_text(encoding="utf-8")
+    m = re.search(r'#define\s+TEMPSENSOR_FW_VERSION\s+"([^"]+)"', header)
+    assert m, "TEMPSENSOR_FW_VERSION not found — did the declaration change shape?"
+    assert m.group(1) == firmware_version(), (
+        f"protocol.h says {m.group(1)}, the .ino says {firmware_version()}")
+
+
+def test_the_release_runbook_names_every_file_that_must_move():
+    """RELEASE.md step 1 is what a person follows at 11pm on release day. It has
+    to name every file carrying a version, or the ones it omits drift — which is
+    exactly how the flash manifest got stale twice."""
+    runbook = (REPO / "RELEASE.md").read_text(encoding="utf-8")
+    must_name = ["core/version.py", "pyproject.toml", "firmware/src/protocol.h",
+                 "flash/manifest.json", "flash/index.html",
+                 "esp32_temp_probe.ino"]
+    missing = [f for f in must_name if f not in runbook]
+    assert not missing, (
+        f"RELEASE.md does not mention {missing}. Every one of these carries a "
+        f"version string the test suite enforces; a runbook that omits them "
+        f"produces exactly the drift those tests exist to catch.")

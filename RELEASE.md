@@ -6,11 +6,29 @@ number applied consistently to the hub, the firmware, and the store listing.
 
 ## 1. Bump the version
 
-Pick the new version (SemVer) and set it in **all** of these — they must match:
+**The hub and the firmware version independently.** They are separate artifacts
+on separate cadences — a dashboard fix does not reflash anybody's probes — so
+they are two lists, not one, and they do not have to match.
 
-- `core/version.py` — `__version__`
+**Hub** (both must agree; `tests/test_version_sync.py` enforces it):
+
+- `core/version.py` — `HUB_VERSION`
 - `pyproject.toml` — `[project] version`
+
+**Firmware** — only when the `.ino` actually changed. All four must agree, and
+the last three are enforced against the first:
+
+- `esp32_temp_probe/esp32_temp_probe.ino` — `FW_VERSION` *(the source of truth)*
 - `firmware/src/protocol.h` — `TEMPSENSOR_FW_VERSION`
+- `flash/manifest.json` — `version`
+- `flash/index.html` — the `firmware v…` label
+
+> This list used to name `protocol.h` and omit `flash/manifest.json` and
+> `flash/index.html` — exactly backwards from what the tests check. Following it
+> moved the one copy nothing verified and left the two that are verified behind,
+> which is how the flash manifest went stale twice and how `protocol.h` came to
+> sit on 2.8.2 while the `.ino` was on 2.9.2. `pytest -q` now catches all of it,
+> so run step 3 before tagging and believe it over this list.
 
 If the wire protocol changed, also bump `PROTOCOL_VERSION` in `core/version.py`
 and `TEMPSENSOR_PROTO` in `firmware/src/protocol.h` (keep them equal).
