@@ -106,3 +106,50 @@ def test_detail_never_contains_values(tmp_path):
     text = (tmp_path / "audit.log").read_text()
     assert "supersecret" not in text
     assert "provision_token" in text  # the key name is recorded
+
+
+def test_an_entry_is_durable_before_the_anchor_advances(tmp_path, monkeypatch):
+    """The truncation check rests on "the log is at least as far along as the
+    anchor". Both writes land in the page cache, and the kernel may write them
+    back in either order — so without an fsync between them, a power cut that
+    landed the anchor and lost the entry would make the hub report its own audit
+    trail as possibly truncated, permanently, over an unclean shutdown that
+    tampered with nothing. This record exists to be believed; crying wolf here
+    is the expensive failure."""
+    import core.audit as audit_mod
+
+    order = []
+    real_fsync = audit_mod.os.fsync
+    monkeypatch.setattr(audit_mod.os, "fsync",
+                        lambda fd: order.append("fsync") or real_fsync(fd))
+
+    log = audit_mod.AuditLog()
+    real_write_tip = log._write_tip
+    monkeypatch.setattr(log, "_write_tip",
+                        lambda: order.append("tip") or real_write_tip())
+
+    log.configure(tmp_path / "audit.log")
+    log.record("config.update", detail="interval_sec")
+
+    assert order, "the entry was written without ever reaching the disk"
+    assert order.index("fsync") < order.index("tip"), (
+        f"the anchor advanced before the entry was durable: {order}")
+
+
+def test_an_unclean_shutdown_that_lost_nothing_verifies_clean(tmp_path):
+    """The end-to-end shape of the same guarantee: write entries, drop the
+    in-memory state as a restart would, and re-read. No tamper report."""
+    import core.audit as audit_mod
+
+    path = tmp_path / "audit.log"
+    first = audit_mod.AuditLog()
+    first.configure(path)
+    for i in range(3):
+        first.record("data.export", detail=f"export-{i}.csv")
+
+    reopened = audit_mod.AuditLog()
+    reopened.configure(path)
+    result = reopened.verify()
+    assert result["intact"] is True, result
+    assert result["entries"] == 3
+    assert result.get("anchored") is True

@@ -80,6 +80,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Multi-site over plain HTTP to an off-site address said nothing.** Forwarding
+  sends head office's **device token** — the credential that lets a caller write
+  into its reading log — plus every reading, and over `http://` to somewhere off
+  the local network that all crosses the wire in the clear.
+  `docs/MULTI_SITE.md` has always said "use HTTPS in production, or a VPN", but
+  the Settings form where a store manager actually types the address said
+  nothing, and they have no reason to have read that file. Saving now warns —
+  and only when it is genuinely a problem: `http://` to a LAN address is the
+  ordinary deployment and exactly what the field's placeholder shows, and a
+  Tailscale address is an encrypted overlay set up on purpose. Neither is
+  flagged, because a warning that fires on the normal case trains people to
+  ignore it.
+- **`send_email` could raise instead of returning a reason.** Its contract is
+  `(ok, reason)`, and `Notifier.dispatch` and the Settings "Send test" button
+  both call it without a `try`. But the `EmailMessage` construction sat *outside*
+  its own try block, and Python's email package refuses a header containing a
+  line break — correctly; that is header injection — by raising `ValueError`. One
+  malformed recipient in `config.json` therefore turned "Send test" into an
+  unhandled callback error, and every real alert into a bare "notification
+  dispatch error" in the log with nothing naming the field at fault. It now
+  returns a reason that names it.
+- **A power cut could make the audit log report itself as tampered with.** The
+  truncation check rests on "the log is at least as far along as its anchor", and
+  the entry was written before the anchor by *issue* order only — both sit in the
+  page cache and the kernel may write them back either way round. An unclean
+  shutdown that landed the anchor and lost the entry would report the audit trail
+  as possibly truncated on the next start, permanently, having tampered with
+  nothing. The entry is now fsynced before the anchor advances. Entries are
+  written on config changes and exports, not per reading, so this costs nothing.
 - **A spreadsheet export of a temperature-only probe carried two empty
   columns.** `export_friendly_csv` promises "unused humidity/VPD dropped", but
   the gate asked whether the *hub* held humidity anywhere, not whether *this

@@ -166,3 +166,74 @@ def test_auto_provision_off_stops_the_provisioner_without_a_restart(tmp_path):
     cfg.update({"auto_provision": True})
     p._run_cycle()
     assert seen, "turning it back on must resume, also without a restart"
+
+
+# --- cleartext to head office ----------------------------------------------
+# Multi-site exists so head office can see six stores, which usually means the
+# traffic leaves the building. Over plain http that sends head office's DEVICE
+# TOKEN — the credential that lets a caller write into its reading log — and
+# every reading, in the clear. docs/MULTI_SITE.md says "use HTTPS in production,
+# or a VPN"; the form where a store manager actually types the address said
+# nothing, and they have no reason to have read that file.
+
+from components.settings_panel import _upstream_is_cleartext_offsite as _cleartext
+
+
+def test_plain_http_to_a_public_address_is_flagged():
+    assert _cleartext("http://93.184.216.34/api/ingest_csv") is True
+
+
+def test_plain_http_on_the_local_network_is_not_flagged():
+    """The ordinary deployment, and exactly what the field's placeholder shows.
+    Warning here would be noise, and noise trains people to ignore the warning
+    that matters."""
+    for url in ("http://192.168.1.50:8088", "http://10.0.0.5/api/ingest_csv",
+                "http://172.16.4.4", "http://127.0.0.1:8088"):
+        assert _cleartext(url) is False, url
+
+
+def test_a_tailscale_address_is_not_flagged():
+    """100.64/10 is an encrypted overlay the operator set up on purpose."""
+    assert _cleartext("http://100.64.0.3:8088") is False
+
+
+def test_https_is_never_flagged_wherever_it_points():
+    assert _cleartext("https://hq.example.com") is False
+    assert _cleartext("HTTPS://HQ.EXAMPLE.COM") is False
+
+
+def test_an_unusable_address_produces_no_verdict():
+    """Blank, junk, or a name that does not resolve: say nothing rather than
+    guess. The URL-shape error above already covers genuinely invalid input."""
+    for url in ("", None, "not a url", "ftp://hq.example.com"):
+        assert _cleartext(url) is False, url
+
+
+def test_the_warning_reaches_the_operator_on_save(tmp_path, monkeypatch):
+    """The rule is only worth having if the save actually surfaces it."""
+    import components.settings_panel as sp
+
+    monkeypatch.setattr(sp, "_upstream_is_cleartext_offsite", lambda url: True)
+
+    class _Fwd:
+        def sync_now(self):
+            return 3, ""
+
+        def status(self):
+            return {"pending": 0}
+
+    monkeypatch.setattr(sp, "FORWARDER", _Fwd())
+
+    import dash
+    from core.config import Config
+    app = dash.Dash(__name__)
+    app.layout = dash.html.Div()
+    app.config.suppress_callback_exceptions = True
+    cfg = Config(tmp_path / "c.json")
+    sp.register_settings_callbacks(app, cfg)
+    key, = [k for k in app.callback_map if "upstream-status.children" in k]
+    fn = app.callback_map[key]["callback"].__wrapped__
+    out, _site = fn(1, True, "http://hq.example.com", "atlanta", "tok", 60)
+    assert out.color == "warning"
+    text = str(out.children)
+    assert "not encrypted" in text and "https" in text

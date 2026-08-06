@@ -122,6 +122,21 @@ class AuditLog:
                 self._path.parent.mkdir(parents=True, exist_ok=True)
                 with open(self._path, "a", encoding="utf-8") as f:
                     f.write(json.dumps(entry) + "\n")
+                    # Durable BEFORE the anchor advances. The truncation check
+                    # rests on "the log is at least as far along as the anchor",
+                    # and without this that ordering is only the order the two
+                    # writes were issued in — both sit in the page cache and the
+                    # kernel may write them back either way round. A power cut
+                    # that landed the anchor and lost the entry would make the
+                    # hub report its own audit trail as possibly truncated on the
+                    # next start, permanently, over an unclean shutdown that
+                    # tampered with nothing. Crying wolf is expensive precisely
+                    # here: this record exists to be believed.
+                    #
+                    # Entries are written on config changes and exports, not per
+                    # reading, so the cost is nil.
+                    f.flush()
+                    os.fsync(f.fileno())
                 self._last_hash = entry["hash"]
                 self._count += 1
                 self._write_tip()

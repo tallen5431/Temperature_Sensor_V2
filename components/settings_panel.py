@@ -692,6 +692,42 @@ def build_notifications_config(enabled, cooldown_min, recovery, email_enabled, h
     return conf
 
 
+def _upstream_is_cleartext_offsite(url: str) -> bool:
+    """Would forwarding to this address put the device token on the open wire?
+
+    Yes only when BOTH are true: the scheme is plain ``http``, and the host is
+    not a LAN address. Head office on the same network over ``http://`` is the
+    ordinary deployment (and what the field's placeholder shows), so warning
+    about it would be noise that trains people to ignore the warning that
+    matters. A hostname is resolved before judging, because ``hq.example.com``
+    can perfectly well be the box in the next room.
+
+    Pure, so the rule can be tested without a form or a network.
+    """
+    from urllib.parse import urlsplit
+
+    from core.netaddr import is_lan_address
+    try:
+        parts = urlsplit((url or "").strip())
+    except ValueError:
+        return False
+    if parts.scheme != "http":
+        return False                       # https, or something we don't post to
+    host = (parts.hostname or "").strip()
+    if not host:
+        return False
+    if is_lan_address(host):
+        return False
+    try:
+        from provisioning import resolve_host
+        resolved = resolve_host(host)
+    except Exception:  # noqa: BLE001 - a name we cannot resolve is not a verdict
+        return False
+    if resolved is None:
+        return False                       # unresolvable: say nothing rather than guess
+    return not is_lan_address(resolved)
+
+
 def build_upstream_config(enabled, url, site, token, interval, existing=None):
     """Turn the Multi-site form values into the ``upstream`` config block.
 
@@ -1142,6 +1178,15 @@ def register_settings_callbacks(app, cfg, public_base_func=None):
         if not block["enabled"]:
             return _ok("Saved — this hub is not sending readings anywhere."), block["site"]
 
+        # Plain HTTP to somewhere off the local network sends head office's
+        # DEVICE TOKEN, and every reading, in the clear across whatever is in
+        # between. docs/MULTI_SITE.md says "use HTTPS in production, or a VPN" —
+        # but a store manager configuring this from the Settings page never reads
+        # that file, and the form said nothing. Only warned about when it is
+        # genuinely a problem: http:// to a LAN address is the ordinary case and
+        # is exactly what the placeholder shows.
+        insecure = _upstream_is_cleartext_offsite(block["url"])
+
         # Report what actually happened, not that a file was written. A saved
         # setting that cannot reach head office must never look like a working one.
         sent, err = FORWARDER.sync_now()
@@ -1152,10 +1197,21 @@ def register_settings_callbacks(app, cfg, public_base_func=None):
         pending = FORWARDER.status()["pending"]
         if sent:
             tail = f" {pending:,} still to send." if pending else " Everything is up to date."
-            return _ok(f"Saved — sent {sent:,} reading{'s' if sent != 1 else ''} "
-                       f"to head office as “{block['site']}”.{tail}"), block["site"]
-        return _ok(f"Saved — connected to head office as “{block['site']}”. "
-                   "New readings will be sent as they arrive."), block["site"]
+            body = (f"Saved — sent {sent:,} reading{'s' if sent != 1 else ''} "
+                    f"to head office as “{block['site']}”.{tail}")
+        else:
+            body = (f"Saved — connected to head office as “{block['site']}”. "
+                    "New readings will be sent as they arrive.")
+        if insecure:
+            return (dbc.Alert(
+                ["✅ ", body, html.Br(),
+                 html.Strong("This address is not on your local network and is not "
+                             "encrypted. "),
+                 "Head office's device token and every reading you send travel in "
+                 "the clear. Use an ", html.Code("https://"), " address, or reach "
+                 "head office over a VPN or tunnel."],
+                color="warning", dismissable=True, className="mb-0"), block["site"])
+        return _ok(body), block["site"]
 
     @app.callback(
         Output("mqtt-status", "children"),

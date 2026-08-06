@@ -36,11 +36,26 @@ def send_email(email_cfg: dict, subject: str, body: str) -> Tuple[bool, str]:
     sender = (email_cfg.get("from") or user or "setpoint@localhost").strip()
     use_tls = email_cfg.get("use_tls", True)
 
-    msg = EmailMessage()
-    msg["Subject"] = subject
-    msg["From"] = sender
-    msg["To"] = ", ".join(recipients)
-    msg.set_content(body)
+    try:
+        # Building the message is INSIDE the try, not before it. Python's email
+        # package refuses a header containing a line break — correctly, that is
+        # header injection — by raising ValueError, and with the construction
+        # outside, that escaped a function whose whole contract is to return
+        # (ok, reason) and never raise. Notifier.dispatch does not catch, so one
+        # malformed recipient in config.json turned the Settings "Send test"
+        # button into an unhandled callback error, and turned every real alert
+        # into a bare "notification dispatch error" in the log with nothing
+        # naming the field at fault.
+        msg = EmailMessage()
+        msg["Subject"] = subject
+        msg["From"] = sender
+        msg["To"] = ", ".join(recipients)
+        msg.set_content(body)
+    except ValueError as e:
+        log.warning("email not sent — bad header value: %s", e)
+        return False, ("A recipient, sender or subject contains a line break, "
+                       "which an email header cannot hold. Check the To/From "
+                       "addresses in Settings.")
 
     try:
         if port == 465:
