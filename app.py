@@ -434,12 +434,18 @@ def _start_background_services(port: int):
             cfg=cfg,
         )
         provisioner.start()
+        HEALTH.register_worker("auto_provisioner", provisioner)
         log.info("Auto-provisioner started (every 10 s)")
 
     from alert_monitor import AlertMonitor
     monitor = AlertMonitor(db, cfg, period_sec=int(os.getenv("ALERT_CHECK_SEC", "30")),
                            discovery=finder)
     monitor.start()
+    # required=True: this is the thread that compares readings to thresholds. If
+    # it stops, readings keep arriving on the request threads, the dashboard
+    # keeps drawing and every counter keeps looking fine — and no alarm is ever
+    # raised again. Nothing else in the hub can notice that, so health has to.
+    HEALTH.register_worker("alert_monitor", monitor, required=True)
 
     # Optional multi-site roll-up — off unless the `upstream` config block
     # enables it. A store hub pushes a copy of its readings to an aggregating
@@ -453,6 +459,7 @@ def _start_background_services(port: int):
     try:
         from core.forwarder import FORWARDER
         FORWARDER.start(db, cfg)
+        HEALTH.register_worker("upstream_forwarder", FORWARDER)
         up = cfg.get("upstream") or {}
         if up.get("enabled"):
             log.info("Upstream forwarder active (site=%s -> %s)",

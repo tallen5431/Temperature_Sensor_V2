@@ -83,7 +83,33 @@ def _health_card(h):
         ("Write failures", f"{h.get('write_failures', 0):,}"),
         ("Disk free", disk_cell),
     ]
+
+    # Background threads. Named individually, because "which one stopped" is the
+    # first thing support would ask and the answer changes what to do about it.
+    workers = h.get("workers") or {}
+    if workers:
+        stopped = sorted(n for n, alive in workers.items() if not alive)
+        rows.append((
+            "Background tasks",
+            html.Span(f"{len(workers) - len(stopped)} of {len(workers)} running"
+                      + (f" — stopped: {', '.join(stopped)}" if stopped else ""),
+                      className="text-warning fw-bold" if stopped else "")))
+
     body = [html.H6("System health", className="text-info"), _kv_table(rows)]
+
+    # The alert monitor stopping is not one warning among several: readings keep
+    # arriving, the dashboard keeps drawing, and nothing else on this page would
+    # look wrong — while no alarm is ever raised again. Say what it means and
+    # what to do, rather than leaving "1 of 3 running" to be interpreted.
+    if h.get("workers_down"):
+        body.append(dbc.Alert(
+            [html.Strong("Alerting has stopped. "),
+             "The task that compares readings against their limits is no longer "
+             "running, so ", html.Strong("no alarm will be raised"),
+             " even though readings are still being recorded. Restart the hub. "
+             "If it happens again, send this page to support — ",
+             html.Code("logs/hub.log"), " will say why."],
+            color="danger", className="mt-2 mb-0 py-2 small"))
     if low_disk:
         body.append(dbc.Alert("⚠ Low disk space — consider setting a retention limit "
                               "(Settings → Data & storage) or freeing space.",

@@ -80,6 +80,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **If the alert monitor thread died, nothing noticed.** This is the worst
+  failure the product has and it was the one with no detector. Every other signal
+  keeps looking correct while it is happening: readings are written on the
+  *request* thread, so `rows_written` climbs and `last_write_age_sec` stays
+  small; the dashboard draws live cards and a moving chart; `/api/health`
+  reported `healthy: true`; `setpoint_healthy` stayed at 1, so a Grafana alert
+  wired to it stayed quiet; and the Diagnostics page said "Healthy". Meanwhile no
+  alarm can ever be raised again. The existing `HealthState` counters could not
+  help — they only record failures something *live* observed, and the thing that
+  would have observed this one is the thing that stopped. The hub now registers
+  its background threads and reports them: `/api/health` gains `workers` and
+  `workers_down`, `/metrics` gains `setpoint_worker_up{worker="…"}`, and a dead
+  **required** worker (the alert monitor, and only it) forces `healthy: false`.
+  The Diagnostics page says what it means in words — "Alerting has stopped… no
+  alarm will be raised… restart the hub" — because "1 of 3 running" is a fact
+  nobody can act on. The auto-provisioner and the upstream forwarder are
+  reported but do not condemn the hub: stopped, those are degraded, not blind.
 - **Firmware v2.9.2 — the deep-sleep clock ran slow by the shutdown tail on
   every wake.** `enterDeepSleep()` checkpointed the pre-sleep instant at the top
   of the function, then flushed Serial, tore down HTTP and mDNS, called

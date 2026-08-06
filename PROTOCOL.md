@@ -489,7 +489,15 @@ and is the value probes echo on ingest.
 
 | Endpoint | Auth | Purpose |
 |----------|------|---------|
-| `GET /api/health` | none | `{ok, version, protocol, probes, base, time, rows_written, ingest_rejected, write_failures, last_write_age_sec, healthy}` |
+| `GET /api/health` | none | `{ok, version, protocol, probes, base, time, rows_written, ingest_rejected, write_failures, last_write_age_sec, workers, workers_down, healthy}` |
+
+`workers` is `{name: alive}` for the hub's background threads; `workers_down` lists
+only those whose death stops the hub doing its job (currently just `alert_monitor`),
+and any entry there forces `healthy: false`. Readings are written on the request
+thread, so a dead alert monitor leaves every other field in this payload looking
+correct while no alarm can ever be raised — which is why it gets its own term
+rather than being inferred. `setpoint_worker_up{worker="…"}` carries the same
+per-worker state on `/metrics`.
 | `GET /api/config` | token | Redacted config. |
 | `POST /api/config` | token | Update config. |
 | `GET /api/probes` | none | `[{host, ip, port, name, probe_id, last_seen}]` |

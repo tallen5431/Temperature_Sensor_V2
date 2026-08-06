@@ -125,9 +125,23 @@ def render_prometheus(health: dict, latest: dict, probes_count: int, version: st
     lines.append("# TYPE setpoint_write_failures_total counter")
     lines.append(f"setpoint_write_failures_total {int(health.get('write_failures', 0))}")
 
-    lines.append("# HELP setpoint_healthy Whether writes are flowing (1) or stale/failing (0).")
+    lines.append("# HELP setpoint_healthy Whether the hub is doing its job (1) or "
+                 "not (0): writes flowing, and every required background task alive.")
     lines.append("# TYPE setpoint_healthy gauge")
     lines.append(f"setpoint_healthy {1 if health.get('healthy') else 0}")
+
+    # Per-worker liveness. setpoint_healthy already drops to 0 when a REQUIRED
+    # task dies, which is what an alert should fire on — but it does not say
+    # which, and the answer changes what to do. A stopped forwarder is a
+    # multi-site outage; a stopped alert monitor means no alarm will ever be
+    # raised again while every other metric here keeps looking normal.
+    workers = health.get("workers") or {}
+    if workers:
+        lines.append("# HELP setpoint_worker_up Background task alive (1) or stopped (0).")
+        lines.append("# TYPE setpoint_worker_up gauge")
+        for name, alive in sorted(workers.items()):
+            lines.append(f'setpoint_worker_up{{worker="{_esc_label(name)}"}} '
+                         f'{1 if alive else 0}')
 
     lines.append("# HELP setpoint_probe_temperature_celsius Most recent temperature per probe.")
     lines.append("# TYPE setpoint_probe_temperature_celsius gauge")

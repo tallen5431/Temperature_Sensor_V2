@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from typing import Dict
 
 
 def get_logger(name: str = "hub") -> logging.Logger:
@@ -66,6 +67,15 @@ class HealthState:
         self.notify_failures = 0
         self.notify_dropped = 0
         self.last_notify_failure_ts: float | None = None
+        # Background threads whose death nothing else would reveal. The counters
+        # above can only report a failure that something LIVE observed; if the
+        # thread that evaluates thresholds stops, there is nothing left to count
+        # and every other signal keeps looking correct — readings still arrive
+        # (that is the request thread), the dashboard still draws, /api/health
+        # still said `healthy: true`, and no alert is ever sent again. That is
+        # the worst failure this product has and it was the one with no detector.
+        # {name: (thread, required)}
+        self._workers: Dict[str, tuple] = {}
 
     def record_write(self) -> None:
         with self._lock:
@@ -102,6 +112,46 @@ class HealthState:
             self.notify_dropped += 1
             self.last_notify_failure_ts = time.time()
 
+    def register_worker(self, name: str, thread, required: bool = False) -> None:
+        """Watch a background thread.
+
+        ``required=True`` means the hub cannot do its job without it, so its
+        death makes the whole appliance report unhealthy. That is the alert
+        monitor and nothing else: the auto-provisioner, the upstream forwarder
+        and MQTT are features, and a hub with them stopped is degraded, not
+        blind. All of them are still listed, because "which one died" is the
+        first question support would ask.
+        """
+        with self._lock:
+            self._workers[str(name)] = (thread, bool(required))
+
+    def workers(self) -> dict:
+        """``{name: alive}`` for every registered background thread."""
+        with self._lock:
+            items = list(self._workers.items())
+        out = {}
+        for name, (thread, _required) in items:
+            try:
+                out[name] = bool(thread.is_alive())
+            except Exception:  # noqa: BLE001 - a health probe must never raise
+                out[name] = False
+        return out
+
+    def _dead_required(self) -> list:
+        with self._lock:
+            items = list(self._workers.items())
+        dead = []
+        for name, (thread, required) in items:
+            if not required:
+                continue
+            try:
+                alive = bool(thread.is_alive())
+            except Exception:  # noqa: BLE001
+                alive = False
+            if not alive:
+                dead.append(name)
+        return sorted(dead)
+
     def snapshot(self, fresh_window_sec: float = 120, expect_data: bool = True) -> dict:
         """Health counters plus the derived ``healthy`` flag.
 
@@ -121,6 +171,9 @@ class HealthState:
         what a Grafana alert would be wired to). With no data to be stale about,
         staleness cannot be the complaint; a real write FAILURE still can.
         """
+        # Outside the lock: these take it themselves.
+        worker_state = self.workers()
+        dead_required = self._dead_required()
         with self._lock:
             last = self.last_write_ts
             age = (time.time() - last) if last else None
@@ -142,9 +195,16 @@ class HealthState:
                 "last_notify_failure_age_sec": (round(notify_age, 1)
                                                 if notify_age is not None else None),
                 "last_write_age_sec": round(age, 1) if age is not None else None,
-                "healthy": (not failing if (last is None and not expect_data)
-                            else bool(last and age is not None
-                                      and age < fresh_window_sec and not failing)),
+                "workers": worker_state,
+                "workers_down": dead_required,
+                # A dead required worker overrides everything else. Readings can
+                # still be arriving — those come in on a request thread — so
+                # every other term here would happily report a healthy hub that
+                # will never raise another alarm.
+                "healthy": (False if dead_required else
+                            (not failing if (last is None and not expect_data)
+                             else bool(last and age is not None
+                                       and age < fresh_window_sec and not failing))),
             }
 
 

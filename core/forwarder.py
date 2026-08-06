@@ -432,6 +432,13 @@ class _ForwarderHandle:
             self._fwd.stop()
             self._fwd = None
 
+    def is_alive(self) -> bool:
+        """Is the pump thread running? Mirrors ``threading.Thread`` so the health
+        worker registry can watch this handle like any other background thread —
+        it is the thread's public face everywhere else, so it should be here too
+        rather than making the registry special-case one caller."""
+        return self._fwd is not None and self._fwd.is_alive()
+
     def sync_now(self) -> tuple:
         """Force one cycle. Returns ``(rows_sent, error_text)`` for the UI."""
         if self._fwd is None:
