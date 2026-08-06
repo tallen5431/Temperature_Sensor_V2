@@ -15,6 +15,8 @@ import json
 import pathlib
 import re
 
+import pytest
+
 REPO = pathlib.Path(__file__).resolve().parent.parent
 
 
@@ -50,15 +52,44 @@ def test_hub_version_is_a_plain_release_number():
     assert PRODUCT_NAME == "Setpoint"
 
 
+def _project_version_by_hand(text: str) -> str:
+    """Read `version` out of pyproject.toml's ``[project]`` table, without a TOML
+    parser.
+
+    `tomllib` is stdlib only from Python 3.11, and this project supports 3.9
+    (`requires-python = ">=3.9"`, and CI runs a 3.9 leg). Importing it
+    unconditionally turned a version-drift guard into a hard failure on the older
+    matrix leg. Adding `tomli` as a dev dependency for one lookup is more than
+    this needs — pyproject.toml is read as plain text elsewhere in this file
+    too — and :func:`test_the_hand_parser_agrees_with_a_real_toml_parser` checks
+    this against `tomllib` wherever one is available, so the shortcut is verified
+    rather than assumed.
+    """
+    table = re.split(r"^\[", text, flags=re.M)
+    for chunk in table:
+        if chunk.startswith("project]"):
+            m = re.search(r'^\s*version\s*=\s*"([^"]+)"', chunk, re.M)
+            if m:
+                return m.group(1)
+    raise AssertionError("no version found in pyproject.toml's [project] table")
+
+
 def test_packaging_version_matches_the_hub_version():
     """pyproject.toml declares the version a second time, for the wheel. Same
     shape as the flash manifest, which drifted twice while a note asked people
     to keep it in sync -- so this is enforced instead of asked for."""
-    import tomllib
     from core.version import HUB_VERSION
-    meta = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))
-    assert meta["project"]["version"] == HUB_VERSION, \
+    text = (REPO / "pyproject.toml").read_text(encoding="utf-8")
+    assert _project_version_by_hand(text) == HUB_VERSION, \
         "bump pyproject.toml's version alongside core/version.py"
+
+
+def test_the_hand_parser_agrees_with_a_real_toml_parser():
+    """Runs wherever tomllib exists (3.11+), which on CI is the newer matrix leg.
+    Keeps the 3.9-compatible shortcut above honest instead of hoping it is."""
+    tomllib = pytest.importorskip("tomllib", reason="stdlib TOML is 3.11+")
+    text = (REPO / "pyproject.toml").read_text(encoding="utf-8")
+    assert _project_version_by_hand(text) == tomllib.loads(text)["project"]["version"]
 
 
 def test_pytest_is_configured_in_exactly_one_place():
