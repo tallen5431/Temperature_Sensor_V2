@@ -213,3 +213,66 @@ def test_every_page_can_reach_the_setup_site(name):
     assert SETUP_SITE in html, (
         f"{name} has no link to {SETUP_SITE} — kit buyers reach the flasher, "
         f"the launcher download and the build guide through it.")
+
+
+# --- what a customer sees BEFORE the site ----------------------------------
+# The title and meta description are the search result and the link preview —
+# often the first impression, and the only one for anyone who does not click.
+# Every page's description was 180-252 characters against the ~155 Google
+# renders, so every snippet ended mid-sentence, and 404.html had none at all.
+
+import html as _html
+
+SEO_PAGES = sorted(p.name for p in SITE.glob("*.html"))
+DESC_MAX = 160      # Google renders ~155; 160 is the usual working budget
+TITLE_MAX = 60
+
+
+def _head(name):
+    s = (SITE / name).read_text(encoding="utf-8")
+    title = _html.unescape((re.search(r"<title>(.*?)</title>", s, re.S) or [None, ""])[1].strip())
+    m = re.search(r'<meta name="description" content="([^"]*)"', s)
+    return title, (_html.unescape(m.group(1)) if m else None)
+
+
+@pytest.mark.parametrize("name", SEO_PAGES)
+def test_every_page_has_a_description_that_fits(name):
+    """Measured on the RENDERED text, not the source: `&mdash;` is seven
+    characters in the file and one on the page, so counting the source
+    over-reports and would have had me shortening titles that were already
+    fine."""
+    _title, desc = _head(name)
+    assert desc, f"{name} has no meta description — search engines invent one"
+    assert len(desc) <= DESC_MAX, (
+        f"{name}: {len(desc)} chars, so the snippet is cut mid-sentence at ~155")
+
+
+@pytest.mark.parametrize("name", SEO_PAGES)
+def test_every_page_title_fits(name):
+    title, _desc = _head(name)
+    assert title, f"{name} has no <title>"
+    assert len(title) <= TITLE_MAX, f"{name}: {len(title)} chars, truncates at ~60"
+
+
+@pytest.mark.parametrize("name", SEO_PAGES)
+def test_no_two_pages_share_a_description(name):
+    """Duplicate descriptions across pages are a ranking problem and read as
+    boilerplate to anyone comparing two results."""
+    _t, desc = _head(name)
+    others = {n: _head(n)[1] for n in SEO_PAGES if n != name}
+    clash = [n for n, d in others.items() if d and d == desc]
+    assert not clash, f"{name} shares its description with {clash}"
+
+
+def test_the_assembled_tiers_say_why_they_cannot_be_bought():
+    """site/README.md rule 1 makes "not yet for sale" mandatory on the assembled
+    tiers. The REASON lived only in the CTA band ~2000px below the pricing
+    cards, so the section stated a restriction and gave no cause for it — and a
+    reason that specific (FCC Part 15B testing underway) reads as diligence
+    rather than as a limitation."""
+    html_text = (SITE / "index.html").read_text(encoding="utf-8")
+    whys = re.findall(r'<div class="tier-why">(.*?)</div>', html_text, re.S)
+    assert len(whys) == 2, (
+        f"expected the explanation on both assembled tiers, found {len(whys)}")
+    for w in whys:
+        assert "FCC" in w and "15B" in w, "the reason no longer names the actual cause"

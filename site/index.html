@@ -8,14 +8,14 @@
 <meta property="og:description" content="Know the moment it crosses the line. A rechargeable Wi-Fi temperature sensor and alarm for freezers, fridges and server rooms — email alerts, local history, no subscription.">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="description" content="A rechargeable Wi-Fi temperature sensor and alarm for freezers, fridges, server rooms and greenhouses. Email alerts when it crosses your threshold, history graphs and CSV export — on a dashboard you run yourself. No cloud, no subscription. DIY kit $39.">
+<meta name="description" content="Wi-Fi temperature sensor and alarm for freezers, fridges and server rooms. Email alerts, local history, CSV export. No cloud, no subscription. Kit $39.">
 <link rel="canonical" href="https://datumlaboratories.com/">
 <meta property="og:url" content="https://datumlaboratories.com/">
 <meta property="og:site_name" content="Datum Labs">
 <meta property="og:image" content="https://datumlaboratories.com/og-image.jpg">
 <meta property="og:image:alt" content="A Setpoint kit laid out: carrier board with ESP32-C3 and TP4056 charger, waterproof stainless probe on its lead, and an 18650 cell in its holder.">
 <meta name="twitter:image" content="https://datumlaboratories.com/og-image.jpg">
-<title>Wi-Fi Temperature Sensor &amp; Alarm with Email Alerts — Setpoint</title>
+<title>Wi-Fi Temperature Sensor &amp; Alarm, No Cloud — Setpoint</title>
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -290,6 +290,16 @@
   .tier ul { list-style: none; padding: 0; margin: 0 0 24px; display: flex; flex-direction: column; gap: 10px; }
   .tier li { font-size: 14.5px; color: var(--ink); padding-left: 22px; position: relative; }
   .tier li::before { content: "→"; position: absolute; left: 0; color: var(--signal); font-family: var(--font-mono); }
+  /* The obvious question a price above a "not yet for sale" badge provokes,
+     answered where it is asked. The reason lived only in the CTA band ~2000px
+     further down the page, so the pricing section stated a restriction and gave
+     no cause for it — and the two assembled cards, having no product photo,
+     carried ~350px of blank space to the button, which read as unfinished. One
+     change fixes both, and turns a limitation into evidence of diligence. */
+  .tier-why { font-size: 13px; line-height: 1.55; color: var(--slate);
+              background: var(--signal-soft); border-left: 2px solid var(--signal);
+              border-radius: 0 6px 6px 0; padding: 12px 14px; margin: 0 0 22px; }
+  .tier-why strong { color: var(--ink); display: block; margin-bottom: 3px; }
   .tier .btn { margin-top: auto; justify-content: center; }
 
   /* ---------- use cases ---------- */
@@ -557,6 +567,12 @@
             <li>USB-C powered, runs indefinitely</li>
             <li>Enclosure + mounting</li>
           </ul>
+          <div class="tier-why">
+            <strong>Why you can&rsquo;t buy it yet.</strong> Assembled units need
+            an FCC Part&nbsp;15B declaration of conformity before they can be
+            sold. Testing is underway. Reserve and I&rsquo;ll email you the day
+            it clears &mdash; no deposit, no obligation.
+          </div>
           <a href="#reserve" class="btn ghost">Reserve</a>
         </div>
         <div class="tier feature">
@@ -570,6 +586,12 @@
             <li>Weeks per charge</li>
             <li>Recharge over USB-C</li>
           </ul>
+          <div class="tier-why">
+            <strong>Why you can&rsquo;t buy it yet.</strong> Assembled units need
+            an FCC Part&nbsp;15B declaration of conformity before they can be
+            sold. Testing is underway. Reserve and I&rsquo;ll email you the day
+            it clears &mdash; no deposit, no obligation.
+          </div>
           <a href="#reserve" class="btn signal">Reserve a unit</a>
         </div>
         <div class="tier" id="kit">
