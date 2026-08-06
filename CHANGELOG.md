@@ -80,6 +80,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A spreadsheet export of a temperature-only probe carried two empty
+  columns.** `export_friendly_csv` promises "unused humidity/VPD dropped", but
+  the gate asked whether the *hub* held humidity anywhere, not whether *this
+  export* did. So one grow probe in the building put a permanently blank
+  `humidity_pct` and `vpd_kpa` on every other export — including the
+  single-freezer file a restaurant hands an inspector, and any date range from
+  before a grow probe was installed. The gate now takes the export's own
+  filters. An unfiltered export is unchanged, and a hub with no humidity at all
+  still produces the byte-identical file it always has.
 - **Setting an alarm limit with notifications off said nothing.** Entering a
   min/max on the Devices page is the operator saying "tell me if this goes
   wrong", and the save confirmation is the moment they believe they are covered.

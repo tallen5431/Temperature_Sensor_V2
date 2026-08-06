@@ -812,3 +812,81 @@ def test_export_xlsx_is_unchanged_without_humidity(db):
     assert headers == ["date", "time", "probe", "temperature_c", "temperature_f",
                        "probe_id", "timestamp_utc"]
     assert ws.auto_filter.ref.startswith("A1:G")
+
+
+# --- humidity columns follow the EXPORT, not the hub ------------------------
+
+def _mixed_fleet(tmp_path, name="mixed.db"):
+    """A store with one temperature probe and one grow probe — the case where
+    "does this hub hold humidity?" and "does this file hold humidity?" differ."""
+    import datetime as _dt
+    db = Database(tmp_path / name)
+    now = _dt.datetime.now()
+    for i in range(5):
+        ts = (now - _dt.timedelta(minutes=i)).isoformat(timespec="milliseconds")
+        db.append(ts, -18.0, -0.4, "Freezer")
+        db.append(ts, 21.0, 69.8, "GrowTent", humidity=45.0, vpd=1.2)
+    return db
+
+
+def _header(db, **kw):
+    import io
+    buf = io.StringIO()
+    db.export_friendly_csv(buf, name_map={}, **kw)
+    return buf.getvalue().splitlines()[0].split(",")
+
+
+def test_an_export_of_a_temperature_only_probe_drops_the_humidity_columns(tmp_path):
+    """export_friendly_csv promises "unused humidity/VPD dropped". The gate asked
+    the whole table, so one grow probe anywhere in the store put two permanently
+    empty columns on every other probe's export — including the single-freezer
+    file a restaurant hands to an inspector."""
+    db = _mixed_fleet(tmp_path)
+    assert "humidity_pct" not in _header(db, probe_id="Freezer")
+
+
+def test_an_export_of_the_grow_probe_keeps_them(tmp_path):
+    db = _mixed_fleet(tmp_path, name="grow.db")
+    header = _header(db, probe_id="GrowTent")
+    assert "humidity_pct" in header and "vpd_kpa" in header
+
+
+def test_an_unfiltered_export_still_carries_them(tmp_path):
+    db = _mixed_fleet(tmp_path, name="all.db")
+    assert "humidity_pct" in _header(db)
+
+
+def test_a_date_range_with_no_humidity_in_it_drops_them(tmp_path):
+    """The filter is not only by probe: a date range ENDING before a grow probe
+    was installed holds no humidity either, so a report covering last month must
+    not advertise columns that month has nothing for."""
+    import datetime as _dt
+    db = Database(tmp_path / "range.db")
+    old = _dt.datetime.now() - _dt.timedelta(days=10)
+    db.append(old.isoformat(timespec="milliseconds"), -18.0, -0.4, "Freezer")
+    db.append(_dt.datetime.now().isoformat(timespec="milliseconds"),
+              21.0, 69.8, "GrowTent", humidity=45.0, vpd=1.2)
+    assert "humidity_pct" in _header(db), "the unfiltered export lost them"
+
+    cutoff = (_dt.datetime.now() - _dt.timedelta(days=5)).timestamp()
+    header = _header(db, end_epoch=cutoff)
+    assert "humidity_pct" not in header, \
+        "a range that predates the grow probe still advertised humidity"
+    # ...and the range really did contain the freezer row, so this is not
+    # vacuously true on an empty export.
+    import io
+    buf = io.StringIO()
+    assert db.export_friendly_csv(buf, name_map={}, end_epoch=cutoff) == 1
+
+
+def test_has_humidity_with_no_arguments_is_unchanged(tmp_path):
+    """The whole-table question still has to answer correctly — it is the
+    default, and a plain temperature deployment's export must stay
+    byte-identical to what it has always been."""
+    db = Database(tmp_path / "plain.db")
+    import datetime as _dt
+    db.append(_dt.datetime.now().isoformat(timespec="milliseconds"), 4.0, 39.2, "P1")
+    assert db.has_humidity() is False
+    db.append(_dt.datetime.now().isoformat(timespec="milliseconds"),
+              21.0, 69.8, "P2", humidity=45.0, vpd=1.2)
+    assert db.has_humidity() is True

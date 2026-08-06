@@ -990,17 +990,35 @@ class Database:
     _FRIENDLY_HEADERS = ["date", "time", "probe", "temperature_c", "temperature_f",
                          "probe_id", "timestamp_utc"]
 
-    def has_humidity(self) -> bool:
-        """Whether ANY stored reading carries humidity.
+    def has_humidity(self, window_seconds: Optional[int] = None,
+                     probe_id: Optional[str] = None,
+                     start_epoch: Optional[int] = None,
+                     end_epoch: Optional[int] = None) -> bool:
+        """Whether any reading MATCHING THESE FILTERS carries humidity.
 
         Gates the humidity/VPD columns on the spreadsheet exports the same way
-        ``sites()`` gates the site column: present when the hub actually holds
-        the data, absent otherwise, so a plain temperature deployment's export
-        is byte-identical to what it has always been. Single indexed EXISTS —
-        it does not scan.
+        ``sites()`` gates the site column: present when the data is actually
+        there, absent otherwise, so a plain temperature deployment's export is
+        byte-identical to what it has always been.
+
+        It takes the export's own filters because the question the export needs
+        answered is about the file being written, not about the hub. Asked
+        globally, one grow probe anywhere in the store put two permanently-empty
+        columns on every export of every other probe — including the single-
+        freezer export a restaurant hands to an inspector, which
+        ``export_friendly_csv``'s docstring promises has "unused humidity/VPD
+        dropped".
+
+        Called with no arguments it is the same single indexed EXISTS as before.
+        With filters it is bounded by the rows the export is about to read
+        anyway.
         """
+        where, params = self._export_where(window_seconds, probe_id,
+                                           start_epoch, end_epoch)
+        clause = f"{where} AND humidity_pct IS NOT NULL" if where \
+            else "WHERE humidity_pct IS NOT NULL"
         row = self._conn().execute(
-            "SELECT 1 FROM readings WHERE humidity_pct IS NOT NULL LIMIT 1").fetchone()
+            f"SELECT 1 FROM readings {clause} LIMIT 1", params).fetchone()
         return row is not None
 
     def export_friendly_csv(self, file_obj, name_map: Optional[dict] = None,
@@ -1033,7 +1051,10 @@ class Database:
         # it matters MORE here — this variant leads with the friendly name, and
         # six stores all calling a probe "Walk-in" is the ordinary case.
         multi = bool(self.sites())
-        humid = self.has_humidity()
+        # The export's OWN filters, so a temperature-only probe's export does
+        # not carry two empty columns just because a grow probe exists elsewhere
+        # in the same store.
+        humid = self.has_humidity(window_seconds, probe_id, start_epoch, end_epoch)
         writer = _csv.writer(file_obj)
         writer.writerow(self._FRIENDLY_HEADERS
                         + (["humidity_pct", "vpd_kpa"] if humid else [])
@@ -1103,7 +1124,8 @@ class Database:
         # column widths have to track it, or the dropdowns stop one column short
         # of the data and the new column renders at default width.
         multi = bool(self.sites())
-        humid = self.has_humidity()   # same gate as export_friendly_csv
+        # Same gate as export_friendly_csv, filters and all.
+        humid = self.has_humidity(window_seconds, probe_id, start_epoch, end_epoch)
         headers = (self._FRIENDLY_HEADERS
                    + (["humidity_pct", "vpd_kpa"] if humid else [])
                    + (["site"] if multi else []))
