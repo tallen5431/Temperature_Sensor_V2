@@ -80,6 +80,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A busy hub buried its own log under waitress queue warnings.** Waitress logs
+  a WARNING for every queued request while its worker pool is saturated, and
+  saturation is a sustained condition — a 45-second burst produced **13,383 of
+  them against 404 real hub lines**, a 33:1 flood describing successful
+  backpressure (nothing failed in that run). The realistic trigger is twenty
+  probes draining buffered readings at once after an outage, which is exactly
+  when an operator is already anxious and reading their log. They also bypassed
+  `logs/hub.log` entirely — waitress logs to its own top-level logger while the
+  hub's handlers hang off the `hub` tree, so they printed to the console in a
+  foreign format and never reached the file a customer is asked to send to
+  support. Waitress now writes through the hub's own handlers, and the
+  queue-depth stream is throttled to one notice per five minutes carrying a
+  count of what it stood for. Every other waitress record passes untouched, so a
+  real serving error is never hidden. Same treatment
+  `probe_discovery._quiet_zeroconf_cache_race` already gives zeroconf.
 - **Multi-site over plain HTTP to an off-site address said nothing.** Forwarding
   sends head office's **device token** — the credential that lets a caller write
   into its reading log — plus every reading, and over `http://` to somewhere off
