@@ -95,7 +95,11 @@ StatsRow = dbc.Row([
     ]), className="h-100 text-center"), xs=12, md=4),
     dbc.Col(dbc.Card(dbc.CardBody([
         html.H6("Max Temperature", className="text-muted mb-1"),
-        html.H4(id="stat-max", className="fw-bold text-danger mb-0"),
+        # Neutral in the markup too, not just in the callback: this class is what
+        # shows for the instant before the first render, and painting the peak
+        # alarm-red before anything has been compared to a limit is the same
+        # false signal one frame earlier.
+        html.H4(id="stat-max", className="fw-bold text-body mb-0"),
         html.Small(id="stat-max-time", className="text-muted"),
     ]), className="h-100 text-center"), xs=12, md=4),
     dbc.Col(dbc.Card(dbc.CardBody([
@@ -500,15 +504,24 @@ def _friendly_name(cfg, probe_id):
     return cfg.get("probe_names", {}).get(probe_id, probe_id)
 
 
-def _make_gauge(name, t_c, lo, hi, temp_unit, suffix):
+def _make_gauge(name, t_c, lo, hi, temp_unit, suffix, stale=False):
     """A temperature gauge that shows ONE probe in context: coloured threshold
     zones (blue below min, green in the safe band, red above max), a bar coloured
     by state, and an axis ranged around the band (or the value) — so a −18 °C
     freezer and a 32 °C office each read sensibly instead of on a fixed 0–100.
+
+    ``stale`` mutes the whole thing. This is the largest element on the page, and
+    a probe that stopped reporting still had its last reading drawn as a
+    confident green bar — right beside a "NO DATA" badge saying the opposite. The
+    per-probe cards below already grey out and say "stale"; the biggest number on
+    the screen was the one still claiming everything was fine.
     """
     val = _convert(t_c, temp_unit)
     breach = threshold_breach(t_c, lo, hi)
     bar = {"high": "#f05a54", "low": "#38b6d9"}.get(breach, "#2fbf71")
+    if stale:
+        bar = "#6e8393"
+        name = f"{name} · last known"
 
     # Axis range in Celsius, then converted — padded to always include the value.
     if lo is not None and hi is not None:
@@ -542,7 +555,7 @@ def _make_gauge(name, t_c, lo, hi, temp_unit, suffix):
         # and "67.7 °F" but "293 K" — the gauge is the largest number on the
         # dashboard and was the only one that silently dropped a decimal.
         number={"suffix": suffix, "valueformat": ".1f",
-                "font": {"size": 40, "color": "#e9f1f7"}},
+                "font": {"size": 40, "color": "#6e8393" if stale else "#e9f1f7"}},
         title={"text": name, "font": {"size": 15, "color": "#9db0be"}},
         gauge={"axis": {"range": ax, "tickcolor": "#6e8393",
                         "tickfont": {"color": "#9db0be", "size": 10}},
@@ -865,12 +878,30 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
     focus = focus_probe if (focus_probe and focus_probe != "all") else None
     focus_ts = None  # the focused probe's OWN latest timestamp (for "Last Update")
 
-    # Value colours, so an empty hub does not paint "N/A" for MAX in alarm red as
-    # though something were wrong. Live values keep the info/danger/success
-    # coding that makes the three tiles scannable.
-    STAT_LIVE = ("fw-bold text-info mb-0", "fw-bold text-danger mb-0",
-                 "fw-bold text-success mb-0")
+    # Value colours. MAX used to be painted alarm red unconditionally, in the
+    # markup AND here, so a Prep Room peaking at 22.9 °C inside an 18–25 °C band
+    # sat in the KPI row looking like an incident. Red on this page means "a limit
+    # was crossed" everywhere else, so it has to mean that here too — otherwise it
+    # is decoration, and the operator learns to ignore the one colour that should
+    # never be ignored. `_stat_classes` below decides per render.
+    STAT_NEUTRAL = "fw-bold text-body mb-0"
+    STAT_COLD = "fw-bold text-info mb-0"
+    STAT_BREACH = "fw-bold text-danger mb-0"
+    STAT_OK = "fw-bold text-success mb-0"
     STAT_EMPTY = ("fw-bold text-muted mb-0",) * 3
+
+    def _breached(value, probe_id, bound):
+        """Did this extreme actually cross the limit the probe it came from is
+        held to? ``bound`` is "min" or "max"."""
+        try:
+            thr = (cfg.get("alert_thresholds", {}) or {}).get(probe_id) or {}
+            limit = thr.get(bound)
+            if limit is None or value is None:
+                return False
+            return float(value) > float(limit) if bound == "max" \
+                else float(value) < float(limit)
+        except (TypeError, ValueError):
+            return False
 
     def _no_data():
         """The 17-tuple for 'nothing to plot yet'. Shared by the first-run path
@@ -981,8 +1012,28 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
                     _, focus_pid, focus_c, focus_lo, focus_hi = best
             except Exception:
                 pass
+        # Is the reading the gauge is about to draw still current? Judged by the
+        # same per-probe rule as everything else on the page, off the row the
+        # gauge actually took its value from, so the biggest number on the screen
+        # cannot disagree with the small card underneath it.
+        gauge_stale = False
+        try:
+            gauge_row = None
+            if gauge_rows is not None and not gauge_rows.empty:
+                match = gauge_rows[gauge_rows["probe_id"] == focus_pid]
+                gauge_row = match.iloc[-1] if not match.empty else None
+            if gauge_row is None and latest is not None \
+                    and latest.get("probe_id") == focus_pid:
+                gauge_row = latest
+            if gauge_row is not None:
+                age = _row_age_seconds(gauge_row, datetime.datetime.now())
+                gauge_stale = (age is not None
+                               and age > _probe_fresh_window(cfg, focus_pid))
+        except Exception:  # noqa: BLE001 - a freshness read must never lose the gauge
+            gauge_stale = False
         gauge = _make_gauge(_friendly_name(cfg, focus_pid), focus_c,
-                            focus_lo, focus_hi, temp_unit, suffix)
+                            focus_lo, focus_hi, temp_unit, suffix,
+                            stale=gauge_stale)
 
         # --- Windowed series for the graph (focus mode filters to one probe) ---
         # Stats first: a provably-empty window skips window_df entirely —
@@ -1175,11 +1226,18 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
                 # doesn't headline a blended average. It points to the per-probe
                 # breakdown just below instead. Global Min/Max stay meaningful as
                 # the coldest / hottest reading anywhere.
-                stat_avg = "Per-probe"
+                #
+                # An em-dash, not the word "Per-probe". A word set in the big bold
+                # slot the other two tiles fill with a temperature reads as a
+                # failed render, not as "not applicable" — and this is the KPI
+                # row, the part of the page people scan first. "—" is the glyph
+                # _no_data() already uses for "nothing to show here"; the line
+                # underneath carries the explanation.
+                stat_avg = "—"
                 # Names where the breakdown now lives: it moved behind the
                 # dashboard's "More detail" fold, so "below" would send someone
                 # looking at a section that is closed.
-                stat_avg_info = "per-probe breakdown under “More detail”"
+                stat_avg_info = "varies by probe — see “More detail”"
             else:
                 stat_avg = _fmt(stats["avg"], temp_unit)
                 stat_avg_info = f"{filtered_points:,} readings"
@@ -1257,9 +1315,23 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
         except Exception:
             hb = f"Last reading: {ts}"
 
+        if not filtered_points:
+            stat_classes = STAT_EMPTY
+        else:
+            stat_classes = (
+                # Cold is the natural reading of a minimum, so blue unless the
+                # probe it came from was actually below its own floor.
+                STAT_BREACH if _breached(stats.get("min"), stats.get("min_probe"), "min")
+                else STAT_COLD,
+                STAT_BREACH if _breached(stats.get("max"), stats.get("max_probe"), "max")
+                else STAT_NEUTRAL,
+                # Green claims "healthy". The overview's em-dash is not a value
+                # and must not be dressed as a good one.
+                STAT_OK if stat_avg != "—" else STAT_NEUTRAL,
+            )
         return (gauge, fig, str(probes_online), last_update, logging_status, hb, range_info,
                 stat_min, stat_min_time, stat_max, stat_max_time, stat_avg, stat_avg_info,
-                alerts) + (STAT_EMPTY if not filtered_points else STAT_LIVE)
+                alerts) + stat_classes
 
     except Exception:
         log.exception("dashboard update failed")

@@ -14,7 +14,8 @@ from typing import Any, Dict, List, Optional
 
 from core.applog import HEALTH, PROCESS_START
 from core.probes import discovered_probes
-from core.status import reporting_probe_ids, hub_health_window
+from core.status import (REPORTING_LOOKBACK_SEC, hub_health_window,
+                         reporting_probe_ids)
 
 
 def _int(v: Any, default: int) -> int:
@@ -70,6 +71,18 @@ def build_diagnostics(cfg, db, finder, public_base: str, version: str,
     except Exception:
         reporting_ids, reporting = set(), None
 
+    # The name the OPERATOR gave this probe, not the one the firmware announces.
+    # The shipping firmware advertises its TXT `name` equal to the probe id, so
+    # the Name column rendered the id a second time — two identical columns, and
+    # no way to tell from this page which physical unit a row is. The point of
+    # this snapshot is that someone can read it and act; "Setpoint-4B71E0 is
+    # offline" and "Chest Freezer is offline" are not the same sentence. The id
+    # column stays exactly as it is, because that is what support asks for.
+    names = cfg.get("probe_names", {}) or {}
+
+    def _label(pid, announced=""):
+        return names.get(pid) or announced or pid
+
     probe_list: List[Dict[str, Any]] = []
     online = 0
     seen = set()
@@ -81,8 +94,8 @@ def build_diagnostics(cfg, db, finder, public_base: str, version: str,
         online += 1 if is_online else 0
         if pid:
             seen.add(pid)
-        probe_list.append({"name": p["name"], "probe_id": pid, "ip": p["ip"],
-                           "age_sec": age, "online": is_online})
+        probe_list.append({"name": _label(pid, p["name"]), "probe_id": pid,
+                           "ip": p["ip"], "age_sec": age, "online": is_online})
 
     # Probes known only from ingest — a deep-sleep battery probe keeps its radio
     # off between readings, so it is never mDNS-discovered. The summary line
@@ -91,9 +104,34 @@ def build_diagnostics(cfg, db, finder, public_base: str, version: str,
     # table of one, with no way to tell which two were missing. /api/probes has
     # always appended them; this is the same overlay, on the same rule.
     for pid in sorted(reporting_ids - seen):
-        probe_list.append({"name": pid, "probe_id": pid, "ip": None,
+        probe_list.append({"name": _label(pid), "probe_id": pid, "ip": None,
                            "age_sec": None, "online": True, "source": "readings"})
         online += 1
+        seen.add(pid)
+
+    # ...and the probes that have STOPPED. Everything above lists only what is
+    # currently fresh or currently visible over mDNS, so when a site went dark
+    # the table emptied completely: "0 reporting · none discovered yet" above a
+    # blank space, on the page whose entire purpose is that a customer can copy it
+    # and send it to support. The page was least informative exactly when
+    # something was wrong, and the one fact support needs first — WHICH probes
+    # exist and when each was last heard from — was the fact it dropped.
+    #
+    # The reporting/online counts above are unchanged: these are listed as
+    # offline, with their real age, which is the whole point.
+    try:
+        recent = db.last_reading_epoch_per_probe(window_seconds=REPORTING_LOOKBACK_SEC) or {}
+    except Exception:  # noqa: BLE001 - a snapshot must never fail to render
+        recent = {}
+    for pid, epoch in sorted(recent.items()):
+        if not pid or pid in seen:
+            continue
+        try:
+            age = round(now - float(epoch), 1)
+        except (TypeError, ValueError):
+            age = None
+        probe_list.append({"name": _label(pid), "probe_id": pid, "ip": None,
+                           "age_sec": age, "online": False, "source": "readings"})
 
     try:
         readings = db.count()

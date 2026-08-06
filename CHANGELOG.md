@@ -80,6 +80,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The gauge kept claiming everything was fine after the probe stopped
+  reporting.** It is the largest element on the dashboard, and it drew a
+  probe's last reading as a confident green bar — directly beside a "NO DATA"
+  badge saying the opposite, and above per-probe cards that had correctly greyed
+  themselves out. It now mutes and its caption reads "· last known"; the value
+  stays, because the last known reading is the most useful thing the hub still
+  has, it just must not be dressed as current.
+- **The Max tile was painted alarm red for every reading.** `text-danger` was
+  hard-coded in the markup *and* in the callback, so a Prep Room peaking at
+  22.9 °C inside an 18–25 °C band sat in the KPI row looking like an incident.
+  Red means "a limit was crossed" everywhere else on the page; a colour that
+  fires unconditionally teaches an operator to ignore the one colour that must
+  never be ignored. Both tiles now go red only when the extreme really did cross
+  the limit of the probe it came from.
+- **The overview's Average tile printed a word where a number goes.** A blended
+  average across a −18 °C freezer and a 21 °C room is a number no probe is near,
+  so the overview deliberately doesn't headline one — but it printed the word
+  "Per-probe" in the big bold slot the other two tiles fill with a temperature,
+  which reads as a failed render, in the part of the page people scan first. It
+  is now an em-dash with the explanation underneath.
+- **Diagnostics dropped every probe the moment they went quiet.** The table
+  listed only what was freshly reporting or currently visible over mDNS, so a
+  site going dark emptied it completely — "0 reporting · none discovered yet"
+  above a blank space, on the page whose whole purpose is that a customer can
+  copy it and send it to support. It was least informative exactly when
+  something was wrong. Probes that have reported in the last week are now listed
+  as offline with how long they have been silent, and the reporting/online counts
+  are unchanged. The Name column also duplicated the Probe ID column exactly (it
+  showed the mDNS-announced name, which the firmware sets equal to the id); it
+  now shows the name the operator gave the probe, so a row says "Chest Freezer"
+  rather than "Setpoint-4B71E0" twice.
 - **The hub's device token could be sent off the LAN.** `api/routes.py` refuses a
   body-supplied hostname on the ingest path, and its comment says why: it "lands
   in the discovery registry, and the auto-provisioner then resolves it and POSTs

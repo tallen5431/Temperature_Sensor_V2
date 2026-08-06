@@ -158,3 +158,49 @@ def test_diagnostics_reporting_matches_dashboard_window(tmp_path):
     d = build_diagnostics(cfg, db, _FakeFinder(), "http://hub", "2.4.1", "Setpoint")
     # 400 s < 600 s window -> counted (the old flat 300 s window would have missed it).
     assert d["probes"]["reporting"] == 1
+
+
+def _gauge_of(tmp_path, minutes_ago, name="g.db"):
+    """Render the dashboard with one probe last heard from `minutes_ago`."""
+    import datetime as _dt
+    from core.config import Config
+    from core.db import Database
+    from components.dashboard_view import build_dashboard
+
+    class _NoFinder:
+        def list_probes(self):
+            return {}
+
+    db = Database(tmp_path / name)
+    cfg = Config(tmp_path / (name + ".json"))
+    cfg.update({"alert_thresholds": {"P1": {"min": 18.0, "max": 25.0}}})
+    ts = (_dt.datetime.now() - _dt.timedelta(minutes=minutes_ago)
+          ).isoformat(timespec="milliseconds")
+    db.append(ts, 21.4, 70.5, "P1")
+    return build_dashboard(db, cfg, _NoFinder(), "24h", "celsius")[0]
+
+
+def test_the_gauge_is_muted_once_its_probe_has_gone_quiet(tmp_path):
+    """The gauge is the largest element on the page. A probe that stopped
+    reporting still had its last reading drawn as a confident green bar — beside
+    a "NO DATA" badge saying the opposite, and above per-probe cards that had
+    correctly greyed themselves out. The biggest number on the screen was the one
+    still claiming everything was fine."""
+    fig = _gauge_of(tmp_path, minutes_ago=60)
+    bar = fig["data"][0]["gauge"]["bar"]["color"]
+    assert bar == "#6e8393", f"a stale gauge is still painted live: {bar}"
+    assert "last known" in fig["data"][0]["title"]["text"], \
+        "nothing on the gauge says the reading is old"
+
+
+def test_a_fresh_gauge_keeps_its_colour_and_says_nothing_extra(tmp_path):
+    fig = _gauge_of(tmp_path, minutes_ago=0, name="fresh.db")
+    assert fig["data"][0]["gauge"]["bar"]["color"] == "#2fbf71"
+    assert "last known" not in fig["data"][0]["title"]["text"]
+
+
+def test_the_muted_gauge_still_shows_the_reading(tmp_path):
+    """Muted, not blanked — the last known value is the most useful thing the
+    hub still has, it just must not be dressed as current."""
+    fig = _gauge_of(tmp_path, minutes_ago=60, name="val.db")
+    assert fig["data"][0]["value"] == 21.4

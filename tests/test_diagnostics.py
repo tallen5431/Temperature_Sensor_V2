@@ -157,3 +157,113 @@ def test_build_includes_health_block(tmp_path):
     assert h["uptime_sec"] >= 0
     assert h["readings_24h"] == 1
     assert isinstance(h["disk_free_bytes"], int)  # real path -> real free space
+
+
+def test_the_probe_table_shows_the_name_the_operator_gave_it(tmp_path):
+    """The Name column rendered the probe id a second time: `name` came from the
+    mDNS TXT `name` key, and the shipping firmware advertises that equal to the
+    id. So the table had two identical columns and no way to tell which physical
+    unit a row was — on the page whose whole purpose is that someone can read it
+    and act. "Setpoint-4B71E0 is offline" and "Chest Freezer is offline" are not
+    the same sentence."""
+    import datetime
+    from core.config import Config
+    from core.db import Database
+    from core.diagnostics import build_diagnostics
+
+    db = Database(tmp_path / "d.db")
+    cfg = Config(tmp_path / "c.json")
+    cfg.update({"probe_names": {"Setpoint-4B71E0": "Chest Freezer"}})
+    db.append(datetime.datetime.now().isoformat(timespec="milliseconds"),
+              -18.5, -1.3, "Setpoint-4B71E0")
+
+    class NoFinder:
+        def list_probes(self):
+            return {}
+
+    out = build_diagnostics(cfg, db, NoFinder(), "http://h:8088", "2.0.0", "Setpoint")
+    row, = [p for p in out["probes"]["list"] if p["probe_id"] == "Setpoint-4B71E0"]
+    assert row["name"] == "Chest Freezer"
+    assert row["probe_id"] == "Setpoint-4B71E0", \
+        "the id column must stay — it is what support asks for"
+
+
+def test_a_probe_with_no_friendly_name_still_reads_sensibly(tmp_path):
+    import datetime
+    from core.config import Config
+    from core.db import Database
+    from core.diagnostics import build_diagnostics
+
+    db = Database(tmp_path / "d2.db")
+    cfg = Config(tmp_path / "c2.json")
+    db.append(datetime.datetime.now().isoformat(timespec="milliseconds"),
+              4.0, 39.2, "Setpoint-9A3F2C")
+
+    class NoFinder:
+        def list_probes(self):
+            return {}
+
+    out = build_diagnostics(cfg, db, NoFinder(), "http://h:8088", "2.0.0", "Setpoint")
+    row, = [p for p in out["probes"]["list"] if p["probe_id"] == "Setpoint-9A3F2C"]
+    assert row["name"] == "Setpoint-9A3F2C"
+
+
+def test_probes_that_have_stopped_are_still_listed(tmp_path):
+    """The table listed only what was fresh or currently mDNS-visible, so when a
+    site went dark it emptied completely — "0 reporting · none discovered yet"
+    above a blank space, on the page whose entire purpose is that a customer can
+    copy it and send it to support. It was least informative exactly when
+    something had gone wrong, and the first fact support needs — WHICH probes
+    exist and when each was last heard from — was the one it dropped."""
+    import datetime
+    from core.config import Config
+    from core.db import Database
+    from core.diagnostics import build_diagnostics
+
+    db = Database(tmp_path / "dark.db")
+    cfg = Config(tmp_path / "dark.json")
+    cfg.update({"probe_names": {"Setpoint-4B71E0": "Chest Freezer"}})
+    old = (datetime.datetime.now() - datetime.timedelta(hours=6)
+           ).isoformat(timespec="milliseconds")
+    db.append(old, -18.5, -1.3, "Setpoint-4B71E0")
+
+    class NoFinder:
+        def list_probes(self):
+            return {}
+
+    out = build_diagnostics(cfg, db, NoFinder(), "http://h:8088", "2.0.0", "Setpoint")
+    listed = {p["probe_id"]: p for p in out["probes"]["list"]}
+    assert "Setpoint-4B71E0" in listed, "a probe that went quiet vanished from the snapshot"
+    row = listed["Setpoint-4B71E0"]
+    assert row["online"] is False
+    assert row["name"] == "Chest Freezer"
+    assert row["age_sec"] and row["age_sec"] > 3600, \
+        "no indication of how long it has been silent"
+    # The counts are about what is REPORTING and must not move.
+    assert out["probes"]["reporting"] == 0 and out["probes"]["online"] == 0
+
+
+def test_a_probe_is_never_listed_twice(tmp_path):
+    """It can be reachable over mDNS, freshly reporting, and present in the
+    lookback window all at once — three code paths, one row."""
+    import datetime
+    from core.config import Config
+    from core.db import Database
+    from core.diagnostics import build_diagnostics
+
+    db = Database(tmp_path / "dup.db")
+    cfg = Config(tmp_path / "dup.json")
+    db.append(datetime.datetime.now().isoformat(timespec="milliseconds"),
+              4.0, 39.2, "Setpoint-9A3F2C")
+
+    class Finder:
+        def list_probes(self):
+            import time
+            from probe_discovery import ProbeInfo
+            return {"k": ProbeInfo("Setpoint-9A3F2C", "Setpoint-9A3F2C.local.",
+                                   "10.0.0.5", 80, {"id": "Setpoint-9A3F2C"},
+                                   time.time())}
+
+    out = build_diagnostics(cfg, db, Finder(), "http://h:8088", "2.0.0", "Setpoint")
+    ids = [p["probe_id"] for p in out["probes"]["list"]]
+    assert ids.count("Setpoint-9A3F2C") == 1, f"listed more than once: {ids}"

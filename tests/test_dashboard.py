@@ -555,10 +555,86 @@ def test_empty_hub_uses_muted_stat_colours_not_alarm_red(tmp_path):
 
 
 def test_populated_hub_keeps_the_scannable_stat_colours(tmp_path):
-    """Muting must apply only to the empty state — the info/danger/success
-    coding is what makes the three tiles readable at a glance."""
+    """Muting must apply only to the empty state — the tiles still need to be
+    readable at a glance. Colour must not be alarm red for a peak that never
+    crossed anything, though; see the tests below."""
     db = Database(tmp_path / "d.db")
     cfg = Config(tmp_path / "c.json")
     db.append(datetime.datetime.now().isoformat(timespec="milliseconds"), 4.0, 39.2, "P1")
     out = build_dashboard(db, cfg, FakeFinder(), "24h", "celsius")
-    assert "text-info" in out[-3] and "text-danger" in out[-2] and "text-success" in out[-1]
+    for cls in (out[-3], out[-2], out[-1]):
+        assert "text-muted" not in cls, "live values are muted as though empty"
+    assert "text-info" in out[-3] and "text-success" in out[-1]
+
+
+def _stat_classes(tmp_path, temp_c, thresholds, name="s.db"):
+    db = Database(tmp_path / name)
+    cfg = Config(tmp_path / (name + ".json"))
+    if thresholds:
+        cfg.update({"alert_thresholds": {"P1": thresholds}})
+    db.append(datetime.datetime.now().isoformat(timespec="milliseconds"),
+              temp_c, temp_c * 9 / 5 + 32, "P1")
+    out = build_dashboard(db, cfg, FakeFinder(), "24h", "celsius")
+    return out[-3], out[-2]          # min class, max class
+
+
+def test_the_max_tile_is_not_alarm_red_for_a_peak_inside_its_limits(tmp_path):
+    """MAX was painted text-danger unconditionally — in the static markup and in
+    the callback — so a Prep Room peaking at 22.9 °C inside an 18–25 °C band sat
+    in the KPI row looking like an incident. Red means "a limit was crossed"
+    everywhere else on this page; a colour that fires for every reading teaches
+    the operator to ignore the one colour that must never be ignored."""
+    _min_cls, max_cls = _stat_classes(tmp_path, 22.9, {"min": 18.0, "max": 25.0})
+    assert "text-danger" not in max_cls, "a normal peak is still painted as an alarm"
+
+
+def test_the_max_tile_is_alarm_red_when_the_peak_really_did_breach(tmp_path):
+    _min_cls, max_cls = _stat_classes(tmp_path, 26.5, {"min": 18.0, "max": 25.0},
+                                      name="hot.db")
+    assert "text-danger" in max_cls
+
+
+def test_the_min_tile_is_alarm_red_when_the_low_really_did_breach(tmp_path):
+    min_cls, _max = _stat_classes(tmp_path, -30.0, {"min": -22.0, "max": -15.0},
+                                  name="cold.db")
+    assert "text-danger" in min_cls
+
+
+def test_an_unwatched_probe_never_paints_either_tile_red(tmp_path):
+    """With no limits set nothing has been crossed, because nothing is being
+    checked. Inventing a breach here would be the same false signal."""
+    min_cls, max_cls = _stat_classes(tmp_path, 95.0, None, name="wild.db")
+    assert "text-danger" not in min_cls and "text-danger" not in max_cls
+
+
+def test_the_overview_average_is_not_a_word_in_the_number_slot(tmp_path):
+    """Across a −18 °C freezer and a 21 °C room a blended average is a number no
+    probe is near, so the overview does not headline one. But it used to print
+    the WORD "Per-probe" in the big bold slot the other two tiles fill with a
+    temperature, which reads as a failed render — in the KPI row, the part of the
+    page people scan first."""
+    db = Database(tmp_path / "multi.db")
+    cfg = Config(tmp_path / "multi.json")
+    now = datetime.datetime.now().isoformat(timespec="milliseconds")
+    db.append(now, -18.5, -1.3, "Freezer")
+    db.append(now, 21.4, 70.5, "Room")
+    out = build_dashboard(db, cfg, FakeFinder(), "24h", "celsius")
+    stat_avg, stat_avg_info = out[11], out[12]
+    assert stat_avg == "—", f"still a word where a number goes: {stat_avg!r}"
+    assert "More detail" in stat_avg_info, "the explanation went missing with it"
+    assert "text-success" not in out[-1], \
+        "an em-dash is not a value and must not be dressed as a healthy one"
+
+
+def test_a_single_probe_still_gets_a_real_average(tmp_path):
+    """The em-dash is only for the mixed-fleet overview. One probe — or one
+    focused probe — has a meaningful window average, and it is what a compliance
+    report is built from."""
+    db = Database(tmp_path / "one.db")
+    cfg = Config(tmp_path / "one.json")
+    now = datetime.datetime.now()
+    for i in range(5):
+        ts = (now - datetime.timedelta(minutes=i)).isoformat(timespec="milliseconds")
+        db.append(ts, 4.0, 39.2, "P1")
+    out = build_dashboard(db, cfg, FakeFinder(), "24h", "celsius")
+    assert out[11] != "—" and "°C" in out[11]
