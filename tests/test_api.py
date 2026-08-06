@@ -624,3 +624,51 @@ def test_a_truncated_csv_line_is_reported_not_swallowed(client):
 
 def test_a_wholly_unusable_body_is_still_a_400(client):
     assert client.post("/api/ingest_csv", json={"readings": "nope"}).status_code == 400
+
+
+# --- replay of a drained buffer chunk --------------------------------------
+# A probe re-sends its last un-checkpointed chunk when the ACK is lost. Three
+# places asserted that is always free; it is free only for rows that carry a
+# timestamp. These pin BOTH halves so the promise and the behaviour cannot drift
+# apart again — the firmware comment claiming "bufferAppend refuses an empty one"
+# had been wrong ever since 2.8.2 deliberately started writing empty ones.
+
+def _csv_post(client, body, probe_id):
+    return client.post("/api/ingest_csv", data=body, content_type="text/csv",
+                       headers={"X-Probe-ID": probe_id}).get_json()
+
+
+def test_replaying_a_stamped_chunk_stores_nothing_extra(client):
+    body = "".join(f"2026-08-05T10:0{i}:00.000,-18.{i},-0.4,Stamped\n" for i in range(5))
+    assert _csv_post(client, body, "Stamped")["accepted"] == 5
+    for _ in range(2):
+        assert _csv_post(client, body, "Stamped")["accepted"] == 0, \
+            "a stamped chunk must be idempotent — this is what the checkpoint rests on"
+    rows = client.get("/api/readings?probe=Stamped&limit=1000").get_json()["readings"]
+    assert len(rows) == 5
+
+
+def test_replaying_an_unstamped_chunk_does_duplicate(client):
+    """Not the behaviour anyone wants, but the behaviour there is — and the
+    documentation now says so. Pinned deliberately: if a later change makes this
+    idempotent, PROTOCOL.md §7's caveat and the bufferFlush() comment must be
+    revisited in the same commit, and this failing test is what says so."""
+    body = "".join(f",-18.{i},-0.4,Clockless\n" for i in range(5))
+    assert _csv_post(client, body, "Clockless")["accepted"] == 5
+    _csv_post(client, body, "Clockless")
+    _csv_post(client, body, "Clockless")
+    rows = client.get("/api/readings?probe=Clockless&limit=1000").get_json()["readings"]
+    assert len(rows) > 5, (
+        "unstamped rows now dedupe on replay — good, but PROTOCOL.md §7 and the "
+        "bufferFlush() comment both document that they do NOT. Update them.")
+
+
+def test_an_unstamped_row_is_still_stored_rather_than_dropped(client):
+    """The 2.8.2 trade-off that created the replay exposure. Dropping the reading
+    outright — what it replaced — lost data on exactly the no-internet
+    deployment this product is sold for, which was worse."""
+    got = _csv_post(client, ",-18.5,-1.3,NoClock\n", "NoClock")
+    assert got["accepted"] == 1 and got["rejected"] == 0
+    rows = client.get("/api/readings?probe=NoClock&limit=10").get_json()["readings"]
+    assert rows and rows[0]["temperature_c"] == -18.5
+    assert rows[0]["timestamp"], "the hub must receipt-stamp what it accepts"

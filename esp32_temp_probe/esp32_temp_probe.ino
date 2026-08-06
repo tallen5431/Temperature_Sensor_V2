@@ -49,7 +49,9 @@
 //           radio spends far less time on. Falls back transparently to the
 //           per-reading path on an older hub (404/405) or a non-standard server
 //           URL. The hub dedupes by (probe_id, timestamp), so a re-sent chunk
-//           (dropped ACK) is ignored, never duplicated. (b) cold-boot rejoin —
+//           (dropped ACK) is ignored — for STAMPED lines. Unstamped ones, which
+//           2.8.2 later introduced, are receipt-stamped by the hub and therefore
+//           duplicate on replay; see bufferFlush(). (b) cold-boot rejoin —
 //           a probe with saved credentials retries its network for a 60 s grace
 //           and then continues OFFLINE instead of flipping to its own setup AP
 //           on a brief miss (the recharge-hosts-an-AP bug); after
@@ -808,10 +810,31 @@ int postChunk(const String& url, const String& body) {
 // FLUSH_CHECKPOINT_EVERY POSTs — and ALWAYS when the flush stops or completes —
 // so a mid-flush drop resumes from the last checkpoint. A resume may re-send the
 // last un-checkpointed chunk (a dropped ACK, or power lost before the checkpoint
-// commits), but the hub dedupes by (probe_id, timestamp) — every buffered line
-// carries a millisecond-precision stamp (bufferAppend refuses an empty one) —
-// so replays are ignored, not duplicated. In deep-sleep mode a single wake's
-// flush is capped at FLUSH_BUDGET_MS and resumes from the checkpoint next wake.
+// commits).
+//
+// Whether that replay is free depends on whether the line carries a stamp:
+//
+//   * STAMPED lines dedupe exactly. The hub's UNIQUE(probe_id, epoch, site) plus
+//     INSERT OR IGNORE means a re-sent chunk stores nothing the second time.
+//     Measured: five rows sent three times store five.
+//   * UNSTAMPED lines DO NOT. Since v2.8.2 bufferAppend deliberately writes a
+//     reading whose clock never synced with an empty leading field, and the hub
+//     receipt-stamps such rows on arrival — so a replay gets NEW stamps, new
+//     epochs, and lands as duplicate rows. Measured: five rows sent three times
+//     stored eight (partly deduped only by receipt stamps colliding by chance,
+//     so the count is not even predictable).
+//
+// This comment used to claim the opposite — "bufferAppend refuses an empty one"
+// — which was true before 2.8.2 and has been wrong since. The exposure is
+// narrow (it needs the ACK specifically to be lost) but it lands on the
+// deployment this product is sold for: local-first, no internet, NTP never
+// arrives. Closing it needs a stable per-row ordinal in the buffer format, which
+// is a wire change on both sides; recorded in PROTOCOL.md §7 rather than papered
+// over here. A content hash is NOT a fix: a freezer holding steady produces
+// byte-identical consecutive chunks legitimately.
+//
+// In deep-sleep mode a single wake's flush is capped at FLUSH_BUDGET_MS and
+// resumes from the checkpoint next wake.
 void bufferFlush() {
   if (!LittleFS.exists(BUFFER_FILE)) return;
 

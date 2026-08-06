@@ -80,6 +80,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Replaying a drained buffer chunk is only free for rows that carry a
+  timestamp.** Three places — `bufferFlush()`'s comment, the firmware's v2.8.1
+  header note, and PROTOCOL.md §7 — stated that a re-sent chunk after a dropped
+  ACK is always deduped by `UNIQUE(probe_id, epoch, site)`. That holds for
+  stamped rows (measured: five sent three times store five). It does **not** hold
+  for rows the hub receipt-stamps on arrival, which since firmware 2.8.2 means
+  any reading buffered by a probe whose clock never synced — the local-first,
+  no-internet deployment this product is sold for. A replay gets new stamps, new
+  epochs, and lands as duplicates (measured: five sent three times stored
+  **eight**, partly deduped only where receipt stamps collided by chance, so the
+  surplus is not even predictable). `bufferAppend` was changed in 2.8.2 to accept
+  an empty stamp *deliberately* — the alternative was dropping the reading
+  outright, which was worse — but the comment claiming it "refuses an empty one"
+  was never updated. All three now describe what actually happens, both halves
+  are pinned by tests, and PROTOCOL.md records that closing it needs a stable
+  per-row ordinal in the buffer format (a wire change), while noting that hashing
+  the chunk body is not a fix: a freezer holding steady produces byte-identical
+  consecutive chunks legitimately.
+- **The first "requests are queuing" notice was swallowed on a freshly-booted
+  machine.** The throttle added above seeded its last-emitted time to `0.0` and
+  compared it against `time.monotonic()`, which counts from **system boot** — so
+  for the first five minutes of uptime the notice was suppressed rather than
+  shown. That is exactly a hub configured to start on boot or login, at the one
+  moment it is most likely to be saturated: every probe rejoining at once. Caught
+  by the test container happening to be 294 s old.
 - **Firmware v2.9.1 — a threshold-watch report could land a full sample gap
   late.** When the watch is armed the probe sleeps to the next *sample* rather
   than the next report, clamped to whatever is left before the report is due so

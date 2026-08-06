@@ -330,12 +330,32 @@ fatal — one corrupt line never rejects the rest of the chunk.
 Errors mirror `/api/ingest` (`401` unauthorized, `413` too large / > 1000 rows,
 `400` unparseable body, `503` storage error).
 
-- `accepted` — rows **newly stored**. Ingest is idempotent (`UNIQUE(probe_id,
-  epoch, site)` + `INSERT OR IGNORE`), so a re-sent chunk after a dropped ACK is
-  deduped and legitimately reports `accepted: 0`. **A probe MUST advance its
-  buffer checkpoint on the `200` itself, not on `accepted`** — treating
-  `accepted: 0` as failure would re-send the same chunk forever and never drain
-  the backlog.
+- `accepted` — rows **newly stored**. For rows that CARRY A TIMESTAMP, ingest is
+  idempotent (`UNIQUE(probe_id, epoch, site)` + `INSERT OR IGNORE`): a re-sent
+  chunk after a dropped ACK is deduped and legitimately reports `accepted: 0`.
+  **A probe MUST advance its buffer checkpoint on the `200` itself, not on
+  `accepted`** — treating `accepted: 0` as failure would re-send the same chunk
+  forever and never drain the backlog.
+
+  > **Replay is only free for stamped rows.** A row with no timestamp is
+  > receipt-stamped by the hub on arrival (§6.2), so a replay of it gets *new*
+  > stamps, new epochs, and stores as duplicates. Measured on a live hub: five
+  > stamped rows sent three times store five; five unstamped rows sent three
+  > times store **eight** — partly deduped only where receipt stamps happened to
+  > collide, so the surplus is not even predictable.
+  >
+  > This is reachable in one configuration: firmware ≥ 2.8.2 buffers a reading
+  > whose clock has never synced with an empty timestamp field (deliberately —
+  > before that the reading was dropped outright, which was worse), and that is
+  > the local-first, no-internet deployment where NTP never arrives. It needs the
+  > ACK specifically to be lost, so it is narrow, but it is real and it is not
+  > what the paragraph above used to promise.
+  >
+  > Closing it properly needs a stable per-row ordinal in the buffer format —
+  > a wire change on both sides, so it is recorded here rather than half-done.
+  > Hashing the chunk body is **not** a fix: a freezer holding steady produces
+  > byte-identical consecutive chunks legitimately, and suppressing those would
+  > discard real readings.
 - `rejected` — rows the hub refused: outside the §6 range band, non-finite, or
   structurally unusable (a JSON element that is not an object, a CSV line with
   fewer than four fields — the shape a buffer truncated mid-append leaves

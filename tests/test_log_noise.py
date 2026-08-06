@@ -59,6 +59,21 @@ def isolated_logging():
                 lg._configured = configured
 
 
+class _Clock:
+    """A hand-wound clock, so these test the throttle rather than the ambient
+    value of time.monotonic() — which counts from system BOOT and was 294 s in
+    the container that first ran this, less than the 300 s interval."""
+
+    def __init__(self, t=0.0):
+        self.t = float(t)
+
+    def __call__(self):
+        return self.t
+
+    def advance(self, seconds):
+        self.t += float(seconds)
+
+
 def _emit(n, filt, name="waitress.queue"):
     """Push n records through the filter; return how many survive."""
     kept = 0
@@ -71,17 +86,29 @@ def _emit(n, filt, name="waitress.queue"):
 
 
 def test_a_burst_collapses_to_one_notice():
-    assert _emit(13_383, _ThrottledQueueDepth(interval_sec=300)) == 1
+    assert _emit(13_383, _ThrottledQueueDepth(300, clock=_Clock())) == 1
+
+
+def test_the_very_first_notice_is_never_swallowed():
+    """`_last` seeded to 0.0 was compared against time.monotonic(), which counts
+    from system BOOT — so on a machine less than one interval up, the first
+    notice was dropped. That is exactly a hub set to start on boot or login, at
+    the one moment it is most likely to be saturated: every probe rejoining at
+    once. Caught because the container running these tests had been up 294 s."""
+    for boot_age in (0.0, 1.0, 294.7, 299.9):
+        filt = _ThrottledQueueDepth(300, clock=_Clock(boot_age))
+        assert _emit(5, filt) == 1, f"first notice swallowed {boot_age}s after boot"
 
 
 def test_the_notice_says_how_many_it_stood_for():
     """Dropping 13,000 lines silently would trade one wrong impression for
     another — the operator should still learn the hub was saturated."""
-    filt = _ThrottledQueueDepth(interval_sec=300)
+    clock = _Clock()
+    filt = _ThrottledQueueDepth(300, clock=clock)
     _emit(500, filt)
     rec = logging.LogRecord("waitress.queue", logging.WARNING, __file__, 1,
                             "Task queue depth is %d", (9,), None)
-    filt._last = 0.0                      # the interval has elapsed
+    clock.advance(301)
     assert filt.filter(rec) is True
     text = rec.getMessage()
     assert "499 more" in text, text
@@ -89,16 +116,18 @@ def test_the_notice_says_how_many_it_stood_for():
 
 
 def test_the_interval_reopens():
-    filt = _ThrottledQueueDepth(interval_sec=300)
+    clock = _Clock()
+    filt = _ThrottledQueueDepth(300, clock=clock)
     assert _emit(50, filt) == 1
-    filt._last = 0.0
+    assert _emit(50, filt) == 0, "the interval has not elapsed"
+    clock.advance(301)
     assert _emit(50, filt) == 1
 
 
 def test_every_other_waitress_record_passes_untouched():
     """A real serving error must never be hidden by a filter aimed at one
     chatty sub-logger."""
-    filt = _ThrottledQueueDepth(interval_sec=300)
+    filt = _ThrottledQueueDepth(300, clock=_Clock())
     _emit(100, filt)                       # exhaust the queue-depth budget
     for name in ("waitress", "waitress.error", "hub.app"):
         assert _emit(3, filt, name=name) == 3, name

@@ -35,17 +35,25 @@ class _ThrottledQueueDepth(logging.Filter):
     waitress record is untouched, so a real serving error is never hidden.
     """
 
-    def __init__(self, interval_sec: float = QUEUE_NOTICE_INTERVAL_SEC):
+    def __init__(self, interval_sec: float = QUEUE_NOTICE_INTERVAL_SEC, clock=None):
         super().__init__()
         self.interval = float(interval_sec)
-        self._last = 0.0
+        # None means "nothing emitted yet", NOT "emitted at time zero". Seeding
+        # this to 0.0 compared against time.monotonic(), which counts from system
+        # boot — so on a machine less than `interval` seconds up, the very first
+        # notice was silently swallowed. That is precisely a hub configured to
+        # start on boot or login: the one moment it is most likely to be
+        # saturated (every probe rejoining at once) is the moment the warning
+        # would not have been shown.
+        self._last: float | None = None
         self._suppressed = 0
+        self._clock = clock or time.monotonic
 
     def filter(self, record: logging.LogRecord) -> bool:
         if record.name != "waitress.queue":
             return True
-        now = time.monotonic()
-        if now - self._last < self.interval:
+        now = self._clock()
+        if self._last is not None and now - self._last < self.interval:
             self._suppressed += 1
             return False
         if self._suppressed:
