@@ -858,6 +858,23 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                       f"this probe now alarms outside {swapped[0]:g} to {swapped[1]:g} {sym}."]
                      if swapped else [])
 
+        # Setting a limit is the operator saying "tell me if this goes wrong",
+        # and this is the moment they believe they are now covered. If the
+        # notification master switch is off, nothing will ever reach them — the
+        # dashboard will show the breach, and the 2am freezer failure this
+        # product exists to catch will be found in the morning. Say it here,
+        # where the belief is formed, not only on a Settings badge they have no
+        # reason to revisit.
+        setting_a_limit = (min_value not in (None, '')) or (max_value not in (None, ''))
+        alerts_off = not ((cfg.get('notifications', {}) or {}).get('enabled'))
+        if setting_a_limit and alerts_off:
+            swap_note = swap_note + [
+                html.Br(),
+                html.Strong("Alerts are switched off, so nobody will be told. "),
+                "This limit will show on the dashboard, but no email or webhook "
+                "will go out when it is crossed — turn alerts on in ",
+                dcc.Link("Settings → Alerts & notifications", href="/settings"), "."]
+
         # The off-switch wins over everything else: with auto_provision false the
         # hub omits `config` from every /api/ingest reply, so a sleeping probe
         # never receives this change at all. That is a deliberate "don't manage
@@ -878,10 +895,13 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
 
         # A probe that is awake most of the time picks the change up almost at
         # once and a "check back later" note would just be noise.
+        # A caveat in the body has to be reflected in the colour, or it reads as
+        # a green "all done" with small print nobody finishes.
+        caveat = bool(swapped) or (setting_a_limit and alerts_off)
         if interval_sec < 60:
             return dbc.Alert(["✅ Saved. The probe applies this on its next reading."]
                              + swap_note,
-                             color='warning' if swapped else 'success',
+                             color='warning' if caveat else 'success',
                              dismissable=True, className='mb-0')
 
         # Worst case is one full interval: the probe may have checked in just
@@ -894,4 +914,4 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
              html.Span("The probe is asleep between check-ins, so the hub cannot "
                        "confirm delivery until then.", className='text-muted')]
             + swap_note,
-            color='warning' if swapped else 'info', dismissable=True, className='mb-0')
+            color='warning' if caveat else 'info', dismissable=True, className='mb-0')

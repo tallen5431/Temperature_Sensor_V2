@@ -80,6 +80,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Setting an alarm limit with notifications off said nothing.** Entering a
+  min/max on the Devices page is the operator saying "tell me if this goes
+  wrong", and the save confirmation is the moment they believe they are covered.
+  With the notification master switch off nothing will ever reach them — the
+  dashboard shows the breach, and the 2am freezer failure the product exists to
+  catch is found in the morning. Nothing anywhere contradicted that belief: the
+  Settings badge read "Off" in the same neutral grey as "Keep forever" and
+  "Single site", which are perfectly fine defaults. Saving a limit with alerts
+  off now says so in the confirmation (in amber, not a green tick over small
+  print), and the Settings badge reads **"Limits set, alerts off"** in warning
+  colour — but only once something actually has limits, because with nothing
+  being watched, alerts being off is a neutral fact.
 - **The gauge kept claiming everything was fine after the probe stopped
   reporting.** It is the largest element on the dashboard, and it drew a
   probe's last reading as a confident green bar — directly beside a "NO DATA"

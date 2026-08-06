@@ -229,8 +229,19 @@ def settings_badges(cfg):
     n = cfg.get("notifications", {}) or {}
     email = n.get("email", {}) or {}
     webhook = n.get("webhook", {}) or {}
+    # Alerts off is only a neutral fact when nothing is being watched. Once a
+    # probe has limits, the operator has said "tell me if this goes wrong" — and
+    # a grey "Off" pill, sitting in a row beside genuinely-fine defaults like
+    # "Keep forever" and "Single site", is the one badge that must not read as
+    # settled. That is the whole freezer-fails-at-2am case the product exists
+    # for, and the setting that decides it looked no different from the ones
+    # that were already right.
+    watched = any(
+        (t or {}).get("min") is not None or (t or {}).get("max") is not None
+        for t in (cfg.get("alert_thresholds", {}) or {}).values())
     if not n.get("enabled"):
-        alerts = ("Off", "secondary")
+        alerts = ("Limits set, alerts off", "warning") if watched \
+            else ("Off", "secondary")
     else:
         channels = [name for name, on in (("Email", email.get("enabled")),
                                           ("Webhook", webhook.get("enabled"))) if on]

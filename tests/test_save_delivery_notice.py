@@ -35,14 +35,18 @@ def _callback(auto_provision=True, interval_sec=5, probe_intervals=None):
 
 
 def _text(node):
+    """Flatten a Dash component tree to text.
+
+    Handles a bare list/tuple at the TOP level too, not only as a component's
+    children — a callback that returns one otherwise flattens to '' and every
+    assertion against it passes vacuously.
+    """
     if isinstance(node, str):
         return node
+    if isinstance(node, (list, tuple)):
+        return ' '.join(_text(c) for c in node)
     children = getattr(node, 'children', None)
-    if isinstance(children, list):
-        return ''.join(_text(c) for c in children)
-    if children is not None:
-        return _text(children)
-    return ''
+    return _text(children) if children is not None else ''
 
 
 # --- _humanize_seconds -------------------------------------------------------
@@ -135,3 +139,88 @@ def test_a_sane_range_says_nothing_about_swapping():
 def test_the_swap_notice_speaks_the_operators_unit():
     body = _text(_callback()(1, 'Setpoint-9A3F2C', 5, 40, 35, 'fahrenheit'))
     assert '°F' in body and '35 to 40' in body
+
+
+# --- "I set a limit, so I'm covered" ---------------------------------------
+# Setting a min/max is the operator saying "tell me if this goes wrong", and the
+# save confirmation is the moment they believe they are now covered. With the
+# notification master switch off nothing will ever reach them: the dashboard
+# shows the breach, and the 2am freezer failure this product exists to catch is
+# found in the morning. The Settings badge said "Off" in the same neutral grey as
+# "Keep forever" and "Single site" — genuinely-fine defaults — so nothing
+# anywhere contradicted the belief.
+
+def _notice(tmp_path, cfg_updates, min_v=1.0, max_v=5.0, dbname="n.db"):
+    import dash
+    from components.devices_panel import DevicesLayout, register_devices_callbacks
+    from core.config import Config
+    from core.db import Database
+
+    class _NoFinder:
+        def list_probes(self):
+            return {}
+
+    cfg = Config(tmp_path / (dbname + ".json"))
+    cfg.update(cfg_updates)
+    app = dash.Dash(__name__)
+    app.layout = DevicesLayout
+    app.config.suppress_callback_exceptions = True
+    register_devices_callbacks(app, finder=_NoFinder(), cfg=cfg,
+                               db=Database(tmp_path / dbname))
+    fn = app.callback_map["device-save-status.children"]["callback"].__wrapped__
+    return fn(1, "P1", 5, min_v, max_v, "celsius")
+
+
+def test_saving_a_limit_with_alerts_off_says_nobody_will_be_told(tmp_path):
+    out = _notice(tmp_path, {"notifications": {"enabled": False}})
+    body = _text(out)
+    assert "Alerts are switched off" in body
+    assert "nobody will be told" in body
+    assert out.color == "warning", "a green tick over that caveat reads as all-done"
+
+
+def test_saving_a_limit_with_alerts_on_says_nothing_extra(tmp_path):
+    out = _notice(tmp_path, {"notifications": {"enabled": True}}, dbname="on.db")
+    assert "Alerts are switched off" not in _text(out)
+
+
+def test_saving_without_touching_the_limits_does_not_nag(tmp_path):
+    """Changing only the reporting interval is not the operator asking to be
+    alerted, so this must not fire on every save."""
+    out = _notice(tmp_path, {"notifications": {"enabled": False}},
+                  min_v=None, max_v=None, dbname="int.db")
+    assert "Alerts are switched off" not in _text(out)
+
+
+def test_the_settings_badge_distinguishes_off_from_off_with_limits_set():
+    """The badge is the other half: someone who set limits days ago and never
+    revisits Devices should still see the contradiction on the Settings index."""
+    from components.settings_panel import settings_badges
+
+    nothing_watched = settings_badges({"notifications": {"enabled": False}})
+    assert nothing_watched["alerts"] == ("Off", "secondary"), \
+        "with no limits anywhere, alerts being off is a neutral fact"
+
+    watched = settings_badges({
+        "notifications": {"enabled": False},
+        "alert_thresholds": {"P1": {"min": 1.0, "max": 5.0}}})
+    label, colour = watched["alerts"]
+    assert colour == "warning", "the one badge that must not read as settled"
+    assert "off" in label.lower() and "limit" in label.lower(), label
+
+
+def test_a_threshold_entry_with_no_bounds_does_not_count_as_watched():
+    """An empty {} left behind by clearing a probe's limits is not a limit."""
+    from components.settings_panel import settings_badges
+    out = settings_badges({"notifications": {"enabled": False},
+                           "alert_thresholds": {"P1": {}, "P2": None}})
+    assert out["alerts"] == ("Off", "secondary")
+
+
+def test_alerts_switched_on_is_unaffected_by_the_new_check():
+    from components.settings_panel import settings_badges
+    out = settings_badges({
+        "notifications": {"enabled": True, "email": {"enabled": True,
+                                                     "smtp_host": "smtp.x.com"}},
+        "alert_thresholds": {"P1": {"max": 5.0}}})
+    assert out["alerts"] == ("Email", "success")
