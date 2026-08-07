@@ -28,9 +28,15 @@ def _help_body():
 
             _section("2 · Name & calibrate", [
                 html.P([html.B("Devices → Edit"), " lets you give a probe a friendly name "
-                        "(e.g. “Walk-in Fridge”), set a read interval, and enter a ",
+                        "(e.g. “Walk-in Fridge”), set how often it reports, and enter a ",
                         html.B("Calibration Offset"), " if it reads slightly high or low. The offset is "
                         "applied to every reading automatically."], className="mb-1"),
+                html.P(["A probe on a long reporting interval does not have to sit on a "
+                        "problem until its next report: give it a min or max limit and set ",
+                        html.B("Settings → Probes → Check the sensor every"), " shorter than "
+                        "that interval, and it reads that often with its radio off, sending "
+                        "immediately if a reading crosses the limit. The Edit dialog says "
+                        "which of the two a probe is on."], className="mb-1 small text-muted"),
             ]),
 
             _section("3 · Alerts & notifications", [

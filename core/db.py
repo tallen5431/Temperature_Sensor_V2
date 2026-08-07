@@ -942,18 +942,28 @@ class Database:
             dt = datetime.datetime.fromtimestamp(float(epoch))
         return dt.date(), dt.time().replace(microsecond=0)
 
-    def export_csv(self, file_obj, window_seconds: Optional[int] = None,
+    def export_csv(self, file_obj, name_map: Optional[dict] = None,
+                   window_seconds: Optional[int] = None,
                    probe_id: Optional[str] = None,
                    start_epoch: Optional[int] = None,
                    end_epoch: Optional[int] = None) -> int:
         """Write readings to a file-like object as CSV. Returns the row count.
 
         This is the canonical/system-of-record export: ISO-8601 timestamps and
-        every column, unchanged. Every row carries both the stored local
-        ``timestamp`` and an unambiguous ``timestamp_utc`` derived from the row's
-        epoch, so exported data stays correct across machines and DST changes.
+        every column. Every row carries both the stored local ``timestamp`` and an
+        unambiguous ``timestamp_utc`` derived from the row's epoch, so exported
+        data stays correct across machines and DST changes.
+
+        ``name_map`` adds the friendly ``probe`` name the spreadsheet export has
+        always carried. Nobody reading "Setpoint-000092 was at 4.5 C" knows which
+        appliance that is, and the Download CSV button had no way to say — the
+        column existed on one export and not the other, for no reason a reader
+        could see. Conditional on a name actually being set, exactly like ``site``
+        and the humidity pair: a hub that has named nothing writes the file it
+        always wrote, byte for byte.
         """
         conn = self._conn()
+        names = name_map or {}
         where, params = self._export_where(window_seconds, probe_id, start_epoch, end_epoch)
         # A `site` column appears only on a hub that actually holds forwarded
         # readings. Without it, head office's export of six stores is rows of
@@ -963,9 +973,13 @@ class Database:
         # customer's export and break whatever imports it, so it is conditional,
         # exactly like the dashboard's site picker.
         multi = bool(self.sites())
+        named = any((names.get(k) or "").strip() for k in names)
         writer = _csv.writer(file_obj)
         header = ["timestamp", "timestamp_utc", "temperature_c", "temperature_f",
-                  "probe_id", "humidity_pct", "vpd_kpa"]
+                  "probe_id"]
+        if named:
+            header.append("probe")
+        header += ["humidity_pct", "vpd_kpa"]
         if multi:
             header.append("site")
         writer.writerow(header)
@@ -979,7 +993,12 @@ class Database:
             vpd = "" if r["vpd_kpa"] is None else f"{r['vpd_kpa']:.3f}"
             row = [_csv_safe(r["ts"]), self._utc_string(r["epoch"]),
                    f"{r['temperature_c']:.3f}", f"{r['temperature_f']:.3f}",
-                   _csv_safe(r["probe_id"]), hum, vpd]
+                   _csv_safe(r["probe_id"])]
+            if named:
+                # Fall back to the id, never blank: a half-filled column reads as
+                # missing data rather than as "this one was never named".
+                row.append(_csv_safe(names.get(r["probe_id"]) or r["probe_id"]))
+            row += [hum, vpd]
             if multi:
                 row.append(_csv_safe(r["site"] or "(this hub)"))
             writer.writerow(row)

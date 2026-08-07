@@ -256,6 +256,16 @@ def settings_badges(cfg):
 
     probes = (("Automatic", "success") if cfg.get("auto_provision", True)
               else ("Manual", "secondary"))
+    # Say so when the between-report check is actually reaching probes. It is the
+    # setting most likely to be on without doing anything (it needs each probe's
+    # reporting interval to be longer), so the badge reports what is IN EFFECT,
+    # not what is stored — same rule as "On · no channel" above.
+    try:
+        _check = max(5.0, float(cfg.get("probe_sample_sec", 60) or 60))
+    except (TypeError, ValueError):
+        _check = 60.0
+    if watch_coverage(cfg, _check)[0]:
+        probes = (f"{probes[0]} · checks every {_secs(_check)}", probes[1])
 
     try:
         days = int(cfg.get("retention_days", 0) or 0)
@@ -531,6 +541,34 @@ _PROBES_BODY = [
         "hand, or on a head-office hub that only receives forwarded readings — two "
         "hubs on one network with this on will take turns claiming the same probes.",
         className="text-muted d-block mt-1"),
+
+    # The other half of the reporting interval, and until now the half with no
+    # control at all: `probe_sample_sec` could only be set by editing config.json,
+    # so the threshold watch -- the reason a probe has two cadences -- could not be
+    # turned on from the app, and its default (60 s) is longer than the default
+    # reporting interval (5 s), which switches it off.
+    html.Hr(className="mt-4"),
+    _section_title("Between reports"),
+    dbc.Row([
+        dbc.Col([
+            html.Small("Check the sensor every", className="text-muted d-block"),
+            dbc.InputGroup([
+                dbc.Input(id="probe-sample-sec", type="number", min=5, step=1, value=60),
+                dbc.InputGroupText("seconds"),
+            ]),
+        ], md=5),
+        dbc.Col(html.Small(
+            "For probes that have a min or max limit set, and only when this is "
+            "SHORTER than that probe's reporting interval. The probe reads this "
+            "often with its radio off and sends immediately if a reading crosses a "
+            "limit — so a probe reporting every 15 minutes still catches a thawing "
+            "freezer within one check. Every reading in between is buffered and "
+            "arrives with the next report, so the history is finer too, at no "
+            "extra battery cost. Minimum 5 s.",
+            className="text-muted"), md=7),
+    ], className="g-3 mt-1"),
+    html.Small(id="probe-sample-note", className="d-block mt-2"),
+
     dbc.Button("Save", id="auto-provision-save", color="primary", className="mt-3"),
     html.Div(id="auto-provision-status", className="mt-2"),
 ]
@@ -623,6 +661,55 @@ SettingsPanel = html.Div(
     # Fires once when the page opens to load current values from config.
     + [dcc.Interval(id="settings-loaded", interval=300, n_intervals=0, max_intervals=1)],
 )
+
+
+def watch_coverage(cfg_dict, check_sec):
+    """``(watched, known)`` probe ids for a given between-report check cadence.
+
+    The check only reaches a probe that has a limit AND reports less often than
+    it does, so the setting can be saved and reach nothing — which is the default
+    state (check 60 s, reporting interval 5 s) and gives no sign of itself. Asks
+    :func:`provisioning.reporting_plan` per probe rather than re-deriving the
+    rule, so this cannot say "on" about a probe the hub configures as off.
+
+    ``cfg_dict`` is a plain dict so the caller can overlay the unsaved value from
+    the form; probes are whatever ids config knows about under any per-probe key.
+    """
+    from provisioning import reporting_plan
+
+    data = cfg_dict.to_dict() if hasattr(cfg_dict, "to_dict") else dict(cfg_dict)
+    known = set()
+    for key in ("probe_names", "probe_intervals", "alert_thresholds", "probe_resolutions"):
+        known |= {k for k in (data.get(key) or {}) if k != "default"}
+    probe = {**data, "probe_sample_sec": check_sec}
+    watched = {pid for pid in known if reporting_plan(probe, pid)["watching"]}
+    return sorted(watched), sorted(known)
+
+
+def sample_cadence_note(cfg_dict, check_sec, name_of=None):
+    """``(text, css_class)`` saying who the between-report check currently reaches."""
+    watched, known = watch_coverage(cfg_dict, check_sec)
+    name_of = name_of or (cfg_dict.get("probe_names") or {})
+    label = lambda pid: name_of.get(pid) or pid  # noqa: E731
+    if not known:
+        return ("No probes are configured yet — this applies once a probe has a min "
+                "or max limit and reports less often than every "
+                f"{_secs(check_sec)}.", "text-muted")
+    if not watched:
+        return (f"Reaches no probe right now: none has both a limit set and a "
+                f"reporting interval longer than {_secs(check_sec)}. Raise a "
+                f"probe's reporting interval on the Devices page, or lower this.",
+                "text-warning")
+    shown = ", ".join(label(p) for p in watched[:4])
+    more = f" and {len(watched) - 4} more" if len(watched) > 4 else ""
+    return (f"Checks between reports on {len(watched)} of {len(known)} probes: "
+            f"{shown}{more}.", "text-success")
+
+
+def _secs(value):
+    """Seconds as a person would say them ('45 s', '15 minutes')."""
+    from components.devices_panel import _humanize_seconds
+    return _humanize_seconds(value)
 
 
 def _ok(msg):
@@ -1030,27 +1117,63 @@ def register_settings_callbacks(app, cfg, public_base_func=None):
     # --- Probes (auto-provisioning) -------------------------------------------
     @app.callback(
         Output("auto-provision-enabled", "value"),
+        Output("probe-sample-sec", "value"),
         Input("settings-loaded", "n_intervals"),
     )
     def _load_auto_provision(_n):
-        return bool(cfg.get("auto_provision", True))
+        try:
+            sample = max(5, int(float(cfg.get("probe_sample_sec", 60) or 60)))
+        except (TypeError, ValueError):
+            sample = 60
+        return bool(cfg.get("auto_provision", True)), sample
+
+    @app.callback(
+        Output("probe-sample-note", "children"),
+        Output("probe-sample-note", "className"),
+        Input("probe-sample-sec", "value"),
+        Input("settings-loaded", "n_intervals"),
+    )
+    def _sample_note(check_sec, _n):
+        """Who this reaches, recomputed as the number is typed rather than on Save.
+
+        The setting is inert unless another setting (each probe's reporting
+        interval) is larger, so "saved" says nothing about whether it does
+        anything. This does."""
+        try:
+            check = max(5.0, float(check_sec))
+        except (TypeError, ValueError):
+            return "Enter a number of seconds (minimum 5).", "text-warning"
+        return sample_cadence_note(cfg.to_dict(), check)
 
     @app.callback(
         Output("auto-provision-status", "children"),
         Input("auto-provision-save", "n_clicks"),
         State("auto-provision-enabled", "value"),
+        State("probe-sample-sec", "value"),
         prevent_initial_call=True,
     )
-    def _save_auto_provision(_n, enabled):
+    def _save_auto_provision(_n, enabled, check_sec):
         try:
-            cfg.update({"auto_provision": bool(enabled)})
+            sample = max(5, int(float(check_sec)))
+        except (TypeError, ValueError):
+            return _err("Between-report check must be a number of seconds (minimum 5).")
+        try:
+            cfg.update({"auto_provision": bool(enabled), "probe_sample_sec": sample})
         except Exception as e:  # noqa: BLE001
             return _err(f"Could not save: {e}")
-        # Takes effect on the provisioner's next cycle (~10 s) — no restart.
+        # Both take effect without a restart: auto-provisioning on the
+        # provisioner's next cycle (~10 s), the check cadence on each probe's next
+        # report, which is when a probe picks config off the ingest reply.
+        reach, _known = watch_coverage(cfg.to_dict(), sample)
+        tail = (f" Probes check every {_secs(sample)} between reports: {len(reach)}."
+                if reach else
+                " No probe uses the between-report check yet — a probe needs a limit "
+                "and a reporting interval longer than that.")
         if enabled:
-            return _ok("Saved — the hub will configure probes it finds on this network.")
+            return _ok("Saved — the hub will configure probes it finds on this "
+                       "network." + tail)
         return _ok("Saved — the hub will stop claiming probes within about 10 seconds. "
-                   "Probes already pointed here keep reporting to it.")
+                   "Probes already pointed here keep reporting to it." + tail)
 
     # --- Multi-site (upstream roll-up) ---------------------------------------
     @app.callback(

@@ -342,8 +342,9 @@ def download_csv():
                                        probe_id=probe, start_epoch=start_epoch,
                                        end_epoch=end_epoch)
             else:
-                db.export_csv(f, window_seconds=window, probe_id=probe,
-                              start_epoch=start_epoch, end_epoch=end_epoch)
+                db.export_csv(f, name_map=names, window_seconds=window,
+                              probe_id=probe, start_epoch=start_epoch,
+                              end_epoch=end_epoch)
     except Exception:
         log.exception("CSV export failed")
         _safe_unlink(tmp_path)

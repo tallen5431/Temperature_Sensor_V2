@@ -214,6 +214,34 @@ def desired_probe_config(cfg, probe_id: str) -> dict:
             "sample_ms": sample_ms}
 
 
+def reporting_plan(cfg, probe_id: str = "") -> dict:
+    """What a probe will actually do, in the two cadences that differ.
+
+    There are two numbers and the UI only ever showed one of them, under a name
+    that belonged to the other. ``interval_ms`` is how often the probe TRANSMITS;
+    the field for it was labelled "Read Interval". ``sample_ms`` is how often it
+    READS, and it had no control at all — a global ``probe_sample_sec`` you could
+    only reach by editing config.json. So the threshold watch, which is the whole
+    reason the two numbers are separate, could not be turned on or even seen from
+    the app, and the one field on screen described the wrong half of it.
+
+    Derived from :func:`desired_probe_config` rather than re-read from config, so
+    what a page says a probe is doing is computed from the same bytes the probe
+    is sent. ``sample_sec`` equals ``report_sec`` when the watch is off, because
+    then the probe really does read and report on the same beat.
+    """
+    want = desired_probe_config(cfg, probe_id)
+    sample_ms = want.get("sample_ms") or 0
+    report_sec = want["interval_ms"] / 1000.0
+    return {
+        "report_sec": report_sec,
+        "sample_sec": (sample_ms / 1000.0) if sample_ms else report_sec,
+        "watching": bool(sample_ms),
+        "has_limit": (want.get("alert_min_c") is not None
+                      or want.get("alert_max_c") is not None),
+    }
+
+
 def usable_server_base(base: str) -> bool:
     """True when ``base`` is an address a PROBE could actually reach.
 

@@ -11,6 +11,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2.7.1] - 2026-08-07
 
+### Added
+
+- **The between-report check has a control.** A probe has two cadences: how often
+  it transmits, and — for probes with a limit set — how often it reads the sensor
+  in between with its radio off, sending immediately if a reading crosses that
+  limit. The second one (`probe_sample_sec`) had no UI at all and could only be
+  changed by editing `config.json`, so the threshold watch could not be turned on
+  from the app. It is now **Settings → Probes → Check the sensor every**, with a
+  live line naming the probes it currently reaches — because the setting is inert
+  unless a probe reports *less* often than it, and the shipped defaults (60 s
+  check, 5 s reporting interval) are exactly that case, so "Saved" on its own says
+  nothing about whether anything happens. The section badge reports the cadence
+  only when it reaches at least one probe.
+- **The friendly probe name is in the plain CSV export.** The spreadsheet export
+  has always carried a `probe` column; the **Download CSV** button's file
+  identified a fridge only as `Setpoint-000092`, and `app.py` was already reading
+  the names for the other export. Conditional on a name actually being set, like
+  the `site` and humidity columns, so a hub that has named nothing writes the file
+  it always wrote.
+
+### Changed
+
+- **"Read Interval" on Devices → Edit is now "Reporting Interval".** It sets how
+  often the probe *transmits*; with the watch armed the probe reads far more often
+  than that, which is the entire point of having two numbers. A field named for
+  one and setting the other left no way to tell them apart — or to ask which a
+  probe was on. The dialog now also states, live as you type, whether this probe
+  checks between reports and at what cadence, or what is missing if it does not.
+
 ### Fixed
 
 - **The dashboard no longer goes blank after visiting Devices.** Opening Devices

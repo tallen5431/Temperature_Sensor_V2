@@ -67,6 +67,39 @@ def _humanize_seconds(seconds):
     return f"{h:g} hour" + ("" if h == 1 else "s")
 
 
+def cadence_note(plan, check_sec):
+    """One line: which of the two cadences this probe is on, and why.
+
+    ``plan`` comes from :func:`provisioning.reporting_plan`, so this cannot
+    describe a probe differently from how the hub configures it. ``check_sec`` is
+    the between-report cadence as CONFIGURED (Settings → Probes) — needed only for
+    the case where it is set but cannot apply, which is silent otherwise and is
+    the easiest of the three states to land in by accident: the default check is
+    60 s and the default reporting interval is 5 s, so out of the box the watch is
+    off no matter how the limits are set.
+
+    Returns ``(text, css_class)``.
+    """
+    report = _humanize_seconds(plan["report_sec"])
+    if plan["watching"]:
+        return (f"Reports every {report}, and checks the sensor every "
+                f"{_humanize_seconds(plan['sample_sec'])} in between — a breach is sent "
+                f"as soon as it is seen, not held until the next report.",
+                "text-success d-block mt-2")
+    # "on the same beat, every X" rather than "on the same X beat": _humanize_seconds
+    # returns a plural noun phrase ("15 minutes"), which does not work as an
+    # adjective.
+    if plan["has_limit"]:
+        return (f"Reads and reports on the same beat, every {report}. Checking in "
+                f"between reports needs a reporting interval longer than the "
+                f"between-report check, which is set to "
+                f"{_humanize_seconds(check_sec)} in Settings → Probes.",
+                "text-warning d-block mt-2")
+    return (f"Reads and reports on the same beat, every {report}. Set a min or max "
+            f"limit above and the probe will also check in between reports, so a "
+            f"breach is not held until the next one.", "text-muted d-block mt-2")
+
+
 DevicesLayout = html.Div([
     html.H4('Connected Probes'),
     # NO temp-unit-store here. This page used to carry its own copy, back when the
@@ -131,7 +164,13 @@ DevicesLayout = html.Div([
                     "notifications are configured in Settings → Alerts & notifications.",
                     id='edit-probe-alerts-breadcrumb', className='text-muted d-block mt-1'),
                 html.Hr(),
-                html.Label("Read Interval (seconds):", className='fw-bold mb-2 mt-1 d-block'),
+                # "Read Interval" was the wrong name for this. It is how often the
+                # probe TRANSMITS. With alert limits set the probe reads far more
+                # often than this and keeps the radio off in between, which is the
+                # entire point of the threshold watch — so a field called "read"
+                # that set the reporting cadence made the two indistinguishable,
+                # and left no way to ask what the probe was really doing.
+                html.Label("Reporting Interval (seconds):", className='fw-bold mb-2 mt-1 d-block'),
                 dbc.Input(
                     id='edit-probe-interval-input',
                     type='number',
@@ -140,7 +179,13 @@ DevicesLayout = html.Div([
                     placeholder='e.g. 5',
                     className='mb-2'
                 ),
-                html.Small("How often the probe sends a reading (minimum 0.5 s)", className='text-muted'),
+                html.Small("How often the probe sends a reading to this hub (minimum 0.5 s). "
+                           "On battery this is what sets the run time — the radio is the "
+                           "expensive part, not the sensor.", className='text-muted'),
+                # Filled when the modal opens. Says which of the two cadences this
+                # probe is actually on, so "does the watch apply to me?" is
+                # answered here instead of inferred.
+                html.Small(id='edit-probe-cadence-note', className='d-block mt-2'),
 
                 # Wrapped so the toggle starts its own line rather than tucking
                 # itself onto the end of the interval field's help text.
@@ -217,6 +262,46 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
     )
     def toggle_device_advanced(_n, is_open):
         return (not is_open), ('▾ Advanced' if not is_open else '▸ Advanced')
+
+    @app.callback(
+        Output('edit-probe-cadence-note', 'children'),
+        Output('edit-probe-cadence-note', 'className'),
+        Input('edit-probe-id-store', 'data'),
+        Input('edit-probe-interval-input', 'value'),
+        Input('edit-probe-min-input', 'value'),
+        Input('edit-probe-max-input', 'value'),
+    )
+    def _cadence_note(_probe_id, interval, lo, hi):
+        """Answer "what will this probe actually do" from the form, live.
+
+        Driven by the FIELDS, not by saved config, so typing 900 into the
+        reporting interval shows the watch arming before Save rather than after —
+        the between-report check is the one setting whose effect depends on
+        another setting, and it is invisible until it isn't.
+
+        Its own callback rather than three more outputs on toggle_edit_modal:
+        that one matches 14 outputs to a hand-built tuple positionally, and an
+        Output added in the middle there has already silently taken a
+        neighbour's value once.
+        """
+        from provisioning import reporting_plan
+        try:
+            check_sec = float(cfg.get('probe_sample_sec', 60) or 60)
+        except (TypeError, ValueError):
+            check_sec = 60.0
+        try:
+            interval_sec = float(interval) if interval not in (None, '') else \
+                float(cfg.get('interval_sec', 5) or 5)
+        except (TypeError, ValueError):
+            interval_sec = 5.0
+        # Only whether a limit exists matters here, and that is the same answer in
+        # any unit -- so the form's displayed values need no conversion.
+        limits = {k: v for k, v in (('min', lo), ('max', hi)) if v not in (None, '')}
+        plan = reporting_plan({'interval_sec': interval_sec,
+                               'probe_sample_sec': check_sec,
+                               'alert_thresholds': {'default': limits}})
+        text, css = cadence_note(plan, check_sec)
+        return text, css
 
     @app.callback(Output('device-grid', 'children'),
                   Input('device-refresh', 'n_intervals'),

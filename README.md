@@ -98,7 +98,9 @@ All settings have sensible defaults. You can override them with environment vari
 | `CSV_FILE` | `temperature_log.csv` | Legacy CSV imported once on first start, then unused |
 | `MDNS_ENABLE` | `1` | Set to `0` to disable hub mDNS advertisement |
 
-Per-probe options (friendly names, alert thresholds, read interval, calibration offset) live in `config.json`, which is seeded from `config.example.json` on first run and is **not** tracked in git. The hub's UI **Settings** and **Devices** pages edit these for you.
+Per-probe options (friendly names, alert thresholds, reporting interval, calibration offset) live in `config.json`, which is seeded from `config.example.json` on first run and is **not** tracked in git. The hub's UI **Settings** and **Devices** pages edit these for you.
+
+A probe has **two** cadences, and they are set in two places. `probe_intervals` (per probe, on **Devices → Edit**) is how often it *transmits*; `probe_sample_sec` (global, on **Settings → Probes**) is how often it *reads the sensor in between*. The second one applies only to probes that have a min or max limit **and** report less often than it — the probe then keeps its radio off between reports, buffers what it reads, and transmits immediately if a reading crosses a limit. So a probe reporting every 15 minutes still catches a thawing freezer within one check, and the buffered readings arrive with the next report at no extra battery cost. The Edit dialog states which of the two a given probe is on.
 
 > **Security:** every mutating endpoint is already token-gated (the token is auto-generated on first run), so probes and tools must hold the secret to post readings or change configuration. The **read-only dashboard**, however, is open on the LAN by default. On a shared office/lab network, enable **`ui_auth`** (HTTP Basic login) — see [SECURITY.md](SECURITY.md). Never port-forward the hub to the public internet.
 
