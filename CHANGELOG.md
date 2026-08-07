@@ -9,6 +9,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.7.2] - 2026-08-07
+
+### Fixed
+
+- **An excursion that started and ended between two alert cycles raised nothing
+  at all.** The alert engine judges one reading per probe per cycle — the latest.
+  A breach that began and cleared in between was written to the database, drawn
+  on the chart, and never alerted, logged, or shown as an event. On a monitoring
+  product that is the worst shape a bug can take: the evidence sits there and
+  nobody was told.
+
+  It is not a corner case, and the threshold watch made it the *normal* shape of
+  a hub outage. A watching probe buffers every sample to flash while it cannot
+  reach the hub, then flushes the lot on reconnect — so a freezer that failed and
+  recovered while the PC was asleep, restarting, or off the network arrived
+  entirely as history and passed straight through the alert engine. The watch
+  exists so an excursion between *reports* is not missed; the hub end was giving
+  that back.
+
+  Each backfill is now scanned forward from the last reading already examined —
+  by ARRIVAL (`readings.id`), not by timestamp. A backlog is old by timestamp and
+  new by arrival, so a watermark on time cannot see one at all: "nothing newer
+  than last time" is exactly what a flush looks like, and the hub restart that
+  ends an outage is followed immediately by the flush that outage caused.
+  A closed excursion becomes **one** event — 13 minutes at a 7 s cadence is 110
+  readings and one problem — carrying the worst reading it reached, logged and
+  dated at the time it *happened* rather than when it was discovered, and shown as
+  **WAS OUT OF RANGE** so it cannot be mistaken for a live alarm. The message is
+  past tense and explains that the readings arrived late. A run still open at the
+  newest reading is deliberately left to the live evaluator, which owns the
+  cooldown and deadband for it, so the two can never both report one incident.
+  First sight of a probe seeds the watermark without scanning, so restarting the
+  hub does not re-announce every excursion still in retention, and a long backfill
+  is capped per sweep with a log line naming what was dropped.
+
+  `POST /api/ingest_csv` no longer logs backfill breaches itself. It recorded the
+  worst excursion **per batch**, and a probe drains a backlog in 100-row chunks —
+  a twelve-hour outage at a 7 s cadence is 62 chunks, so one thawing freezer
+  produced up to 62 event rows, each labelled "worst in this chunk". It also never
+  notified, on the grounds that a backfilled breach is "old news"; a freezer that
+  spent thirteen minutes above its limit last night is not old news. And it could
+  not cover a probe reconnecting one reading at a time through `/api/ingest`. One
+  owner now, on the monitor thread where the work belongs.
+
+  This landed after `v2.7.1` was tagged, so that release does **not** contain it —
+  it was written into the `[2.7.1]` section below while 2.7.1 was still
+  unreleased, which is exactly the wrong place for it now. `v2.7.1` and this
+  hub's running code briefly disagreed about what "2.7.1" contained; this bump
+  is what closes that.
+
 ## [Firmware 2.9.3] - 2026-08-07
 
 ### Changed
@@ -89,45 +139,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **An excursion that started and ended between two alert cycles raised nothing
-  at all.** The alert engine judges one reading per probe per cycle — the latest.
-  A breach that began and cleared in between was written to the database, drawn
-  on the chart, and never alerted, logged, or shown as an event. On a monitoring
-  product that is the worst shape a bug can take: the evidence sits there and
-  nobody was told.
-
-  It is not a corner case, and the threshold watch made it the *normal* shape of
-  a hub outage. A watching probe buffers every sample to flash while it cannot
-  reach the hub, then flushes the lot on reconnect — so a freezer that failed and
-  recovered while the PC was asleep, restarting, or off the network arrived
-  entirely as history and passed straight through the alert engine. The watch
-  exists so an excursion between *reports* is not missed; the hub end was giving
-  that back.
-
-  Each backfill is now scanned forward from the last reading already examined —
-  by ARRIVAL (`readings.id`), not by timestamp. A backlog is old by timestamp and
-  new by arrival, so a watermark on time cannot see one at all: "nothing newer
-  than last time" is exactly what a flush looks like, and the hub restart that
-  ends an outage is followed immediately by the flush that outage caused.
-  A closed excursion becomes **one** event — 13 minutes at a 7 s cadence is 110
-  readings and one problem — carrying the worst reading it reached, logged and
-  dated at the time it *happened* rather than when it was discovered, and shown as
-  **WAS OUT OF RANGE** so it cannot be mistaken for a live alarm. The message is
-  past tense and explains that the readings arrived late. A run still open at the
-  newest reading is deliberately left to the live evaluator, which owns the
-  cooldown and deadband for it, so the two can never both report one incident.
-  First sight of a probe seeds the watermark without scanning, so restarting the
-  hub does not re-announce every excursion still in retention, and a long backfill
-  is capped per sweep with a log line naming what was dropped.
-
-  `POST /api/ingest_csv` no longer logs backfill breaches itself. It recorded the
-  worst excursion **per batch**, and a probe drains a backlog in 100-row chunks —
-  a twelve-hour outage at a 7 s cadence is 62 chunks, so one thawing freezer
-  produced up to 62 event rows, each labelled "worst in this chunk". It also never
-  notified, on the grounds that a backfilled breach is "old news"; a freezer that
-  spent thirteen minutes above its limit last night is not old news. And it could
-  not cover a probe reconnecting one reading at a time through `/api/ingest`. One
-  owner now, on the monitor thread where the work belongs.
 - **PROTOCOL.md described a wire that stopped existing two releases ago.** It said
   the `/api/ingest` config reply was "deliberately limited to `interval_ms` and
   `resolution_bits`"; the hub has sent `alert_min_c`, `alert_max_c` and `sample_ms`
