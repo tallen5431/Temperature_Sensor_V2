@@ -89,6 +89,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An excursion that started and ended between two alert cycles raised nothing
+  at all.** The alert engine judges one reading per probe per cycle — the latest.
+  A breach that began and cleared in between was written to the database, drawn
+  on the chart, and never alerted, logged, or shown as an event. On a monitoring
+  product that is the worst shape a bug can take: the evidence sits there and
+  nobody was told.
+
+  It is not a corner case, and the threshold watch made it the *normal* shape of
+  a hub outage. A watching probe buffers every sample to flash while it cannot
+  reach the hub, then flushes the lot on reconnect — so a freezer that failed and
+  recovered while the PC was asleep, restarting, or off the network arrived
+  entirely as history and passed straight through the alert engine. The watch
+  exists so an excursion between *reports* is not missed; the hub end was giving
+  that back.
+
+  Each backfill is now scanned forward from the last reading already examined.
+  A closed excursion becomes **one** event — 13 minutes at a 7 s cadence is 110
+  readings and one problem — carrying the worst reading it reached, logged and
+  dated at the time it *happened* rather than when it was discovered, and shown as
+  **WAS OUT OF RANGE** so it cannot be mistaken for a live alarm. The message is
+  past tense and explains that the readings arrived late. A run still open at the
+  newest reading is deliberately left to the live evaluator, which owns the
+  cooldown and deadband for it, so the two can never both report one incident.
+  First sight of a probe seeds the watermark without scanning, so restarting the
+  hub does not re-announce every excursion still in retention, and a long backfill
+  is capped per cycle with a log line naming what was dropped.
 - **PROTOCOL.md described a wire that stopped existing two releases ago.** It said
   the `/api/ingest` config reply was "deliberately limited to `interval_ms` and
   `resolution_bits`"; the hub has sent `alert_min_c`, `alert_max_c` and `sample_ms`

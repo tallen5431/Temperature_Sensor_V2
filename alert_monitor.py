@@ -12,7 +12,8 @@ import queue
 import threading
 import time
 
-from core.alerts import HELD, evaluate, evaluate_offline, evaluate_rate, format_event
+from core.alerts import (HELD, evaluate, evaluate_offline, evaluate_rate,
+                         find_missed_excursions, format_event)
 from core.applog import HEALTH
 from core.db import iso_to_epoch
 from core.notifications import Notifier, send_email
@@ -40,6 +41,11 @@ class AlertMonitor(threading.Thread):
         self._rate_states: dict = {}
         self._offline_states: dict = {}
         self._offline_seeded = False
+        # Newest reading epoch each probe has been scanned up to, for excursions
+        # that came and went between two cycles (see _check_missed). Seeded on
+        # first sight WITHOUT scanning, so restarting the hub does not re-announce
+        # every excursion still inside the retention window.
+        self._scanned: dict = {}
         self._last_purge = 0.0
         self._last_prune = 0.0
         # Notifications are sent on a dedicated worker so a slow/black-holed SMTP
@@ -166,6 +172,12 @@ class AlertMonitor(threading.Thread):
         )
         all_events.extend(events)
 
+        # --- excursions that came and went between cycles (backfill) ---
+        # After evaluate(), so a run still open at the newest reading is reported
+        # by the live path and this one leaves it alone — they can never both
+        # claim the same incident.
+        all_events.extend(self._check_missed())
+
         # --- rate-of-change alerts ---
         all_events.extend(self._check_rate(readings, cooldown))
 
@@ -197,9 +209,21 @@ class AlertMonitor(threading.Thread):
         kill the monitor loop — the log is best-effort, alerting is not.
         """
         try:
+            # Backfilled events are stamped when they HAPPENED, not when they were
+            # discovered. Recorded at discovery, a freezer that went out of range
+            # during a two-hour outage appears in Recent events as "just now" —
+            # which is both false and the one detail that makes the row
+            # actionable. Every other kind is judged live, so now is correct.
+            ts = None
+            if ev.get("kind") == "missed" and ev.get("start_epoch"):
+                try:
+                    ts = datetime.datetime.fromtimestamp(
+                        float(ev["start_epoch"])).isoformat(timespec="seconds")
+                except (TypeError, ValueError, OSError, OverflowError):
+                    ts = None
             self.db.record_event(ev.get("kind", ""), ev.get("probe_id", ""),
                                  temperature_c=ev.get("temperature_c"),
-                                 limit=ev.get("limit"))
+                                 limit=ev.get("limit"), ts=ts)
         except Exception as e:  # noqa: BLE001
             log.debug("could not record %s event: %s", ev.get("kind"), e)
 
@@ -260,6 +284,70 @@ class AlertMonitor(threading.Thread):
         except (TypeError, ValueError):
             return dict(windows)
         return {pid: sec for pid in windows}
+
+    # A hub that has been off for a week must not wake up and send a hundred
+    # e-mails. Scan at most this far back per probe, and report at most this many
+    # runs per cycle; anything beyond is logged, because silently dropping it
+    # would read as "nothing happened".
+    MISSED_SCAN_MAX_SEC = 24 * 3600
+    MISSED_MAX_PER_CYCLE = 3
+
+    def _check_missed(self) -> list:
+        """Excursions that began AND ended without the live evaluator seeing one.
+
+        ``evaluate`` judges one reading per probe per cycle — the latest. A breach
+        that starts and clears in between is stored, drawn on the chart, and never
+        alerted. The threshold watch makes that the normal shape of a hub outage:
+        the probe buffers every sample to flash while it cannot reach the hub,
+        then flushes the lot, so a freezer that failed and recovered inside the
+        outage arrives purely as history.
+
+        Each probe is scanned forward from the last epoch it was scanned to.
+        First sight seeds the watermark and scans NOTHING: without that, every
+        hub restart would re-announce every excursion still in retention.
+        """
+        thresholds = self.cfg.get("alert_thresholds", {}) or {}
+        if not thresholds:
+            return []
+        try:
+            newest = self.db.last_reading_epoch_per_probe(
+                window_seconds=self.MISSED_SCAN_MAX_SEC)
+        except Exception:  # noqa: BLE001 - a read error must not kill the cycle
+            return []
+
+        floor = time.time() - self.MISSED_SCAN_MAX_SEC
+        events: list = []
+        for pid, latest_epoch in newest.items():
+            if str(pid).startswith("DEMO-"):
+                continue
+            thr = thresholds.get(pid) or thresholds.get("default") or {}
+            if thr.get("min") is None and thr.get("max") is None:
+                continue
+            since = self._scanned.get(pid)
+            if since is None:
+                self._scanned[pid] = latest_epoch
+                continue          # first sight: seed only
+            if latest_epoch <= since:
+                continue          # nothing new
+            try:
+                rows = self.db.readings_after(pid, since, not_before=floor)
+            except Exception:  # noqa: BLE001
+                continue
+            if not rows:
+                continue
+            # Advance the watermark to what was ACTUALLY scanned, not to the
+            # helper's truncated MAX(epoch) — otherwise the newest reading falls
+            # in the gap between the two and is never examined by anything.
+            self._scanned[pid] = rows[-1][0]
+            found = find_missed_excursions(rows, thr, probe_id=pid,
+                                           hysteresis=self._hysteresis())
+            if len(found) > self.MISSED_MAX_PER_CYCLE:
+                log.warning("%s: %d missed excursions in one backfill; reporting the "
+                            "first %d — see the chart for the rest",
+                            pid, len(found), self.MISSED_MAX_PER_CYCLE)
+                found = found[:self.MISSED_MAX_PER_CYCLE]
+            events.extend(found)
+        return events
 
     def _check_offline(self) -> list:
         last_epochs = self.db.last_reading_epoch_per_probe(window_seconds=OFFLINE_MONITOR_WINDOW_SEC)

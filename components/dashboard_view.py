@@ -612,7 +612,8 @@ def clicked_id(triggered):
 
 # Badge colour per event kind: breaches read as alerts (high hot-red, low
 # cool-blue), offline/rate as cautions, recovery/online as good news.
-_EVENT_COLORS = {"high": "danger", "low": "info", "offline": "warning",
+_EVENT_COLORS = {"missed": "warning",
+                 "high": "danger", "low": "info", "offline": "warning",
                  "rate": "warning", "recovery": "success", "online": "success"}
 
 
@@ -642,9 +643,16 @@ def _relative_time(epoch, now=None):
     return f"{d // 86400}d ago"
 
 
+# The badge is normally the kind, upper-cased, which reads fine for HIGH / LOW /
+# OFFLINE. "MISSED" on its own does not — missed what? A reading? The badge has to
+# survive being read at a glance beside the others.
+_EVENT_LABELS = {"missed": "WAS OUT OF RANGE"}
+
+
 def _event_row(badge_kind, bits):
     return html.Div([
-        dbc.Badge(badge_kind.upper(), color=_EVENT_COLORS.get(badge_kind, "secondary"),
+        dbc.Badge(_EVENT_LABELS.get(badge_kind, badge_kind.upper()),
+                  color=_EVENT_COLORS.get(badge_kind, "secondary"),
                   className="me-2 flex-shrink-0"),
         html.Small(" · ".join(b for b in bits if b), className="text-muted"),
     ], className="d-flex align-items-center mb-1")

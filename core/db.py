@@ -747,6 +747,34 @@ class Database:
         ).fetchone()
         return float(row["temperature_c"]) if row else None
 
+    def readings_after(self, probe_id, after_epoch, not_before=None) -> list:
+        """``[(epoch, temperature_c), ...]`` ascending, strictly after ``after_epoch``.
+
+        Deliberately not ``fetch_readings``: that caps to the most-recent
+        ``max_points`` rows, which is right for a chart and wrong here. The
+        missed-excursion scan is looking for a breach that STARTED early in a
+        backfill, and a row cap would drop exactly that end of the window.
+
+        There is no upper bound, and that is the point. Bounding it with
+        ``last_reading_epoch_per_probe`` — the obvious choice — silently loses the
+        newest reading: that helper returns ``int(MAX(epoch))``, and a stored
+        epoch carries milliseconds, so ``epoch <= <truncated>`` excludes the very
+        row it was meant to include. A run that had just ended then looked like it
+        was still open, got left to the live evaluator, and was never reported by
+        either. ``not_before`` is the caller's own floor for a long outage.
+        """
+        clauses = ["probe_id = ?", "epoch > ?"]
+        params = [probe_id, float(after_epoch)]
+        if not_before is not None:
+            clauses.append("epoch >= ?")
+            params.append(float(not_before))
+        rows = self._conn().execute(
+            "SELECT epoch, temperature_c FROM readings "
+            f"WHERE {' AND '.join(clauses)} ORDER BY epoch ASC",
+            params,
+        ).fetchall()
+        return [(r["epoch"], r["temperature_c"]) for r in rows]
+
     def list_events(self, limit: int = 50, window_seconds: Optional[int] = None,
                     kinds: Optional[Iterable[str]] = None,
                     exclude_kinds: Optional[Iterable[str]] = None,

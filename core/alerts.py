@@ -7,6 +7,7 @@ channels.
 """
 from __future__ import annotations
 
+import datetime
 import threading
 import time
 from typing import Dict, List, Optional, Tuple, Union
@@ -79,6 +80,69 @@ def classify(temp_c: float, thr: dict, prev_condition: str = "ok",
     if lo is not None and temp_c < lo:
         return "low", lo
     return "ok", None
+
+
+def find_missed_excursions(rows, thr: dict, probe_id: str = "",
+                           hysteresis: float = 0.0) -> List[dict]:
+    """Excursions that came and went without the live evaluator ever seeing one.
+
+    :func:`evaluate` judges the LATEST reading per probe, once per monitor cycle.
+    Anything that breaches and recovers between two of those looks at ends like
+    nothing happened — and the readings themselves are in the database the whole
+    time, drawn on the chart, with no event and no alert beside them.
+
+    That is not a rare corner. It is exactly what a hub outage produces: a probe
+    with the threshold watch armed buffers every sample to flash while the hub is
+    unreachable, then flushes the lot on reconnect. A freezer that failed and
+    recovered inside that window arrives as history. The watch exists so an
+    excursion between reports is not missed; storing it and never looking at it
+    gives that back.
+
+    ``rows`` is ``[(epoch, temperature_c), ...]`` ascending, for one probe. A run
+    touching the LAST row is deliberately not reported: that breach is still open,
+    so it belongs to :func:`evaluate`, which owns the cooldown and deadband state
+    for it. Only closed runs — ones that recovered before the newest reading —
+    are returned, so the two can never both report the same incident.
+
+    Each run collapses to ONE event: 13 minutes at a 7 s cadence is 110 readings
+    and one problem.
+    """
+    out: List[dict] = []
+    run = None
+    ordered = sorted((r for r in rows if r and r[1] is not None), key=lambda r: r[0])
+    last_index = len(ordered) - 1
+    for i, (epoch, temp_c) in enumerate(ordered):
+        try:
+            value = float(temp_c)
+        except (TypeError, ValueError):
+            continue
+        condition, limit = classify(
+            value, thr, prev_condition=(run["condition"] if run else "ok"),
+            hysteresis=hysteresis)
+        if condition != "ok" and run is not None and run["condition"] != condition:
+            out.append(run)          # straight from one limit to the other
+            run = None
+        if condition == "ok":
+            if run is not None:
+                out.append(run)
+                run = None
+        else:
+            if run is None:
+                run = {"probe_id": probe_id, "kind": "missed", "condition": condition,
+                       "limit": limit, "start_epoch": int(epoch),
+                       "end_epoch": int(epoch), "temperature_c": value, "samples": 0}
+            run["end_epoch"] = int(epoch)
+            run["samples"] += 1
+            # The WORST reading of the run, not the first or last: it is the
+            # number that says how bad it got.
+            if ((condition == "high" and value > run["temperature_c"])
+                    or (condition == "low" and value < run["temperature_c"])):
+                run["temperature_c"] = value
+        if i == last_index and run is not None:
+            run = None               # still open — evaluate() owns it
+    if run is not None:
+        out.append(run)
+    return out
 
 
 def _event(probe_id: str, kind: str, temp_c: float, limit: Optional[float],
@@ -347,4 +411,27 @@ def format_event(event: dict, names: Optional[dict] = None) -> Tuple[str, str]:
     if kind == "recovery":
         return (f"✅ {label}: temperature back to normal ({reading})",
                 f"{label} has returned to normal and is now {reading}.")
+    if kind == "missed":
+        # Past tense throughout, and it says WHEN: this is history arriving late,
+        # and a message written like a live alert would send someone to check a
+        # freezer that is currently fine.
+        mins = max(1, int(event.get("end_epoch", 0) - event.get("start_epoch", 0)) // 60)
+        when = _local_clock(event.get("start_epoch"))
+        direction = ("above the" if event.get("condition") == "high" else "below the")
+        bound = "maximum" if event.get("condition") == "high" else "minimum"
+        limit_txt = (f" {direction} {limit:.1f}°C {bound}" if limit is not None else "")
+        return (f"⚠️ {label}: went out of range for {mins} min while the hub was not watching",
+                f"{label} reached {reading}{limit_txt}, starting around {when} and lasting "
+                f"about {mins} minute(s). It has since returned to normal.\n\n"
+                f"These readings arrived late — the probe stored them while it could not "
+                f"reach the hub, and sent them when it reconnected. Nothing was wrong with "
+                f"the probe; the alert simply could not be raised at the time.")
     return f"{label}: {reading}", f"{label} is {reading}."
+
+
+def _local_clock(epoch) -> str:
+    """``epoch`` as a short local wall-clock string, or '' if unreadable."""
+    try:
+        return datetime.datetime.fromtimestamp(float(epoch)).strftime("%H:%M on %d %b")
+    except (TypeError, ValueError, OSError, OverflowError):
+        return "an unknown time"
