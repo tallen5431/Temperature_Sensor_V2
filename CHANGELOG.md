@@ -9,30 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Firmware (pending a build — ship as 2.9.3)
+## [Firmware 2.9.3] - 2026-08-07
 
-- The Wi-Fi setup portal's **"Read interval (ms)"** field is now **"Reporting
-  interval (ms)"**. It sets `cfg_interval`, which is how often the probe
-  *transmits*; with the threshold watch armed the probe reads far more often than
-  that. This is the one screen every customer passes through, and it disagreed
-  with the dashboard field it mirrors.
+### Changed
 
-  **The version needs to move with it, and has not yet.** The first version of
-  this note said the bump was being withheld because the merged binary is built
-  outside the repo — that is wrong. `.github/workflows/deploy-flasher.yml`
-  rebuilds the binary *in CI* from this `.ino` on every push touching
-  `esp32_temp_probe/**` or `flash/**`, and copies `flash/manifest.json` through
-  verbatim. So the push carrying this change already republished the flasher: the
-  image now served is built from the new source and still advertised as 2.9.2.
-  Nothing behavioural differs between the two builds — it is one string on the
-  setup portal — but one version number now names two binaries, which is the
-  drift `tests/test_version_sync.py` exists to prevent.
+- **The Wi-Fi setup portal says "Reporting interval (ms)", not "Read interval".**
+  It sets `cfg_interval`, which is how often the probe *transmits*; with the
+  threshold watch armed the probe reads far more often than that. This is the one
+  screen every customer passes through, and it disagreed with the dashboard field
+  it mirrors.
 
-  Bumping all four declarations (RELEASE.md step 1) is what closes it, and doing
-  so publishes an update prompt to every probe already in the field. That is a
-  judgement call about whether a label fix is worth a fleet-wide re-flash, on
-  firmware not yet validated on hardware — the workflow's own note says to treat
-  an un-validated deploy as staging.
+  No behaviour changed — this is one string. The version moved because
+  `.github/workflows/deploy-flasher.yml` rebuilds the merged binary **in CI** from
+  this `.ino` on every push touching `esp32_temp_probe/**` or `flash/**`, and
+  copies `flash/manifest.json` through verbatim. The push carrying the string
+  change therefore republished the flasher with a new image still advertised as
+  2.9.2, so that number briefly named two binaries — exactly the drift
+  `tests/test_version_sync.py` exists to prevent. Bumping all four declarations
+  (RELEASE.md step 1) is what closes it; probes already in the field will see an
+  update available.
+
+  Still true of 2.9.2 and 2.9.3 alike: **neither has been validated on real
+  ESP32-C3 hardware.** `deploy-flasher.yml`'s own note says to treat an
+  un-validated deploy as staging — run `docs/QC_CHECKLIST.md` on a unit before
+  pointing buyers at it.
 
 ## [2.7.1] - 2026-08-07
 

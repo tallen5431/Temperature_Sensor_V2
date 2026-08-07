@@ -1,4 +1,13 @@
 // ESP32 + DS18B20 + WiFiManager + mDNS + OTA + WebServer
+// v2.9.3 — the Wi-Fi setup portal's "Read interval (ms)" field is now
+//           "Reporting interval (ms)". It sets cfg_interval, which is how often
+//           the probe TRANSMITS; with the threshold watch armed it reads far
+//           more often than that. This is the one screen every customer passes
+//           through, and it disagreed with the dashboard field it mirrors.
+//           Behaviour is unchanged — the bump exists because the flasher
+//           rebuilds this source on every push and copies manifest.json
+//           verbatim, so leaving the version still would have let 2.9.2 name
+//           two different binaries.
 // v2.9.2 — deep-sleep clock: the pre-sleep instant is now checkpointed LAST,
 //           immediately before the wake timer is armed. It was taken at the top
 //           of enterDeepSleep(), so the Serial flush, HTTP/mDNS teardown,
@@ -188,7 +197,7 @@ inline void ledBlink(uint8_t n, uint16_t onMs = 60, uint16_t offMs = 120) {
 
 // ---------------- Identity --------------------------------------------------
 static const char* SENSOR_NAME = "Setpoint";
-static const char* FW_VERSION  = "2.9.2";
+static const char* FW_VERSION  = "2.9.3";
 
 // The setup SoftAP is intentionally OPEN (no password): it only exists during
 // first-time Wi-Fi setup and is torn down once the probe joins the home network,
