@@ -107,7 +107,10 @@ interval. Persisted to NVS so it survives reboots.
   "server_url": "http://192.168.1.50:8088/api/ingest",
   "token": "s3cr3t-device-token",
   "interval_ms": 5000,
-  "resolution_bits": 11
+  "resolution_bits": 11,
+  "alert_min_c": 1.0,
+  "alert_max_c": 5.0,
+  "sample_ms": 60000
 }
 ```
 
@@ -116,6 +119,17 @@ interval. Persisted to NVS so it survives reboots.
   the probe's current resolution unchanged, so a hub that doesn't manage it (or an
   older one) is unaffected; an older probe simply ignores the unknown field. Note
   that 12-bit's 750 ms conversion exceeds a 500 ms interval and caps the sample rate.
+- `alert_min_c`, `alert_max_c`, `sample_ms` are the **threshold watch** (hub ≥ 2.6.2,
+  firmware ≥ 2.9.0), and are sent as a set or not at all. They let a probe on a long
+  `interval_ms` notice an excursion between reports instead of sitting on it: it wakes
+  every `sample_ms`, reads the sensor with the radio **off**, buffers the reading, and
+  transmits early only when a reading crosses a limit. See §5.3.
+  - The two limits are sent **including explicit `null`s**. A null CLEARS a limit the
+    probe is holding — omitting the key instead would leave a probe watching a
+    threshold the hub has deleted, waking every `sample_ms` for nobody.
+  - A probe MUST ignore `sample_ms` unless it holds at least one limit **and**
+    `sample_ms` is shorter than `interval_ms`; below a 5000 ms floor it MUST ignore it
+    too. Sampling no faster than you report gains nothing and costs wakes.
 
 **Response** `200 OK`
 
@@ -123,12 +137,15 @@ interval. Persisted to NVS so it survives reboots.
 { "id": "Setpoint-9A3F2C", "name": "Garage Fridge", "fw": "2.0.0", "accepted": true }
 ```
 
-The probe persists `server_url`, `token`, `interval_ms`, and `resolution_bits` to NVS
-and begins posting (§5). It echoes `resolution_bits` in `/whoami` and `/status` so the
-hub can confirm the applied value.
+The probe persists `server_url`, `token`, `interval_ms`, `resolution_bits` and the
+three watch fields to NVS and begins posting (§5). It echoes `resolution_bits` in
+`/whoami` and `/status`, and `watch_armed` / `sample_ms` / the limits in `/status`, so
+the hub can confirm what was applied — a probe that was asleep when a limit changed
+keeps the old one, and that drift is otherwise invisible from both ends.
 
 > **Hub implementation note.** Setpoint's built-in auto-provisioner and the
-> `POST /api/provision` endpoint push `{server_url, token, interval_ms, resolution_bits}`
+> `POST /api/provision` endpoint push
+> `{server_url, token, interval_ms, resolution_bits, alert_min_c, alert_max_c, sample_ms}`
 > to the probe's `/provision` (trying the probe IP first, then its `.local` hostname).
 > No provision secret is sent or required — no firmware revision enforces one (§4.1).
 > Anything on the LAN that can reach the probe can provision it.
@@ -158,6 +175,22 @@ hub can confirm the applied value.
 
 `sensor_ok` is `false` when the sensor reports a fault (see §8); in that state the
 probe skips posting.
+
+A probe running the threshold watch (§5.3) also reports what it is **actually
+holding**, which is not always what the hub last decided — a probe asleep when a
+limit changed keeps the old one, and without this the drift is invisible from both
+ends. A hub SHOULD compare these before re-provisioning, or it either re-pushes
+every cycle or never notices a stale limit:
+
+```json
+{ "…": "…", "watch_armed": true, "sample_ms": 60000,
+  "alert_min_c": 1.0, "alert_max_c": 5.0, "in_breach": false }
+```
+
+`sample_ms`, `watch_armed` and `in_breach` are always present on firmware ≥ 2.9.0;
+each limit appears only while it is set, so an absent key means "no limit", matching
+the `null` the hub sends to clear one. Firmware that predates the watch omits all of
+them, and a hub MUST treat that as "nothing to compare" rather than as a mismatch.
 
 On the humidity build variant (firmware built with `-D SENSOR_SHT4x`, see §8) the
 response carries one extra field, `humidity_pct` (0–100):
@@ -254,7 +287,16 @@ stored, and displayed entirely hub-side, so adding it required **no `proto` chan
 **Success** `200 OK`
 
 ```json
-{ "ok": true, "config": { "interval_ms": 300000, "resolution_bits": 11 } }
+{
+  "ok": true,
+  "config": {
+    "interval_ms": 300000,
+    "resolution_bits": 11,
+    "alert_min_c": 1.0,
+    "alert_max_c": 5.0,
+    "sample_ms": 60000
+  }
+}
 ```
 
 **`config` — settings delivery back to the probe (hub ≥ 2.6.2, firmware ≥ 2.8.1).**
@@ -269,10 +311,23 @@ change may never be delivered. The probe's own ingest POST happens every wake an
 always succeeds, so config rides home on the reply at no extra radio cost. The two
 paths derive the value from the same source, so they cannot disagree.
 
-Deliberately limited to `interval_ms` and `resolution_bits`. `server_url` and
-`token` remain push-only, so a hub reply can never re-point a probe at a different
-server. A probe MUST ignore an `interval_ms` below its own 500 ms floor and a
-`resolution_bits` outside 9..12.
+Carries the same fields as the `/provision` push (§4.1) **except** `server_url` and
+`token`, which remain push-only so a hub reply can never re-point a probe at a
+different server: `interval_ms`, `resolution_bits`, and the three threshold-watch
+fields `alert_min_c` / `alert_max_c` / `sample_ms`. The limits are sent as explicit
+`null`s when the hub holds none, which is what disarms a probe still watching a
+deleted threshold.
+
+A probe MUST ignore an `interval_ms` below its own 500 ms floor, a `resolution_bits`
+outside 9..12, and a `sample_ms` that is below 5000 ms or not shorter than
+`interval_ms` (§4.1).
+
+> The set of fields here is not a judgement call to be re-made per endpoint — both
+> paths derive it from one function on the hub, and `tests/test_protocol_doc.py`
+> fails if this list and that function disagree. This paragraph read "deliberately
+> limited to `interval_ms` and `resolution_bits`" for two releases after the watch
+> shipped, which would have led anyone writing a second firmware to drop the three
+> fields that make it work.
 
 **Errors**
 
@@ -404,6 +459,35 @@ is — a forwarding hub advances its event cursor on the `200`, not on the count
 only**. Applying it to locally-recorded events would treat two genuinely distinct
 same-second events as a replay and silently drop one; a replay can only arise
 from a re-sent batch anyway.
+
+### 5.3 Threshold watch — sample often, transmit rarely
+
+A probe on a long `interval_ms` can sit on a thawing freezer until its next
+scheduled POST. The watch decouples **reading** from **reporting**, exploiting the
+asymmetry between them: reading the sensor is a conversion and some CPU; associating
+and POSTing is seconds of radio at ~100 mA.
+
+While armed — at least one limit held, `sample_ms` ≥ 5000 and `sample_ms` <
+`interval_ms` (§4.1) — a probe:
+
+1. wakes every `sample_ms` and reads the sensor **without powering the radio**;
+2. appends the reading to a local buffer and sleeps again;
+3. transmits immediately when a reading CROSSES a limit — entering a breach is
+   judged against the bare limit, leaving it must beat the limit by a deadband, so a
+   probe parked exactly on its threshold does not transmit an enter/clear pair every
+   sample and flatten its battery;
+4. transmits on the `interval_ms` deadline regardless, and flushes the buffer with
+   it (§5.1), so the hub also receives the finer history at no extra radio cost.
+
+Sleep duration is `min(sample_ms, time_until_next_report)` — never past the report,
+or the report lands late by up to a whole sample gap. A probe MAY report up to half a
+sample gap EARLY, taking the last sample before the deadline as the report rather
+than spending an extra wake to be punctual; it MUST NOT report late.
+
+The hub decides `sample_ms` per probe, so cadence can differ across a fleet: a
+mains-powered walk-in can afford to look every 10 s where a battery probe in a remote
+freezer should not. None of this changes the ingest payload — a buffered reading is
+an ordinary reading with its own timestamp — so the watch required no `proto` change.
 
 ---
 

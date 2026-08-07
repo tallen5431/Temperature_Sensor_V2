@@ -144,3 +144,45 @@ def test_the_catch_all_card_explains_what_it_is(tmp_path):
 def test_an_ordinary_probe_gets_no_such_warning(tmp_path):
     txt = _grid_text(tmp_path, rows=[("Setpoint-9A3F2C", 4.2)], dbname="ord.db")
     assert "without a probe ID" not in txt
+
+
+# --- the two cadences a probe runs on ---------------------------------------
+
+def test_a_card_says_when_a_probe_checks_between_reports(tmp_path):
+    """Reporting every 15 minutes while checking every 10 s, and reporting every
+    15 minutes flat, are very different promises about a freezer — and they
+    rendered identically. With the cadence now per probe it cannot be inferred
+    from a single hub-wide setting either."""
+    txt = _grid_text(tmp_path, cfg={
+        "interval_sec": 900, "probe_sample_sec": 60,
+        "probe_samples": {"P1": 10},
+        "alert_thresholds": {"P1": {"min": 1.0, "max": 5.0}}}, rows=[("P1", 3.4)])
+    assert "Reports" in txt and "15 minutes" in txt
+    assert "Checks between" in txt and "10 s" in txt
+
+
+def test_the_card_shows_the_inherited_cadence_too(tmp_path):
+    """Inheriting the hub default is not "no cadence" — the card has to name the
+    number that is in effect, not only an override."""
+    txt = _grid_text(tmp_path, cfg={
+        "interval_sec": 900, "probe_sample_sec": 60,
+        "alert_thresholds": {"P1": {"max": 5.0}}}, rows=[("P1", 3.4)])
+    assert "Checks between" in txt and "1 minute" in txt
+
+
+def test_no_check_row_when_the_watch_is_off(tmp_path):
+    """An "off" row on every card of every hub that never uses the watch is
+    noise. Absent means the probe reads and reports on one beat, which "Reports"
+    above it already said."""
+    txt = _grid_text(tmp_path, cfg={
+        "interval_sec": 5, "alert_thresholds": {"P1": {"max": 5.0}}},
+        rows=[("P1", 3.4)])
+    assert "Reports" in txt
+    assert "Checks between" not in txt
+
+
+def test_no_check_row_without_a_limit(tmp_path):
+    """A cadence with nothing to compare against is not a watch."""
+    txt = _grid_text(tmp_path, cfg={"interval_sec": 900, "probe_sample_sec": 60},
+                     rows=[("P1", 3.4)])
+    assert "Checks between" not in txt

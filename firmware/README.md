@@ -104,7 +104,7 @@ With no saved Wi-Fi, the probe starts an **open SoftAP** (no password) whose SSI
 the WiFiManager captive portal open (or browse to `http://192.168.4.1`), and enter:
 
 - your home Wi-Fi SSID + password (required), and
-- optionally the server URL / ingest token / read interval.
+- optionally the server URL / ingest token / reporting interval.
 
 The probe stores the credentials to NVS and joins your network. It then appears
 **automatically** in Setpoint — the hub discovers it over mDNS and pushes the

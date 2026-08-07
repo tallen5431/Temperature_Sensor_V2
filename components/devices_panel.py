@@ -499,6 +499,20 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                     facts.append(('Reports', f'every {_humanize_seconds(secs)}'))
                 except (TypeError, ValueError):
                     pass
+                # A probe checking between reports and one that is not looked
+                # identical here, which is the difference between a freezer
+                # watched to the minute and one watched to the quarter hour --
+                # and it is now per-probe, so it cannot be inferred from a single
+                # hub-wide setting either. Shown only when armed: an "off" row on
+                # every card of every hub that never uses the watch is noise.
+                try:
+                    from provisioning import reporting_plan
+                    plan = reporting_plan(cfg, probe_id)
+                    if plan['watching']:
+                        facts.append(('Checks between',
+                                      f"every {_humanize_seconds(plan['sample_sec'])}"))
+                except Exception:  # noqa: BLE001 - a card must render regardless
+                    pass
                 offset = (cfg.get('calibration_offsets', {}) or {}).get(probe_id)
                 if offset:
                     try:

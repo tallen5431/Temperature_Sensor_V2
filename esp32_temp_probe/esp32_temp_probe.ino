@@ -364,7 +364,12 @@ uint32_t cfg_sample_ms   = 0;     // 0 = no separate sample cadence (read == rep
 WiFiManager wm;
 WiFiManagerParameter p_server  ("server",   "Server URL",             "",     128);
 WiFiManagerParameter p_token   ("token",    "Ingest token (optional)","",      64);
-WiFiManagerParameter p_interval("interval", "Read interval (ms)",     "5000",  10);
+// "Read interval" was the wrong name: this sets cfg_interval, which is how often
+// the probe TRANSMITS. With the threshold watch armed it reads far more often than
+// this. The dashboard field it mirrors is called "Reporting Interval", and a
+// customer who reads one screen and then the other has to see the same words --
+// this is the captive portal, the one screen every customer passes through.
+WiFiManagerParameter p_interval("interval", "Reporting interval (ms)", "5000",  10);
 
 // ---------------- HTTP server -----------------------------------------------
 WebServer http(80);

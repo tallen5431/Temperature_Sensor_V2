@@ -228,7 +228,7 @@ The strategy docs are strong on FCC sequencing, margin, and the loaner motion. T
     (reboot the PC, confirm it comes back unattended and the offline alert fires) before you leave.
 11. **The "inconsistent power stories" are now formalized as two versions** — **Portable** (battery,
     deep-sleep) and **Fixed** (USB, always-on), defined in [VERSIONS.md](VERSIONS.md) (same board + probe
-    + firmware; only power + read interval differ). → **Remaining action:** add the reachability caveat to
+    + firmware; only power + reporting interval differ). → **Remaining action:** add the reachability caveat to
     SUPPORT and QC — *"a Portable (deep-sleep) probe answers its local URL only for a few seconds at each
     wake; tap reset to wake it on demand. A Fixed (USB) probe answers continuously."*
 

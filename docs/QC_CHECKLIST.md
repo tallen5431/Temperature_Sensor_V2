@@ -34,7 +34,7 @@ You need this available before running units:
 - [ ] USB-C data cable + the unit's USB power path known-good.
 - [ ] A charged **rechargeable-lithium battery** fitted (or the unit on USB) so
       deep-sleep wake behaviour can be observed. **Version note** (see [VERSIONS.md](VERSIONS.md)):
-      for a **Portable** (battery/deep-sleep) unit, run QC on USB or with a short read interval so its
+      for a **Portable** (battery/deep-sleep) unit, run QC on USB or with a short reporting interval so its
       web endpoints stay reachable while you test — a deep-sleeping unit answers local URLs only for a
       few seconds at each wake (**tap reset** to wake it on demand). A **Fixed** (USB) unit is always
       reachable.

@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Firmware (pending a build — ship as 2.9.3)
+
+- The Wi-Fi setup portal's **"Read interval (ms)"** field is now **"Reporting
+  interval (ms)"**. It sets `cfg_interval`, which is how often the probe
+  *transmits*; with the threshold watch armed the probe reads far more often than
+  that. This is the one screen every customer passes through, and it disagreed
+  with the dashboard field it mirrors.
+
+  The version is deliberately **not** bumped here: the merged binary is built
+  outside the repo, so moving `flash/manifest.json` to 2.9.3 first would tell
+  every probe an update is available and then install the 2.9.2 image, which
+  reports 2.9.2 — an update prompt that never clears. Bump all four version
+  declarations (RELEASE.md step 1) as part of the build, not ahead of it.
+
 ## [2.7.1] - 2026-08-07
 
 ### Added
@@ -35,6 +49,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   default actually reaches and names the ones on their own cadence separately, so a
   fleet number cannot look wrong when it is not. No firmware change: the probe was
   already told its own `sample_ms`, and persists it in NVS.
+- **The Devices card says whether a probe checks between reports.** "Reports every
+  15 minutes" while checking every 10 s and "reports every 15 minutes" flat are
+  very different promises about a freezer, and the card rendered them identically.
+  Shown only while the watch is armed, and now that the cadence is per probe it
+  cannot be inferred from one hub-wide setting either.
 - **The Save button pushes the watch, not just the interval.** The immediate
   best-effort re-provision sent the reporting interval and sensor resolution but
   not the limits or check cadence, so a check-cadence change was the one edit it
@@ -59,6 +78,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **PROTOCOL.md described a wire that stopped existing two releases ago.** It said
+  the `/api/ingest` config reply was "deliberately limited to `interval_ms` and
+  `resolution_bits`"; the hub has sent `alert_min_c`, `alert_max_c` and `sample_ms`
+  in it since 2.6.2, and those three ARE the threshold watch. `GET /status`'s watch
+  fields — which the auto-provisioner reads to decide whether a probe needs
+  re-provisioning — were undocumented entirely, and the `/provision` push body was
+  three fields short. Anyone writing a second firmware against that text would have
+  produced a probe that looked correct and watched nothing. The watch now has its
+  own section (§5.3), and `tests/test_protocol_doc.py` checks the documented field
+  lists against `desired_probe_config` rather than asking anyone to proofread —
+  this was the fourth doc/code pair in this repo to drift while a comment asked a
+  human to keep them in step.
+- **One name for one thing.** The dashboard field was renamed to "Reporting
+  Interval", but the probe's own Wi-Fi setup portal and four docs still called it
+  the "read interval" — so a customer reading "read interval ≥ 10 s" in VERSIONS.md
+  would find no such field anywhere in the app. Renamed throughout, with a test
+  that fails on the next one. (The portal string is a firmware change; see
+  Unreleased above.)
 - **The dashboard no longer goes blank after visiting Devices.** Opening Devices
   and then returning to the dashboard — by browser Back, or by any route that
   unmounted the Devices page — left the whole page empty: no gauge, no chart, no

@@ -2,7 +2,7 @@
 
 > **The single source of truth for the Setpoint configurations.** They are the *same* carrier board,
 > the *same* DS18B20 probe, and the *same* firmware image — the only differences are the **power
-> hardware** and the **read interval**. When any other doc (BOM, DIY kit, listing, pilot offer)
+> hardware** and the **reporting interval**. When any other doc (BOM, DIY kit, listing, pilot offer)
 > describes power or battery behaviour, it should say **which version** and point here.
 
 ---
@@ -15,7 +15,7 @@
 | **Use it like** | A thermometer you carry — spot-check a fridge, a fermenter, a crawlspace, a car, a cold-chain hand-off | A permanent monitor — walk-in cooler/freezer, server rack, greenhouse, anywhere with power |
 | **Power** | Protected 18650 / LiPo + TP4056 charge board + on/off switch | USB-C from any 5 V wall adapter or the hub PC — **no battery** |
 | **Firmware behaviour** | Deep-sleeps between readings (idle **<1 mA**) → long runtime | Stays **always-on** → web page + mDNS continuously reachable, live readings |
-| **How it's set** | Default firmware, read interval **≥ 10 s** | Same firmware, read interval **< 10 s** (or build with `DEEP_SLEEP_ENABLED=false`) |
+| **How it's set** | Default firmware, reporting interval **≥ 10 s** | Same firmware, reporting interval **< 10 s** (or build with `DEEP_SLEEP_ENABLED=false`) |
 | **Reachability** | Answers its local URL only for ~3 s at each wake — **tap reset to wake it** on demand | Answers continuously — good for live dashboards and instant alerts |
 | **Trade-off** | Lithium handling + shipping rules; not continuously reachable | Needs a nearby power outlet. With no cell fitted, monitoring stops in a power outage — see *Fixed + backup cell* below, which is the same board with a small cell added |
 | **Best market** | Homelab / makers / anyone needing portability → **DIY kits** | Restaurants / fixed installs → **loaner pilots** and the future assembled unit |
@@ -97,7 +97,7 @@ Both versions run `esp32_temp_probe/esp32_temp_probe.ino` unchanged. The behavio
 knobs documented in `firmware/src/protocol.h`:
 
 - `DEEP_SLEEP_ENABLED` (default `true`) — set `false` to force always-on regardless of interval.
-- `DEEP_SLEEP_MIN_MS` (default `10000`) — deep sleep engages **only** when the configured read interval
+- `DEEP_SLEEP_MIN_MS` (default `10000`) — deep sleep engages **only** when the configured reporting interval
   is at or above this. A Fixed unit simply runs a shorter interval, so it never sleeps and stays
   continuously reachable (WiFi modem-sleep only).
 

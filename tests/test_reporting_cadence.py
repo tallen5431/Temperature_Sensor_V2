@@ -262,3 +262,45 @@ def test_the_download_route_passes_the_names_through(tmp_path, route):
     for call in re.finditer(r"db\.export_(?:csv|friendly_csv|xlsx)\(", block):
         tail = block[call.end():call.end() + 120]
         assert "name_map=names" in tail, f"{call.group(0)} does not pass the names"
+
+
+# --- one name for one thing, everywhere a customer can read it --------------
+
+def test_nothing_a_customer_reads_still_calls_it_a_read_interval():
+    """The rename has to land in every place, or it makes things worse.
+
+    The dashboard field, the probe's own captive portal and the docs all named
+    this "read interval" while it set the REPORTING interval. Renaming only the
+    dashboard would leave a customer reading "read interval >= 10 s" in
+    VERSIONS.md with no such field anywhere in the app — the terms stop
+    connecting, which is worse than being consistently wrong.
+
+    Scoped to what a customer can actually see — the app, the firmware and the
+    docs. Tests are excluded (this one names the old term repeatedly, and so does
+    the schema test pinning the 0.5 s floor), and so are historical CHANGELOG
+    entries: they record what a past release said, and rewriting those would be
+    falsifying the record. Comments explaining the rename itself are excluded too.
+    """
+    import pathlib
+    import re
+    repo = pathlib.Path(__file__).resolve().parent.parent
+    skip_dirs = {"node_modules", ".git", "__pycache__", "site", "tests"}
+    hits = []
+    for path in repo.rglob("*"):
+        if path.suffix not in {".md", ".py", ".ino", ".html"} or not path.is_file():
+            continue
+        if any(part in skip_dirs for part in path.parts) or path.name == "CHANGELOG.md":
+            continue
+        for i, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+            if not re.search(r"read[ _]interval", line, re.I):
+                continue
+            # A line that is explaining the old name is not using it.
+            if "wrong name" in line or "was labelled" in line or "labelled" in line:
+                continue
+            if re.match(r"\s*(//|#)\s*v\d+\.\d+\.\d+", line):   # firmware history
+                continue
+            if "REPORTING" in line or "min read interval" in line:
+                continue
+            hits.append(f"{path.relative_to(repo)}:{i}: {line.strip()[:90]}")
+    assert not hits, ("these still say \"read interval\" for the reporting "
+                      "interval:\n  " + "\n  ".join(hits))
