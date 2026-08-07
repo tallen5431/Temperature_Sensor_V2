@@ -504,16 +504,53 @@ def test_bulk_rejects_truncated_line_under_mangled_probe_id(tmp_path):
     assert sorted({r["probe_id"] for r in db.fetch_readings()}) == ["Setpoint-000079"]
 
 
-def test_backlog_breach_is_recorded_even_though_probe_recovered(tmp_path):
-    # The alert engine only evaluates each probe's LATEST reading, so a breach
-    # that happened entirely during an outage — the freezer that thawed while the
-    # hub was down — was stored by the drain and never surfaced, because by
-    # reconnect time the probe read normally again.
+def test_the_bulk_drain_does_not_log_backfill_breaches_itself(tmp_path):
+    """It used to, and the requirement it served is real — but it belongs to the
+    alert monitor now, and leaving both in place double-logs.
+
+    What this endpoint did was record the worst excursion PER BATCH. A probe
+    drains a backlog in 100-row chunks, so a twelve-hour outage at a 7 s cadence
+    is 62 chunks and one thawing freezer produced up to 62 event rows, each
+    labelled "worst in this chunk". It also deliberately never notified, on the
+    grounds that a backfilled breach is "old news" — a freezer that spent
+    thirteen minutes above its limit last night is not old news — and it could
+    not cover a probe reconnecting one reading at a time through /api/ingest.
+
+    ``AlertMonitor._check_missed`` collapses a whole excursion to one event,
+    notifies, and covers both ingest paths.
+    ``tests/test_missed_excursions.py`` owns that behaviour; this only pins that
+    the endpoint no longer does it too.
+    """
     import datetime
-    from core.config import Config
     Config(tmp_path / "config.json").update(
-        {"alert_thresholds": {"Freezer": {"min": -30, "max": -15}}})
-    client, db, _ = _make_client(tmp_path)
+        {"alert_thresholds": {"Freezer": {"min": -30.0, "max": -15.0}}})
+    client, db, _disc = _make_client(tmp_path)
+    base = datetime.datetime.now() - datetime.timedelta(hours=6)
+    temps = [-22, -20, -12, -5, -9, -18, -21, -22]      # thaw, then recovery
+    csv = "\n".join(
+        f"{(base + datetime.timedelta(minutes=10 * i)).isoformat(timespec='milliseconds')},"
+        f"{tc:.2f},{tc * 9 / 5 + 32:.2f},Freezer" for i, tc in enumerate(temps))
+    resp = client.post("/api/ingest_csv", data=csv,
+                       headers={"Content-Type": "text/csv", "X-Probe-ID": "Freezer"})
+    assert resp.get_json()["accepted"] == len(temps), "the readings must still store"
+    assert db.list_events(limit=10) == [], \
+        "the endpoint must leave excursion reporting to the monitor"
+
+
+def test_the_monitor_still_catches_what_the_bulk_drain_used_to(tmp_path):
+    """The requirement the removed block existed for, asserted end to end through
+    the real HTTP endpoint: an excursion whose newest row is back in spec is one
+    the alert engine can never see, and something has to report it."""
+    import datetime
+    from alert_monitor import AlertMonitor
+
+    client, db, _disc = _make_client(tmp_path)
+    cfg = Config(tmp_path / "config.json")
+    cfg.update({"alert_thresholds": {"Freezer": {"min": -30.0, "max": -15.0}},
+                "notifications": {"enabled": False}})
+    mon = AlertMonitor(db, cfg, notifier=None)
+    mon.check_once()                       # seed the arrival watermark
+
     base = datetime.datetime.now() - datetime.timedelta(hours=6)
     temps = [-22, -20, -12, -5, -9, -18, -21, -22]      # thaw, then recovery
     csv = "\n".join(
@@ -521,53 +558,11 @@ def test_backlog_breach_is_recorded_even_though_probe_recovered(tmp_path):
         f"{tc:.2f},{tc * 9 / 5 + 32:.2f},Freezer" for i, tc in enumerate(temps))
     client.post("/api/ingest_csv", data=csv,
                 headers={"Content-Type": "text/csv", "X-Probe-ID": "Freezer"})
-    events = db.list_events(limit=10)
-    assert len(events) == 1
-    ev = events[0]
-    assert ev["kind"] == "high" and ev["probe_id"] == "Freezer"
-    assert float(ev["temperature_c"]) == -5.0        # the WORST excursion
-    assert float(ev["limit_c"]) == -15.0
 
-
-def test_backfill_logs_an_old_breach_but_not_the_newest_row(tmp_path):
-    """/ingest_csv records the worst excursion in a batch, because the alert
-    engine only ever evaluates a probe's LATEST reading and would miss a freezer
-    that thawed while the hub was down.
-
-    But it must NOT record one for the batch's newest row: the engine sees that
-    one and logs it live, so recording it here too double-logs the breach. This
-    was invisible while /ingest_csv only served probes draining a buffer — a
-    FORWARDING hub (multi-site) sends every batch through it, so on an HQ hub
-    every store breach landed in the event log twice.
-    """
-    db = Database(tmp_path / "api.db")
-    cfg = Config(tmp_path / "config.json")
-    cfg.update({"provision_token": "supersecret",
-                "alert_thresholds": {"default": {"min": 0.0, "max": 8.0}}})
-    app = Flask(__name__)
-    app.register_blueprint(create_api(cfg, db, FakeDiscovery(),
-                                      lambda: "http://hub:8088", ""))
-    client = app.test_client()
-
-    # A backlog whose breach is in the MIDDLE and whose newest row is in spec:
-    # the engine will never see the 12 C row, so backfill must log it.
-    client.post("/api/ingest_csv", json={"readings": [
-        {"timestamp": "2026-01-01T10:00:00", "temperature_c": 4.0, "probe_id": "P"},
-        {"timestamp": "2026-01-01T10:01:00", "temperature_c": 12.0, "probe_id": "P"},
-        {"timestamp": "2026-01-01T10:02:00", "temperature_c": 4.2, "probe_id": "P"},
-    ]})
-    p_events = [e for e in db.list_events(limit=20) if e["probe_id"] == "P"]
-    assert [e["kind"] for e in p_events] == ["high"], \
-        f"an excursion the engine cannot see must be logged, got {p_events}"
-
-    # A batch whose breach IS the newest row: the engine will evaluate it, so
-    # backfill must stay quiet rather than duplicating it.
-    client.post("/api/ingest_csv", json={"readings": [
-        {"timestamp": "2026-01-01T11:00:00", "temperature_c": 4.0, "probe_id": "Q"},
-        {"timestamp": "2026-01-01T11:01:00", "temperature_c": 13.0, "probe_id": "Q"},
-    ]})
-    q_events = [e for e in db.list_events(limit=20) if e["probe_id"] == "Q"]
-    assert q_events == [], f"newest-row breach must be left to the alert engine, got {q_events}"
+    events = [e for e in mon.check_once() if e["kind"] == "missed"]
+    assert len(events) == 1, "one excursion, one event"
+    assert events[0]["temperature_c"] == -5.0, "and it carries the worst reading"
+    assert events[0]["limit"] == -15.0
 
 
 def test_ingest_without_a_probe_id_lands_where_the_operator_can_see_it(client):

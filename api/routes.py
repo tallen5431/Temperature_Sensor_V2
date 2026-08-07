@@ -21,8 +21,6 @@ except ImportError:
         return None
 from core.probes import discovered_probes
 from core.status import reporting_probe_ids, hub_health_window
-from core.alerts import threshold_for
-from core.storage import threshold_breach
 from core.version import HUB_VERSION, PRODUCT_NAME
 from core.applog import HEALTH, get_logger
 from core.metrics import LATEST
@@ -678,7 +676,6 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
         header_pid = request.headers.get("X-Probe-ID") or ""
         valid = []        # (ts, t_c, t_f, probe_id) tuples for bulk_insert
         newest = {}       # probe_id -> (ts, t_c): most-recent accepted reading
-        worst = {}        # probe_id -> (kind, t_c, limit, ts): worst backlog breach
         # Rows the parser could not even shape into a reading count as refused
         # too — they are exactly as un-storable as one that fails validation
         # below, and reporting them as zero told a probe draining a truncated
@@ -742,17 +739,6 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
             prev = newest.get(pid)
             if prev is None or ts > prev[0]:
                 newest[pid] = (ts, t_c)
-            # Track the WORST excursion in this backlog per probe (see the
-            # backfill-breach block after the insert).
-            thr = threshold_for(cfg.get("alert_thresholds", {}) or {}, pid)
-            breach = threshold_breach(t_c, thr.get("min"), thr.get("max"))
-            if breach:
-                limit = thr.get("max") if breach == "high" else thr.get("min")
-                cur = worst.get(pid)
-                worse = cur is None or cur[0] != breach or (
-                    t_c > cur[1] if breach == "high" else t_c < cur[1])
-                if cur is None or worse:
-                    worst[pid] = (breach, t_c, limit, ts)
 
         accepted = 0
         if valid:
@@ -770,35 +756,29 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
                 return jsonify(ok=False, error="storage error"), 503
             for _ in range(accepted):
                 HEALTH.record_write()
-            # Backfilled breaches. The alert engine only ever evaluates each
-            # probe's LATEST reading, so a threshold excursion that happened
-            # entirely during an outage — the freezer that thawed while the hub
-            # was down, which is the single most important thing not to miss —
-            # was stored by this drain and then never alerted, because by the
-            # time the probe reconnected it was reading normally again. Record
-            # the worst excursion per probe in the event log (stamped at the time
-            # it actually occurred) so it shows up in Recent events and the
-            # history instead of vanishing. Deliberately NOT dispatched as a
-            # live notification: it is old news by definition, and this runs on a
-            # request thread.
-            for pid, (kind, t_c, limit, when) in worst.items():
-                # ...but ONLY for excursions the alert engine will not see. If the
-                # worst excursion IS this probe's newest row, the engine evaluates
-                # it on its next pass and logs it live, so recording it here too
-                # double-logs the same breach. That was invisible while
-                # /ingest_csv only ever served probes draining a buffer; a
-                # FORWARDING hub sends every batch through this endpoint, so on an
-                # HQ hub every single store breach was landing in the event log
-                # twice. Backfill exists for breaches that are already old news —
-                # those still get their entry.
-                if newest.get(pid) and newest[pid][0] == when:
-                    continue
-                try:
-                    db.record_event(kind, pid, temperature_c=t_c, limit=limit, ts=when)
-                    log.info("backfilled %s breach for probe=%r at %s (%.2f C)",
-                             kind, pid, when, t_c)
-                except Exception:  # noqa: BLE001 - telemetry must never fail ingest
-                    pass
+            # Backfilled breaches used to be recorded HERE, one "worst in this
+            # batch" per probe. AlertMonitor._check_missed owns them now, and the
+            # move fixes three things this could not:
+            #
+            #   * one incident, one event. This fired per BATCH, and a probe
+            #     drains a backlog in 100-row chunks — a twelve-hour outage at a
+            #     7 s cadence is 62 chunks, so one thawing freezer produced up to
+            #     62 event rows, each labelled "worst in this chunk".
+            #   * it is alerted, not just logged. The old comment called a
+            #     backfilled breach "old news by definition" and deliberately did
+            #     not notify. A freezer that spent thirteen minutes above its
+            #     limit last night is not old news, and the only reason not to
+            #     send it was that this runs on a request thread — which is an
+            #     argument for moving it to the monitor, not for staying quiet.
+            #   * it covers the drip path too. This endpoint is the bulk drain;
+            #     a probe reconnecting one reading at a time through /api/ingest
+            #     was never covered at all.
+            #
+            # The rule that kept this from double-logging with the live engine —
+            # skip the excursion when it IS the probe's newest row, which mattered
+            # on an HQ hub where every forwarded batch comes through here — is
+            # preserved there as "a run still open at the newest reading belongs
+            # to evaluate()".
             # Reflect current state ONCE per probe (its newest reading) in the
             # Prometheus registry + last-seen, rather than replaying the backlog.
             # MQTT is deliberately left to the live /ingest path so historical

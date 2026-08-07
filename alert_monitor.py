@@ -41,11 +41,11 @@ class AlertMonitor(threading.Thread):
         self._rate_states: dict = {}
         self._offline_states: dict = {}
         self._offline_seeded = False
-        # Newest reading epoch each probe has been scanned up to, for excursions
-        # that came and went between two cycles (see _check_missed). Seeded on
-        # first sight WITHOUT scanning, so restarting the hub does not re-announce
-        # every excursion still inside the retention window.
-        self._scanned: dict = {}
+        # Highest readings.id examined for excursions that came and went between
+        # two cycles (see _check_missed). None until the first sweep, which seeds
+        # it at the end of the table and scans nothing, so restarting the hub does
+        # not re-announce history already on disk.
+        self._scanned_id = None
         self._last_purge = 0.0
         self._last_prune = 0.0
         # Notifications are sent on a dedicated worker so a slow/black-holed SMTP
@@ -286,10 +286,10 @@ class AlertMonitor(threading.Thread):
         return {pid: sec for pid in windows}
 
     # A hub that has been off for a week must not wake up and send a hundred
-    # e-mails. Scan at most this far back per probe, and report at most this many
-    # runs per cycle; anything beyond is logged, because silently dropping it
-    # would read as "nothing happened".
-    MISSED_SCAN_MAX_SEC = 24 * 3600
+    # e-mails. Take at most this many newly-arrived rows in one sweep, and report
+    # at most this many runs per probe; anything beyond is logged, because
+    # silently dropping it would read as "nothing happened".
+    MISSED_SCAN_MAX_ROWS = 50_000
     MISSED_MAX_PER_CYCLE = 3
 
     def _check_missed(self) -> list:
@@ -302,44 +302,45 @@ class AlertMonitor(threading.Thread):
         then flushes the lot, so a freezer that failed and recovered inside the
         outage arrives purely as history.
 
-        Each probe is scanned forward from the last epoch it was scanned to.
-        First sight seeds the watermark and scans NOTHING: without that, every
-        hub restart would re-announce every excursion still in retention.
+        Keyed on ``readings.id`` — ARRIVAL — rather than on the newest timestamp.
+        A watermark on time cannot see a backlog at all: those readings are old by
+        timestamp and new by arrival, so "nothing newer than last time" is exactly
+        what a flush looks like. That is not an edge case either; the hub restart
+        that ends an outage is followed immediately by the flush that outage
+        caused, so the timestamp watermark missed the single case this exists for.
+
+        The first sweep seeds the watermark at the current end of the table and
+        scans nothing, so restarting the hub does not re-announce history already
+        on disk — while anything that lands afterwards is examined however old it
+        claims to be.
         """
         thresholds = self.cfg.get("alert_thresholds", {}) or {}
         if not thresholds:
             return []
         try:
-            newest = self.db.last_reading_epoch_per_probe(
-                window_seconds=self.MISSED_SCAN_MAX_SEC)
+            if self._scanned_id is None:
+                self._scanned_id = self.db.max_reading_id()
+                return []
+            rows = self.db.readings_since_id(self._scanned_id,
+                                             limit=self.MISSED_SCAN_MAX_ROWS)
         except Exception:  # noqa: BLE001 - a read error must not kill the cycle
             return []
+        if not rows:
+            return []
+        self._scanned_id = rows[-1][0]
 
-        floor = time.time() - self.MISSED_SCAN_MAX_SEC
-        events: list = []
-        for pid, latest_epoch in newest.items():
-            if str(pid).startswith("DEMO-"):
+        by_probe: dict = {}
+        for _row_id, pid, epoch, temp_c in rows:
+            if not pid or str(pid).startswith("DEMO-"):
                 continue
+            by_probe.setdefault(pid, []).append((epoch, temp_c))
+
+        events: list = []
+        for pid, probe_rows in by_probe.items():
             thr = thresholds.get(pid) or thresholds.get("default") or {}
             if thr.get("min") is None and thr.get("max") is None:
                 continue
-            since = self._scanned.get(pid)
-            if since is None:
-                self._scanned[pid] = latest_epoch
-                continue          # first sight: seed only
-            if latest_epoch <= since:
-                continue          # nothing new
-            try:
-                rows = self.db.readings_after(pid, since, not_before=floor)
-            except Exception:  # noqa: BLE001
-                continue
-            if not rows:
-                continue
-            # Advance the watermark to what was ACTUALLY scanned, not to the
-            # helper's truncated MAX(epoch) — otherwise the newest reading falls
-            # in the gap between the two and is never examined by anything.
-            self._scanned[pid] = rows[-1][0]
-            found = find_missed_excursions(rows, thr, probe_id=pid,
+            found = find_missed_excursions(probe_rows, thr, probe_id=pid,
                                            hysteresis=self._hysteresis())
             if len(found) > self.MISSED_MAX_PER_CYCLE:
                 log.warning("%s: %d missed excursions in one backfill; reporting the "

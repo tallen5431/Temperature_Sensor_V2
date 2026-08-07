@@ -775,6 +775,36 @@ class Database:
         ).fetchall()
         return [(r["epoch"], r["temperature_c"]) for r in rows]
 
+    def max_reading_id(self) -> int:
+        """The highest ``readings.id`` in the store, or 0 when empty."""
+        row = self._conn().execute("SELECT MAX(id) FROM readings").fetchone()
+        return int(row[0]) if row and row[0] is not None else 0
+
+    def readings_since_id(self, after_id, limit=None) -> list:
+        """``[(id, probe_id, epoch, temperature_c), ...]`` that ARRIVED after ``after_id``.
+
+        Arrival order, not timestamp order, and that distinction is the whole
+        point. A probe draining a buffer delivers readings that are *old by
+        timestamp* and *new by arrival*. A watermark on ``epoch`` cannot tell
+        those apart from history already examined — so the backlog flushed right
+        after a hub restart, which is precisely when a probe has a backlog, looks
+        like nothing new and is never scanned. ``id`` is AUTOINCREMENT, so it
+        answers "what has landed since I last looked" no matter what the readings
+        claim about when they were taken.
+
+        ``limit`` bounds the sweep by arrival too, so what it drops is the newest
+        (which the live evaluator sees anyway) rather than the oldest, which is
+        where a backfilled excursion begins.
+        """
+        sql = ("SELECT id, probe_id, epoch, temperature_c FROM readings "
+               "WHERE id > ? ORDER BY id ASC")
+        params = [int(after_id)]
+        if limit is not None:
+            sql += " LIMIT ?"
+            params.append(int(limit))
+        rows = self._conn().execute(sql, params).fetchall()
+        return [(r["id"], r["probe_id"], r["epoch"], r["temperature_c"]) for r in rows]
+
     def list_events(self, limit: int = 50, window_seconds: Optional[int] = None,
                     kinds: Optional[Iterable[str]] = None,
                     exclude_kinds: Optional[Iterable[str]] = None,

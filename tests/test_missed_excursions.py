@@ -302,3 +302,95 @@ def test_the_badge_says_what_happened():
         _add(db, m, -8.0 if 2 <= m <= 15 else -19.0)
     mon.check_once()
     assert "WAS OUT OF RANGE" in _events_text(db, cfg)
+
+
+# --- arrival order, not timestamp order -------------------------------------
+
+def test_a_backlog_flushed_after_a_restart_is_still_caught():
+    """The case a timestamp watermark cannot see, and the main one this exists for.
+
+    A backlog is old by timestamp and new by arrival. Keyed on "newest reading
+    epoch", the flush that follows a hub restart looks like nothing new — and a
+    hub restart is precisely what ends the outage that filled the buffer, so the
+    single most important scenario was the one that silently did nothing.
+    Keying on readings.id asks "what has landed since I last looked" instead.
+    """
+    db, cfg, _mon = _hub()
+    _add(db, 30, -19.0)
+
+    restarted = AlertMonitor(db, cfg, notifier=None)
+    assert _missed(restarted) == [], "history already on disk is not re-announced"
+
+    # ...and now the probe reconnects and drains 20 minutes of buffered samples,
+    # every one of them stamped BEFORE the readings the watermark was seeded on.
+    for m in range(20, 0, -1):
+        _add(db, m, -8.0 if 2 <= m <= 15 else -19.0)
+    events = _missed(restarted)
+    assert len(events) == 1, "the flush arrived after the seed and must be scanned"
+    assert events[0]["temperature_c"] == -8.0
+
+
+def test_readings_older_than_the_watermark_still_count_as_new():
+    """The property underneath it, at the database seam."""
+    db, _cfg, _mon = _hub()
+    _add(db, 5, -19.0)
+    mark = db.max_reading_id()
+    _add(db, 600, -8.0)          # arrives later, stamped ten minutes EARLIER
+    fresh = db.readings_since_id(mark)
+    assert [r[3] for r in fresh] == [-8.0], \
+        "arrival order, not timestamp order — a backlog is old by stamp and new by arrival"
+
+
+def test_the_sweep_covers_every_probe_in_one_pass():
+    """One query per cycle, not one per probe: a fleet of thirty probes must not
+    cost thirty round-trips to answer 'has anything landed'."""
+    db, _cfg, mon = _hub(thresholds={"default": dict(THR)})
+    for pid in ("A", "B", "C"):
+        _add(db, 30, -19.0, probe=pid)
+    mon.check_once()
+    for pid in ("A", "B", "C"):
+        for m in range(20, 0, -1):
+            _add(db, m, -8.0 if 2 <= m <= 15 else -19.0, probe=pid)
+    events = _missed(mon)
+    assert sorted(e["probe_id"] for e in events) == ["A", "B", "C"]
+
+
+def test_the_bulk_endpoint_no_longer_logs_its_own_backfill_events():
+    """Both reporting it meant one incident produced a `missed` event AND one
+    `high` per 100-row chunk — 62 rows for a twelve-hour outage.
+
+    Checked against the AST, not the text: the endpoint still calls
+    ``record_event`` for alert events FORWARDED by a downstream hub, which is a
+    different feature entirely, and the comment left where the removed block used
+    to be names the very identifiers this is looking for.
+    """
+    import ast
+    import pathlib
+    src = (pathlib.Path(__file__).resolve().parent.parent
+           / "api" / "routes.py").read_text(encoding="utf-8")
+    fn = next(n for n in ast.walk(ast.parse(src))
+              if isinstance(n, ast.FunctionDef) and n.name == "ingest_csv")
+    names = {n.id for n in ast.walk(fn) if isinstance(n, ast.Name)}
+    assert "worst" not in names, \
+        "the bulk drain must leave excursion reporting to AlertMonitor._check_missed"
+    assert "threshold_breach" not in names, "and stop computing it per row"
+
+
+def test_a_probe_seen_for_the_first_time_with_a_backlog_is_scanned():
+    """The exact shape that failed on a live hub, and the reason the watermark is
+    table-level rather than per probe.
+
+    Seeded per probe on FIRST SIGHT, a probe whose very first appearance IS the
+    backlog gets its watermark set and its readings skipped — and that is the
+    normal case, because a freshly started hub has never seen any probe before,
+    and the flush arrives moments later. One watermark over the whole table,
+    seeded once at the first sweep, has no first-sight hole to fall through.
+    """
+    db, _cfg, mon = _hub(thresholds={"default": dict(THR)})
+    assert _missed(mon) == [], "empty hub: seed and report nothing"
+
+    for m in range(20, 0, -1):        # this probe has never been seen before
+        _add(db, m, -8.0 if 2 <= m <= 15 else -19.0, probe="BrandNew")
+    events = _missed(mon)
+    assert len(events) == 1, "a first-ever appearance that is a backlog must be scanned"
+    assert events[0]["probe_id"] == "BrandNew"
