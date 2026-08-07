@@ -17,11 +17,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that. This is the one screen every customer passes through, and it disagreed
   with the dashboard field it mirrors.
 
-  The version is deliberately **not** bumped here: the merged binary is built
-  outside the repo, so moving `flash/manifest.json` to 2.9.3 first would tell
-  every probe an update is available and then install the 2.9.2 image, which
-  reports 2.9.2 — an update prompt that never clears. Bump all four version
-  declarations (RELEASE.md step 1) as part of the build, not ahead of it.
+  **The version needs to move with it, and has not yet.** The first version of
+  this note said the bump was being withheld because the merged binary is built
+  outside the repo — that is wrong. `.github/workflows/deploy-flasher.yml`
+  rebuilds the binary *in CI* from this `.ino` on every push touching
+  `esp32_temp_probe/**` or `flash/**`, and copies `flash/manifest.json` through
+  verbatim. So the push carrying this change already republished the flasher: the
+  image now served is built from the new source and still advertised as 2.9.2.
+  Nothing behavioural differs between the two builds — it is one string on the
+  setup portal — but one version number now names two binaries, which is the
+  drift `tests/test_version_sync.py` exists to prevent.
+
+  Bumping all four declarations (RELEASE.md step 1) is what closes it, and doing
+  so publishes an update prompt to every probe already in the field. That is a
+  judgement call about whether a label fix is worth a fleet-wide re-flash, on
+  firmware not yet validated on hardware — the workflow's own note says to treat
+  an un-validated deploy as staging.
 
 ## [2.7.1] - 2026-08-07
 
