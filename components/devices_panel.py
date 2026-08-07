@@ -187,6 +187,26 @@ DevicesLayout = html.Div([
                 # answered here instead of inferred.
                 html.Small(id='edit-probe-cadence-note', className='d-block mt-2'),
 
+                html.Label("Check between reports every (seconds):",
+                           className='fw-bold mb-2 mt-3 d-block'),
+                dbc.Input(
+                    id='edit-probe-sample-input',
+                    type='number',
+                    min=5,
+                    step=1,
+                    placeholder='inherit',
+                    className='mb-2'
+                ),
+                # Per probe, because one number for the fleet forces the slowest
+                # acceptable cadence on everything: a walk-in on mains can afford
+                # to look every 10 s, a battery probe in a remote freezer cannot.
+                # Blank inherits, exactly like the reporting interval above, so a
+                # fleet-wide change still lands everywhere it should.
+                html.Small("Only used when this probe has a limit set AND this is "
+                           "shorter than its reporting interval. Leave blank to use "
+                           "the hub default from Settings → Probes.",
+                           className='text-muted'),
+
                 # Wrapped so the toggle starts its own line rather than tucking
                 # itself onto the end of the interval field's help text.
                 html.Div(dbc.Button("▸ Advanced", id='device-advanced-toggle',
@@ -270,8 +290,9 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
         Input('edit-probe-interval-input', 'value'),
         Input('edit-probe-min-input', 'value'),
         Input('edit-probe-max-input', 'value'),
+        Input('edit-probe-sample-input', 'value'),
     )
-    def _cadence_note(_probe_id, interval, lo, hi):
+    def _cadence_note(_probe_id, interval, lo, hi, sample):
         """Answer "what will this probe actually do" from the form, live.
 
         Driven by the FIELDS, not by saved config, so typing 900 into the
@@ -289,6 +310,11 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
             check_sec = float(cfg.get('probe_sample_sec', 60) or 60)
         except (TypeError, ValueError):
             check_sec = 60.0
+        if sample not in (None, ''):
+            try:
+                check_sec = max(5.0, float(sample))   # this probe's own override
+            except (TypeError, ValueError):
+                pass
         try:
             interval_sec = float(interval) if interval not in (None, '') else \
                 float(cfg.get('interval_sec', 5) or 5)
@@ -565,12 +591,15 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
         Output('edit-probe-thresholds-label', 'children'),
         Output('edit-probe-cal-label', 'children'),
         Output('edit-probe-alerts-breadcrumb', 'children'),
-        # Appended LAST because the handler appends them last. Dash matches
-        # Outputs to the returned tuple positionally, so an Output added in the
-        # middle silently takes a neighbour's value -- which is exactly what
-        # happened here: the placeholders received the calibration label.
+        # Dash matches Outputs to the returned tuple POSITIONALLY, so an Output
+        # added in the middle silently takes a neighbour's value -- which is
+        # exactly what happened here once: the placeholders received the
+        # calibration label. Anything new goes on the END of this list and on the
+        # END of every return tuple below (there are three), and `noup` has to
+        # match the count or every save 500s.
         Output('edit-probe-min-input', 'placeholder'),
         Output('edit-probe-max-input', 'placeholder'),
+        Output('edit-probe-sample-input', 'value'),
         Input({'type': 'edit-probe-btn', 'index': ALL}, 'n_clicks'),
         Input('edit-probe-cancel', 'n_clicks'),
         Input('edit-probe-save', 'n_clicks'),
@@ -582,19 +611,20 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
         State('edit-probe-max-input', 'value'),
         State('edit-probe-cal-input', 'value'),
         State('edit-probe-resolution-input', 'value'),
+        State('edit-probe-sample-input', 'value'),
         State('temp-unit-store', 'data'),
         prevent_initial_call=True
     )
     def toggle_edit_modal(edit_clicks, cancel_clicks, save_clicks, is_open,
                           stored_probe_id, name_value, interval_value,
                           min_value, max_value, cal_value, resolution_value,
-                          temp_unit):
+                          sample_value, temp_unit):
         from dash import callback_context
         # Config always stores Celsius; the modal displays/accepts the unit the
         # dashboard is currently showing so users never convert by hand.
         unit = temp_unit or 'celsius'
         # Must equal the Output count of this callback.
-        noup = (no_update,) * 14
+        noup = (no_update,) * 15
         if not callback_context.triggered:
             return noup
 
@@ -638,6 +668,13 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                 current_res = str(clamp_resolution_bits(
                     probe_resolutions.get(probe_id, global_res), default=global_res))
 
+                # Per-probe between-report check. Left BLANK when there is no
+                # override, unlike the interval field above, which pre-fills the
+                # effective value: blank is what "inherit the hub default" looks
+                # like, and pre-filling the default here would make every probe
+                # that had merely been opened look individually pinned.
+                current_sample = (cfg.get('probe_samples', {}) or {}).get(probe_id)
+
                 # Display the stored Celsius values in the dashboard's active
                 # unit; note the offset is a DELTA (different F conversion).
                 disp_min = temp_c_to_unit(current_min, unit)
@@ -679,14 +716,16 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                 ph_max = f"e.g. {round(temp_c_to_unit(5.0, unit)):g}"
                 return (True, probe_id, probe_id, current_name, current_interval_sec,
                         disp_min, disp_max, disp_cal, current_res,
-                        thresholds_label, cal_label, breadcrumb, ph_min, ph_max)
+                        thresholds_label, cal_label, breadcrumb, ph_min, ph_max,
+                        current_sample)
             except Exception:
                 return noup
 
         # Cancel button clicked
         elif 'edit-probe-cancel' in button_id:
             return (False, None, '', '', no_update, no_update, no_update, no_update,
-                    no_update, no_update, no_update, no_update, no_update, no_update)
+                    no_update, no_update, no_update, no_update, no_update, no_update,
+                    no_update)
 
         # Save button clicked
         elif 'edit-probe-save' in button_id:
@@ -793,12 +832,47 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                 if resolution_changed:
                     log.info('Saved resolution for %s: %s-bit', stored_probe_id, new_res_bits)
 
-                # --- Push new interval/resolution to the probe immediately (best-effort) ---
-                # Only when the interval OR resolution actually changed — a
-                # name/threshold-only edit must not trigger an HTTP re-provision.
-                if (interval_changed or resolution_changed) and public_base_func is not None:
+                # --- Save the per-probe between-report check ---
+                # Blank means inherit, and is stored by REMOVING the key rather
+                # than by writing the current global: a stored copy would silently
+                # stop following a later fleet-wide change, which is the failure
+                # the interval field's "only when it differs" rule exists to avoid.
+                probe_samples = cfg.get('probe_samples', {}) or {}
+                prev_sample = probe_samples.get(stored_probe_id)
+                if sample_value in (None, ''):
+                    new_sample = None
+                else:
                     try:
-                        from provisioning import provision_probe
+                        new_sample = max(5.0, float(sample_value))
+                    except (TypeError, ValueError):
+                        new_sample = prev_sample
+                if new_sample is None:
+                    probe_samples.pop(stored_probe_id, None)
+                else:
+                    probe_samples[stored_probe_id] = new_sample
+                cfg.update({'probe_samples': probe_samples})
+                sample_changed = new_sample != prev_sample
+                if sample_changed:
+                    log.info('Saved between-report check for %s: %s',
+                             stored_probe_id, new_sample if new_sample else 'inherit')
+
+                # --- Push the new settings to the probe immediately (best-effort) ---
+                # Only when the interval, resolution or check cadence actually
+                # changed — a name-only edit must not trigger an HTTP
+                # re-provision. Threshold edits are not listed because the
+                # provisioner's own cycle (~10 s) pushes the watch tuple, so they
+                # already reach a reachable probe without this.
+                if (interval_changed or resolution_changed or sample_changed) \
+                        and public_base_func is not None:
+                    try:
+                        from provisioning import desired_probe_config, provision_probe
+                        # The watch tuple comes from desired_probe_config -- the
+                        # same function the /api/ingest reply answers with -- so a
+                        # probe reached by this push and one that pulls on its next
+                        # check-in cannot end up configured differently. It was
+                        # omitted here, which meant a check-cadence change was the
+                        # one edit this push could not deliver.
+                        want = desired_probe_config(cfg, stored_probe_id)
                         for p in discovered_probes(finder):
                             pid = p['probe_id']
                             host = probe_address(p)
@@ -810,10 +884,15 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                                     token=token or '',
                                     interval_ms=int(new_interval_sec * 1000),
                                     resolution_bits=new_res_bits,
+                                    watch=(want.get('alert_min_c'),
+                                           want.get('alert_max_c'),
+                                           want.get('sample_ms', 0)),
                                 )
                                 if ok:
-                                    log.info('Provisioned %s with interval=%s s, res=%s-bit',
-                                             stored_probe_id, new_interval_sec, new_res_bits)
+                                    log.info('Provisioned %s with interval=%s s, res=%s-bit, '
+                                             'sample=%s ms', stored_probe_id,
+                                             new_interval_sec, new_res_bits,
+                                             want.get('sample_ms', 0))
                                 else:
                                     # Not a failure: a deep-sleeping probe is
                                     # unreachable almost all the time. The hub
@@ -829,8 +908,14 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                     except Exception as e:
                         log.warning('Provision-on-save failed: %s', e)
 
+            # Same shape as the Cancel branch above, and it has to stay that way:
+            # a tuple one short here is a SchemaLengthValidationError that 500s
+            # the save and leaves the modal open on a change that was in fact
+            # written, so the operator saves again and again against a hub that
+            # already has the value.
             return (False, None, '', '', no_update, no_update, no_update, no_update,
-                    no_update, no_update, no_update, no_update, no_update, no_update)
+                    no_update, no_update, no_update, no_update, no_update, no_update,
+                    no_update)
 
         return noup
 
@@ -879,8 +964,10 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
         try:
             deleted = db.delete_probe(probe_id) if db is not None else 0
             # Drop this probe's entry from every per-probe config dict.
+            # Every per-probe table, or removing a probe leaves an orphan entry
+            # that silently re-applies if a probe with the same id ever returns.
             for key in ('probe_names', 'probe_intervals', 'alert_thresholds',
-                        'calibration_offsets', 'probe_resolutions'):
+                        'calibration_offsets', 'probe_resolutions', 'probe_samples'):
                 d = cfg.get(key, {}) or {}
                 if probe_id in d:
                     d.pop(probe_id, None)

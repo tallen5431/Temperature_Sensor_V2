@@ -74,7 +74,7 @@ _NUMBERS = [
 ]
 _BOOLS = [("pull_enabled", True), ("auto_provision", True)]
 _DICTS = ["probe_names", "alert_thresholds", "calibration_offsets", "probe_intervals",
-          "probe_resolutions"]
+          "probe_resolutions", "probe_samples"]
 
 _NOTIF_BOOLS = [("enabled", False), ("notify_recovery", True), ("offline_alerts", True)]
 _EMAIL_BOOLS = [("enabled", False), ("use_tls", True)]
@@ -204,8 +204,12 @@ def normalize_config(raw: Any) -> Tuple[Dict[str, Any], Warnings]:
     # global interval. Correcting it here makes the stored config, the value in
     # effect, and the value displayed agree, and tells the operator what changed
     # instead of leaving a setting that looks applied but is not.
+    # probe_samples' floor is 5 s because that is the firmware's WATCH_SAMPLE_MIN_MS
+    # -- below it the probe ignores the value, so storing 2 here would be a setting
+    # that reads as applied and is not, which is what this whole block exists for.
     for key, minimum, allow_negative in (("probe_intervals", 0.5, False),
                                          ("probe_resolutions", 9, False),
+                                         ("probe_samples", 5, False),
                                          ("calibration_offsets", None, True)):
         table = cfg.get(key)
         if not isinstance(table, dict):

@@ -48,6 +48,14 @@ def test_the_copy_still_matches_the_firmware():
         "  const float slack = rtc_inBreach ? WATCH_HYSTERESIS_C : 0.0f;",
         "  if (cfg_alert_max_c > WATCH_UNSET_C && tC > cfg_alert_max_c - slack) return true;",
         "  if (cfg_alert_min_c > WATCH_UNSET_C && tC < cfg_alert_min_c + slack) return true;",
+        # The sleep arithmetic and the sample-vs-report decision. Together these
+        # are the whole report schedule, and the hour-long simulation in the .cpp
+        # is only worth anything while both still match the .ino.
+        "  uint32_t untilReport = rtc_msSinceReport < cfg_interval",
+        "                         ? cfg_interval - rtc_msSinceReport : 0UL;",
+        "  uint32_t gap = cfg_sample_ms < untilReport ? cfg_sample_ms : untilReport;",
+        "  if (untilReport == 0UL) gap = cfg_sample_ms;   // report just fired",
+        "watchArmed() && (rtc_msSinceReport + cfg_sample_ms / 2 < cfg_interval)",
     ):
         assert fragment in ino, f"firmware no longer contains: {fragment}"
         assert fragment in cpp, f"host copy no longer contains: {fragment}"

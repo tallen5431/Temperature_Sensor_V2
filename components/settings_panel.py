@@ -259,13 +259,14 @@ def settings_badges(cfg):
     # Say so when the between-report check is actually reaching probes. It is the
     # setting most likely to be on without doing anything (it needs each probe's
     # reporting interval to be longer), so the badge reports what is IN EFFECT,
-    # not what is stored — same rule as "On · no channel" above.
-    try:
-        _check = max(5.0, float(cfg.get("probe_sample_sec", 60) or 60))
-    except (TypeError, ValueError):
-        _check = 60.0
-    if watch_coverage(cfg, _check)[0]:
-        probes = (f"{probes[0]} · checks every {_secs(_check)}", probes[1])
+    # not what is stored — same rule as "On · no channel" above. Named per probe,
+    # so it names a cadence only when they all share one; a mixed fleet has no
+    # single number and saying one of them would be worse than saying none.
+    checking = watching_probes(cfg)
+    if checking:
+        rates = set(checking.values())
+        probes = (f"{probes[0]} · checks every {_secs(rates.pop())}" if len(rates) == 1
+                  else f"{probes[0]} · checks between reports", probes[1])
 
     try:
         days = int(cfg.get("retention_days", 0) or 0)
@@ -567,6 +568,10 @@ _PROBES_BODY = [
             "extra battery cost. Minimum 5 s.",
             className="text-muted"), md=7),
     ], className="g-3 mt-1"),
+    html.Small("This is the default. A probe on mains can afford to look far more "
+               "often than one on a battery, so any probe can override it in "
+               "Devices → Edit; those keep their own cadence and are listed as "
+               "such below.", className="text-muted d-block mt-2"),
     html.Small(id="probe-sample-note", className="d-block mt-2"),
 
     dbc.Button("Save", id="auto-provision-save", color="primary", className="mt-3"),
@@ -679,31 +684,69 @@ def watch_coverage(cfg_dict, check_sec):
 
     data = cfg_dict.to_dict() if hasattr(cfg_dict, "to_dict") else dict(cfg_dict)
     known = set()
-    for key in ("probe_names", "probe_intervals", "alert_thresholds", "probe_resolutions"):
+    for key in ("probe_names", "probe_intervals", "alert_thresholds",
+                "probe_resolutions", "probe_samples"):
         known |= {k for k in (data.get(key) or {}) if k != "default"}
     probe = {**data, "probe_sample_sec": check_sec}
     watched = {pid for pid in known if reporting_plan(probe, pid)["watching"]}
-    return sorted(watched), sorted(known)
+    # A probe with its own cadence is unaffected by THIS number, so it must not be
+    # counted as evidence that changing this one did something -- otherwise typing
+    # a cadence no inheriting probe can use still reads as "reaches 3 probes".
+    own = {k for k in (data.get("probe_samples") or {}) if k != "default"}
+    return sorted(watched - own), sorted(known)
+
+
+def watching_probes(cfg_dict):
+    """``{probe_id: check_seconds}`` for every probe checking between reports.
+
+    :func:`watch_coverage` deliberately answers a narrower question — who does
+    THIS number reach — because that is what the Settings field needs. It is the
+    wrong question for the badge: a hub where every probe carries its own cadence
+    has coverage of zero on the default and is checking all of them, and the badge
+    read "Automatic" as though nothing were running.
+    """
+    from provisioning import reporting_plan
+
+    data = cfg_dict.to_dict() if hasattr(cfg_dict, "to_dict") else dict(cfg_dict)
+    known = set()
+    for key in ("probe_names", "probe_intervals", "alert_thresholds",
+                "probe_resolutions", "probe_samples"):
+        known |= {k for k in (data.get(key) or {}) if k != "default"}
+    out = {}
+    for pid in known:
+        plan = reporting_plan(data, pid)
+        if plan["watching"]:
+            out[pid] = plan["sample_sec"]
+    return out
 
 
 def sample_cadence_note(cfg_dict, check_sec, name_of=None):
     """``(text, css_class)`` saying who the between-report check currently reaches."""
-    watched, known = watch_coverage(cfg_dict, check_sec)
-    name_of = name_of or (cfg_dict.get("probe_names") or {})
+    data = cfg_dict.to_dict() if hasattr(cfg_dict, "to_dict") else dict(cfg_dict)
+    watched, known = watch_coverage(data, check_sec)
+    name_of = name_of or (data.get("probe_names") or {})
     label = lambda pid: name_of.get(pid) or pid  # noqa: E731
+    # Probes carrying their own cadence are called out separately rather than
+    # folded in: they are the reason a fleet number can look wrong when it is not.
+    own = sorted(k for k in (data.get("probe_samples") or {}) if k in known)
+    aside = (f" {len(own)} probe{'' if len(own) == 1 else 's'} "
+             f"({', '.join(label(p) for p in own[:3])}"
+             f"{' and more' if len(own) > 3 else ''}) "
+             f"use{'s' if len(own) == 1 else ''} their own cadence instead."
+             if own else "")
     if not known:
         return ("No probes are configured yet — this applies once a probe has a min "
                 "or max limit and reports less often than every "
                 f"{_secs(check_sec)}.", "text-muted")
     if not watched:
-        return (f"Reaches no probe right now: none has both a limit set and a "
-                f"reporting interval longer than {_secs(check_sec)}. Raise a "
-                f"probe's reporting interval on the Devices page, or lower this.",
-                "text-warning")
+        return (f"Reaches no probe on the default right now: none has both a limit "
+                f"set and a reporting interval longer than {_secs(check_sec)}. Raise "
+                f"a probe's reporting interval on the Devices page, or lower this."
+                + aside, "text-warning" if not own else "text-muted")
     shown = ", ".join(label(p) for p in watched[:4])
     more = f" and {len(watched) - 4} more" if len(watched) > 4 else ""
     return (f"Checks between reports on {len(watched)} of {len(known)} probes: "
-            f"{shown}{more}.", "text-success")
+            f"{shown}{more}." + aside, "text-success")
 
 
 def _secs(value):

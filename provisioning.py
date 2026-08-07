@@ -199,12 +199,25 @@ def desired_probe_config(cfg, probe_id: str) -> dict:
     # firmware ignores it otherwise. Default: a minute, or the report interval
     # itself when that is already shorter — sampling faster than you report is
     # the entire point, sampling faster than a minute is not worth the wakes.
+    #
+    # Per-probe first, like the reporting interval and the resolution above: a
+    # walk-in on mains can afford to look every 10 s while a battery probe in a
+    # remote freezer should not, and one number for the fleet forces the slowest
+    # of those on everything. `probe_samples` holds the override; absent means
+    # inherit the global.
     sample_ms = 0
     if alert_min_c is not None or alert_max_c is not None:
         try:
-            sample_ms = int(cfg.get("probe_sample_sec", 60) or 60) * 1000
+            sample_ms = int(float(cfg.get("probe_sample_sec", 60) or 60)) * 1000
         except (TypeError, ValueError, OverflowError):
             sample_ms = 60_000
+        if probe_id:
+            try:
+                override = (cfg.get("probe_samples") or {}).get(probe_id)
+                if override is not None:
+                    sample_ms = int(float(override) * 1000)
+            except (TypeError, ValueError, OverflowError):
+                pass
         sample_ms = max(5_000, min(sample_ms, 4_294_967_295))
         if sample_ms >= interval_ms:
             sample_ms = 0     # nothing to gain; let the probe report as it reads

@@ -41,6 +41,13 @@ static uint32_t watchSleepMs(uint32_t elapsed) {
   if (untilReport == 0UL) gap = cfg_sample_ms;   // report just fired
   return gap > elapsed ? (gap - elapsed) : 100UL;
 }
+
+// From setup(): whether this wake reads the sensor with the radio off, or is the
+// scheduled report. The half-sample bias makes the LAST sample before a deadline
+// report instead of sampling and then waking again a few hundred ms later.
+static bool sampleOnlyWake() {
+  return watchArmed() && (rtc_msSinceReport + cfg_sample_ms / 2 < cfg_interval);
+}
 // ---- end verbatim -----------------------------------------------------------
 
 static int failures = 0;
@@ -153,6 +160,79 @@ int main() {
   printf("the sleep never collapses to zero\n");
   rtc_msSinceReport = 0;
   CHECK(watchSleepMs(999999) == 100UL, "a wake longer than the gap floors at 100 ms");
+
+  // --- an hour of wakes, which is the test that needs a bench ----------------
+  // Every check above is one decision in isolation. What the single-step form
+  // cannot show is DRIFT: a per-cycle error of a few seconds looks like nothing
+  // and is 40 s by the end of an hour. Running the loop is the only way to see
+  // it, and on hardware that costs an hour per configuration.
+  //
+  // The pairs below are chosen to NOT divide evenly, because that is where the
+  // arithmetic is interesting -- 900000 % 7000 = 4000, which lands inside the
+  // 1..4999 ms band the old `gap < WATCH_SAMPLE_MIN_MS` test swallowed, making
+  // every report 3 s late, every cycle, on exactly this configuration.
+  printf("an hour of wakes: reports land on the interval, not a sample late\n");
+  struct Case { uint32_t interval; uint32_t sample; const char* what; };
+  for (Case c : {Case{900000, 7000,  "15 min report / 7 s check (remainder 4 s)"},
+                 Case{900000, 60000, "15 min report / 1 min check (divides)"},
+                 Case{900000, 11000, "15 min report / 11 s check (remainder 9 s)"},
+                 Case{600000, 45000, "10 min report / 45 s check (remainder 15 s)"},
+                 Case{300000, 10000, "5 min report / 10 s check (mains probe)"},
+                 Case{900000, 300000,"15 min report / 5 min check (battery probe)"}}) {
+    cfg_interval = c.interval; cfg_sample_ms = c.sample;
+    cfg_alert_min_c = 1.0f; cfg_alert_max_c = 5.0f;
+    CHECK(watchArmed(), "case should arm");
+
+    // A sample wake is a sensor read; a report wake also powers the radio and
+    // POSTs. Both are charged against the interval by the firmware, so both have
+    // to be charged here or the simulation would be easier than reality.
+    const uint32_t AWAKE_SAMPLE = 300, AWAKE_REPORT = 4000;
+    rtc_msSinceReport = 0;
+    uint64_t now = 0, lastReport = 0;
+    uint32_t reports = 0, wakes = 0;
+    int64_t worstLate = 0, worstEarly = 0;
+    // One hour of wall clock, plus a guard so a bug that stops advancing time
+    // fails the test instead of hanging it.
+    while (now < 3600000ULL && wakes < 100000) {
+      wakes++;
+      bool sampleOnly = sampleOnlyWake();
+      uint32_t awake = sampleOnly ? AWAKE_SAMPLE : AWAKE_REPORT;
+      if (!sampleOnly) {
+        uint64_t at = now + awake;
+        if (reports++) {
+          int64_t err = (int64_t)(at - lastReport) - (int64_t)c.interval;
+          if (err > worstLate)  worstLate = err;
+          if (err < worstEarly) worstEarly = err;
+        }
+        lastReport = at;
+        rtc_msSinceReport = 0;          // as loop() does on a delivered POST
+      }
+      uint32_t sleepMs = watchSleepMs(awake);
+      rtc_msSinceReport += awake + sleepMs;
+      now += awake + sleepMs;
+    }
+    // The two directions are NOT symmetric, and conflating them hides the bug.
+    //
+    // LATE is the failure. A report can only happen on a wake, and the sleep is
+    // clamped to the remainder precisely so a wake lands on the deadline — so a
+    // late report means the clamp did not hold. That is what the old
+    // `gap < WATCH_SAMPLE_MIN_MS` test broke, and it was late by a whole sample
+    // gap minus the remainder, every cycle.
+    //
+    // EARLY is the design. sampleOnlyWake()'s half-sample bias reports at the
+    // last sample before the deadline rather than sampling and waking again a
+    // moment later: 600000 % 45000 = 15000, less than half a 45 s gap, so the
+    // probe reports 15 s early and saves a whole wake instead of spending one to
+    // be punctual. Bounded by half a sample gap, which is what makes it a bias
+    // and not drift — it does not accumulate, because each report resets the
+    // interval.
+    CHECK(worstLate <= 0, c.what);
+    CHECK(worstEarly >= -(int64_t)(c.sample / 2), "early by more than the bias allows");
+    uint32_t want = (uint32_t)(3600000ULL / c.interval) - 1;
+    CHECK(reports >= want, "fewer reports than the hour should contain");
+    printf("  %-44s %u reports, %lld ms late / %lld ms early at worst\n",
+           c.what, reports, (long long)worstLate, (long long)-worstEarly);
+  }
 
   printf("\n%s\n", failures ? "FAILURES ABOVE" : "all watch-logic checks passed");
   return failures ? 1 : 0;

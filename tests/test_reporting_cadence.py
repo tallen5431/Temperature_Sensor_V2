@@ -123,7 +123,7 @@ def test_coverage_names_the_probes_a_cadence_reaches():
 
 def test_a_cadence_that_reaches_nobody_says_so():
     text, css = sample_cadence_note(_FLEET, 3600)
-    assert "Reaches no probe right now" in text
+    assert "Reaches no probe on the default right now" in text
     assert "1 hour" in text
     assert css == "text-warning"
 

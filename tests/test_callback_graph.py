@@ -361,3 +361,67 @@ def test_no_callback_returns_the_wrong_number_of_no_updates():
                         f"{lit.group(1)} no_updates")
     assert checked > 10, f"only inspected {checked} callbacks — did the regex rot?"
     assert not problems, "\n".join(problems)
+
+
+def _literal_return_lengths(fn):
+    """``[(lineno, length)]`` for every ``return`` in ``fn`` whose length is
+    knowable statically — a literal tuple, or ``(x,) * N``.
+
+    Anything with a ``*splat`` or a computed count is skipped rather than guessed
+    at: this exists to catch miscounts, not to reject code it cannot read.
+    """
+    import ast
+    out = []
+    for node in ast.walk(fn):
+        if not isinstance(node, ast.Return) or node.value is None:
+            continue
+        v = node.value
+        if isinstance(v, ast.Tuple):
+            if any(isinstance(e, ast.Starred) for e in v.elts):
+                continue
+            out.append((node.lineno, len(v.elts)))
+        elif (isinstance(v, ast.BinOp) and isinstance(v.op, ast.Mult)
+              and isinstance(v.left, ast.Tuple)
+              and isinstance(v.right, ast.Constant)
+              and isinstance(v.right.value, int)):
+            out.append((node.lineno, len(v.left.elts) * v.right.value))
+    return out
+
+
+def test_no_multi_output_callback_returns_the_wrong_number_of_values():
+    """The hand-built return tuple has to match the Output count too.
+
+    ``test_no_callback_returns_the_wrong_number_of_no_updates`` above only reads
+    ``(no_update,) * N`` literals, and that is not where this last bit: a probe's
+    check cadence added a 15th Output to ``toggle_edit_modal``, whose Cancel and
+    Save branches each hand-build a 14-value tuple. The Cancel one was updated and
+    the Save one was not, so ``noup`` was right, every unit test passed, and Save
+    500'd with a SchemaLengthValidationError — after having already written the
+    config, so the modal stayed open on a change that had in fact been saved.
+
+    Walks the AST rather than matching text, so it sees the tuple regardless of
+    how it is wrapped across lines, and skips any return it cannot measure
+    (``(*out, a, b)``) instead of guessing.
+    """
+    import ast
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parent.parent / "components"
+    problems, checked = [], 0
+    for f in sorted(root.glob("*.py")):
+        tree = ast.parse(f.read_text(encoding="utf-8"), filename=f.name)
+        for fn in ast.walk(tree):
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            n_out = sum(
+                1 for d in fn.decorator_list for a in getattr(d, "args", [])
+                if isinstance(a, ast.Call) and getattr(a.func, "id", "") == "Output")
+            if n_out < 2:
+                continue
+            checked += 1
+            for lineno, length in _literal_return_lengths(fn):
+                if length != n_out:
+                    problems.append(
+                        f"{f.name}:{lineno} {fn.name}() declares {n_out} Outputs "
+                        f"but returns {length} values")
+    assert checked > 10, f"only inspected {checked} callbacks — did the walk rot?"
+    assert not problems, "\n".join(problems)

@@ -24,6 +24,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   check, 5 s reporting interval) are exactly that case, so "Saved" on its own says
   nothing about whether anything happens. The section badge reports the cadence
   only when it reaches at least one probe.
+- **Each probe can check at its own cadence.** One number for the fleet forces the
+  slowest acceptable cadence onto everything: a walk-in cooler on mains can afford
+  to look every 10 s, a battery probe in a remote freezer on a 15-minute report
+  cannot, and every extra wake is run time it does not get back. **Devices → Edit →
+  Check between reports every** stores a per-probe override in `probe_samples`,
+  in the same shape as `probe_intervals` and `probe_resolutions`; blank inherits
+  the hub default, and is stored by removing the entry so an inheriting probe keeps
+  following later fleet-wide changes. The Settings line counts only the probes the
+  default actually reaches and names the ones on their own cadence separately, so a
+  fleet number cannot look wrong when it is not. No firmware change: the probe was
+  already told its own `sample_ms`, and persists it in NVS.
+- **The Save button pushes the watch, not just the interval.** The immediate
+  best-effort re-provision sent the reporting interval and sensor resolution but
+  not the limits or check cadence, so a check-cadence change was the one edit it
+  could not deliver — it waited for the probe's next check-in. It now sends the
+  same `desired_probe_config` the `/api/ingest` reply answers with, so a probe
+  reached by the push and one that pulls cannot end up configured differently.
 - **The friendly probe name is in the plain CSV export.** The spreadsheet export
   has always carried a `probe` column; the **Download CSV** button's file
   identified a fridge only as `Setpoint-000092`, and `app.py` was already reading
