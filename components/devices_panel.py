@@ -69,14 +69,19 @@ def _humanize_seconds(seconds):
 
 DevicesLayout = html.Div([
     html.H4('Connected Probes'),
-    # Mirror of the dashboard's unit picker. Only one page renders at a time, so
-    # the id never collides; storage_type='local' means both stores read the
-    # SAME persisted browser value, letting the edit modal know the active unit
-    # even though the dashboard (and its store) is not mounted on this page.
-    # No default, matching the dashboard's store: seeding 'celsius' here would
-    # write a choice the user never made, and the dashboard's locale probe would
-    # then never run for anyone who happened to open Devices first.
-    dcc.Store(id='temp-unit-store', storage_type='local'),
+    # NO temp-unit-store here. This page used to carry its own copy, back when the
+    # store lived in DashboardLayout and "only one page renders at a time, so the
+    # id never collides" was true. The store has since moved to the app shell
+    # (components/layout_main.py), which mounts it on EVERY page -- so the copy
+    # here became a second component with the same id, live at the same time.
+    #
+    # That blanked the dashboard. Dash's renderer keys components by id, so the
+    # copy inside page-content overwrote the shell's entry; navigating away from
+    # Devices tore that subtree down and deleted the entry with it, leaving the
+    # still-mounted shell store unreachable ("a nonexistent object was used in an
+    # Input"). update_dashboard takes temp-unit-store as an Input, so it never
+    # fired again and the dashboard rendered empty until a manual reload. Read the
+    # shell's store instead -- it is on this page too, which is why it was moved up.
     dcc.Interval(id='device-refresh', interval=5000, n_intervals=0),
     html.Div(id='device-grid', className='row g-3'),
     # Modal for editing a probe. What almost every edit is actually for — the

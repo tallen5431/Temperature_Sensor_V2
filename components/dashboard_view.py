@@ -585,6 +585,31 @@ def _render_sig(latest, time_range, temp_unit, focus_probe, clock_format, now=No
     return f"{ts}|{time_range}|{temp_unit}|{focus_probe}|{clock_format}|{site}|{bucket}"
 
 
+def clicked_id(triggered):
+    """Which button was actually pressed, given ``callback_context.triggered``.
+
+    ``prevent_initial_call=True`` is NOT enough for a button that lives on a page
+    rather than in the app shell. These pages are served by the ``page-content``
+    callback, so their buttons are *inserted into the layout later* — and Dash
+    fires the callbacks of a newly-inserted subtree, with every ``n_clicks``
+    still ``None``. Reading ``triggered[0]["prop_id"]`` there names a button
+    nobody touched.
+
+    That shipped, twice, on the two settings a reader is most likely to change:
+    every page load fired the unit toggle and the clock toggle, which wrote
+    "celsius" and "24h" over whatever the reader had chosen. Picking °F worked
+    until the next navigation, and the locale defaults below never ran at all —
+    by the time they looked, the stores were no longer empty.
+
+    A real click always carries a click count, so the value is the tell: skip
+    every triggered entry whose value is falsy and return "" if none is left.
+    """
+    for t in triggered or []:
+        if t.get("value"):
+            return str(t.get("prop_id", "")).split(".")[0]
+    return ""
+
+
 # Badge colour per event kind: breaches read as alerts (high hot-red, low
 # cool-blue), offline/rate as cautions, recovery/online as good news.
 _EVENT_COLORS = {"high": "danger", "low": "info", "offline": "warning",
@@ -1475,9 +1500,7 @@ def register_dashboard_callbacks(app, finder, cfg, db, public_base_func=None, to
     )
     def toggle_unit(_c, _f, _k):
         from dash import callback_context
-        if not callback_context.triggered:
-            return no_update
-        button_id = callback_context.triggered[0]["prop_id"].split(".")[0]
+        button_id = clicked_id(callback_context.triggered)
         if button_id == "unit-celsius":
             return "celsius"
         if button_id == "unit-fahrenheit":
@@ -1486,16 +1509,37 @@ def register_dashboard_callbacks(app, finder, cfg, db, public_base_func=None, to
             return "kelvin"
         return no_update
 
-    @app.callback(
+    # Which of °C / °F / K reads as selected, and 24h / 12h likewise.
+    #
+    # Both are clientside, and both take the 5 s tick as an Input they otherwise
+    # have no use for. That is not decoration — it is the only reason they run at
+    # all on a page load. dash-renderer queues a mounting subtree's callbacks by
+    # INPUT, and these buttons' real input (the preference store) lives in the app
+    # shell, which never remounts. With the store as the sole Input the callback
+    # was never queued when the dashboard mounted, so on every reload the buttons
+    # fell back to the layout's hard-coded °C / 24h while the gauge, chart, cards
+    # and stats all correctly showed the saved preference. Reading °F everywhere
+    # with °C lit up is indistinguishable, to the person looking at it, from the
+    # setting not having been kept. dash-refresh lives on this page, so naming it
+    # gets the pair queued on mount and they paint the truth immediately.
+    #
+    # Clientside because the tick would otherwise buy two server round-trips every
+    # 5 s to answer a question that only changes on a click; in the browser it is
+    # a string compare against props React already holds.
+    app.clientside_callback(
+        """
+        function (_n, unit) {
+            var u = unit || "celsius";
+            // outline=true means "not the selected unit"
+            return [u !== "celsius", u !== "fahrenheit", u !== "kelvin"];
+        }
+        """,
         Output("unit-celsius", "outline"),
         Output("unit-fahrenheit", "outline"),
         Output("unit-kelvin", "outline"),
+        Input("dash-refresh", "n_intervals"),
         Input("temp-unit-store", "data"),
     )
-    def _sync_unit_buttons(temp_unit):
-        u = temp_unit or "celsius"
-        # outline=True means "not the selected unit"
-        return (u != "celsius", u != "fahrenheit", u != "kelvin")
 
     @app.callback(
         Output("clock-format-store", "data"),
@@ -1505,22 +1549,25 @@ def register_dashboard_callbacks(app, finder, cfg, db, public_base_func=None, to
     )
     def toggle_clock_format(_h24, _h12):
         from dash import callback_context
-        if not callback_context.triggered:
-            return no_update
-        button_id = callback_context.triggered[0]["prop_id"].split(".")[0]
+        button_id = clicked_id(callback_context.triggered)
         if button_id == "clock-24h":
             return "24h"
         if button_id == "clock-12h":
             return "12h"
         return no_update
 
-    @app.callback(
+    app.clientside_callback(
+        """
+        function (_n, fmt) {
+            var twelve = (fmt || "24h") === "12h";
+            return [twelve, !twelve];
+        }
+        """,
         Output("clock-24h", "outline"),
         Output("clock-12h", "outline"),
+        Input("dash-refresh", "n_intervals"),
         Input("clock-format-store", "data"),
     )
-    def _sync_clock_buttons(clock_format):
-        return (True, False) if (clock_format or "24h") == "12h" else (False, True)
 
     @app.callback(
         Output("download-btn", "href"),

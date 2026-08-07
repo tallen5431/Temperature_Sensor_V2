@@ -149,6 +149,151 @@ def test_every_callback_target_exists_in_a_page(tmp_path):
     )
 
 
+def _ids_in(tree):
+    """The string ids a single tree renders, in order (duplicates kept)."""
+    return [comp.id for comp in _walk(tree) if isinstance(getattr(comp, "id", None), str)]
+
+
+def test_no_page_repeats_an_id_the_app_shell_already_mounts():
+    """Two live components with the same id blank the dashboard on Back.
+
+    Dash validates ``app.layout`` for duplicate ids at startup, but the shell's
+    ``page-content`` is empty there — the pages arrive later from a callback, so
+    nothing ever checks the *combination*. That gap shipped: ``DevicesLayout``
+    carried its own ``dcc.Store(id='temp-unit-store')`` from back when the store
+    lived in ``DashboardLayout`` and only one page mounted it at a time. The store
+    was later moved to the app shell, which mounts it on EVERY page, and the copy
+    on Devices quietly became a second component with the same id.
+
+    The renderer keys components by id, so opening Devices pointed that id at the
+    copy inside ``page-content``. Navigating away tore the subtree down and took
+    the entry with it — leaving the shell's store, still mounted, unreachable:
+    "a nonexistent object was used in an `Input`". ``update_dashboard`` takes
+    ``temp-unit-store`` as an Input, so it stopped firing and the dashboard
+    rendered blank until the reader hit reload by hand.
+
+    Nothing else caught it. Every server-side test passes (the callbacks are fine,
+    they just never fire), ``test_every_callback_target_exists_in_a_page`` unions
+    all the routes into one set so a duplicate reads as present, and the page
+    still looked correct while Devices was open, because both stores were
+    ``storage_type='local'`` and read the same browser value.
+    """
+    shell = _ids_in(LAYOUT)
+    assert "page-content" in shell, "the shell no longer hosts pages — update this test"
+    for route in _ROUTES:
+        page = _ids_in(serve_page(route))
+        clashes = sorted(set(shell) & set(page))
+        assert not clashes, (
+            f"{route} re-declares {clashes}, which the app shell already mounts on "
+            f"every page. Two live components with one id make that id unreachable "
+            f"once the page unmounts — delete the copy on the page and read the "
+            f"shell's.")
+        repeats = sorted({i for i in page if page.count(i) > 1})
+        assert not repeats, f"{route} renders {repeats} more than once"
+
+
+# --- callbacks that mount with a page, and callbacks that don't --------------
+
+def _shell_ids():
+    return {c.id for c in _walk(LAYOUT) if isinstance(getattr(c, "id", None), str)}
+
+
+def _page_ids(route):
+    return {c.id for c in _walk(serve_page(route)) if isinstance(getattr(c, "id", None), str)}
+
+
+def _output_ids(cb):
+    out = cb.get("output", "") or ""
+    parts = out.split("...") if out.startswith("..") else [out]
+    return {p.strip(".").split("@")[0].rsplit(".", 1)[0] for p in parts if p.strip(".")}
+
+
+def test_a_callback_that_draws_on_a_page_has_an_input_on_that_page(tmp_path):
+    """Otherwise it never runs when the page mounts, and the page shows a stale default.
+
+    dash-renderer queues a newly-mounted subtree's callbacks by INPUT. A callback
+    whose every Input lives in the app shell — which never remounts — is therefore
+    never queued when a page appears, no matter what it outputs. It fires only if
+    one of those shell Inputs later changes.
+
+    Both unit/clock button rows were in exactly that state: their only Input was
+    the preference store in the shell. On a reload, ``dcc.Store`` restored the
+    saved value silently (no change, so no callback), and the buttons kept the
+    layout's hard-coded °C / 24h while the gauge, chart, probe cards and stats all
+    showed the saved unit. °F everywhere with °C lit up reads as "it didn't keep
+    my setting". Both now also take the dashboard's own 5 s tick as an Input,
+    purely so they mount with the page.
+
+    A pure-shell callback (the router, the help modal) is fine — it draws in the
+    shell too, and the shell is always there. Only mixing the two is a bug.
+    """
+    app = _build_app(tmp_path)
+    shell = _shell_ids()
+    stranded = []
+    for cb in app._callback_list:
+        inputs = {i["id"] for i in cb.get("inputs", []) if isinstance(i.get("id"), str)}
+        if not inputs or not inputs <= shell:
+            continue  # has an on-page Input, so it mounts with the page
+        outputs = _output_ids(cb)
+        for route in _ROUTES:
+            on_page = outputs & _page_ids(route)
+            if on_page:
+                stranded.append(f"{route}: {sorted(on_page)} <- inputs {sorted(inputs)}")
+    assert not stranded, (
+        "These callbacks draw on a page but every Input they have lives in the app "
+        "shell, so they are never queued when that page mounts and whatever they "
+        "draw keeps the layout's hard-coded default:\n  " + "\n  ".join(stranded))
+
+
+def test_clicked_id_ignores_a_button_nobody_pressed():
+    """``prevent_initial_call=True`` does not cover a button inserted by a callback.
+
+    Every page here arrives via the ``page-content`` callback, so its buttons are
+    added to the layout after the initial render — and Dash fires the callbacks of
+    a newly-added subtree with every ``n_clicks`` still None. Reading
+    ``triggered[0]["prop_id"]`` there names the first button in the Input list as
+    though it had been pressed.
+
+    That is not hypothetical: it shipped on both preference toggles. Every single
+    page load fired them and wrote "celsius" and "24h" over whatever the reader had
+    chosen, so picking °F lasted until the next navigation. It also disabled the
+    locale defaults completely — those only write while the stores are still empty,
+    and by the time they ran the toggles had already filled them in, so a US
+    customer never got °F or a 12-hour clock either.
+    """
+    from components.dashboard_view import clicked_id
+
+    mount = [{"prop_id": "unit-celsius.n_clicks", "value": None},
+             {"prop_id": "unit-fahrenheit.n_clicks", "value": None},
+             {"prop_id": "unit-kelvin.n_clicks", "value": None}]
+    assert clicked_id(mount) == "", "a mount-time fire must not read as a click"
+    assert clicked_id([]) == "" and clicked_id(None) == ""
+    assert clicked_id([{"prop_id": "unit-kelvin.n_clicks", "value": 0}]) == "", \
+        "n_clicks 0 is 'rendered, never pressed'"
+
+    assert clicked_id([{"prop_id": "unit-fahrenheit.n_clicks", "value": 1}]) == "unit-fahrenheit"
+    assert clicked_id([{"prop_id": "unit-kelvin.n_clicks", "value": 7}]) == "unit-kelvin"
+    # A real click arriving in the same batch as the mount fire still wins.
+    assert clicked_id(mount + [{"prop_id": "unit-fahrenheit.n_clicks", "value": 1}]) \
+        == "unit-fahrenheit"
+
+
+def test_the_preference_toggles_use_it(tmp_path):
+    """Both toggles write a store that persists to the browser, so a spurious fire
+    does not just misdraw a frame — it overwrites a saved choice. Neither may go
+    back to reading triggered[0] directly."""
+    import re
+    import pathlib
+    src = (pathlib.Path(__file__).resolve().parent.parent
+           / "components" / "dashboard_view.py").read_text(encoding="utf-8")
+    for name in ("toggle_unit", "toggle_clock_format"):
+        body = src[src.index(f"def {name}("):]
+        body = body[:body.index("@app.callback", 1) if "@app.callback" in body[1:] else 400]
+        assert "clicked_id(" in body, f"{name} must go through clicked_id()"
+        assert not re.search(r'triggered\[0\]\["prop_id"\]', body), \
+            f"{name} reads triggered[0] directly again — that is the bug"
+
+
 def test_dashboard_callback_outputs_match_what_it_returns():
     """update_dashboard composes build_dashboard's tuple with two extra values,
     and short-circuits an unchanged tick with a HARD-CODED ``(no_update,) * N``.

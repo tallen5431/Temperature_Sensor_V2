@@ -9,6 +9,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.7.1] - 2026-08-07
+
+### Fixed
+
+- **The dashboard no longer goes blank after visiting Devices.** Opening Devices
+  and then returning to the dashboard — by browser Back, or by any route that
+  unmounted the Devices page — left the whole page empty: no gauge, no chart, no
+  KPIs, no probe cards. Only a manual reload brought it back. `DevicesLayout`
+  carried its own `dcc.Store(id='temp-unit-store')`, left over from when that
+  store lived on the dashboard and only one page mounted it at a time. The store
+  later moved to the app shell, which mounts it on *every* page, so the copy on
+  Devices became a second live component sharing one id. Dash keys components by
+  id: opening Devices pointed that id at the copy inside `page-content`, and
+  navigating away tore the subtree down and deleted the entry with it, leaving
+  the shell's still-mounted store unreachable. `update_dashboard` reads
+  `temp-unit-store` as an Input, so it stopped firing entirely. The page's copy
+  is gone; every page now reads the shell's store, which was the point of moving
+  it up. `tests/test_callback_graph.py` now fails if any route re-declares an id
+  the shell already mounts — a check Dash itself cannot do, because it validates
+  `app.layout` at startup while `page-content` is still empty.
+- **°C / °F / K and 24h / 12h are kept.** Choosing °F held until the next page
+  load, then silently reverted. Every load fired the two toggle callbacks as
+  though their buttons had been pressed — `prevent_initial_call=True` does not
+  cover a button that a callback inserts into the layout, and Dash fires a
+  newly-inserted subtree's callbacks with `n_clicks` still unset — so they wrote
+  "celsius" and "24h" over whatever had been chosen. They now ignore a trigger
+  carrying no click count. This also brings back the locale defaults, which had
+  never once run: they only write while the preference is still unset, and the
+  toggles were filling it in first, so a US customer got °C on a 24-hour clock
+  no matter what their browser said.
+- **The unit and clock buttons show the setting that is actually in effect.**
+  After a reload the °C and 24h buttons stayed lit while the gauge, chart, probe
+  cards and statistics all correctly used the saved preference — a page reading
+  °F everywhere with °C highlighted, which is indistinguishable from the setting
+  not being kept. Their only Input was the preference store in the app shell, and
+  dash-renderer queues a mounting page's callbacks by Input, so neither ever ran
+  on a page load; the buttons kept the layout's hard-coded default. Both now take
+  the dashboard's own refresh tick as well, so they mount with the page, and both
+  moved clientside so that costs no server round-trips.
+
 ## [2.7.0] - 2026-08-06
 
 ### Changed
