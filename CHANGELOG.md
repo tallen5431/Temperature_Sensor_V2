@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The browser tab showed Plotly's logo, not Setpoint's.** `assets/favicon.ico`
+  never existed, so Dash's `{%favicon%}` template token fell back to the copy it
+  ships with the library — a Plotly logo, on every page, in every bookmark, and
+  on every "Add to Home Screen" icon. Built from `assets/logo.svg` (the same mark
+  already used in the navbar) at the six sizes a browser actually asks for.
+  `tests/test_favicon.py` pins that the file exists, is well-formed, carries a
+  16×16 entry (the size a tab renders), and — the literal regression — is not
+  byte-identical to Dash's bundled default.
+
 ## [2.7.2] - 2026-08-07
 
 ### Fixed
