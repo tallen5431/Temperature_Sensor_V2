@@ -80,7 +80,7 @@ def test_reporting_cadence_is_shown_for_every_probe_not_only_overrides(tmp_path)
     """Only a per-probe OVERRIDE used to appear, so the common case — every
     probe on the global interval — displayed nothing at all."""
     txt = _grid_text(tmp_path, cfg={"interval_sec": 300}, rows=[("P1", 3.4)])
-    assert "Reports" in txt and "every 5 minutes" in txt
+    assert "Sends" in txt and "every 5 minutes" in txt
 
 
 def test_a_probe_in_breach_is_marked_on_its_card(tmp_path):
@@ -157,8 +157,8 @@ def test_a_card_says_when_a_probe_checks_between_reports(tmp_path):
         "interval_sec": 900, "probe_sample_sec": 60,
         "probe_samples": {"P1": 10},
         "alert_thresholds": {"P1": {"min": 1.0, "max": 5.0}}}, rows=[("P1", 3.4)])
-    assert "Reports" in txt and "15 minutes" in txt
-    assert "Checks between" in txt and "10 s" in txt
+    assert "Sends" in txt and "15 minutes" in txt
+    assert "Checks" in txt and "10 s" in txt
 
 
 def test_the_card_shows_the_inherited_cadence_too(tmp_path):
@@ -167,7 +167,7 @@ def test_the_card_shows_the_inherited_cadence_too(tmp_path):
     txt = _grid_text(tmp_path, cfg={
         "interval_sec": 900, "probe_sample_sec": 60,
         "alert_thresholds": {"P1": {"max": 5.0}}}, rows=[("P1", 3.4)])
-    assert "Checks between" in txt and "1 minute" in txt
+    assert "Checks" in txt and "1 minute" in txt
 
 
 def test_no_check_row_when_the_watch_is_off(tmp_path):
@@ -177,12 +177,12 @@ def test_no_check_row_when_the_watch_is_off(tmp_path):
     txt = _grid_text(tmp_path, cfg={
         "interval_sec": 5, "alert_thresholds": {"P1": {"max": 5.0}}},
         rows=[("P1", 3.4)])
-    assert "Reports" in txt
-    assert "Checks between" not in txt
+    assert "Sends" in txt
+    assert "Checks" not in txt
 
 
 def test_no_check_row_without_a_limit(tmp_path):
     """A cadence with nothing to compare against is not a watch."""
     txt = _grid_text(tmp_path, cfg={"interval_sec": 900, "probe_sample_sec": 60},
                      rows=[("P1", 3.4)])
-    assert "Checks between" not in txt
+    assert "Checks" not in txt

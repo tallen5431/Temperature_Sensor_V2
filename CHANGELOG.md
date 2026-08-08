@@ -11,6 +11,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The between-sends check was offered on probes that cannot use it.** The
+  saving comes from skipping the radio on a check, and the firmware only skips it
+  on a wake from deep sleep — which a probe only enters when its send interval is
+  10 s or longer. Below that it stays always-on and transmits every reading. The
+  hub armed the check anyway: a probe sending every 6 s with a 5 s check was
+  reported as "checking between sends" on both the Devices dialog and Settings
+  while it radioed every single reading. It is no longer sent below the
+  always-on threshold, and the dialog says so in place of pointing at a setting
+  that cannot help. `DEEP_SLEEP_MIN_MS` now lives in `core/protocol.py` with a
+  test pinning it to the firmware's copy.
+
+### Changed
+
+- **Plainer wording for the two send/check settings.** "Reporting interval" and
+  "between-report check" became *sends* and *checks between sends* throughout —
+  the Devices dialog, its live status line, the Devices card and Settings →
+  Probes — and the explanations were cut to the point. Both now state the thing
+  that was easiest to get wrong: **the readings taken between sends are saved on
+  the probe and arrive with the next send**, so choosing a slower send interval
+  does not lose detail. That was true before and nothing said it, which read as
+  the check quietly defeating the send interval.
+
 - **Head office sent false alarms about healthy stores.** A multi-site hub holds
   every store's readings but none of their configuration — thresholds, reporting
   intervals and calibration are per hub and are not forwarded, and there is

@@ -549,7 +549,7 @@ _PROBES_BODY = [
     # turned on from the app, and its default (60 s) is longer than the default
     # reporting interval (5 s), which switches it off.
     html.Hr(className="mt-4"),
-    _section_title("Between reports"),
+    _section_title("Between sends"),
     dbc.Row([
         dbc.Col([
             html.Small("Check the sensor every", className="text-muted d-block"),
@@ -559,19 +559,18 @@ _PROBES_BODY = [
             ]),
         ], md=5),
         dbc.Col(html.Small(
-            "For probes that have a min or max limit set, and only when this is "
-            "SHORTER than that probe's reporting interval. The probe reads this "
-            "often with its radio off and sends immediately if a reading crosses a "
-            "limit — so a probe reporting every 15 minutes still catches a thawing "
-            "freezer within one check. Every reading in between is buffered and "
-            "arrives with the next report, so the history is finer too, at no "
-            "extra battery cost. Minimum 5 s.",
+            "A probe that sends every 15 minutes would normally be up to 15 minutes "
+            "late to a thawing freezer. With this set, it measures far more often "
+            "with its radio off and sends straight away if a limit is crossed — so "
+            "you hear within one check instead. The readings in between are saved "
+            "on the probe and arrive with the next send, so you keep the detail "
+            "without spending battery on it.",
             className="text-muted"), md=7),
     ], className="g-3 mt-1"),
-    html.Small("This is the default. A probe on mains can afford to look far more "
-               "often than one on a battery, so any probe can override it in "
-               "Devices → Edit; those keep their own cadence and are listed as "
-               "such below.", className="text-muted d-block mt-2"),
+    html.Small(["Applies to probes that have a limit set and send less often than "
+                "this. ", html.Span("Minimum 5 s.", className="text-muted"),
+                " This is the default — any probe can be given its own value in "
+                "Devices → Edit."], className="text-muted d-block mt-2"),
     html.Small(id="probe-sample-note", className="d-block mt-2"),
 
     dbc.Button("Save", id="auto-provision-save", color="primary", className="mt-3"),
@@ -729,24 +728,21 @@ def sample_cadence_note(cfg_dict, check_sec, name_of=None):
     # Probes carrying their own cadence are called out separately rather than
     # folded in: they are the reason a fleet number can look wrong when it is not.
     own = sorted(k for k in (data.get("probe_samples") or {}) if k in known)
-    aside = (f" {len(own)} probe{'' if len(own) == 1 else 's'} "
-             f"({', '.join(label(p) for p in own[:3])}"
-             f"{' and more' if len(own) > 3 else ''}) "
-             f"use{'s' if len(own) == 1 else ''} their own cadence instead."
+    aside = (f" {', '.join(label(p) for p in own[:3])}"
+             f"{' and others' if len(own) > 3 else ''} "
+             + ("has its own setting." if len(own) == 1 else "have their own settings.")
              if own else "")
     if not known:
-        return ("No probes are configured yet — this applies once a probe has a min "
-                "or max limit and reports less often than every "
-                f"{_secs(check_sec)}.", "text-muted")
+        return ("No probes set up yet. This starts working once a probe has a limit "
+                f"and sends less often than every {_secs(check_sec)}.", "text-muted")
     if not watched:
-        return (f"Reaches no probe on the default right now: none has both a limit "
-                f"set and a reporting interval longer than {_secs(check_sec)}. Raise "
-                f"a probe's reporting interval on the Devices page, or lower this."
-                + aside, "text-warning" if not own else "text-muted")
+        return (f"Not in use: no probe has both a limit set and sends less often "
+                f"than every {_secs(check_sec)}." + aside,
+                "text-warning" if not own else "text-muted")
     shown = ", ".join(label(p) for p in watched[:4])
     more = f" and {len(watched) - 4} more" if len(watched) > 4 else ""
-    return (f"Checks between reports on {len(watched)} of {len(known)} probes: "
-            f"{shown}{more}." + aside, "text-success")
+    return (f"In use on {len(watched)} of {len(known)} probes: {shown}{more}."
+            + aside, "text-success")
 
 
 def _secs(value):

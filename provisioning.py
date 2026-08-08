@@ -5,6 +5,8 @@ from urllib.parse import urlsplit
 import requests, socket, threading
 from typing import Optional
 
+from core.protocol import DEEP_SLEEP_MIN_MS
+
 log = logging.getLogger("hub.provisioning")
 
 # DS18B20 resolution is provisionable per probe: 9..12 bits (0.5 .. 0.0625 °C).
@@ -205,8 +207,15 @@ def desired_probe_config(cfg, probe_id: str) -> dict:
     # remote freezer should not, and one number for the fleet forces the slowest
     # of those on everything. `probe_samples` holds the override; absent means
     # inherit the global.
+    # ...and only on a probe that deep-sleeps. The watch's whole saving is
+    # skipping the radio on a sample wake, and the firmware only treats a wake as
+    # sample-only when it woke FROM deep sleep — so on an always-on probe
+    # (reporting interval below DEEP_SLEEP_MIN_MS) it cannot skip anything and
+    # every sample is transmitted. Sending a cadence there would have the hub
+    # promising behaviour the probe will not perform.
     sample_ms = 0
-    if alert_min_c is not None or alert_max_c is not None:
+    if interval_ms >= DEEP_SLEEP_MIN_MS and (alert_min_c is not None
+                                             or alert_max_c is not None):
         try:
             sample_ms = int(float(cfg.get("probe_sample_sec", 60) or 60)) * 1000
         except (TypeError, ValueError, OverflowError):

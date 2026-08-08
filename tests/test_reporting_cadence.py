@@ -85,25 +85,42 @@ def test_the_modal_says_both_cadences_when_the_watch_is_on():
         {"interval_sec": 900, "probe_sample_sec": 7,
          "alert_thresholds": {"default": {"max": 4.0}}}, "P"), 7)
     assert "15 minutes" in text and "7 s" in text
-    assert "as soon as it is seen" in text
+    assert "the moment a limit is crossed" in text
+    assert "saved on the probe" in text, \
+        "the readings in between are KEPT — the surprise this line has to prevent"
     assert "success" in css
 
 
-def test_the_modal_explains_the_case_that_looks_broken():
-    """Limits set, check set, and nothing happening because the check is not
-    shorter than the reporting interval. Silent before; it is the default."""
+def test_the_modal_explains_an_always_on_probe():
+    """Below the deep-sleep threshold the probe never sleeps, so there is no radio
+    time to save and the firmware ignores the check cadence entirely. Pointing at
+    Settings would be advice that cannot help — the message has to say the check
+    does not apply at this speed, and name the speed at which it does."""
     text, css = cadence_note(reporting_plan(
         {"interval_sec": 5, "probe_sample_sec": 60,
          "alert_thresholds": {"default": {"max": 4.0}}}, "P"), 60)
-    assert "on the same beat, every 5 s" in text
-    assert "longer than the between-report check" in text
+    assert "Sends a reading every 5 s" in text
+    assert "already checking that often" in text
+    assert "10 s or slower" in text, "it must name the speed the check needs"
+    assert "Settings" not in text, "there is nothing to change in Settings here"
+    assert "muted" in css
+
+
+def test_the_modal_explains_a_check_that_is_not_shorter():
+    """A sleeping probe whose check is longer than its send interval. This one IS
+    fixable in Settings, so the message points there and gives the current value."""
+    text, css = cadence_note(reporting_plan(
+        {"interval_sec": 30, "probe_sample_sec": 60,
+         "alert_thresholds": {"default": {"max": 4.0}}}, "P"), 60)
+    assert "Sends a reading every 30 s" in text
+    assert "must be shorter" in text
     assert "1 minute" in text and "Settings → Probes" in text
     assert "warning" in css
 
 
 def test_the_modal_says_what_to_do_when_no_limit_is_set():
     text, css = cadence_note(reporting_plan({"interval_sec": 900}, "P"), 60)
-    assert "Set a min or max limit" in text
+    assert "Set a limit above" in text
     assert "muted" in css
 
 
@@ -123,7 +140,7 @@ def test_coverage_names_the_probes_a_cadence_reaches():
 
 def test_a_cadence_that_reaches_nobody_says_so():
     text, css = sample_cadence_note(_FLEET, 3600)
-    assert "Reaches no probe on the default right now" in text
+    assert "Not in use" in text
     assert "1 hour" in text
     assert css == "text-warning"
 
@@ -136,7 +153,7 @@ def test_a_cadence_that_reaches_somebody_names_them():
 
 def test_an_empty_hub_is_not_scolded():
     text, css = sample_cadence_note({"interval_sec": 5}, 60)
-    assert "No probes are configured yet" in text
+    assert "No probes set up yet" in text
     assert css == "text-muted"
 
 
@@ -304,3 +321,49 @@ def test_nothing_a_customer_reads_still_calls_it_a_read_interval():
             hits.append(f"{path.relative_to(repo)}:{i}: {line.strip()[:90]}")
     assert not hits, ("these still say \"read interval\" for the reporting "
                       "interval:\n  " + "\n  ".join(hits))
+
+
+# --- the check only works on a probe that sleeps ----------------------------
+
+def test_the_check_is_not_armed_on_an_always_on_probe():
+    """The watch saves battery by skipping the radio on a sample wake, and the
+    firmware only treats a wake as sample-only when it woke FROM deep sleep. Below
+    DEEP_SLEEP_MIN_MS the probe never sleeps, so it transmits every sample no
+    matter what cadence it is sent.
+
+    The hub used to send one anyway: a 6 s send interval with a 5 s check was
+    reported as "checking between sends" on both the Devices dialog and Settings
+    while the probe radioed every single reading. A setting that reads as applied
+    and is not is worse than one that is plainly unavailable.
+    """
+    from core.protocol import DEEP_SLEEP_MIN_MS
+    from provisioning import desired_probe_config
+
+    for interval in (6, 9):
+        cfg = {"interval_sec": interval, "probe_sample_sec": 5,
+               "alert_thresholds": {"default": {"max": 4.0}}}
+        assert interval * 1000 < DEEP_SLEEP_MIN_MS, "this case must be always-on"
+        assert desired_probe_config(cfg, "P")["sample_ms"] == 0, \
+            f"the hub armed a watch a {interval}s always-on probe cannot honour"
+        assert reporting_plan(cfg, "P")["watching"] is False
+
+    # ...and it is still armed the moment the probe does sleep.
+    cfg = {"interval_sec": 10, "probe_sample_sec": 5,
+           "alert_thresholds": {"default": {"max": 4.0}}}
+    assert desired_probe_config(cfg, "P")["sample_ms"] == 5000
+
+
+def test_the_hub_and_the_firmware_agree_on_the_sleep_threshold():
+    """Two copies of one number, on opposite sides of the wire. The firmware's is
+    what actually decides; the hub's decides what it promises."""
+    import pathlib
+    import re
+    from core.protocol import DEEP_SLEEP_MIN_MS
+
+    ino = (pathlib.Path(__file__).resolve().parent.parent
+           / "esp32_temp_probe" / "esp32_temp_probe.ino").read_text(encoding="utf-8")
+    m = re.search(r"DEEP_SLEEP_MIN_MS\s*=\s*(\d+)UL", ino)
+    assert m, "DEEP_SLEEP_MIN_MS changed shape in the firmware"
+    assert int(m.group(1)) == DEEP_SLEEP_MIN_MS, (
+        f"firmware says {m.group(1)} ms, core/protocol.py says {DEEP_SLEEP_MIN_MS} — "
+        f"the hub would promise the watch on probes that never sleep")

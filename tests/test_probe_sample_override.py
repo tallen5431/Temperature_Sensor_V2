@@ -123,8 +123,8 @@ def test_the_settings_count_excludes_probes_on_their_own_cadence():
 
 def test_settings_says_who_is_on_their_own_cadence():
     text, css = sample_cadence_note(_FLEET, 60)
-    assert "1 of 2 probes: Chest freezer" in text
-    assert "1 probe (Walk-in) uses their own cadence instead." in text
+    assert "In use on 1 of 2 probes: Chest freezer" in text
+    assert "Walk-in has its own setting." in text
     assert css == "text-success"
 
 
@@ -145,7 +145,7 @@ def test_the_modal_note_follows_the_field_not_the_saved_default():
     from components.devices_panel import cadence_note
     plan = reporting_plan({**BASE, "probe_samples": {"P": 10}}, "P")
     text, css = cadence_note(plan, 10)
-    assert "every 10 s in between" in text and "success" in css
+    assert "Checks every 10 s" in text and "success" in css
 
 
 # --- the control exists and is wired ----------------------------------------

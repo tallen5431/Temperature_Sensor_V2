@@ -6,6 +6,7 @@ from dash import html, dcc, Output, Input, State, no_update, ALL
 import dash_bootstrap_components as dbc
 
 from core.probes import discovered_probes, probe_address
+from core.protocol import DEEP_SLEEP_MIN_MS
 from core.status import limits_for, probe_fresh_window, probe_state
 from core.metrics import LATEST
 from core.alerts import HELD
@@ -82,22 +83,26 @@ def cadence_note(plan, check_sec):
     """
     report = _humanize_seconds(plan["report_sec"])
     if plan["watching"]:
-        return (f"Reports every {report}, and checks the sensor every "
-                f"{_humanize_seconds(plan['sample_sec'])} in between — a breach is sent "
-                f"as soon as it is seen, not held until the next report.",
-                "text-success d-block mt-2")
-    # "on the same beat, every X" rather than "on the same X beat": _humanize_seconds
-    # returns a plural noun phrase ("15 minutes"), which does not work as an
-    # adjective.
-    if plan["has_limit"]:
-        return (f"Reads and reports on the same beat, every {report}. Checking in "
-                f"between reports needs a reporting interval longer than the "
-                f"between-report check, which is set to "
-                f"{_humanize_seconds(check_sec)} in Settings → Probes.",
-                "text-warning d-block mt-2")
-    return (f"Reads and reports on the same beat, every {report}. Set a min or max "
-            f"limit above and the probe will also check in between reports, so a "
-            f"breach is not held until the next one.", "text-muted d-block mt-2")
+        return (f"Checks every {_humanize_seconds(plan['sample_sec'])}, sends every "
+                f"{report}. An alert goes out the moment a limit is crossed. The "
+                f"readings in between are saved on the probe and arrive with the "
+                f"next send.", "text-success d-block mt-2")
+    if not plan["has_limit"]:
+        return (f"Sends a reading every {report}. Set a limit above to also check "
+                f"between sends, so an alert does not wait for the next one.",
+                "text-muted d-block mt-2")
+    # Below the always-on threshold the probe never sleeps, so there is no radio
+    # time to save and the firmware ignores the check cadence entirely. Say that
+    # plainly rather than pointing at a setting that cannot help.
+    if plan["report_sec"] * 1000 < DEEP_SLEEP_MIN_MS:
+        return (f"Sends a reading every {report}, so it is already checking that "
+                f"often. Checking between sends applies to probes that send every "
+                f"{_humanize_seconds(DEEP_SLEEP_MIN_MS / 1000)} or slower.",
+                "text-muted d-block mt-2")
+    return (f"Sends a reading every {report}, with no checks in between. To add "
+            f"them, the between-send check (Settings → Probes) must be shorter "
+            f"than this — it is currently {_humanize_seconds(check_sec)}.",
+            "text-warning d-block mt-2")
 
 
 DevicesLayout = html.Div([
@@ -179,15 +184,16 @@ DevicesLayout = html.Div([
                     placeholder='e.g. 5',
                     className='mb-2'
                 ),
-                html.Small("How often the probe sends a reading to this hub (minimum 0.5 s). "
-                           "On battery this is what sets the run time — the radio is the "
-                           "expensive part, not the sensor.", className='text-muted'),
+                html.Small("How often the probe sends a reading to this hub "
+                           "(minimum 0.5 s). On battery, this is what sets how long "
+                           "it runs — sending costs far more power than measuring.",
+                           className='text-muted'),
                 # Filled when the modal opens. Says which of the two cadences this
                 # probe is actually on, so "does the watch apply to me?" is
                 # answered here instead of inferred.
                 html.Small(id='edit-probe-cadence-note', className='d-block mt-2'),
 
-                html.Label("Check between reports every (seconds):",
+                html.Label("Check between sends every (seconds):",
                            className='fw-bold mb-2 mt-3 d-block'),
                 dbc.Input(
                     id='edit-probe-sample-input',
@@ -202,10 +208,9 @@ DevicesLayout = html.Div([
                 # to look every 10 s, a battery probe in a remote freezer cannot.
                 # Blank inherits, exactly like the reporting interval above, so a
                 # fleet-wide change still lands everywhere it should.
-                html.Small("Only used when this probe has a limit set AND this is "
-                           "shorter than its reporting interval. Leave blank to use "
-                           "the hub default from Settings → Probes.",
-                           className='text-muted'),
+                html.Small("Leave blank to use the hub default (Settings → Probes). "
+                           "Needs a limit set above, and a value shorter than the "
+                           "send interval.", className='text-muted'),
 
                 # Wrapped so the toggle starts its own line rather than tucking
                 # itself onto the end of the interval field's help text.
@@ -523,7 +528,7 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                 # nothing, and the page looked like it did not know.
                 try:
                     secs = float(probe_intervals.get(probe_id, cfg.get('interval_sec', 5)))
-                    facts.append(('Reports', f'every {_humanize_seconds(secs)}'))
+                    facts.append(('Sends', f'every {_humanize_seconds(secs)}'))
                 except (TypeError, ValueError):
                     pass
                 # A probe checking between reports and one that is not looked
@@ -536,7 +541,7 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                     from provisioning import reporting_plan
                     plan = reporting_plan(cfg, probe_id)
                     if plan['watching']:
-                        facts.append(('Checks between',
+                        facts.append(('Checks',
                                       f"every {_humanize_seconds(plan['sample_sec'])}"))
                 except Exception:  # noqa: BLE001 - a card must render regardless
                     pass
