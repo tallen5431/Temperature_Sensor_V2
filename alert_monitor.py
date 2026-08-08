@@ -25,6 +25,27 @@ log = logging.getLogger("hub.alert_monitor")
 # the set so long-retired probes don't alert forever.
 OFFLINE_MONITOR_WINDOW_SEC = 86400
 
+# Alerting judges THIS hub's own probes only. '' is the site label a locally
+# ingested reading carries; a forwarded one carries its store's name.
+#
+# Head office holds every store's readings but none of their configuration —
+# thresholds, reporting intervals and calibration are per hub and are not
+# forwarded. Re-deriving alarms from them therefore applies the WRONG config, and
+# does it confidently:
+#
+#   * an HQ that runs fridges (0..8 C) mailed a LOW alarm for every healthy store
+#     freezer sitting at -19 C;
+#   * a store probe on a 15-minute deep-sleep cadence was judged against HQ's own
+#     300 s window and flagged offline while it was working perfectly;
+#   * and every genuine store breach landed in HQ's event log twice — once
+#     forwarded from the store, once re-derived here.
+#
+# The store hub is the authority on its own probes: it has the limits, the
+# cooldown and the deadband, and it forwards the resulting events. Head office
+# aggregates and displays them. Forwarded readings stay fully visible on the
+# dashboard, chart, exports and event log — they are simply not re-judged.
+OWN_SITE = ""
+
 
 class AlertMonitor(threading.Thread):
     def __init__(self, db, cfg, notifier=None, period_sec: int = 30, discovery=None):
@@ -127,7 +148,7 @@ class AlertMonitor(threading.Thread):
                          + [int(probe_fresh_window(self.cfg, None))])
         except Exception:  # noqa: BLE001 - config is user-editable
             widest = flat
-        df = self.db.latest_per_probe(window_seconds=widest)
+        df = self.db.latest_per_probe(window_seconds=widest, site=OWN_SITE)
         now = time.time()
         out = {}
         for _, row in df.iterrows():
@@ -322,7 +343,8 @@ class AlertMonitor(threading.Thread):
                 self._scanned_id = self.db.max_reading_id()
                 return []
             rows = self.db.readings_since_id(self._scanned_id,
-                                             limit=self.MISSED_SCAN_MAX_ROWS)
+                                             limit=self.MISSED_SCAN_MAX_ROWS,
+                                             site=OWN_SITE)
         except Exception:  # noqa: BLE001 - a read error must not kill the cycle
             return []
         if not rows:
@@ -351,7 +373,8 @@ class AlertMonitor(threading.Thread):
         return events
 
     def _check_offline(self) -> list:
-        last_epochs = self.db.last_reading_epoch_per_probe(window_seconds=OFFLINE_MONITOR_WINDOW_SEC)
+        last_epochs = self.db.last_reading_epoch_per_probe(
+            window_seconds=OFFLINE_MONITOR_WINDOW_SEC, site=OWN_SITE)
         # Synthetic demo probes stop "reporting" the moment demo mode is turned
         # off — never alert on them.
         last_epochs = {pid: ep for pid, ep in last_epochs.items()

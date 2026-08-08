@@ -655,9 +655,17 @@ class Database:
         touched every row in the window on every dashboard tick.
 
         ``site`` narrows to one forwarding store on an HQ hub; ``''`` selects
-        this hub's own probes, ``None`` (the default) every site at once. Alerts
-        pass ``None`` — a breach in store 3 is still a breach when head office
-        happens to be looking at store 1.
+        this hub's own probes, ``None`` (the default) every site at once.
+
+        Alerting passes ``''``. It used to pass ``None``, on the reasoning that "a
+        breach in store 3 is still a breach when head office happens to be looking
+        at store 1" — true, and head office does learn about it, because the store
+        forwards the event. What head office cannot do is *judge* it: thresholds
+        and reporting intervals are per hub and are not forwarded, so evaluating a
+        store's readings against HQ's own config is confidently wrong. An HQ
+        running fridges mailed a LOW alarm for every healthy store freezer, and a
+        15-minute-cadence probe was called offline against HQ's 300 s window. See
+        ``OWN_SITE`` in alert_monitor.py.
         """
         conn = self._conn()
         cutoff = self._cutoff(window_seconds)
@@ -780,7 +788,7 @@ class Database:
         row = self._conn().execute("SELECT MAX(id) FROM readings").fetchone()
         return int(row[0]) if row and row[0] is not None else 0
 
-    def readings_since_id(self, after_id, limit=None) -> list:
+    def readings_since_id(self, after_id, limit=None, site=None) -> list:
         """``[(id, probe_id, epoch, temperature_c), ...]`` that ARRIVED after ``after_id``.
 
         Arrival order, not timestamp order, and that distinction is the whole
@@ -795,10 +803,19 @@ class Database:
         ``limit`` bounds the sweep by arrival too, so what it drops is the newest
         (which the live evaluator sees anyway) rather than the oldest, which is
         where a backfilled excursion begins.
+
+        ``site`` follows the same convention as every other reader here: ``''``
+        is this hub's own probes, a name is one forwarding store, ``None`` is all
+        of them. The alert monitor passes ``''`` — see the note on
+        :meth:`latest_per_probe` about why head office must not re-judge another
+        hub's probes.
         """
+        clauses, params = ["id > ?"], [int(after_id)]
+        if site is not None:
+            clauses.append("site = ?")
+            params.append(site)
         sql = ("SELECT id, probe_id, epoch, temperature_c FROM readings "
-               "WHERE id > ? ORDER BY id ASC")
-        params = [int(after_id)]
+               f"WHERE {' AND '.join(clauses)} ORDER BY id ASC")
         if limit is not None:
             sql += " LIMIT ?"
             params.append(int(limit))

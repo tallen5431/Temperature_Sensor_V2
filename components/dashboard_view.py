@@ -9,7 +9,8 @@ from dash import Input, Output, State, dcc, html, no_update
 
 from core.storage import threshold_breach
 from core.status import (probe_fresh_window as _probe_fresh_window,
-                         probe_state, reporting_probe_ids, ONLINE_TIMEOUT_SEC)
+                         limits_for, probe_state, reporting_probe_ids,
+                         ONLINE_TIMEOUT_SEC)
 from core.demo import has_demo_data, load_demo_data, clear_demo_data
 from core import units
 
@@ -760,7 +761,6 @@ def build_probe_cards(db, cfg, temp_unit, focus_probe="all", site="all"):
         return []
     if latest is None or latest.empty:
         return []
-    thresholds = cfg.get("alert_thresholds", {}) or {}
     now = datetime.datetime.now()
     cards = []
     for _, row in latest.iterrows():
@@ -776,7 +776,10 @@ def build_probe_cards(db, cfg, temp_unit, focus_probe="all", site="all"):
             age = (now - dt).total_seconds()
         except Exception:
             pass
-        thr = thresholds.get(pid, thresholds.get("default", {})) or {}
+        # Shared with the Devices grid (core.status.limits_for) so one probe
+        # cannot read "▼ LOW" here and "Alarm range not set" there — this page
+        # fell back to `default` and that one did not.
+        thr = limits_for(cfg, pid, site=str(row.get("site") or ""))
         stale = age is not None and age > _probe_fresh_window(cfg, pid)
         held = HELD.get(pid) if HELD is not None else None
         # Shared with the Devices grid (core.status.probe_state) so one probe

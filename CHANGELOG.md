@@ -11,6 +11,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Head office sent false alarms about healthy stores.** A multi-site hub holds
+  every store's readings but none of their configuration — thresholds, reporting
+  intervals and calibration are per hub and are not forwarded, and there is
+  nowhere for them to go if they were. The hub re-derived alarms from forwarded
+  readings anyway, applying its own settings to somebody else's probes:
+
+  * an HQ that runs fridges (0–8 °C) mailed a **LOW** alarm for every healthy
+    store freezer sitting at −19 °C, and rendered the same false verdict on its
+    dashboard card;
+  * a store probe on a 15-minute deep-sleep cadence was judged against HQ's own
+    300 s freshness window and called **offline** while working perfectly (the
+    store hub, which knows the cadence, correctly said nothing);
+  * every genuine store breach landed in HQ's event log **twice** — once
+    forwarded from the store, once re-derived here.
+
+  On an alerting product this is the worst kind of wrong: a head office whose
+  mail is mostly false is a head office that stops reading it. The store hub is
+  the authority on its own probes — it holds the limits, the cooldown and the
+  deadband, and forwards the resulting events. Head office aggregates and
+  displays them. Forwarded readings stay fully visible on the dashboard, chart,
+  exports and event log; they are simply not re-judged.
+- **The Dashboard and Devices pages disagreed about whether a probe was
+  watched.** The alert engine resolves a probe's limits as "its own entry, else
+  `default`". The Dashboard card did the same; the Devices card looked up the
+  per-probe entry only — so on a hub configured with a `default`, one page showed
+  "▼ LOW" and the other "Alarm range not set", for the same probe at the same
+  moment. The Devices answer was the dangerous direction: it reads as "nothing is
+  watching this probe" about one that will alarm. Both now go through
+  `core.status.limits_for`, which is also where the forwarded-probe rule above
+  lives, so the two questions have one answer each.
+
 - **The browser tab showed Plotly's logo, not Setpoint's.** `assets/favicon.ico`
   never existed, so Dash's `{%favicon%}` template token fell back to the copy it
   ships with the library — a Plotly logo, on every page, in every bookmark, and

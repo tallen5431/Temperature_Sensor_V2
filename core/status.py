@@ -56,6 +56,35 @@ def probe_fresh_window(cfg, probe_id) -> float:
     return max(base, interval * STALE_INTERVAL_MULTIPLIER)
 
 
+def limits_for(cfg, probe_id, site: str = "") -> Dict[str, Any]:
+    """The limits THIS hub may judge ``probe_id`` by — the one resolution rule.
+
+    Two things were being got wrong independently, in two places each.
+
+    **The ``default`` fallback.** The alert engine resolves a probe's limits as
+    "its own entry, else ``default``" (:func:`core.alerts.threshold_for`). The
+    Dashboard card did the same; the Devices card looked up the per-probe entry
+    only. So on a hub configured with a ``default``, one page showed "▼ LOW" and
+    the other said "Alarm range not set" — for the same probe, at the same
+    moment, and the Devices answer was the dangerous direction: it reads as "this
+    probe is unmonitored" about a probe that will absolutely alarm.
+
+    **Forwarded probes.** A reading carrying a ``site`` label came from another
+    hub, and thresholds are per hub and are not forwarded. Judging it by THIS
+    hub's limits is not a near miss, it is a different question: head office
+    running fridges (0..8 C) rendered every healthy store freezer at -19 C as
+    "▼ LOW" on its dashboard. There is nothing to fall back to, so the honest
+    answer is no limits — the store hub judges its own probes and forwards the
+    events, which is what head office should be showing.
+
+    Returns a ``{min, max}``-shaped dict, empty when this hub cannot judge.
+    """
+    if site:
+        return {}
+    thresholds = (cfg.get("alert_thresholds", {}) if hasattr(cfg, "get") else {}) or {}
+    return (thresholds.get(probe_id) or thresholds.get("default") or {}) if thresholds else {}
+
+
 def probe_state(temp_c, thresholds, *, stale: bool = False,
                 held=None) -> Dict[str, Any]:
     """One verdict on "how is this probe doing?", shared by every surface.

@@ -6,7 +6,7 @@ from dash import html, dcc, Output, Input, State, no_update, ALL
 import dash_bootstrap_components as dbc
 
 from core.probes import discovered_probes, probe_address
-from core.status import probe_fresh_window, probe_state
+from core.status import limits_for, probe_fresh_window, probe_state
 from core.metrics import LATEST
 from core.alerts import HELD
 from core.storage import UNIDENTIFIED_PROBE_ID
@@ -366,8 +366,12 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                                 str(r['timestamp']).rstrip('Z')).timestamp()
                         except Exception:
                             pass
+                        # `site` rides along so the card knows whether this hub
+                        # is even entitled to judge the reading — a forwarded one
+                        # belongs to another hub's thresholds. See status.limits_for.
                         reading = {'temperature_c': r.get('temperature_c'),
-                                   'battery_pct': r.get('battery_pct')}
+                                   'battery_pct': r.get('battery_pct'),
+                                   'site': str(r.get('site') or '')}
                         if pid in merged:
                             merged[pid].update(reading)
                             # A probe reporting by ingest is live even when mDNS
@@ -448,7 +452,13 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
 
                 # --- the reading, which is why anyone opens this page ---------
                 t_c = info.get('temperature_c')
-                thr = (cfg.get('alert_thresholds', {}) or {}).get(probe_id) or {}
+                # Shared with the Dashboard card (core.status.limits_for). This
+                # looked up the per-probe entry ONLY, while the Dashboard and the
+                # alert engine both fall back to `default` — so a hub configured
+                # with a default rendered "▼ LOW" there and "Alarm range not set"
+                # here, and this side's answer reads as "nothing is watching this
+                # probe" about one that will alarm.
+                thr = limits_for(cfg, probe_id, site=str(info.get('site') or ''))
                 reading_row = None
                 if t_c is not None and pd.notna(t_c):
                     # One shared verdict (core.status.probe_state) so this card

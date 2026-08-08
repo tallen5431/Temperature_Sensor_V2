@@ -28,7 +28,7 @@ class FakeEventDB:
         self.recorded = []
         self.fail_record = False
 
-    def latest_per_probe(self, window_seconds=None):
+    def latest_per_probe(self, window_seconds=None, site=None):
         return pd.DataFrame(
             [{"timestamp": "t", "temperature_c": v, "temperature_f": v * 9 / 5 + 32,
               "probe_id": k, "humidity_pct": None, "vpd_kpa": None}
@@ -36,10 +36,17 @@ class FakeEventDB:
             columns=["timestamp", "temperature_c", "temperature_f", "probe_id",
                      "humidity_pct", "vpd_kpa"])
 
-    def last_reading_epoch_per_probe(self, window_seconds=None):
+    def last_reading_epoch_per_probe(self, window_seconds=None, site=None):
         return {pid: int(time.time()) for pid in self.temps}
 
     def fetch_readings(self, **kwargs):
+        return []
+
+    # The missed-excursion sweep asks for these; an empty store has nothing new.
+    def max_reading_id(self):
+        return 0
+
+    def readings_since_id(self, after_id, limit=None, site=None):
         return []
 
     def record_event(self, kind, probe_id, temperature_c=None, limit=None, ts=None):
