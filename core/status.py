@@ -86,7 +86,7 @@ def limits_for(cfg, probe_id, site: str = "") -> Dict[str, Any]:
 
 
 def probe_state(temp_c, thresholds, *, stale: bool = False,
-                held=None) -> Dict[str, Any]:
+                held=None, watched=None) -> Dict[str, Any]:
     """One verdict on "how is this probe doing?", shared by every surface.
 
     The Dashboard cards and the Devices grid each derived this independently and
@@ -103,13 +103,18 @@ def probe_state(temp_c, thresholds, *, stale: bool = False,
     Both facts are independent, so both are returned:
 
     ``alarm``    ``'high'``/``'low'`` when the probe is outside its limits — from
-                 the raw reading, or from ``held`` (the monitor's hysteresis
-                 deadband) when the reading has come back inside but has not yet
-                 cleared it.
+                 the raw reading, or from ``held`` when some authority other than
+                 this reading says so. Two things use that: the local monitor's
+                 hysteresis deadband (back inside the limit but not yet cleared
+                 by it), and a forwarded verdict on a multi-site hub, where the
+                 store that owns the probe has judged it and head office has not
+                 got the thresholds to.
     ``stale``    the caller's freshness verdict, passed straight through so this
                  stays pure (see :func:`probe_fresh_window` for the rule).
-    ``watched``  whether any limit is set at all. Unwatched is not healthy: it
-                 means nothing is checking this probe.
+    ``watched``  whether anything is checking this probe. Derived from the limits
+                 unless the caller overrides it — head office holds no limits for
+                 a forwarded probe, but the store that sent it does, so "no limit
+                 here" is not "nobody is watching".
     ``severity`` the worst of the above, for colour. A breach is ``danger`` even
                  when the probe has also gone silent; silent-or-unwatched is
                  ``secondary`` (both mean "this hub does not know"), and only a
@@ -122,7 +127,7 @@ def probe_state(temp_c, thresholds, *, stale: bool = False,
     """
     lo = (thresholds or {}).get("min")
     hi = (thresholds or {}).get("max")
-    watched = lo is not None or hi is not None
+    watched = (lo is not None or hi is not None) if watched is None else bool(watched)
     alarm = None
     if temp_c is not None:
         try:

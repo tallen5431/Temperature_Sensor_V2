@@ -783,6 +783,33 @@ class Database:
         ).fetchall()
         return [(r["epoch"], r["temperature_c"]) for r in rows]
 
+    def latest_alarm_state_per_probe(self, window_seconds: Optional[int] = None,
+                                     site: Optional[str] = None) -> dict:
+        """``{probe_id: 'high'|'low'}`` for probes whose newest lifecycle event
+        says they are currently in alarm.
+
+        Exists for the probes this hub may not judge for itself. Head office
+        holds every store's readings but none of their thresholds, so it cannot
+        derive a verdict — but the store forwards the verdict it reached, and
+        that is the thing head office should be showing. Without this, HQ drew a
+        store freezer sitting in a live breach as "no alarm set" while the store's
+        own screen showed "▲ HIGH": two hubs, one probe, one moment, two answers.
+
+        Only ``high``/``low``/``recovery`` are considered, newest per probe wins,
+        and ``recovery`` resolves to absent. ``missed`` is deliberately excluded:
+        it records an excursion that has already ENDED, so treating it as a live
+        alarm would leave a probe looking broken forever after one bad night.
+        """
+        rows = self.list_events(limit=2000, window_seconds=window_seconds,
+                                kinds=("high", "low", "recovery"), site=site)
+        out: dict = {}
+        for r in rows:                      # newest first
+            pid = r.get("probe_id")
+            if not pid or pid in out:
+                continue
+            out[pid] = r.get("kind")
+        return {p: k for p, k in out.items() if k in ("high", "low")}
+
     def max_reading_id(self) -> int:
         """The highest ``readings.id`` in the store, or 0 when empty."""
         row = self._conn().execute("SELECT MAX(id) FROM readings").fetchone()

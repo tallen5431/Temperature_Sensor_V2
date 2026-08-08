@@ -337,6 +337,15 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
             now = datetime.datetime.now()
             probe_names = cfg.get('probe_names', {})
             probe_intervals = cfg.get('probe_intervals', {})
+            # Verdicts other hubs reached about their own probes, for the cards
+            # this hub holds readings for but no thresholds. One query, not one
+            # per card; empty on a single-site hub, which is every hub until
+            # someone runs a roll-up.
+            try:
+                remote_alarms = db.latest_alarm_state_per_probe(
+                    window_seconds=7 * 86400) if db is not None else {}
+            except Exception:  # noqa: BLE001 - a missing verdict must not drop the grid
+                remote_alarms = {}
 
             # Normalise every mDNS-discovered probe into a plain dict, keyed by id.
             # core.probes owns the dict-or-dataclass reading rule for every
@@ -458,16 +467,24 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                 # with a default rendered "▼ LOW" there and "Alarm range not set"
                 # here, and this side's answer reads as "nothing is watching this
                 # probe" about one that will alarm.
-                thr = limits_for(cfg, probe_id, site=str(info.get('site') or ''))
+                row_site = str(info.get('site') or '')
+                thr = limits_for(cfg, probe_id, site=row_site)
                 reading_row = None
                 if t_c is not None and pd.notna(t_c):
+                    # A forwarded probe is judged by the hub that owns it, which
+                    # forwards the verdict -- so use that rather than showing
+                    # "no alarm set" about a probe another hub has in alarm.
+                    held = HELD.get(probe_id) if probe_id else None
+                    if row_site:
+                        held = remote_alarms.get(probe_id)
                     # One shared verdict (core.status.probe_state) so this card
                     # and the Dashboard card can never contradict each other
                     # about the same probe -- they used to, in opposite
                     # directions, whenever a probe was BOTH in breach and silent.
                     state = probe_state(t_c, thr,
                                         stale=(status_color != 'success'),
-                                        held=HELD.get(probe_id) if probe_id else None)
+                                        held=held,
+                                        watched=True if (row_site and held) else None)
                     if state['alarm']:
                         # Both facts, because a breach you have lost sight of is
                         # worse than one you are watching -- not a reason to drop

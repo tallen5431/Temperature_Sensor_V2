@@ -32,6 +32,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deadband, and forwards the resulting events. Head office aggregates and
   displays them. Forwarded readings stay fully visible on the dashboard, chart,
   exports and event log; they are simply not re-judged.
+- **Head office now shows the verdict the store sent it.** Having stopped
+  re-judging forwarded probes (above), head office had nothing to say about them
+  — it drew a store freezer sitting in a live breach as "no alarm set" while the
+  store's own screen showed "▲ HIGH". One probe, one moment, two hubs, two
+  answers. The store forwards the verdict it reached and head office holds that
+  event, so the card now uses it and names whose finding it is: **▲ HIGH ·
+  store1**. A `recovery` clears it; a `missed` never sets it, because that
+  records an excursion which has already ended and would otherwise leave a probe
+  looking broken forever after one bad night.
 - **The Dashboard and Devices pages disagreed about whether a probe was
   watched.** The alert engine resolves a probe's limits as "its own entry, else
   `default`". The Dashboard card did the same; the Devices card looked up the

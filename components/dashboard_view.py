@@ -761,6 +761,13 @@ def build_probe_cards(db, cfg, temp_unit, focus_probe="all", site="all"):
         return []
     if latest is None or latest.empty:
         return []
+    # Verdicts other hubs reached about their own probes, for the cards this hub
+    # holds readings for but no thresholds. One query, not one per card.
+    try:
+        remote_alarms = db.latest_alarm_state_per_probe(
+            window_seconds=PROBE_PRESENCE_WINDOW)
+    except Exception:  # noqa: BLE001 - a missing verdict must not drop the card
+        remote_alarms = {}
     now = datetime.datetime.now()
     cards = []
     for _, row in latest.iterrows():
@@ -779,17 +786,33 @@ def build_probe_cards(db, cfg, temp_unit, focus_probe="all", site="all"):
         # Shared with the Devices grid (core.status.limits_for) so one probe
         # cannot read "▼ LOW" here and "Alarm range not set" there — this page
         # fell back to `default` and that one did not.
-        thr = limits_for(cfg, pid, site=str(row.get("site") or ""))
+        row_site = str(row.get("site") or "")
+        thr = limits_for(cfg, pid, site=row_site)
         stale = age is not None and age > _probe_fresh_window(cfg, pid)
         held = HELD.get(pid) if HELD is not None else None
+        # A forwarded probe is judged by the hub that owns it, and that hub
+        # forwards its verdict. Use it: without this, head office drew a store
+        # freezer sitting in a live breach as "no alarm set" while the store's own
+        # screen showed "▲ HIGH" — two hubs, one probe, one moment, two answers.
+        if row_site:
+            held = (remote_alarms or {}).get(pid)
         # Shared with the Devices grid (core.status.probe_state) so one probe
         # cannot read grey "stale" here and red "ALARM" there at the same moment,
         # which is exactly what happened whenever a probe breached and then went
         # silent — each page reported one of the two facts and dropped the other.
-        state = probe_state(t_c, thr, stale=stale, held=held)
+        state = probe_state(t_c, thr, stale=stale, held=held,
+                            # A forwarded probe with a verdict IS being watched —
+                            # by the hub that sent it. "No limit here" is not
+                            # "nobody is watching".
+                            watched=True if (row_site and held) else None)
         raw_breach = threshold_breach(t_c, thr.get("min"), thr.get("max"))
         val_color = None                 # set only where it differs from `color`
-        if state["alarm"] and stale:
+        if row_site and held:
+            # Named, because the alarm is the other hub's finding and a reader
+            # should not have to guess whose limits produced it.
+            color = "danger" if held == "high" else "info"
+            badge = f"{'▲ HIGH' if held == 'high' else '▼ LOW'} · {row_site}"
+        elif state["alarm"] and stale:
             # The worst case the product has: out of range, and no longer
             # reporting. Neither half may be dropped, and the number above it is
             # old — say so rather than colouring it like a live reading.

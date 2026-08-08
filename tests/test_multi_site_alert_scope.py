@@ -304,3 +304,75 @@ def test_limits_for_is_the_single_resolution_rule():
     assert limits_for(cfg, "P1", site="store1") == {}, \
         "a forwarded probe is judged by the hub that owns it, not this one"
     assert limits_for({}, "P1") == {}
+
+
+# --- what head office SHOULD show for a probe it may not judge --------------
+
+def _seed_verdict(db, probe, temp, site, kind=None, limit=-15.0):
+    now = datetime.datetime.now()
+    db.append(now.isoformat(timespec="milliseconds"), temp, temp * 9 / 5 + 32,
+              probe, site=site)
+    if kind:
+        db.record_event(kind, probe, temperature_c=temp, limit=limit, site=site)
+
+
+def test_hq_shows_the_verdict_the_store_forwarded():
+    """Not judging is not the same as having nothing to say. The store owns the
+    thresholds and forwards the verdict it reached; head office holds that event.
+    Before this, HQ drew a store freezer sitting in a live breach as "no alarm
+    set" while the store's own screen showed "▲ HIGH" — one probe, one moment,
+    two hubs, two answers."""
+    from components.dashboard_view import build_probe_cards
+
+    d = pathlib.Path(tempfile.mkdtemp())
+    db, cfg = Database(d / "hq.db"), Config(d / "c.json")
+    cfg.update({"alert_thresholds": {"default": {"min": 0.0, "max": 8.0}}})
+    _seed_verdict(db, "S1-Freezer", -8.0, "store1", kind="high")
+
+    text = _flatten(build_probe_cards(db, cfg, "celsius"))
+    assert "HIGH" in text, "HQ ignored the verdict it was forwarded"
+    assert "store1" in text, "and it must say whose finding it is"
+
+
+def test_a_recovery_clears_the_forwarded_verdict():
+    from components.dashboard_view import build_probe_cards
+
+    d = pathlib.Path(tempfile.mkdtemp())
+    db, cfg = Database(d / "hq.db"), Config(d / "c.json")
+    _seed_verdict(db, "S1-Freezer", -8.0, "store1", kind="high")
+    db.record_event("recovery", "S1-Freezer", temperature_c=-19.0, site="store1")
+    assert db.latest_alarm_state_per_probe() == {}, \
+        "the newest lifecycle event wins, and recovery means no alarm"
+    assert "HIGH" not in _flatten(build_probe_cards(db, cfg, "celsius"))
+
+
+def test_a_missed_excursion_is_not_a_live_alarm():
+    """`missed` records an excursion that has already ENDED. Treating it as a
+    live verdict would leave a probe looking broken forever after one bad night."""
+    d = pathlib.Path(tempfile.mkdtemp())
+    db = Database(d / "hq.db")
+    _seed_verdict(db, "S1-Freezer", -19.0, "store1", kind="missed")
+    assert db.latest_alarm_state_per_probe() == {}
+
+
+def test_both_pages_agree_about_a_forwarded_breach():
+    """The rule that started all of this: two surfaces, one probe, one answer —
+    now across two hubs as well as two pages."""
+    from components.dashboard_view import build_probe_cards
+
+    d = pathlib.Path(tempfile.mkdtemp())
+    db, cfg = Database(d / "hq.db"), Config(d / "c.json")
+    cfg.update({"alert_thresholds": {"default": {"min": 0.0, "max": 8.0}}})
+    _seed_verdict(db, "S1-Freezer", -8.0, "store1", kind="high")
+
+    import dash
+    from components.devices_panel import DevicesLayout, register_devices_callbacks
+    app = dash.Dash(__name__)
+    app.layout = DevicesLayout
+    app.config.suppress_callback_exceptions = True
+    register_devices_callbacks(app, finder=_NoDiscovery(), cfg=cfg, db=db)
+    devices = _flatten(app.callback_map["device-grid.children"]["callback"].__wrapped__(0, "celsius"))
+    dash_text = _flatten(build_probe_cards(db, cfg, "celsius"))
+
+    assert "ALARM" in devices.upper() and "NO ALARM SET" not in devices.upper()
+    assert "HIGH" in dash_text
