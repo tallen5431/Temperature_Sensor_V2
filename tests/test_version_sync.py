@@ -205,3 +205,23 @@ def test_the_release_runbook_does_not_teach_a_build_that_breaks_the_lgpl_promise
     assert "packaging/temperature_hub.spec" in runbook, (
         "RELEASE.md should point at the spec, which is what carries the data "
         "files and hidden imports the app needs at runtime")
+
+
+def test_the_badges_and_docs_name_the_version_the_code_reports():
+    """README's badges and DEVELOPING.md's header, against the two sources of
+    truth. Both had drifted — the hub badge sat on 2.6.2 while core/version.py
+    said 2.7.2, and the firmware badge on 2.8.2 while the sketch said 2.9.3 —
+    so the first thing a visitor reads about this project was wrong about both
+    halves of it. Everything else carrying a version is already enforced here;
+    these two were the gap.
+    """
+    from core.version import HUB_VERSION
+    readme = (REPO / "README.md").read_text(encoding="utf-8")
+    assert f"hub-v{HUB_VERSION}-" in readme, (
+        f"README's hub badge disagrees with core/version.py ({HUB_VERSION})")
+    assert f"firmware-v{firmware_version()}-" in readme, (
+        f"README's firmware badge disagrees with the sketch ({firmware_version()})")
+
+    developing = (REPO / "docs" / "DEVELOPING.md").read_text(encoding="utf-8")
+    assert f"version **{HUB_VERSION}**" in developing, (
+        "docs/DEVELOPING.md names a hub version core/version.py does not")

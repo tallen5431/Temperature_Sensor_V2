@@ -26,7 +26,7 @@
 // ---------------------------------------------------------------------------
 // Versioning (matches esp32_temp_probe.ino: FW_VERSION, protocol v1)
 // ---------------------------------------------------------------------------
-#define TEMPSENSOR_FW_VERSION "2.9.3"   // == FW_VERSION in the .ino
+#define TEMPSENSOR_FW_VERSION "2.9.4"   // == FW_VERSION in the .ino
 #define TEMPSENSOR_PROTO      1         // wire protocol version
 
 // ---------------------------------------------------------------------------

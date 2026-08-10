@@ -42,6 +42,16 @@ static uint32_t watchSleepMs(uint32_t elapsed) {
   return gap > elapsed ? (gap - elapsed) : 100UL;
 }
 
+// The whole sleep decision, not just the armed branch. Every exit from loop()
+// goes through this in the firmware -- including the two that used to answer a
+// flat cfg_interval and so blinded an armed watch for a full report interval:
+// the DS18B20 fault path, and the wake after a disturbance burst.
+static uint32_t nextSleepMs(unsigned long elapsed) {
+  if (watchArmed()) return watchSleepMs((uint32_t)elapsed);
+  return cfg_interval > (uint32_t)elapsed
+         ? (uint32_t)(cfg_interval - elapsed) : 100UL;
+}
+
 // From setup(): whether this wake reads the sensor with the radio off, or is the
 // scheduled report. The half-sample bias makes the LAST sample before a deadline
 // report instead of sampling and then waking again a few hundred ms later.
@@ -160,6 +170,34 @@ int main() {
   printf("the sleep never collapses to zero\n");
   rtc_msSinceReport = 0;
   CHECK(watchSleepMs(999999) == 100UL, "a wake longer than the gap floors at 100 ms");
+
+  // --- the two exits that used to ignore the watch entirely -----------------
+  // A sensor fault and a disturbance burst are the two moments the watch most
+  // needs to keep looking, and both answered a flat cfg_interval: on a
+  // 15-minute reporting probe that is a quarter of an hour of not watching a
+  // freezer, immediately after the two events most likely to matter.
+  printf("a sensor fault retries at the sample cadence, not the report cadence\n");
+  cfg_interval = 900000; cfg_sample_ms = 60000;
+  rtc_msSinceReport = 300000;                     // mid-interval
+  CHECK(nextSleepMs(awake) == 60000 - awake,
+        "a fault must not blind an armed watch for a whole report interval");
+  CHECK(nextSleepMs(awake) <= cfg_sample_ms, "fault sleep exceeded one sample gap");
+
+  printf("...and so does the wake after a disturbance burst\n");
+  rtc_msSinceReport = 120000;
+  {
+    uint32_t untilReport = cfg_interval - rtc_msSinceReport;
+    uint32_t bound = cfg_sample_ms < untilReport ? cfg_sample_ms : untilReport;
+    CHECK(nextSleepMs(awake) <= bound, "post-burst sleep exceeded min(sample, remainder)");
+  }
+
+  printf("an UNARMED probe still sleeps the full reporting interval\n");
+  cfg_alert_min_c = WATCH_UNSET_C; cfg_alert_max_c = WATCH_UNSET_C;
+  rtc_msSinceReport = 0;
+  CHECK(!watchArmed(), "the unarmed case must actually be unarmed");
+  CHECK(nextSleepMs(awake) == cfg_interval - awake,
+        "an unarmed probe must keep its v2.7.0 battery behaviour");
+  cfg_alert_max_c = -12.0f;                       // re-arm for what follows
 
   // --- an hour of wakes, which is the test that needs a bench ----------------
   // Every check above is one decision in isolation. What the single-step form

@@ -500,8 +500,12 @@ The hub validates every reading before it touches the log:
 2. **Finite:** the resolved celsius value must be a finite number (no `NaN`/`inf`),
    else `400`.
 3. **Range:** celsius must satisfy `-60.0 ≤ t_c ≤ 150.0`, else `400`. This band
-   rejects sensor fault codes (e.g. `85.0` power-on, `-127` disconnected) so they
-   cannot poison dashboard statistics or the auto-scaled axis.
+   rejects the `-127` disconnected fault code and anything else out of band, so it
+   cannot poison dashboard statistics or the auto-scaled axis. The `85.0` power-on
+   value is **in band and is deliberately accepted here** — it is a physically
+   plausible temperature, and a hub that dropped it would silently lose real
+   readings from an oven or a steam line. It is suppressed at the probe instead
+   (§8), which is the only place that can tell the fault code from the reading.
 4. **probe_id:** sanitized against `^[A-Za-z0-9_-]{1,32}$` — disallowed characters
    are stripped and the result truncated to 32. The reading is never rejected for
    its id. If nothing valid remains (or none was sent at all), it is filed under
@@ -600,8 +604,13 @@ Sensor: **DS18B20** on a GPIO with a 4.7 kΩ pull-up (thermocouple **MAX31855** 
 temp+humidity **SHT4x** optional at build time — see firmware `build_flags`
 `-D SENSOR_MAX31855` / `-D SENSOR_SHT4x`). Known fault readings — `85.0 °C` (power-on
 default), `-127 °C` / `NaN` (disconnected) — MUST cause the probe to set
-`sensor_ok = false` and **skip posting** that cycle. As defense in depth, any such
-value that did reach the hub is rejected by the range/finite checks in §6.
+`sensor_ok = false` and **skip posting** that cycle.
+
+As defence in depth the hub's §6 checks catch `-127` and `NaN` if they reach it
+anyway. They do **not** catch `85.0`, which is inside the accepted range and has
+to be: it is a real temperature. Suppression at the probe is therefore the sole
+defence against the power-on value, which is why it is a MUST above and not a
+recommendation.
 
 ---
 

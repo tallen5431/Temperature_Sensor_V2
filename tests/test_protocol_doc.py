@@ -116,3 +116,72 @@ def test_a_deleted_limit_is_sent_as_null_not_omitted(limit):
     from provisioning import desired_probe_config
     out = desired_probe_config({"interval_sec": 900}, "P")
     assert limit in out and out[limit] is None
+
+
+# --- the firmware's own half of §4.1 ---------------------------------------
+# The tests above check that the HUB sends what the spec promises. Nothing
+# checked that the probe stores it, and it did not: handleProvision() parsed
+# server_url, token, interval_ms and resolution_bits, and silently dropped the
+# three watch fields §4.1 requires it to persist. The push path therefore
+# reported the watch as delivered, the Devices dialog reported it as armed, and
+# only the PULL path (the /api/ingest reply) ever actually armed it — a setting
+# that reads as applied and is not.
+#
+# The firmware half normally needs a probe on a bench. These are source
+# assertions instead, in the style this file already uses for doc/code drift:
+# they cannot prove the probe behaves, but they can prove the handler at least
+# reads each field, which is the part that was missing.
+
+INO = (REPO / "esp32_temp_probe" / "esp32_temp_probe.ino").read_text(encoding="utf-8")
+
+
+def _ino_function(name: str) -> str:
+    """The body of one top-level firmware function, by brace matching."""
+    start = INO.index(f"void {name}()")
+    depth, i = 0, INO.index("{", start)
+    for j in range(i, len(INO)):
+        if INO[j] == "{":
+            depth += 1
+        elif INO[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return INO[start:j + 1]
+    raise AssertionError(f"could not find the end of {name}()")
+
+
+@pytest.mark.parametrize("field", ["server_url", "token", "interval_ms",
+                                   "resolution_bits", "alert_min_c", "alert_max_c",
+                                   "sample_ms"])
+def test_the_firmware_provision_handler_reads_every_field_the_spec_sends(field):
+    body = _ino_function("handleProvision")
+    assert f'"{field}"' in body, (
+        f"POST /provision drops `{field}`. PROTOCOL.md §4.1 says the probe "
+        f"persists it, and the hub's push path sends it and records the push as "
+        f"delivered — so the setting reads as applied and is not.")
+
+
+def test_the_provision_handler_clears_a_limit_the_hub_removed():
+    """§4.1's explicit-null-clears rule, the same one applyHubConfig implements.
+
+    A limit deleted on the dashboard arrives as JSON null. Ignoring it leaves
+    the probe waking every minute to check a limit nobody holds any more.
+    """
+    body = _ino_function("handleProvision")
+    for field in ("alert_min_c", "alert_max_c"):
+        assert f'doc["{field}"] | WATCH_UNSET_C' in body, (
+            f"{field} must default to WATCH_UNSET_C so an explicit null clears it")
+    assert 'doc.containsKey("sample_ms")' in body
+
+
+def test_the_provision_handler_can_hold_the_body_the_hub_sends():
+    """ArduinoJson v6 StaticJsonDocument is a hard pool cap, and deserializeJson
+    parses the whole body regardless of which keys are read after. The
+    documented 7-field push costs roughly 260 bytes with a real hub URL and the
+    32-char token app.py generates; at 256 it returned NoMemory and the handler
+    answered 400 "bad json", so the probe was never provisioned at all."""
+    body = _ino_function("handleProvision")
+    sizes = [int(n) for n in re.findall(r"StaticJsonDocument<(\d+)> doc;", body)]
+    assert sizes, "handleProvision no longer declares a parse document"
+    assert min(sizes) >= 512, (
+        f"the /provision parse buffer is {min(sizes)} bytes; the documented "
+        f"7-field body needs ~260 and a longer hub URL or token needs more")

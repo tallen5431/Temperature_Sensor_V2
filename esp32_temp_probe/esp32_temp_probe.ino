@@ -1,4 +1,25 @@
 // ESP32 + DS18B20 + WiFiManager + mDNS + OTA + WebServer
+// v2.9.4 — four fixes, all of them silent.
+//           POST /provision parsed four fields and DROPPED the three
+//           threshold-watch ones PROTOCOL.md §4.1 requires it to persist, so
+//           the hub's push path reported the watch as delivered and only the
+//           pull path (the /api/ingest reply) ever armed it. Its parse buffer
+//           was also 256 bytes against a ~260-byte body, so under ArduinoJson
+//           v6 the whole push could come back "bad json" and the probe would
+//           not be provisioned at all. 512 now, and the watch fields are
+//           honoured with applyHubConfig's explicit-null-clears semantics.
+//           The captive portal shrank its own fields: setValue(v, length)
+//           takes the BUFFER size, and three call sites passed the current
+//           VALUE's length — so on an unprovisioned probe the Server URL input
+//           rendered maxlength="0" and silently discarded whatever the
+//           customer typed, on the one screen every customer passes through.
+//           Two exits from loop() ignored the threshold watch and slept a full
+//           reporting interval: the DS18B20 fault path and the wake after a
+//           disturbance burst. On a 15-minute probe that is a quarter of an
+//           hour of not watching a freezer, straight after the two events most
+//           likely to matter. Both now share one nextSleepMs().
+//           And /status could silently omit members — ArduinoJson v6 drops
+//           them rather than erroring — once server_url passed 38 characters.
 // v2.9.3 — the Wi-Fi setup portal's "Read interval (ms)" field is now
 //           "Reporting interval (ms)". It sets cfg_interval, which is how often
 //           the probe TRANSMITS; with the threshold watch armed it reads far
@@ -197,7 +218,7 @@ inline void ledBlink(uint8_t n, uint16_t onMs = 60, uint16_t offMs = 120) {
 
 // ---------------- Identity --------------------------------------------------
 static const char* SENSOR_NAME = "Setpoint";
-static const char* FW_VERSION  = "2.9.3";
+static const char* FW_VERSION  = "2.9.4";
 
 // The setup SoftAP is intentionally OPEN (no password): it only exists during
 // first-time Wi-Fi setup and is torn down once the probe joins the home network,
@@ -371,14 +392,26 @@ uint32_t cfg_sample_ms   = 0;     // 0 = no separate sample cadence (read == rep
 
 // ---------------- WiFiManager parameters ------------------------------------
 WiFiManager wm;
-WiFiManagerParameter p_server  ("server",   "Server URL",             "",     128);
-WiFiManagerParameter p_token   ("token",    "Ingest token (optional)","",      64);
+// BUFFER lengths, not value lengths. WiFiManagerParameter::setValue(v, length)
+// takes the parameter's buffer size -- it reallocs to `length`, strncpy's into
+// it, renders it as the input's maxlength=, and truncates the SUBMITTED value
+// to it on save. Passing the current value's length instead (which two call
+// sites did) shrinks the field: an unprovisioned probe has an empty
+// server_url, so the portal rendered maxlength="0" and silently discarded
+// whatever the customer typed -- on the one screen every customer passes
+// through. Named here so the declarations and the three setValue call sites
+// cannot drift apart again.
+static const int P_SERVER_LEN   = 128;
+static const int P_TOKEN_LEN    = 64;
+static const int P_INTERVAL_LEN = 10;    // max uint32 is 4294967295 -> 10 digits
+WiFiManagerParameter p_server  ("server",   "Server URL",             "",     P_SERVER_LEN);
+WiFiManagerParameter p_token   ("token",    "Ingest token (optional)","",      P_TOKEN_LEN);
 // "Read interval" was the wrong name: this sets cfg_interval, which is how often
 // the probe TRANSMITS. With the threshold watch armed it reads far more often than
 // this. The dashboard field it mirrors is called "Reporting Interval", and a
 // customer who reads one screen and then the other has to see the same words --
 // this is the captive portal, the one screen every customer passes through.
-WiFiManagerParameter p_interval("interval", "Reporting interval (ms)", "5000",  10);
+WiFiManagerParameter p_interval("interval", "Reporting interval (ms)", "5000",  P_INTERVAL_LEN);
 
 // ---------------- HTTP server -----------------------------------------------
 WebServer http(80);
@@ -552,6 +585,38 @@ void loadConfig() {
 // True when the hub has given this probe at least one limit AND a sample
 // cadence shorter than its report interval. Everything the watch does is gated
 // on this, so a probe the hub has said nothing to behaves exactly as before.
+static bool watchArmed();
+
+// How long to deep-sleep at the end of a wake, given how long this wake took.
+//
+// One definition, because there are three exits from the loop that need it and
+// two of them used to answer `cfg_interval` unconditionally -- so with the watch
+// armed, a transient sensor fault or a disturbance burst blinded the probe for a
+// whole REPORT interval when it should have been back in cfg_sample_ms. On a
+// 15-minute reporting probe watching a freezer that is a quarter of an hour of
+// not looking, immediately after the two events most likely to matter.
+static uint32_t nextSleepMs(unsigned long elapsed) {
+  if (watchArmed()) {
+    // To the next SAMPLE, not the next report -- but never past the report
+    // itself, so a report is not delayed by up to one sample gap.
+    uint32_t untilReport = rtc_msSinceReport < cfg_interval
+                           ? cfg_interval - rtc_msSinceReport : 0UL;
+    uint32_t gap = cfg_sample_ms < untilReport ? cfg_sample_ms : untilReport;
+    // Only when the report is ALREADY DUE. This used to read
+    // `gap < WATCH_SAMPLE_MIN_MS`, which also fired for any remainder of
+    // 1..4999 ms -- undoing the clamp on the line above, which exists precisely
+    // so a report is not delayed. The probe then slept a whole sample gap
+    // instead of the short remainder and the report landed up to cfg_sample_ms
+    // late, every cycle, whenever cfg_interval % cfg_sample_ms fell in that band.
+    if (untilReport == 0UL) gap = cfg_sample_ms;   // report just fired
+    return gap > (uint32_t)elapsed ? (uint32_t)(gap - elapsed) : 100UL;
+  }
+  // Unsigned arithmetic: if elapsed > cfg_interval, sleep a 100 ms minimum
+  // rather than wrapping into a tight reboot loop.
+  return cfg_interval > (uint32_t)elapsed
+         ? (uint32_t)(cfg_interval - elapsed) : 100UL;
+}
+
 static bool watchArmed() {
   bool haveLimit = (cfg_alert_min_c > WATCH_UNSET_C) || (cfg_alert_max_c > WATCH_UNSET_C);
   return haveLimit && cfg_sample_ms >= WATCH_SAMPLE_MIN_MS && cfg_sample_ms < cfg_interval;
@@ -1123,7 +1188,13 @@ void handleWhoAmI() {
 }
 
 void handleStatus() {
-  StaticJsonDocument<384> doc;
+  // 640: 19 members cost ~304 B of slots on ESP32, plus the copied id (16),
+  // last_ts (25) and server_url (up to the field's own 128-char limit). At 384
+  // this fitted only a server_url of 38 characters or fewer -- past that
+  // ArduinoJson v6 silently OMITS members rather than erroring, so /status
+  // quietly stopped reporting the watch fields on exactly the deployments with
+  // a longer hub URL.
+  StaticJsonDocument<640> doc;
   doc["id"]          = g_probeId;
   doc["interval_ms"] = cfg_interval;
   doc["resolution_bits"] = cfg_res_bits;
@@ -1168,7 +1239,14 @@ void handleProvision() {
     return sendJSON(405, e);
   }
 
-  StaticJsonDocument<256> doc;
+  // 512, not 256. Under ArduinoJson v6 (the .ino header and firmware/README
+  // both say v6 or v7, so v6 has to fit) a StaticJsonDocument is a hard pool
+  // cap, and deserializeJson parses the WHOLE body regardless of which keys are
+  // read afterwards. The documented 7-field body costs ~112 B of slots + ~79 B
+  // of copied keys + the server_url (~36) + the hub's 32-char token (33) = ~260
+  // -- already over. Over the line, deserializeJson returns NoMemory, the
+  // handler answers 400 "bad json", and the probe is never provisioned at all.
+  StaticJsonDocument<512> doc;
   DeserializationError err = deserializeJson(doc, http.arg("plain"));
   if (err) {
     StaticJsonDocument<64> e; e["ok"] = false; e["error"] = "bad json";
@@ -1192,8 +1270,26 @@ void handleProvision() {
   if (resBits < 9)  resBits = 9;
   if (resBits > 12) resBits = 12;
   cfg_res_bits   = resBits;
+
+  // The threshold watch, with the same explicit-null-clears semantics
+  // applyHubConfig uses (PROTOCOL.md §4.1 requires all three to be persisted
+  // here). This handler read four keys and silently dropped these three -- so
+  // the hub's PUSH path sent them, the auto-provisioner recorded them as
+  // delivered, and the Devices dialog reported the watch as armed, while only
+  // the PULL path (the /api/ingest reply) ever actually armed it. A setting
+  // that reads as applied and is not is worse than one plainly unavailable.
+  if (doc.containsKey("alert_min_c")) cfg_alert_min_c = doc["alert_min_c"] | WATCH_UNSET_C;
+  if (doc.containsKey("alert_max_c")) cfg_alert_max_c = doc["alert_max_c"] | WATCH_UNSET_C;
+  if (doc.containsKey("sample_ms"))   cfg_sample_ms   = (uint32_t)(doc["sample_ms"] | 0UL);
+
   saveConfig();
   applyResolution(cfg_res_bits);   // apply the new resolution live
+  // Both depend on cfg_interval, which may just have changed.
+  g_deepSleepMode = DEEP_SLEEP_ENABLED && (cfg_interval >= DEEP_SLEEP_MIN_MS);
+  if (watchArmed()) {
+    Serial.printf("[Watch] Armed: min=%.1f max=%.1f every %lu ms\n",
+                  cfg_alert_min_c, cfg_alert_max_c, (unsigned long)cfg_sample_ms);
+  }
 
   StaticJsonDocument<160> out;
   out["ok"]          = true;
@@ -1228,11 +1324,11 @@ void startConfigPortal() {
   wm.setConfigPortalTimeout(PORTAL_TIMEOUT_S);
   wm.setParamsPage(true);
 
-  p_server.setValue(cfg_server_url.c_str(), cfg_server_url.length());
-  p_token.setValue (cfg_token.c_str(),      cfg_token.length());
+  p_server.setValue(cfg_server_url.c_str(), P_SERVER_LEN);
+  p_token.setValue (cfg_token.c_str(),      P_TOKEN_LEN);
   char ibuf[12];
   snprintf(ibuf, sizeof(ibuf), "%lu", (unsigned long)cfg_interval);
-  p_interval.setValue(ibuf, strlen(ibuf));
+  p_interval.setValue(ibuf, P_INTERVAL_LEN);
 
   // Parameters were registered once in setup() — do NOT re-add here.
 
@@ -1628,11 +1724,11 @@ void setup() {
       // infinite hard-block.
       while (WiFi.status() != WL_CONNECTED && !wm.getWiFiIsSaved()) {
         Serial.println("[WiFi] No known network; opening setup portal.");
-        p_server.setValue(cfg_server_url.c_str(), cfg_server_url.length());
-        p_token.setValue (cfg_token.c_str(),      cfg_token.length());
+        p_server.setValue(cfg_server_url.c_str(), P_SERVER_LEN);
+        p_token.setValue (cfg_token.c_str(),      P_TOKEN_LEN);
         char ibuf[12];
         snprintf(ibuf, sizeof(ibuf), "%lu", (unsigned long)cfg_interval);
-        p_interval.setValue(ibuf, strlen(ibuf));
+        p_interval.setValue(ibuf, P_INTERVAL_LEN);
         startConfigPortal();
       }
       if (WiFi.status() == WL_CONNECTED) {
@@ -1804,9 +1900,16 @@ void loop() {
         // charging the report interval, or a spell of bad reads would leave the
         // clock stopped and the first good reading would look overdue by
         // however long the fault lasted.
+        //
+        // nextSleepMs, not a flat cfg_interval: with the watch armed the retry
+        // belongs at the SAMPLE cadence. DS_READ_RETRIES spans about 800 ms, so
+        // any 1-Wire glitch lasting a second -- the marginal pull-up, the long
+        // lead, the EMI this branch exists for -- fell through to here and
+        // stopped the probe looking at a freezer for a full report interval.
+        // The flat value also over-charged rtc_msSinceReport on top of progress
+        // already accrued, pushing the next report up to an interval late.
         unsigned long elapsed = millis() - g_wakeStart;
-        uint32_t sleepMs = cfg_interval > elapsed
-                           ? (uint32_t)(cfg_interval - elapsed) : 1000UL;
+        uint32_t sleepMs = nextSleepMs(elapsed);
         rtc_msSinceReport += (uint32_t)elapsed + sleepMs;
         enterDeepSleep(sleepMs);
       }
@@ -1929,26 +2032,19 @@ void loop() {
       // 100 ms minimum to avoid a tight reboot loop.
       unsigned long elapsed = millis() - g_wakeStart;
       uint32_t sleepMs;
-      if (doBurst) {
+      if (doBurst && !watchArmed()) {
+        // v2.7.0 battery guard, for the UNARMED case only. After a burst the
+        // whole interval has usually elapsed, and the old collapsed 100 ms
+        // floor doubled the wake rate exactly when the battery was being hit
+        // hardest. With the watch armed it must not win: the operator asked for
+        // a check every cfg_sample_ms, and a burst is when that matters most --
+        // the probe was going quiet for a full report interval immediately
+        // after detecting a disturbance. A sample wake keeps the radio off, so
+        // the cost is a conversion, not an association, and
+        // BURST_MAX_CONSECUTIVE still caps repeats.
         sleepMs = cfg_interval;
-      } else if (watchArmed()) {
-        // Sleep to the next SAMPLE, not the next report — but never past the
-        // report itself, so a report is not delayed by up to one sample gap.
-        uint32_t untilReport = rtc_msSinceReport < cfg_interval
-                               ? cfg_interval - rtc_msSinceReport : 0UL;
-        uint32_t gap = cfg_sample_ms < untilReport ? cfg_sample_ms : untilReport;
-        // Only when the report is ALREADY DUE. This used to read
-        // `gap < WATCH_SAMPLE_MIN_MS`, which also fired for any remainder of
-        // 1..4999 ms — undoing the clamp on the line above, which exists
-        // precisely so a report is not delayed. The probe then slept a whole
-        // sample gap instead of the short remainder and the report landed up to
-        // cfg_sample_ms late, every cycle, whenever cfg_interval % cfg_sample_ms
-        // happened to fall in that band.
-        if (untilReport == 0UL) gap = cfg_sample_ms;   // report just fired
-        sleepMs = gap > (uint32_t)elapsed ? (uint32_t)(gap - elapsed) : 100UL;
       } else {
-        sleepMs = cfg_interval > (uint32_t)elapsed
-                  ? (uint32_t)(cfg_interval - elapsed) : 100UL;
+        sleepMs = nextSleepMs(elapsed);
       }
       // Charge this whole wake — the sleep AND the time spent awake — against
       // the report interval. Counting only the sleep would let the interval

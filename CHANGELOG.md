@@ -11,6 +11,102 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A codebase-wide bug review.** Every subsystem was read against its own
+  contracts and its callers; what follows is what that found. The common shape
+  is a value nobody carried and somebody re-derived, or a state nobody measured
+  and somebody reported.
+
+- **Readings kept the instant they were recorded at, end to end.** Four bugs
+  shared one root. `/api/ingest` clamped a drifted probe's future timestamp into
+  `ts` and stored that probe's *un-clamped* epoch beside it — so the clamp was
+  decorative on the live path, one bad row pinned `latest` forever, the probe
+  could never be judged offline (a future epoch makes its age negative) and its
+  own corrected readings never became "latest" again once its clock synced. The
+  multi-site forwarder put its local-naive `ts` on the wire and dropped the
+  epoch it already held, so head office in another timezone shifted every
+  forwarded reading by the offset between them, and a store to the east had its
+  whole batch re-stamped to arrival time under a warning blaming the probe's
+  clock. Forwarded alert *events* take a different write path and needed their
+  own fix. And `post_batch` followed HTTP redirects, which replays the device
+  token at whatever host `Location` names and drops the POST body — a 2xx from
+  that host advanced both cursors past records that were never sent.
+
+- **The alert monitor stopped forgetting things between cycles.** The
+  backfill sweep kept no state, so an excursion open at the end of one chunk
+  reappeared as new in the next and was mailed as "went out of range while the
+  hub was not watching" about an incident the hub watched live. Offline tracking
+  was bounded at 24 hours, which lost the *all-clear*: a probe silent longer than
+  that came back with nobody told. And the daily summary sent SMTP inline on the
+  monitor thread, retrying every cycle from the configured hour until midnight —
+  ~1900 blocking attempts a day against a dead mail host, each delaying
+  threshold evaluation and offline detection.
+
+- **Every verdict on the dashboard now uses the same rule.** The alert banner,
+  the worst-breach gauge picker, the gauge's threshold zones, the chart's
+  threshold bands and the MIN/MAX tiles each resolved limits their own way — so
+  head office alarmed on healthy store freezers it holds no thresholds for, and
+  a hub with only a `default` limit could never turn a stat tile red. The
+  focus-mode gauge also only knew its reading was stale when alert thresholds
+  happened to be configured, and chart line colours were keyed to a probe's
+  position in the selected window, so two probes swapped colours when the range
+  changed. The CSV/Excel export ignored the selected store, and the "of Y"
+  denominator cost a full table sort every five seconds per open tab.
+
+- **Six gaps in the API and the background threads.** `GET /api/readings` served
+  the whole history unauthenticated *and* was exempt from the dashboard login;
+  `POST /api/config` answered `ok:true` for a body it could not parse;
+  `POST /api/provision` could 500 on a malformed interval or token, judged LAN
+  addresses with `ipaddress.is_private` (which calls documentation space private
+  and Tailscale's range public), and never sent the threshold watch at all; a
+  forwarded batch registered the *sending hub's* probes in this hub's local mDNS
+  registry; the ingest reply looked per-probe settings up under a different id
+  from the one the row was filed under; `AutoProvisioner` shadowed
+  `threading.Thread._stop`, breaking `is_alive()` and `join()`; and
+  `SSIDWatcher.stop()` raced an in-flight scan.
+
+- **Status that is measured rather than assumed.** MQTT reported "publishing"
+  from a flag set before CONNACK, so wrong credentials looked healthy;
+  Diagnostics could not render its own "Alerting has stopped" banner because the
+  health block dropped the worker keys; multi-site Save reported "connected to
+  head office" without contacting it; the audit log turned a *deleted* field
+  into a read error instead of a tamper, and a malformed anchor stopped the hub
+  from starting; the Devices modal showed a probe as unmonitored while the card
+  behind it showed it alarming; and the Wi-Fi scanner thread outlived the page
+  that started it.
+
+- **`Start.sh` no longer dies on a broken `python3`.** Under `set -e` a bare
+  `VAR=$(cmd)` assignment takes the command's exit status, so one bad
+  interpreter on `PATH` killed the launcher inside the discovery loop — before
+  it could try the next candidate and before the banner that explains what to
+  install. `provision_device.sh` sent no device token (so it always 401'd),
+  the systemd unit's own suggested hardening crashed the service, `RELEASE.md`
+  documented a `--onefile` build that breaks the shipped LGPL commitment, and
+  the manufacturing script's firmware version had drifted a release behind the
+  sketch it flashes.
+
+- **The quote endpoint got the guards its siblings have.** `/api/quote` had
+  neither the origin check nor the honeypot check — the hidden field had shipped
+  on the form all along — and its export re-introduced the per-key `KV.get()`
+  that starts failing at ~49 records, which is what `_shared.js` exists to
+  prevent.
+
+### Firmware 2.9.4
+
+- **`POST /provision` persists the threshold watch.** It parsed four fields and
+  dropped the three §4.1 requires, so the hub's push path reported the watch as
+  delivered while only the pull path ever armed it. Its parse buffer was also
+  256 bytes against a ~260-byte body, so the whole push could come back "bad
+  json" and the probe would not be provisioned at all.
+- **The captive portal stopped shrinking its own fields.**
+  `setValue(value, length)` takes the *buffer* size; three call sites passed the
+  current value's length, so on an unprovisioned probe the Server URL input
+  rendered `maxlength="0"` and silently discarded what the customer typed.
+- **A sensor fault or a disturbance burst no longer blinds the watch** for a
+  whole reporting interval. Both exits now share one sleep calculation with the
+  normal path.
+- **`/status` cannot silently drop members** once the hub URL passes 38
+  characters.
+
 - **The between-sends check was offered on probes that cannot use it.** The
   saving comes from skipping the radio on a check, and the firmware only skips it
   on a wake from deep sleep — which a probe only enters when its send interval is

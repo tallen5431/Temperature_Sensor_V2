@@ -269,3 +269,40 @@ def test_a_numeric_probe_name_does_not_break_the_canonical_export(tmp_path):
     buf = io.StringIO()
     db.export_csv(buf, name_map={"P1": 42})
     assert "4.0" in buf.getvalue()
+
+
+# --- the manual provision push carries the threshold watch ------------------
+
+def test_the_manual_provision_push_sends_the_watch(tmp_path, monkeypatch):
+    """PROTOCOL.md §4.1 makes the three watch fields part of /provision, and
+    desired_probe_config is the single source of truth for them — but this
+    endpoint never passed `watch=`, so the documented manual push could not arm
+    or disarm the watch on any firmware, whatever Settings reported."""
+    import api.routes as routes
+    sent = {}
+    monkeypatch.setattr(routes, "resolve_host", lambda h: "192.168.1.77")
+    monkeypatch.setattr(routes, "provision_probe",
+                        lambda h, p, base, **kw: sent.update(kw) or True)
+    client, _db, cfg = _make_client(tmp_path)
+    cfg.update({"alert_thresholds": {"default": {"min": -30.0, "max": -12.0}},
+                "probe_sample_sec": 60, "interval_sec": 900})
+    r = client.post("/api/provision", json={"host": "192.168.1.77", "port": 80})
+    assert r.status_code == 200
+    assert sent.get("watch") == (-30.0, -12.0, 60000), sent
+
+
+def test_the_manual_push_refuses_to_arm_a_watch_the_probe_cannot_run(tmp_path,
+                                                                     monkeypatch):
+    """Same rule as the auto-provisioner: below DEEP_SLEEP_MIN_MS the probe is
+    always-on and cannot skip the radio on a sample wake, so a cadence there
+    would promise behaviour the probe will not perform."""
+    import api.routes as routes
+    sent = {}
+    monkeypatch.setattr(routes, "resolve_host", lambda h: "192.168.1.77")
+    monkeypatch.setattr(routes, "provision_probe",
+                        lambda h, p, base, **kw: sent.update(kw) or True)
+    client, _db, cfg = _make_client(tmp_path)
+    cfg.update({"alert_thresholds": {"default": {"min": -30.0, "max": -12.0}},
+                "probe_sample_sec": 5, "interval_sec": 6})
+    client.post("/api/provision", json={"host": "192.168.1.77", "port": 80})
+    assert sent.get("watch")[2] == 0, sent

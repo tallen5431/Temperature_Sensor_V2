@@ -56,6 +56,12 @@ def test_the_copy_still_matches_the_firmware():
         "  uint32_t gap = cfg_sample_ms < untilReport ? cfg_sample_ms : untilReport;",
         "  if (untilReport == 0UL) gap = cfg_sample_ms;   // report just fired",
         "watchArmed() && (rtc_msSinceReport + cfg_sample_ms / 2 < cfg_interval)",
+        # nextSleepMs' unarmed branch. Every exit from loop() routes through
+        # this function now -- including the sensor-fault path and the wake
+        # after a disturbance burst, which used to answer a flat cfg_interval
+        # and so stopped an armed watch looking for a whole report interval.
+        "  return cfg_interval > (uint32_t)elapsed",
+        "         ? (uint32_t)(cfg_interval - elapsed) : 100UL;",
     ):
         assert fragment in ino, f"firmware no longer contains: {fragment}"
         assert fragment in cpp, f"host copy no longer contains: {fragment}"

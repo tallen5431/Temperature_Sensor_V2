@@ -544,7 +544,12 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
         tok = (raw_tok or TOKEN or "").strip()
         base = public_base().rstrip("/")
 
-        targets: List[Tuple[str, int]] = []
+        # (host, port, probe_id). The id rides along so the threshold watch can be
+        # resolved per probe below — without it this endpoint could not send the
+        # watch at all, so the documented manual push was unable to arm or
+        # disarm it in any firmware, whatever Settings showed.
+        discovered = _iter_probes()
+        targets: List[Tuple[str, int, str]] = []
         if host:
             # An explicit host comes straight from the request body; validate it
             # so /provision can't be used to SSRF the hub's own local services or
@@ -553,22 +558,38 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
             checked = _checked_provision_target(host)
             if checked is None:
                 return jsonify(ok=False, error="host must be a private LAN address"), 400
+            # Match the checked address back to a discovered probe so an explicit
+            # host still gets ITS OWN limits; "" falls back to the `default`
+            # threshold, which is the right answer for an unknown target.
+            pid = ""
+            for pr in discovered:
+                if (pr.get("ip") or "").rstrip(".") == checked or \
+                        (pr.get("host") or "").rstrip(".") == host.rstrip("."):
+                    pid = pr.get("probe_id") or ""
+                    break
             # The checked ADDRESS, not the name: re-resolving at send time is a
             # second answer to the same question, and only one of them was
             # validated. See _checked_provision_target.
-            targets.append((checked, port))
+            targets.append((checked, port, pid))
         else:
-            for p in _iter_probes():
-                target = (p.get("ip") or p.get("host") or "").rstrip(".")
+            for pr in discovered:
+                target = (pr.get("ip") or pr.get("host") or "").rstrip(".")
                 if target:
-                    targets.append((target, int(p.get("port") or 80)))
+                    targets.append((target, int(pr.get("port") or 80),
+                                    pr.get("probe_id") or ""))
 
         succeeded: List[str] = []
         failed: List[str] = []
-        for h, prt in targets:
+        for h, prt, pid in targets:
+            # desired_probe_config owns the watch rule, including the refusal to
+            # arm it below DEEP_SLEEP_MIN_MS — so the manual push and the
+            # auto-provisioner cannot disagree about what a probe should run.
+            want = desired_probe_config(cfg, pid)
+            watch = (want.get("alert_min_c"), want.get("alert_max_c"),
+                     want.get("sample_ms", 0))
             try:
                 if provision_probe(h, prt, base, token=tok, interval_ms=interval_ms,
-                                   resolution_bits=res_bits):
+                                   resolution_bits=res_bits, watch=watch):
                     succeeded.append(f"{h}:{prt}")
                 else:
                     failed.append(f"{h}:{prt}")

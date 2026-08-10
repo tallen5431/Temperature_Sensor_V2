@@ -2,7 +2,7 @@
 
 Developer reference for the Setpoint hub application. For the buyer-facing overview see the [root README](../README.md); for the wire protocol see [PROTOCOL.md](../PROTOCOL.md); for the probe firmware see [firmware/](../firmware/).
 
-- **Product:** Setpoint, version **2.6.2**, protocol **v1** (the hub version is defined in `core/version.py` — that file is the single source of truth).
+- **Product:** Setpoint, version **2.7.2**, protocol **v1** (the hub version is defined in `core/version.py` — that file is the single source of truth).
 - **Stack:** Python, Flask + [Dash](https://dash.plotly.com/) UI, served by [waitress](https://pypi.org/project/waitress/) on port **8088**.
 - **Positioning:** local-first, no-cloud temperature-monitoring appliance. Readings stay on the customer's PC.
 
