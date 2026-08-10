@@ -17,13 +17,28 @@ from core.alerts import (HELD, evaluate, evaluate_offline, evaluate_rate,
 from core.applog import HEALTH
 from core.db import iso_to_epoch
 from core.notifications import Notifier, send_email
-from core.status import probe_fresh_window, probe_prune_window
+from core.status import (REPORTING_LOOKBACK_SEC, probe_fresh_window,
+                         probe_prune_window)
 
 log = logging.getLogger("hub.alert_monitor")
 
-# Track probes for offline detection if they reported within this window. Bounds
-# the set so long-retired probes don't alert forever.
-OFFLINE_MONITOR_WINDOW_SEC = 86400
+# Track probes for offline detection if they reported within this window.
+#
+# It is NOT what stops a long-retired probe alerting forever — the state machine
+# does that: `offline` fires only on the online->offline transition, so a
+# permanently silent probe produces exactly one event however long it is tracked.
+# What the bound actually did was lose the ALL-CLEAR. evaluate_offline rebuilds
+# its state from the probes it is given, so once a probe had been silent longer
+# than the window it fell out of the set, `committed="offline"` was forgotten,
+# and its return was re-seeded as "online" with no transition — no event, no
+# notification, no row in the event log. A walk-in freezer whose hub lost the
+# network for a weekend came back with nobody told it was back.
+#
+# So it matches core.status.REPORTING_LOOKBACK_SEC instead: the alert monitor
+# now agrees with the Devices grid, Diagnostics and the /api probe counts about
+# which probes still exist. Probes that are genuinely gone are dropped by
+# _forget_deleted_probes, which is an explicit rule rather than an age.
+OFFLINE_MONITOR_WINDOW_SEC = REPORTING_LOOKBACK_SEC
 
 # Alerting judges THIS hub's own probes only. '' is the site label a locally
 # ingested reading carries; a forwarded one carries its store's name.
@@ -67,8 +82,15 @@ class AlertMonitor(threading.Thread):
         # it at the end of the table and scans nothing, so restarting the hub does
         # not re-announce history already on disk.
         self._scanned_id = None
+        # Per-probe trailing condition of the last backfill sweep, so a breach
+        # that spans two sweeps is not re-detected as new in the second (see
+        # core.alerts.find_missed_excursions' ``state`` argument).
+        self._missed_states: dict = {}
         self._last_purge = 0.0
         self._last_prune = 0.0
+        # Date of a daily summary already handed to the notification worker, so
+        # a wedged SMTP host cannot queue one every cycle until midnight.
+        self._summary_inflight: str | None = None
         # Notifications are sent on a dedicated worker so a slow/black-holed SMTP
         # or webhook (whose timeouts don't even bound DNS resolution) can't stall
         # alert evaluation, offline detection, and retention on the monitor loop.
@@ -108,6 +130,9 @@ class AlertMonitor(threading.Thread):
         breach and the event log still records it, so an undelivered alert looks
         exactly like a delivered one.
         """
+        if ev.get("kind") == "_daily_summary":
+            self._send_daily_summary(ev)
+            return
         try:
             results = self.notifier.dispatch(ev) or []
         except Exception as e:  # noqa: BLE001 - a channel error must not kill the worker
@@ -362,8 +387,13 @@ class AlertMonitor(threading.Thread):
             thr = thresholds.get(pid) or thresholds.get("default") or {}
             if thr.get("min") is None and thr.get("max") is None:
                 continue
-            found = find_missed_excursions(probe_rows, thr, probe_id=pid,
-                                           hysteresis=self._hysteresis())
+            found = find_missed_excursions(
+                probe_rows, thr, probe_id=pid, hysteresis=self._hysteresis(),
+                # Carried across cycles: the sweep sees rows a chunk at a time,
+                # so an excursion that spans two chunks would otherwise look
+                # brand new in the second and be reported as "missed" on
+                # recovery — an incident the live path had already alerted.
+                state=self._missed_states.setdefault(pid, {}))
             if len(found) > self.MISSED_MAX_PER_CYCLE:
                 log.warning("%s: %d missed excursions in one backfill; reporting the "
                             "first %d — see the chart for the rest",
@@ -441,15 +471,22 @@ class AlertMonitor(threading.Thread):
         so take them at their word — on the same hourly cadence as the registry
         prune, and only for probes with no rows at all, so a merely-silent probe
         keeps its open incident.
+
+        This is also the ONLY thing bounding the connectivity and backfill maps
+        now that offline tracking is no longer capped at a day (see
+        ``OFFLINE_MONITOR_WINDOW_SEC``) — an explicit "the operator deleted it"
+        rule in place of an age that was silently dropping the all-clear.
         """
-        if not (self._states or self._rate_states):
+        maps = (self._states, self._rate_states, self._offline_states,
+                self._missed_states)
+        if not any(maps):
             return
         try:
             known = set(self.db.probe_ids() or ())
         except Exception as e:  # noqa: BLE001 - never break the monitor on a read
             log.debug("could not list probe ids for state prune: %s", e)
             return
-        for states in (self._states, self._rate_states):
+        for states in maps:
             for pid in [p for p in states if p not in known]:
                 states.pop(pid, None)
 
@@ -460,6 +497,17 @@ class AlertMonitor(threading.Thread):
         being enabled; the last-sent date persisted in the config keeps it to
         one email per day across restarts. A failed send is not recorded, so
         it retries on the next cycle instead of silently skipping a day.
+
+        The SMTP call goes to the ``alert-dispatch`` worker, for the reason
+        every other notification does: a black-holed mail host blocks for the
+        connect timeout plus an unbounded DNS resolve, and this is called from
+        ``run()``. Because the date is only written on SUCCESS, a permanently
+        failing host was retried EVERY cycle from the configured hour until
+        midnight — ~1900 blocking attempts a day, each one delaying threshold
+        evaluation, the backfill sweep and offline detection. ``_summary_inflight``
+        keeps at most one attempt outstanding while preserving that retry.
+
+        Returns True when the summary was sent, or handed to the worker to send.
         """
         conf = self.cfg.get("notifications", {}) or {}
         ds = conf.get("daily_summary", {}) or {}
@@ -478,13 +526,48 @@ class AlertMonitor(threading.Thread):
         today = now_dt.strftime("%Y-%m-%d")
         if self.cfg.get("daily_summary_last_sent") == today:
             return False
+        if self._summary_inflight == today:
+            return False              # one attempt at a time; it clears on finish
         subject, body = self._compose_daily_summary(today)
-        ok, info = send_email(email, subject, body)
+        item = {"kind": "_daily_summary", "date": today, "email": dict(email),
+                "subject": subject, "message": body}
+        if self._notify_thread and self._notify_thread.is_alive():
+            try:
+                self._notify_q.put_nowait(item)
+            except queue.Full:
+                HEALTH.record_notify_dropped()
+                log.warning("notification queue full; dropping the daily summary")
+                return False
+            self._summary_inflight = today
+            return True
+        # No worker (unit tests, or a monitor driven directly): send inline so
+        # the result is synchronous and observable, exactly as it used to be.
+        return self._send_daily_summary(item)
+
+    def _send_daily_summary(self, item: dict) -> bool:
+        """Actually send one composed summary and record the outcome.
+
+        Runs on the notification worker in production. The last-sent date is
+        written HERE, not by the caller, because an async send cannot report
+        back to it.
+        """
+        date = item.get("date") or ""
+        try:
+            ok, info = send_email(item.get("email") or {}, item.get("subject", ""),
+                                  item.get("message", ""))
+        except Exception as e:  # noqa: BLE001 - must not kill the worker
+            ok, info = False, str(e)
+        finally:
+            if self._summary_inflight == date:
+                self._summary_inflight = None
         if not ok:
+            # Counted, not just logged: a summary that has silently failed for a
+            # week was invisible to /api/health and the Diagnostics page.
+            HEALTH.record_notify_failure()
             log.warning("daily summary email failed: %s", info)
             return False
-        self.cfg.set("daily_summary_last_sent", today)
-        log.info("daily summary sent for %s", today)
+        self.cfg.set("daily_summary_last_sent", date)
+        log.info("daily summary sent for %s", date)
         return True
 
     def _compose_daily_summary(self, date_str: str) -> tuple:

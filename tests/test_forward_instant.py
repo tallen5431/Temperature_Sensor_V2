@@ -21,7 +21,6 @@ column, which every read path filters and sorts on.
 """
 import datetime
 import http.server
-import json
 import os
 import threading
 import time as _time

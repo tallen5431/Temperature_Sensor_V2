@@ -83,7 +83,7 @@ def classify(temp_c: float, thr: dict, prev_condition: str = "ok",
 
 
 def find_missed_excursions(rows, thr: dict, probe_id: str = "",
-                           hysteresis: float = 0.0) -> List[dict]:
+                           hysteresis: float = 0.0, state: Optional[dict] = None) -> List[dict]:
     """Excursions that came and went without the live evaluator ever seeing one.
 
     :func:`evaluate` judges the LATEST reading per probe, once per monitor cycle.
@@ -104,33 +104,59 @@ def find_missed_excursions(rows, thr: dict, probe_id: str = "",
     for it. Only closed runs — ones that recovered before the newest reading —
     are returned, so the two can never both report the same incident.
 
+    ``state`` is an optional per-probe dict CARRIED BETWEEN CALLS, and it is what
+    makes that promise hold across more than one batch. The caller sweeps rows in
+    arrival order, a chunk per cycle, so a breach open at the end of one chunk
+    resumes at the start of the next. Without carried state each call restarted
+    at ``prev_condition="ok"``: the deadband was re-armed mid-excursion, and —
+    worse — the run reappeared as brand new and was emitted as ``missed`` when it
+    recovered, so the live path and the sweep both claimed one incident. The
+    caller passes the same dict back each cycle; this function reads
+    ``state["condition"]`` on entry and writes the batch's trailing condition to
+    it on exit. Omit it and the behaviour is the single-batch one.
+
     Each run collapses to ONE event: 13 minutes at a 7 s cadence is 110 readings
     and one problem.
     """
     out: List[dict] = []
+
+    def _emit(finished: dict) -> None:
+        # A run that was ALREADY open when this batch began is the incident
+        # evaluate() alerted live last cycle, and evaluate() will emit its
+        # recovery. Reporting it here too would send a second, contradictory
+        # message — "while the hub was not watching" about an excursion the hub
+        # watched — and file a phantom row in the durable event log.
+        if finished.pop("carried", False):
+            return
+        out.append(finished)
+
     run = None
     ordered = sorted((r for r in rows if r and r[1] is not None), key=lambda r: r[0])
     last_index = len(ordered) - 1
+    prev_condition = str((state or {}).get("condition") or "ok")
+    # Only the batch's FIRST run can inherit the previous batch's open breach.
+    inherit = prev_condition if prev_condition in ("high", "low") else None
     for i, (epoch, temp_c) in enumerate(ordered):
         try:
             value = float(temp_c)
         except (TypeError, ValueError):
             continue
         condition, limit = classify(
-            value, thr, prev_condition=(run["condition"] if run else "ok"),
-            hysteresis=hysteresis)
+            value, thr, prev_condition=prev_condition, hysteresis=hysteresis)
+        prev_condition = condition
         if condition != "ok" and run is not None and run["condition"] != condition:
-            out.append(run)          # straight from one limit to the other
+            _emit(run)               # straight from one limit to the other
             run = None
         if condition == "ok":
             if run is not None:
-                out.append(run)
+                _emit(run)
                 run = None
         else:
             if run is None:
                 run = {"probe_id": probe_id, "kind": "missed", "condition": condition,
                        "limit": limit, "start_epoch": int(epoch),
-                       "end_epoch": int(epoch), "temperature_c": value, "samples": 0}
+                       "end_epoch": int(epoch), "temperature_c": value, "samples": 0,
+                       "carried": inherit == condition}
             run["end_epoch"] = int(epoch)
             run["samples"] += 1
             # The WORST reading of the run, not the first or last: it is the
@@ -138,10 +164,13 @@ def find_missed_excursions(rows, thr: dict, probe_id: str = "",
             if ((condition == "high" and value > run["temperature_c"])
                     or (condition == "low" and value < run["temperature_c"])):
                 run["temperature_c"] = value
-        if i == last_index and run is not None:
+        inherit = None               # the first row has been judged
+        if i == last_index:
             run = None               # still open — evaluate() owns it
-    if run is not None:
-        out.append(run)
+    # Whatever the batch ended on is where the next one resumes: an open breach
+    # so it stays suppressed, 'ok' so a genuinely new excursion is reported.
+    if state is not None and ordered:
+        state["condition"] = prev_condition
     return out
 
 
