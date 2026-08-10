@@ -499,6 +499,20 @@ def _site_filter(site):
     return None if (not site or site == "all") else str(site)
 
 
+def _site_param(site) -> list:
+    """The site picker's value as download-URL query parameters (0 or 1 of them).
+
+    The download route reads the same three-valued vocabulary the database layer
+    uses, and a URL can carry all three: the key absent means every site,
+    ``site=`` (empty) means this hub's own probes, and ``site=<name>`` means one
+    store. So "all" contributes nothing and everything else is sent verbatim —
+    including the empty string, which is why this cannot be a truthiness test.
+    """
+    from urllib.parse import quote
+    resolved = _site_filter(site)
+    return [] if resolved is None else ["site=" + quote(resolved)]
+
+
 def _friendly_name(cfg, probe_id):
     if not probe_id:
         return "Unknown"
@@ -949,11 +963,20 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
     STAT_OK = "fw-bold text-success mb-0"
     STAT_EMPTY = ("fw-bold text-muted mb-0",) * 3
 
-    def _breached(value, probe_id, bound):
+    def _breached(value, probe_id, bound, row_site=""):
         """Did this extreme actually cross the limit the probe it came from is
-        held to? ``bound`` is "min" or "max"."""
+        held to? ``bound`` is "min" or "max".
+
+        Routed through :func:`core.status.limits_for` like every other verdict
+        on the page. It was the one threshold lookup in the codebase with no
+        ``default`` fallback, so on a hub whose limits are set globally rather
+        than per probe the tiles could never turn red — while the banner above
+        them, reading the same config, raised the alert. ``row_site`` keeps a
+        forwarded extreme from being judged by this hub's limits: the tiles are
+        fed by an all-sites query whenever no store is selected.
+        """
         try:
-            thr = (cfg.get("alert_thresholds", {}) or {}).get(probe_id) or {}
+            thr = limits_for(cfg, probe_id, site=row_site)
             limit = thr.get(bound)
             if limit is None or value is None:
                 return False
@@ -1004,7 +1027,7 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
             else:
                 focus_pid = focus
                 focus_c = float(frow["temperature_c"])
-                thr = thresholds.get(focus_pid, thresholds.get("default", {})) or {}
+                thr = limits_for(cfg, focus_pid, site=str(frow.get("site") or ""))
                 focus_lo, focus_hi = thr.get("min"), thr.get("max")
 
         # One latest-per-probe scan shared by the worst-breach gauge picker and
@@ -1044,13 +1067,13 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
         if focus is None:
             # --- Overview: the probe that needs attention (worst active breach),
             # else the latest reading overall — shown with its own threshold zones.
-            focus_pid = latest.get("probe_id")
-            focus_c = float(latest["temperature_c"])
+            focus_row = latest
             if site_newest is not None:
                 # ...and "latest overall" means latest IN THIS STORE.
-                focus_pid = site_newest["probe_id"]
-                focus_c = float(site_newest["temperature_c"])
-            thr = thresholds.get(focus_pid, thresholds.get("default", {})) or {}
+                focus_row = site_newest
+            focus_pid = focus_row.get("probe_id")
+            focus_c = float(focus_row["temperature_c"])
+            thr = limits_for(cfg, focus_pid, site=str(focus_row.get("site") or ""))
             focus_lo, focus_hi = thr.get("min"), thr.get("max")
             try:
                 best = None  # (severity, pid, t_c, lo, hi)
@@ -1061,7 +1084,11 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
                     if age is not None and age > _probe_fresh_window(cfg, pid):
                         continue  # a stale breach must not hijack the "needs attention" gauge
                     tc = float(r["temperature_c"])
-                    t = thresholds.get(pid, thresholds.get("default", {})) or {}
+                    # A forwarded probe is judged by the hub that owns it, not
+                    # by this one's limits (see core.status.limits_for) — head
+                    # office running fridges must not pick a healthy store
+                    # freezer as its "needs attention" gauge.
+                    t = limits_for(cfg, pid, site=str(r.get("site") or ""))
                     lo, hi = t.get("min"), t.get("max")
                     b = threshold_breach(tc, lo, hi)
                     sev = (tc - hi) if b == "high" else (lo - tc) if b == "low" else None
@@ -1078,7 +1105,16 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
         gauge_stale = False
         try:
             gauge_row = None
-            if gauge_rows is not None and not gauge_rows.empty:
+            # In focus mode `frow` IS the row the gauge's value came from, and
+            # it is always fetched. gauge_rows is not: it is skipped entirely
+            # when no alert_thresholds are configured (the shipped default), so
+            # reading freshness only from there gated the staleness of the
+            # biggest number on the page on an unrelated setting — a probe
+            # silent for hours still drew a live green bar with no "· last
+            # known" suffix.
+            if focus is not None and frow is not None:
+                gauge_row = frow
+            if gauge_row is None and gauge_rows is not None and not gauge_rows.empty:
                 match = gauge_rows[gauge_rows["probe_id"] == focus_pid]
                 gauge_row = match.iloc[-1] if not match.empty else None
             if gauge_row is None and latest is not None \
@@ -1120,7 +1156,16 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
             # A site is selected, so the denominator has to be scoped to it too —
             # otherwise "Showing 40 of 60,020" compares one store's window against
             # every store's history and reads as catastrophic data loss.
-            total_points = db.window_stats(probe_id=focus, site=site_filter)["count"]
+            #
+            # count_readings, not window_stats: this needs one number, and
+            # window_stats also runs two `ORDER BY temperature_c LIMIT 1` queries
+            # for the min/max rows it is not being asked for. temperature_c is
+            # unindexed, so each is a full SCAN plus a temp B-tree — unbounded
+            # here, because this call passes no window. Measured on 300k rows:
+            # 0.155 s vs 0.002 s, per open browser tab, every five seconds, and
+            # the sort degrades superlinearly as the store grows. It only read
+            # the count from that because count_readings could not take a site.
+            total_points = db.count_readings(probe_id=focus, site=site_filter)
         elif focus is not None:
             total_points = db.count_readings(probe_id=focus)
         else:
@@ -1141,13 +1186,28 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
                                        format="ISO8601", errors="coerce")
             probe_ids = list(df["probe_id"].unique())
             multi = len([p for p in probe_ids if str(p).strip()]) > 1
+            # Colour is keyed to a STORE-WIDE ordinal, not to position in this
+            # window. window_df returns rows epoch-ascending, so enumerate()
+            # ordered probes by their oldest row INSIDE the selected range — a
+            # value that changes as the rolling window advances past a probe's
+            # earliest sample, or the moment the operator changes the range. Two
+            # probes swapped colours between "1h" and "24h" on the same screen,
+            # which is the one thing a chart legend has to be stable about.
+            # probe_ids() is an ascending loose-index scan documented as cheap
+            # enough for this 5 s path; a read error degrades to the old
+            # positional behaviour rather than losing the chart.
+            try:
+                color_index = {p: n for n, p in enumerate(db.probe_ids() or ())}
+            except Exception:  # noqa: BLE001 - colour must never cost the graph
+                color_index = {}
             for i, pid in enumerate(probe_ids):
                 chunk = df[df["probe_id"] == pid]
                 y = chunk["temperature_c"].apply(lambda x: _convert(x, temp_unit))
+                ci = color_index.get(pid, i)
                 fig.add_trace(go.Scatter(
                     x=chunk["_dt"], y=y, mode="lines",
                     name=_friendly_name(cfg, pid) if str(pid).strip() else _unit_symbol(temp_unit),
-                    line=dict(color=PROBE_COLORS[i % len(PROBE_COLORS)], width=2),
+                    line=dict(color=PROBE_COLORS[ci % len(PROBE_COLORS)], width=2),
                 ))
             y_all = df["temperature_c"].apply(lambda x: _convert(x, temp_unit))
             pad = (y_all.max() - y_all.min()) * 0.1 if y_all.max() > y_all.min() else 5
@@ -1161,7 +1221,15 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
             # differing limits would just be chart noise.
             if len(probe_ids) == 1:
                 band_pid = focus if focus is not None else probe_ids[0]
-                bthr = thresholds.get(band_pid, thresholds.get("default", {})) or {}
+                # Site-scoped for the same reason the gauge and banner are: the
+                # band is this hub's limits, and a forwarded probe is not held
+                # to them. Drawing them behind a store freezer's line paints a
+                # healthy trace inside a red wash.
+                try:
+                    band_site = str(df[df["probe_id"] == band_pid]["site"].iloc[-1] or "")
+                except Exception:  # noqa: BLE001 - older frames may not carry site
+                    band_site = ""
+                bthr = limits_for(cfg, band_pid, site=band_site)
                 lo_u = _convert(bthr["min"], temp_unit) if bthr.get("min") is not None else None
                 hi_u = _convert(bthr["max"], temp_unit) if bthr.get("max") is not None else None
                 # Widen the y-range so both limits stay visible even while the
@@ -1325,7 +1393,15 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
                 age = _row_age_seconds(row, now_dt)
                 if age is not None and age > _probe_fresh_window(cfg, pid):
                     continue  # stale/offline probe — not an active alert
-                cfgt = thresholds.get(pid, thresholds.get("default", {})) or {}
+                # Scoped by SITE, like every other verdict on the page. The scan
+                # is deliberately unfiltered so this hub's own probes keep
+                # alerting while a store is selected — but a forwarded row came
+                # from a hub whose thresholds are not forwarded with it, so this
+                # hub has nothing to judge it by. Head office running fridges
+                # (0..8 °C) banner-alarmed every healthy store freezer at -19 °C,
+                # while the card for the same probe correctly read "no alarm
+                # set". See core.status.limits_for.
+                cfgt = limits_for(cfg, pid, site=str(row.get("site") or ""))
                 hi, lo = cfgt.get("max"), cfgt.get("min")
                 if hi is not None and t_c > hi:
                     alerts.append(dbc.Alert([html.Strong(f"▲ {_friendly_name(cfg, pid)}: "),
@@ -1380,9 +1456,11 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
             stat_classes = (
                 # Cold is the natural reading of a minimum, so blue unless the
                 # probe it came from was actually below its own floor.
-                STAT_BREACH if _breached(stats.get("min"), stats.get("min_probe"), "min")
+                STAT_BREACH if _breached(stats.get("min"), stats.get("min_probe"),
+                                         "min", stats.get("min_site", ""))
                 else STAT_COLD,
-                STAT_BREACH if _breached(stats.get("max"), stats.get("max_probe"), "max")
+                STAT_BREACH if _breached(stats.get("max"), stats.get("max_probe"),
+                                         "max", stats.get("max_site", ""))
                 else STAT_NEUTRAL,
                 # Green claims "healthy". The overview's em-dash is not a value
                 # and must not be dressed as a good one.
@@ -1607,10 +1685,14 @@ def register_dashboard_callbacks(app, finder, cfg, db, public_base_func=None, to
         Output("download-btn", "href"),
         Input("time-range-selector", "value"),
         Input("focus-probe-selector", "value"),
+        Input("site-selector", "value"),
     )
-    def _csv_link(time_range, focus_probe):
+    def _csv_link(time_range, focus_probe, site):
         # "Download CSV" exports exactly what you're viewing: the selected time
-        # range and, in focus mode, just that probe.
+        # range, the selected store, and in focus mode just that probe. The site
+        # was the one filter it dropped, so on a head-office hub the button
+        # under a single store's chart downloaded all six stores' readings —
+        # while its own comment promised otherwise.
         from urllib.parse import quote
         tr = time_range or "24h"
         params = []
@@ -1618,6 +1700,7 @@ def register_dashboard_callbacks(app, finder, cfg, db, public_base_func=None, to
             params.append(f"window={tr}")
         if focus_probe and focus_probe != "all":
             params.append("probe=" + quote(str(focus_probe)))
+        params += _site_param(site)
         return "/download/temperature_log.csv" + (("?" + "&".join(params)) if params else "")
 
     @app.callback(
@@ -1654,8 +1737,9 @@ def register_dashboard_callbacks(app, finder, cfg, db, public_base_func=None, to
         Input("export-probe", "value"),
         Input("export-from", "value"),
         Input("export-to", "value"),
+        Input("site-selector", "value"),
     )
-    def _export_href(fmt, probe, date_from, date_to):
+    def _export_href(fmt, probe, date_from, date_to, site):
         from urllib.parse import quote
         fmt = fmt if fmt in ("excel", "xlsx", "raw") else "excel"
         params = ["format=" + fmt]
@@ -1665,6 +1749,7 @@ def register_dashboard_callbacks(app, finder, cfg, db, public_base_func=None, to
             params.append("from=" + quote(str(date_from)))
         if date_to:
             params.append("to=" + quote(str(date_to)))
+        params += _site_param(site)
         href = "/download/temperature_log.csv?" + "&".join(params)
         label = "Download .xlsx" if fmt == "xlsx" else "Download CSV"
         hints = {

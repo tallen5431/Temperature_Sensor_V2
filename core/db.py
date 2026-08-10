@@ -632,13 +632,16 @@ class Database:
         # probe_id rides along free: these queries already fetch the exact row
         # holding the extreme. Without it an overview tile reads "MIN 37.0 F"
         # with no way to tell whether that was the freezer or the store room —
-        # a true number nobody can act on.
+        # a true number nobody can act on. `site` rides along for the same
+        # reason and one more: the tile's red/blue colouring judges the extreme
+        # against a threshold, and a forwarded row must be judged by the hub
+        # that owns it, not by this one (core.status.limits_for).
         min_row = conn.execute(
-            f"SELECT ts, probe_id FROM readings {where} "
+            f"SELECT ts, probe_id, site FROM readings {where} "
             f"ORDER BY temperature_c ASC, epoch ASC LIMIT 1", params
         ).fetchone()
         max_row = conn.execute(
-            f"SELECT ts, probe_id FROM readings {where} "
+            f"SELECT ts, probe_id, site FROM readings {where} "
             f"ORDER BY temperature_c DESC, epoch ASC LIMIT 1", params
         ).fetchone()
         return {
@@ -650,6 +653,8 @@ class Database:
             "max_ts": max_row["ts"] if max_row else None,
             "min_probe": (min_row["probe_id"] or "") if min_row else "",
             "max_probe": (max_row["probe_id"] or "") if max_row else "",
+            "min_site": (min_row["site"] or "") if min_row else "",
+            "max_site": (max_row["site"] or "") if max_row else "",
         }
 
     def stats_per_probe(self, window_seconds: Optional[int] = None,
@@ -744,7 +749,8 @@ class Database:
                        start_epoch: Optional[int] = None,
                        end_epoch: Optional[int] = None,
                        limit: Optional[int] = None,
-                       max_points: int = 6000) -> list:
+                       max_points: int = 6000,
+                       site: Optional[str] = None) -> list:
         """Return readings as a list of dict rows for the JSON read API.
 
         Accepts the same filters as :meth:`export_csv` (a rolling
@@ -760,7 +766,7 @@ class Database:
         # was a byte-identical copy, comment included, and the end_epoch float()
         # subtlety it documents is exactly the kind that gets fixed in one copy.
         where, params_list = self._export_where(window_seconds, probe_id,
-                                                start_epoch, end_epoch)
+                                                start_epoch, end_epoch, site)
         try:
             cap = int(limit) if limit else int(max_points)
         except (TypeError, ValueError):
@@ -1036,11 +1042,20 @@ class Database:
     # producing a file Excel silently truncates or rejects.
     XLSX_MAX_ROWS = 1_048_576
 
-    def _export_where(self, window_seconds, probe_id, start_epoch, end_epoch):
+    def _export_where(self, window_seconds, probe_id, start_epoch, end_epoch,
+                      site=None):
         """Build the shared ``WHERE`` clause + params for every export variant.
 
         Filters (all AND-ed, any may be omitted): a rolling ``window_seconds``, a
-        single ``probe_id``, and an absolute ``start_epoch``/``end_epoch`` range.
+        single ``probe_id``, an absolute ``start_epoch``/``end_epoch`` range, and
+        a ``site``.
+
+        ``site`` follows the convention :func:`_reading_filters` uses, NOT the
+        truthiness test applied to ``probe_id``: ``None`` means every site,
+        ``''`` means this hub's own probes, and a name means one store. Testing
+        it for truth would make ``site=''`` silently mean "no filter", which is
+        the exact confusion ``test_empty_site_means_this_hubs_own_probes_in_every_query``
+        exists to prevent.
         """
         clauses, params_list = [], []
         cutoff = self._cutoff(window_seconds)
@@ -1056,6 +1071,8 @@ class Database:
             clauses.append("epoch <= ?"); params_list.append(float(end_epoch))
         if probe_id:
             clauses.append("probe_id = ?"); params_list.append(probe_id)
+        if site is not None:
+            clauses.append("site = ?"); params_list.append(site)
         where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
         return where, tuple(params_list)
 
@@ -1079,7 +1096,8 @@ class Database:
                    window_seconds: Optional[int] = None,
                    probe_id: Optional[str] = None,
                    start_epoch: Optional[int] = None,
-                   end_epoch: Optional[int] = None) -> int:
+                   end_epoch: Optional[int] = None,
+                   site: Optional[str] = None) -> int:
         """Write readings to a file-like object as CSV. Returns the row count.
 
         This is the canonical/system-of-record export: ISO-8601 timestamps and
@@ -1097,7 +1115,7 @@ class Database:
         """
         conn = self._conn()
         names = name_map or {}
-        where, params = self._export_where(window_seconds, probe_id, start_epoch, end_epoch)
+        where, params = self._export_where(window_seconds, probe_id, start_epoch, end_epoch, site)
         # A `site` column appears only on a hub that actually holds forwarded
         # readings. Without it, head office's export of six stores is rows of
         # "walkin" at 4 C, -18 C and 21 C with nothing to tell them apart — and
@@ -1145,7 +1163,8 @@ class Database:
     def has_humidity(self, window_seconds: Optional[int] = None,
                      probe_id: Optional[str] = None,
                      start_epoch: Optional[int] = None,
-                     end_epoch: Optional[int] = None) -> bool:
+                     end_epoch: Optional[int] = None,
+                     site: Optional[str] = None) -> bool:
         """Whether any reading MATCHING THESE FILTERS carries humidity.
 
         Gates the humidity/VPD columns on the spreadsheet exports the same way
@@ -1166,7 +1185,7 @@ class Database:
         anyway.
         """
         where, params = self._export_where(window_seconds, probe_id,
-                                           start_epoch, end_epoch)
+                                           start_epoch, end_epoch, site)
         clause = f"{where} AND humidity_pct IS NOT NULL" if where \
             else "WHERE humidity_pct IS NOT NULL"
         row = self._conn().execute(
@@ -1177,7 +1196,8 @@ class Database:
                             window_seconds: Optional[int] = None,
                             probe_id: Optional[str] = None,
                             start_epoch: Optional[int] = None,
-                            end_epoch: Optional[int] = None) -> int:
+                            end_epoch: Optional[int] = None,
+                            site: Optional[str] = None) -> int:
         """Write an Excel-friendly CSV. Returns the row count.
 
         Same filters as :meth:`export_csv`, but reshaped for people who open the
@@ -1198,7 +1218,7 @@ class Database:
         """
         names = name_map or {}
         conn = self._conn()
-        where, params = self._export_where(window_seconds, probe_id, start_epoch, end_epoch)
+        where, params = self._export_where(window_seconds, probe_id, start_epoch, end_epoch, site)
         # See export_csv: `site` only on a hub that holds forwarded readings, and
         # it matters MORE here — this variant leads with the friendly name, and
         # six stores all calling a probe "Walk-in" is the ordinary case.
@@ -1206,7 +1226,7 @@ class Database:
         # The export's OWN filters, so a temperature-only probe's export does
         # not carry two empty columns just because a grow probe exists elsewhere
         # in the same store.
-        humid = self.has_humidity(window_seconds, probe_id, start_epoch, end_epoch)
+        humid = self.has_humidity(window_seconds, probe_id, start_epoch, end_epoch, site)
         writer = _csv.writer(file_obj)
         writer.writerow(self._FRIENDLY_HEADERS
                         + (["humidity_pct", "vpd_kpa"] if humid else [])
@@ -1235,10 +1255,11 @@ class Database:
     def count_readings(self, window_seconds: Optional[int] = None,
                        probe_id: Optional[str] = None,
                        start_epoch: Optional[int] = None,
-                       end_epoch: Optional[int] = None) -> int:
+                       end_epoch: Optional[int] = None,
+                       site: Optional[str] = None) -> int:
         """Count readings matching the export filters (used for the .xlsx guard)."""
         conn = self._conn()
-        where, params = self._export_where(window_seconds, probe_id, start_epoch, end_epoch)
+        where, params = self._export_where(window_seconds, probe_id, start_epoch, end_epoch, site)
         row = conn.execute(f"SELECT COUNT(*) AS n FROM readings {where}", params).fetchone()
         return int(row["n"]) if row else 0
 
@@ -1246,7 +1267,8 @@ class Database:
                     window_seconds: Optional[int] = None,
                     probe_id: Optional[str] = None,
                     start_epoch: Optional[int] = None,
-                    end_epoch: Optional[int] = None) -> int:
+                    end_epoch: Optional[int] = None,
+                    site: Optional[str] = None) -> int:
         """Write a native .xlsx workbook. Returns the row count.
 
         Same reshaped columns as :meth:`export_friendly_csv`, but as a real Excel
@@ -1265,7 +1287,7 @@ class Database:
         from openpyxl.utils import get_column_letter
 
         names = name_map or {}
-        total = self.count_readings(window_seconds, probe_id, start_epoch, end_epoch)
+        total = self.count_readings(window_seconds, probe_id, start_epoch, end_epoch, site)
         if total > self.XLSX_MAX_ROWS - 1:  # -1 leaves room for the header row
             raise ExportTooLargeForXlsx(total, self.XLSX_MAX_ROWS - 1)
 
@@ -1277,7 +1299,7 @@ class Database:
         # of the data and the new column renders at default width.
         multi = bool(self.sites())
         # Same gate as export_friendly_csv, filters and all.
-        humid = self.has_humidity(window_seconds, probe_id, start_epoch, end_epoch)
+        humid = self.has_humidity(window_seconds, probe_id, start_epoch, end_epoch, site)
         headers = (self._FRIENDLY_HEADERS
                    + (["humidity_pct", "vpd_kpa"] if humid else [])
                    + (["site"] if multi else []))
@@ -1298,7 +1320,7 @@ class Database:
         ws.append(header)
 
         conn = self._conn()
-        where, params = self._export_where(window_seconds, probe_id, start_epoch, end_epoch)
+        where, params = self._export_where(window_seconds, probe_id, start_epoch, end_epoch, site)
         n = 0
         for r in conn.execute(
             f"SELECT ts, epoch, temperature_c, temperature_f, probe_id, site, "

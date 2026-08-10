@@ -281,6 +281,9 @@ def download_csv():
     and an absolute ?from=YYYY-MM-DD&to=YYYY-MM-DD range (inclusive, hub-local
     dates).
 
+    ``?site=<store>`` narrows to one forwarding store; ``?site=`` (empty) to this
+    hub's own probes; omitting it exports every site.
+
     ``?format=`` selects the shape:
       * ``raw`` (default) — canonical/system-of-record CSV, ISO-8601 timestamps,
         every column. Unchanged; existing links keep working.
@@ -294,6 +297,12 @@ def download_csv():
     fmt = (args.get("format") or "raw").strip().lower()
     window = WINDOW_SECONDS.get((args.get("window") or "all").strip())
     probe = (args.get("probe") or "").strip() or None
+    # Three-valued, like every other reader in core/db.py: the key ABSENT means
+    # every site, `site=` means this hub's own probes, `site=<name>` means one
+    # store. `or None` would collapse the middle case into the first, which is
+    # the confusion test_empty_site_means_this_hubs_own_probes_in_every_query
+    # exists to prevent -- so presence of the key is the sentinel, not truth.
+    site = args.get("site").strip() if args.get("site") is not None else None
     start_epoch = _parse_date_epoch(args.get("from"), end_of_day=False)
     end_epoch = _parse_date_epoch(args.get("to"), end_of_day=True)
     names = cfg.get("probe_names", {}) or {}
@@ -308,7 +317,8 @@ def download_csv():
         try:
             with os.fdopen(fd, "wb") as f:
                 db.export_xlsx(f, name_map=names, window_seconds=window, probe_id=probe,
-                               start_epoch=start_epoch, end_epoch=end_epoch)
+                               start_epoch=start_epoch, end_epoch=end_epoch,
+                               site=site)
         except ExportTooLargeForXlsx as e:
             _safe_unlink(tmp_path)
             return str(e), 400
@@ -340,11 +350,11 @@ def download_csv():
             if fmt == "excel":
                 db.export_friendly_csv(f, name_map=names, window_seconds=window,
                                        probe_id=probe, start_epoch=start_epoch,
-                                       end_epoch=end_epoch)
+                                       end_epoch=end_epoch, site=site)
             else:
                 db.export_csv(f, name_map=names, window_seconds=window,
                               probe_id=probe, start_epoch=start_epoch,
-                              end_epoch=end_epoch)
+                              end_epoch=end_epoch, site=site)
     except Exception:
         log.exception("CSV export failed")
         _safe_unlink(tmp_path)
