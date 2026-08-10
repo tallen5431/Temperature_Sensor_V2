@@ -237,3 +237,55 @@ def test_two_probes_on_one_chart_never_share_a_colour(tmp_path):
     assert len(set(colours)) == len(colours), \
         f"two probes drawn in the same colour: {colours}"
     assert set(colours) <= set(PROBE_COLORS)
+
+
+def test_the_overview_gauge_zones_are_not_this_hubs_limits_for_a_forwarded_probe(tmp_path):
+    """The site scoping has to work on the path it was written for.
+
+    In the all-sites view the gauge's row comes from Database.latest(), which
+    selects timestamp/temperature_c/temperature_f/probe_id and no `site` — so
+    reading the column off that row silently answered None and the scoping never
+    fired. Here the newest reading hub-wide IS the forwarded one and nothing
+    local is in breach, so the best-breach loop cannot mask it.
+    """
+    db = Database(tmp_path / "hq.db")
+    now = datetime.datetime.now()
+
+    def add(pid, temp_c, site, seconds_ago):
+        ts = now - datetime.timedelta(seconds=seconds_ago)
+        db.append(ts.isoformat(timespec="milliseconds"), temp_c, temp_c * 9 / 5 + 32,
+                  pid, site=site, epoch=ts.timestamp())
+
+    add("HQ-Fridge", 5.0, "", 30)          # healthy, and this hub's own
+    add("Walkin", -19.0, "savannah", 2)    # newest overall, another hub's
+    cfg = _Cfg({"alert_thresholds": {"default": {"min": 0.0, "max": 8.0}},
+                "settings": {}, "notifications": {}, "calibration_offsets": {},
+                "probe_names": {}})
+    gauge = str(build_dashboard(db, cfg, _NoFinder(), "24h", "celsius")[GAUGE])
+    assert "Walkin" in gauge, "the newest reading should still be the one shown"
+    # ...but drawn with no threshold zones, because this hub holds none for it.
+    assert "steps" not in gauge or "0.0" not in gauge, \
+        "head office painted its own fridge band behind a store freezer"
+
+
+def test_the_export_dialog_says_which_store_it_will_export(tmp_path):
+    """It has its own controls and its own 'export everything' copy, but it
+    inherits the dashboard's store picker — and the filename is identical
+    whether the file is complete or one store's."""
+    import dash
+    import components.dashboard_view as dv
+    db, cfg = _hq(tmp_path, {})
+    app = dash.Dash(__name__)
+    app.layout = dash.html.Div()
+    app.config.suppress_callback_exceptions = True
+    dv.register_dashboard_callbacks(app, cfg, db, _NoFinder())
+    key, = [k for k in app.callback_map if "export-download.href" in k]
+    fn = app.callback_map[key]["callback"].__wrapped__
+
+    href, _label, hint = fn("excel", "all", None, None, "savannah")
+    assert "site=savannah" in href
+    assert "savannah" in str(hint), "the dialog must say it is exporting one store"
+
+    href, _label, hint = fn("excel", "all", None, None, "all")
+    assert "site=" not in href
+    assert "will be exported" not in str(hint)

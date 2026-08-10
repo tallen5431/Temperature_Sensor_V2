@@ -73,6 +73,12 @@ def discovery_payload(probe_id: str, friendly_name: str, base_topic: str, metric
     return payload
 
 
+# How long start() waits for CONNACK before returning. Long enough for a broker
+# on the LAN or a nearby host, short enough not to stall the Settings save (or
+# hub boot) on one that is not answering.
+CONNECT_WAIT_SEC = 2.0
+
+
 class MqttPublisher:
     def __init__(self) -> None:
         self._client = None
@@ -83,6 +89,10 @@ class MqttPublisher:
         self._discovery_enabled = True
         self._announced: set[str] = set()
         self._announce_capped = False
+        # Set by the CONNACK callback. start() waits on it briefly so a caller
+        # that reports readiness immediately afterwards - Settings' Save does,
+        # on the very next line - is not told a healthy broker is broken.
+        self._connected_evt = threading.Event()
 
     def start(self, cfg) -> None:
         m = (cfg.get("mqtt", {}) or {})
@@ -117,7 +127,9 @@ class MqttPublisher:
             # publish_reading's except never fires either, and Settings sat on
             # a green "publishing to <host>" while nothing was.
             def _on_connect(_client, _userdata, _flags, rc, *_a):
-                if rc != 0:
+                if rc == 0:
+                    self._connected_evt.set()
+                else:
                     log.warning("MQTT broker refused the connection (%s) — check the "
                                 "host, port and credentials; readings are NOT being "
                                 "published.", mqtt.connack_string(rc))
@@ -130,8 +142,16 @@ class MqttPublisher:
             client.on_disconnect = _on_disconnect
             if m.get("username"):
                 client.username_pw_set(m.get("username"), m.get("password", ""))
+            self._connected_evt.clear()
             client.connect(m.get("host", "localhost"), int(m.get("port", 1883)), keepalive=60)
             client.loop_start()
+            # connect() returns once the TCP handshake is done and CONNECT is
+            # queued; CONNACK arrives on the network loop a moment later. Wait
+            # for it, bounded, so is_ready() means something to whoever asks
+            # next. Outside the lock - nothing may block a publish - and a
+            # timeout is not a failure: paho keeps retrying, and is_ready()
+            # will start answering True when it lands.
+            self._connected_evt.wait(CONNECT_WAIT_SEC)
             with self._lock:
                 self._client = client
                 self._enabled = True

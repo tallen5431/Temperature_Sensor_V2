@@ -332,7 +332,14 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
             # Blank fields mean "inherit", not "unwatched". Reading them as no
             # limit made this note say nothing was being checked about a probe
             # the card behind the modal was showing as alarming.
-            limits = limits_for(cfg, _probe_id) if _probe_id else {}
+            #
+            # The `default` entry ONLY, not limits_for: that would return the
+            # probe's own per-probe entry first, and clearing both fields is how
+            # the operator DELETES that entry (Save pops it). Re-reading it here
+            # would have this live note describe the limits being removed, which
+            # is the one direction its "driven by the FIELDS, not saved config"
+            # contract must hold in.
+            limits = (cfg.get('alert_thresholds') or {}).get('default') or {}
         plan = reporting_plan({'interval_sec': interval_sec,
                                'probe_sample_sec': check_sec,
                                'alert_thresholds': {'default': limits}})
@@ -782,13 +789,23 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                 # ...unless this probe inherits a hub-wide limit. Then say so —
                 # the same rule the card behind the modal used, so the two agree
                 # about whether anything is watching this probe.
+                # Guarded: alert_thresholds is user-editable (hand-edited
+                # config.json, and POST /api/config takes arbitrary JSON), so a
+                # non-numeric limit here would raise into the modal's outer
+                # except and return fifteen no-updates — the dialog would simply
+                # never open, with nothing on screen and nothing in the log.
                 inherited = limits_for(cfg, probe_id, site=row_site)
-                if current_min is None and inherited.get('min') is not None:
-                    ph_min = (f"inherits "
-                              f"{temp_c_to_unit(float(inherited['min']), unit):g}")
-                if current_max is None and inherited.get('max') is not None:
-                    ph_max = (f"inherits "
-                              f"{temp_c_to_unit(float(inherited['max']), unit):g}")
+                for bound, current in (('min', current_min), ('max', current_max)):
+                    if current is not None or inherited.get(bound) is None:
+                        continue
+                    try:
+                        shown = temp_c_to_unit(float(inherited[bound]), unit)
+                    except (TypeError, ValueError):
+                        continue          # keep the plain "e.g. 1" example
+                    if bound == 'min':
+                        ph_min = f"inherits {shown:g}"
+                    else:
+                        ph_max = f"inherits {shown:g}"
                 return (True, probe_id, probe_id, current_name, current_interval_sec,
                         disp_min, disp_max, disp_cal, current_res,
                         thresholds_label, cal_label, breadcrumb, ph_min, ph_max,

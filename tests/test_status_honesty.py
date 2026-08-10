@@ -65,11 +65,57 @@ class _Client:
 
 @pytest.mark.parametrize("connected", [True, False])
 def test_mqtt_readiness_asks_the_client_not_the_start_flag(monkeypatch, connected):
+    import core.mqtt_publish as mp
     import paho.mqtt.client as mqtt_mod
+    monkeypatch.setattr(mp, "CONNECT_WAIT_SEC", 0.05)   # do not wait on the refusal
     monkeypatch.setattr(mqtt_mod, "Client", lambda *a, **k: _Client(connected))
     pub = MqttPublisher()
     pub.start(_FakeCfg({"mqtt": {"enabled": True, "host": "localhost"}}))
     assert pub.is_ready() is connected
+
+
+def test_start_waits_for_connack_so_save_does_not_report_a_false_negative(monkeypatch):
+    """connect() returns once CONNECT is queued; CONNACK lands on the network
+    loop a moment later. Settings' Save reads is_ready() on the very next line
+    after start(), so without a bounded wait a perfectly good broker always
+    reported "not publishing yet" — the change meant to stop a broken broker
+    looking healthy would have made every healthy one look broken."""
+    import threading
+    import paho.mqtt.client as mqtt_mod
+
+    class _Delayed(_Client):
+        """Answers CONNACK from another thread, as the real network loop does."""
+
+        def __init__(self):
+            super().__init__(connected=False)
+            self.on_connect = None
+
+        def loop_start(self):
+            def _ack():
+                _t.sleep(0.05)
+                self._connected = True
+                if self.on_connect:
+                    self.on_connect(self, None, {}, 0)
+            threading.Thread(target=_ack, daemon=True).start()
+
+    import time as _t
+    monkeypatch.setattr(mqtt_mod, "Client", lambda *a, **k: _Delayed())
+    pub = MqttPublisher()
+    pub.start(_FakeCfg({"mqtt": {"enabled": True, "host": "localhost"}}))
+    assert pub.is_ready() is True, "Save would have said the broker is not publishing"
+
+
+def test_a_broker_that_never_answers_does_not_stall_the_save(monkeypatch):
+    import core.mqtt_publish as mp
+    import paho.mqtt.client as mqtt_mod
+    import time as _t
+    monkeypatch.setattr(mp, "CONNECT_WAIT_SEC", 0.1)
+    monkeypatch.setattr(mqtt_mod, "Client", lambda *a, **k: _Client(connected=False))
+    pub = MqttPublisher()
+    began = _t.monotonic()
+    pub.start(_FakeCfg({"mqtt": {"enabled": True, "host": "localhost"}}))
+    assert _t.monotonic() - began < 2.0
+    assert pub.is_ready() is False
 
 
 def test_a_client_that_cannot_report_its_connection_is_taken_at_face_value(monkeypatch):
@@ -329,3 +375,70 @@ def test_polling_keeps_the_watcher_alive(monkeypatch):
         assert w.running(), "a page that is still watching had its scan stopped"
     finally:
         w.stop()
+
+
+def test_a_hand_edited_threshold_does_not_stop_the_edit_modal_opening(tmp_path):
+    """alert_thresholds is user-editable — config.json is hand-edited and
+    POST /api/config takes arbitrary JSON. An unguarded float() on an inherited
+    limit raised into the modal's outer except, which returns fifteen
+    no-updates: the dialog simply never opened, with nothing on screen and
+    nothing in the log."""
+    import datetime
+    import dash
+    import components.devices_panel as dp
+    from core.config import Config
+    from core.db import Database
+
+    db = Database(tmp_path / "d.db")
+    db.append(datetime.datetime.now().isoformat(timespec="milliseconds"),
+              4.0, 39.2, "P1")
+    cfg = Config(tmp_path / "c.json")
+    cfg.update({"alert_thresholds": {"default": {"min": "very cold", "max": 5.0}}})
+
+    app = dash.Dash(__name__)
+    app.layout = dash.html.Div()
+    app.config.suppress_callback_exceptions = True
+    dp.register_devices_callbacks(app, None, cfg, db)
+    key, = [k for k in app.callback_map if "edit-probe-min-input.placeholder" in k]
+    entry = app.callback_map[key]
+    fn = entry["callback"].__wrapped__
+    n_args = len(entry["inputs"]) + len(entry.get("state", []))
+
+    import dash as _dash
+    ctx = [{"prop_id": '{"index":"P1","type":"edit-probe-btn"}.n_clicks', "value": 1}]
+    args = [[1], 0, 0, False] + [None] * (n_args - 5) + ["celsius"]
+    with _patch_ctx(_dash, ctx):
+        out = fn(*args)
+    assert out[0] is True, "the modal refused to open over one bad config value"
+    assert "inherits" not in str(out[12]), "a junk minimum must fall back to the example"
+    assert "inherits 5" in str(out[13]), "the good maximum should still be shown"
+
+
+def test_the_cadence_note_does_not_resurrect_a_limit_being_deleted(tmp_path):
+    """Clearing both fields is how the operator DELETES a per-probe override —
+    Save pops the entry. Falling back to limits_for would re-read that very
+    entry, so the live note would describe the limits being removed. Only the
+    inherited `default` may fill a blank field."""
+    import dash
+    import components.devices_panel as dp
+    from core.config import Config
+
+    cfg = Config(tmp_path / "c.json")
+    cfg.update({"alert_thresholds": {"P1": {"min": -30.0, "max": -12.0}},
+                "interval_sec": 900, "probe_sample_sec": 60})
+    app = dash.Dash(__name__)
+    app.layout = dash.html.Div()
+    app.config.suppress_callback_exceptions = True
+    dp.register_devices_callbacks(app, None, cfg, None)
+    key, = [k for k in app.callback_map if "edit-probe-cadence-note.children" in k]
+    fn = app.callback_map[key]["callback"].__wrapped__
+    text, _css = fn("P1", 900, None, None, None)         # both limits cleared
+    assert "Set a limit" in text, (
+        "the note is still describing the override the operator is deleting: " + text)
+
+    # ...but an INHERITED default is a real limit, and blank fields do inherit
+    # it — which is the case the fallback was added for.
+    cfg.update({"alert_thresholds": {"default": {"min": -30.0, "max": -12.0}}})
+    text, _css = fn("P1", 900, None, None, None)
+    assert "Set a limit" not in text, text
+    assert "hecks" in text, text

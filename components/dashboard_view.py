@@ -308,8 +308,8 @@ ExportModal = dbc.Modal([
                      dbc.Input(id="export-to", type="date")], md=6),
         ], className="g-2"),
         html.Small(id="export-format-hint", className="text-muted d-block mt-2"),
-        html.Small(f"Leave dates blank to export everything. Dates are in the hub's "
-                   f"local time ({_TZ_NAME}).",
+        html.Small(f"Leave dates blank to export the whole selected range. Dates "
+                   f"are in the hub's local time ({_TZ_NAME}).",
                    className="text-muted d-block mt-1"),
     ]),
     dbc.ModalFooter([
@@ -497,6 +497,30 @@ def _site_filter(site):
     lives in one place rather than at each of the six query sites.
     """
     return None if (not site or site == "all") else str(site)
+
+
+def _row_site(row, latest_each, probe_id) -> str:
+    """Which hub a row came from, from whichever source actually has the column.
+
+    ``Database.latest()`` does not select ``site``; ``latest_per_probe()`` does.
+    A ``.get("site")`` on the former silently answers None, which reads as "this
+    hub's own probe" — and a forwarded probe judged by this hub's thresholds is
+    exactly what :func:`core.status.limits_for` exists to prevent.
+    """
+    try:
+        value = row.get("site")
+        if value is not None:
+            return str(value or "")
+    except Exception:  # noqa: BLE001 - a Series without the key
+        pass
+    try:
+        if latest_each is not None and not latest_each.empty:
+            match = latest_each[latest_each["probe_id"] == probe_id]
+            if not match.empty:
+                return str(match.iloc[-1].get("site") or "")
+    except Exception:  # noqa: BLE001 - never lose the gauge over a lookup
+        pass
+    return ""
 
 
 def _site_param(site) -> list:
@@ -1073,7 +1097,13 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
                 focus_row = site_newest
             focus_pid = focus_row.get("probe_id")
             focus_c = float(focus_row["temperature_c"])
-            thr = limits_for(cfg, focus_pid, site=str(focus_row.get("site") or ""))
+            # NOT focus_row.get("site"): in the all-sites view focus_row is
+            # `latest`, and Database.latest() selects timestamp/temperature_c/
+            # temperature_f/probe_id only — so that read was always None and the
+            # scoping could never fire on the path it was written for. site_newest
+            # comes from latest_per_probe, which does carry the column.
+            focus_site = _row_site(focus_row, latest_each, focus_pid)
+            thr = limits_for(cfg, focus_pid, site=focus_site)
             focus_lo, focus_hi = thr.get("min"), thr.get("max")
             try:
                 best = None  # (severity, pid, t_c, lo, hi)
@@ -1233,14 +1263,8 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
                 # always raised and always fell back to "" — the scoping would
                 # have been silently inert. A selected store answers it
                 # directly; otherwise the latest-per-probe scan has the column.
-                band_site = str(site_filter or "")
-                if site_filter is None and latest_each is not None:
-                    try:
-                        match = latest_each[latest_each["probe_id"] == band_pid]
-                        if not match.empty:
-                            band_site = str(match.iloc[-1].get("site") or "")
-                    except Exception:  # noqa: BLE001 - a band must not cost the graph
-                        band_site = ""
+                band_site = (str(site_filter) if site_filter is not None
+                             else _row_site({}, latest_each, band_pid))
                 bthr = limits_for(cfg, band_pid, site=band_site)
                 lo_u = _convert(bthr["min"], temp_unit) if bthr.get("min") is not None else None
                 hi_u = _convert(bthr["max"], temp_unit) if bthr.get("max") is not None else None
@@ -1780,7 +1804,17 @@ def register_dashboard_callbacks(app, finder, cfg, db, public_base_func=None, to
             "raw":   "Full ISO-8601 timestamps and every column — the archival "
                      "system-of-record format for scripts and re-import.",
         }
-        return href, label, hints[fmt]
+        hint = hints[fmt]
+        # This dialog has its own controls and its own "export everything" copy,
+        # but it inherits the dashboard's store picker — so on a head-office hub
+        # the file can be one store's readings while nothing in the dialog says
+        # so, under a filename identical to the complete export. Say it.
+        site_filter = _site_filter(site)
+        if site_filter is not None:
+            hint = [hint, html.Br(),
+                    html.Strong(f"Only “{site_filter}” will be exported"),
+                    ", to match the store selected on the dashboard."]
+        return href, label, hint
 
     @app.callback(
         Output("probes-row", "children"),
