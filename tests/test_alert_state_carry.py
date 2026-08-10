@@ -53,11 +53,30 @@ def test_a_batch_that_ends_in_range_records_ok():
 
 
 def test_an_excursion_carried_in_from_the_previous_batch_is_not_reported():
-    # Batch 1 ends mid-excursion: nothing to report, evaluate() owns it.
+    # Batch 1 ends mid-excursion: nothing to report, evaluate() owns it —
+    # live_open says the live engine really is holding this probe's breach.
     state = {}
     assert find_missed_excursions(_rows([-19.0, -8.0, -8.0]), THR, state=state) == []
     # Batch 2 continues it and recovers. That is the SAME incident.
-    assert find_missed_excursions(_rows([-8.0, -8.0, -19.0]), THR, state=state) == []
+    assert find_missed_excursions(_rows([-8.0, -8.0, -19.0]), THR, state=state,
+                                  live_open=True) == []
+
+
+def test_a_carried_run_the_live_path_never_saw_is_still_reported():
+    """The other half of the rule, and the one that loses data if it is missed.
+
+    A probe flushing a buffered outage sends readings that are OLD, so the
+    monitor's freshness filter keeps them out of evaluate() entirely. Suppress
+    on the carry alone and an excursion long enough to span two sweeps is
+    dropped here having never been reported anywhere — which is the exact case
+    the whole missed-excursion feature exists for.
+    """
+    state = {}
+    assert find_missed_excursions(_rows([-19.0, -8.0, -8.0]), THR, state=state) == []
+    runs = find_missed_excursions(_rows([-8.0, -8.0, -19.0]), THR, state=state,
+                                  live_open=False)
+    assert len(runs) == 1, runs
+    assert runs[0]["condition"] == "high"
 
 
 def test_a_genuinely_new_excursion_after_a_carried_one_is_still_reported():
@@ -65,7 +84,8 @@ def test_a_genuinely_new_excursion_after_a_carried_one_is_still_reported():
     state = {}
     find_missed_excursions(_rows([-19.0, -8.0]), THR, state=state)          # open
     runs = find_missed_excursions(
-        _rows([-8.0, -19.0, -19.0, -8.0, -8.0, -19.0, -19.0]), THR, state=state)
+        _rows([-8.0, -19.0, -19.0, -8.0, -8.0, -19.0, -19.0]), THR, state=state,
+        live_open=True)
     assert len(runs) == 1, runs
     assert runs[0]["condition"] == "high"
     assert "carried" not in runs[0]                     # internal flag never escapes
@@ -76,8 +96,8 @@ def test_the_deadband_survives_the_batch_boundary():
     # deadband, so it is still the same breach and must not close the run.
     state = {}
     find_missed_excursions(_rows([-19.0, -8.0]), THR, hysteresis=0.5, state=state)
-    assert find_missed_excursions(_rows([-12.4, -8.0]), THR,
-                                  hysteresis=0.5, state=state) == []
+    assert find_missed_excursions(_rows([-12.4, -8.0]), THR, hysteresis=0.5,
+                                  state=state, live_open=True) == []
     assert state["condition"] == "high"
 
 
@@ -130,6 +150,36 @@ def test_an_excursion_that_recovers_in_a_later_batch_is_not_reported_twice():
     assert "recovery" in kinds, "the live path must still report the all-clear"
     assert "missed" not in kinds, "and the sweep must not double it"
     assert "missed" not in [e["kind"] for e in db.list_events(limit=20)]
+
+
+def test_a_backfilled_excursion_spanning_two_sweeps_is_still_reported():
+    """The monitor-level version of the same rule.
+
+    Readings old enough to be a flushed outage never reach evaluate(), so the
+    sweep is the only thing that can report them — even when the excursion
+    straddles two of its batches.
+    """
+    db, _cfg, mon = _hub()
+    _add(db, 600, -19.0)
+    mon.check_once()                                    # seed the watermark
+
+    # Sweep 1: the excursion opens, still open at the batch's last row.
+    for m in (540, 530, 520):
+        _add(db, m, -8.0)
+    assert [e["kind"] for e in mon.check_once()] == [], "nothing closed yet"
+
+    # Sweep 2: it continues and recovers, all of it far outside the 600 s
+    # freshness window, so evaluate() never saw any of it.
+    for m in (510, 500):
+        _add(db, m, -8.0)
+    for m in (490, 480):
+        _add(db, m, -19.0)
+    events = mon.check_once()
+    kinds = [e["kind"] for e in events]
+    assert "missed" in kinds, "a buffered outage was dropped by both paths"
+    missed = [e for e in events if e["kind"] == "missed"]
+    assert len(missed) == 1, missed
+    assert missed[0]["temperature_c"] == -8.0
 
 
 def test_a_deleted_probe_drops_out_of_every_state_map():

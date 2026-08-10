@@ -207,11 +207,25 @@ def rows_to_payload(rows) -> list:
 def events_to_payload(rows) -> list:
     """Shape ``db.events_after()`` tuples into the ``events`` array ``/ingest_csv``
     accepts. Column order matches the SELECT in ``Database.events_after``; the
-    local id is dropped for the same reason readings drop theirs, and the
-    timestamp is sent as UTC for the same reason readings send theirs."""
+    local id is dropped for the same reason readings drop theirs.
+
+    Events carry the true instant as a SEPARATE ``epoch`` field and leave
+    ``timestamp`` as the store's local-naive string, where readings send UTC.
+    The asymmetry is deliberate and it is about the previous release: a hub
+    running it already recovers a ``Z``-suffixed reading stamp correctly
+    (``ingest_csv`` has called ``absolute_epoch`` on readings for some time),
+    but its ``record_event`` derives the epoch with ``iso_to_epoch``, which
+    strips the ``Z`` and reads the result as LOCAL. Sending UTC here would have
+    skewed forwarded events on an older head office by its whole UTC offset —
+    including on the same-timezone deployments that were previously correct.
+    An extra field is ignored by that build and honoured by this one, so the
+    fix costs nothing during a rollout.
+    """
     out = []
     for _id, ts, epoch, kind, pid, t_c, limit_c in rows:
-        ev = {"timestamp": _wire_stamp(ts, epoch), "kind": kind, "probe_id": pid}
+        ev = {"timestamp": ts, "kind": kind, "probe_id": pid}
+        if epoch is not None:
+            ev["epoch"] = epoch
         if t_c is not None:
             ev["temperature_c"] = t_c
         if limit_c is not None:

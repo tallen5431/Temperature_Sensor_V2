@@ -202,7 +202,13 @@ def _ui_auth_gate():
     if not UI_AUTH_ENABLED:
         return None
     p = request.path or "/"
-    if p in UI_AUTH_OPEN_PATHS or p in UI_AUTH_TOKEN_PATHS or p.startswith("/assets/"):
+    # Normalise a trailing slash before the lookup. The old prefix test matched
+    # "/api/health/" as readily as "/api/health"; an exact-set test does not, so
+    # a scraper configured with the slash would get a 401 challenge instead of
+    # the redirect Flask would otherwise answer with.
+    key = p.rstrip("/") or "/"
+    if key in UI_AUTH_OPEN_PATHS or key in UI_AUTH_TOKEN_PATHS \
+            or p.startswith("/assets/"):
         return None
     auth = request.authorization
     # constant_time_eq, not hmac.compare_digest directly: compare_digest rejects

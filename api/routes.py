@@ -27,7 +27,7 @@ from core.applog import HEALTH, get_logger
 from core.metrics import LATEST
 from core.mqtt_publish import MQTT
 from core.audit import AUDIT
-from core.protocol import MAX_BATCH_ROWS, MAX_INGEST_BYTES
+from core.protocol import DEEP_SLEEP_MIN_MS, MAX_BATCH_ROWS, MAX_INGEST_BYTES
 
 log = get_logger("api")
 
@@ -585,8 +585,16 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
             # arm it below DEEP_SLEEP_MIN_MS — so the manual push and the
             # auto-provisioner cannot disagree about what a probe should run.
             want = desired_probe_config(cfg, pid)
-            watch = (want.get("alert_min_c"), want.get("alert_max_c"),
-                     want.get("sample_ms", 0))
+            sample_ms = want.get("sample_ms", 0)
+            if interval_ms < DEEP_SLEEP_MIN_MS:
+                # desired_probe_config applies this rule to the interval in
+                # CONFIG; this request may be sending a different one. Below the
+                # threshold the probe stays always-on and cannot skip the radio
+                # on a sample wake, so a cadence here would promise behaviour it
+                # will not perform — the exact thing the hub stopped doing when
+                # DEEP_SLEEP_MIN_MS moved into core/protocol.py.
+                sample_ms = 0
+            watch = (want.get("alert_min_c"), want.get("alert_max_c"), sample_ms)
             try:
                 if provision_probe(h, prt, base, token=tok, interval_ms=interval_ms,
                                    resolution_bits=res_bits, watch=watch):
@@ -657,7 +665,19 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
         # test the clamp uses, floor and all, so an unsynced HUB clock still
         # keeps the probe's true epoch.
         raw_ts = data.get("timestamp") or data.get("ts")
-        exact_epoch = None if is_future_stamp(raw_ts) else absolute_epoch(raw_ts)
+        if is_future_stamp(raw_ts):
+            # Clamped. Take the epoch from the clock directly rather than
+            # letting append() re-derive it from `ts`: _local_iso_now() has
+            # MILLISECOND precision, so two clamped readings from one probe
+            # inside the same millisecond would land on one epoch and the
+            # second would be dropped by UNIQUE(probe_id, epoch, site) while the
+            # endpoint still answered 200. Microsecond resolution keeps them
+            # distinct, and agrees with the stored `ts` to well under a
+            # millisecond. (The bulk path spreads its restamps 1 ms apart for
+            # exactly this reason.)
+            exact_epoch = time.time()
+        else:
+            exact_epoch = absolute_epoch(raw_ts)
         db.append(ts, t_c, t_f, probe_id=probe_id, humidity=humidity, vpd=vpd,
                   battery=battery, site=sanitize_site(request.headers.get("X-Site")),
                   epoch=exact_epoch)
@@ -912,11 +932,15 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
         if events_in:
             for ev in events_in[:MAX_BATCH_ROWS]:
                 try:
+                    # `epoch` is hub-to-hub only (PROTOCOL.md §5.2) and a probe
+                    # never sends events at all. Absent -> derived from the
+                    # stamp exactly as before.
                     db.record_event(str(ev.get("kind") or ""),
                                     sanitize_probe_id(ev.get("probe_id") or ""),
                                     temperature_c=ev.get("temperature_c"),
                                     limit=ev.get("limit_c"),
                                     ts=ev.get("timestamp") or ev.get("ts"),
+                                    epoch=ev.get("epoch"),
                                     site=site)
                     events_ok += 1
                 except Exception:  # noqa: BLE001 - an event must never fail readings

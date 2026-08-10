@@ -387,7 +387,7 @@ class Database:
             conn.commit()
 
     def record_event(self, kind: str, probe_id: str, temperature_c=None,
-                     limit=None, ts=None, site: str = "") -> None:
+                     limit=None, ts=None, site: str = "", epoch=None) -> None:
         """Append one alert-lifecycle event to the events log.
 
         ``kind`` is one of ``'high' 'low' 'recovery' 'offline' 'online' 'rate'``;
@@ -396,12 +396,13 @@ class Database:
         one, so bad numeric fields are coerced to NULL, a blank kind is skipped,
         and any storage error is swallowed rather than raised to the caller.
 
-        A ``ts`` carrying explicit timezone info (a ``Z`` or a ``+HH:MM``
-        offset) is handled the way an ingested reading is: converted to this
-        hub's wall clock for the ``ts`` column, with the TRUE instant kept for
-        ``epoch``. That path is the multi-site forwarder — a store hub sends the
-        moment its own alert engine decided something, and head office in
-        another timezone must not re-read that wall clock as its own.
+        ``epoch``, when given, IS the instant — no derivation. That is the
+        multi-site path: a store hub sends the moment its own alert engine
+        decided something, and head office in another timezone re-reading that
+        wall clock as its own shifts the store's audit trail by the offset
+        between them. A ``ts`` carrying explicit timezone info (a ``Z`` or a
+        ``+HH:MM`` offset) is handled the same way an ingested reading is, as a
+        fallback for a sender that offers no ``epoch``.
         """
         def _f(v):
             try:
@@ -412,16 +413,26 @@ class Database:
             kind = str(kind or "").strip()
             if not kind:
                 return  # nothing meaningful to record
+            try:
+                exact = None if epoch is None else float(epoch)
+            except (TypeError, ValueError):
+                exact = None
             raw_ts = str(ts) if ts else ""
-            if raw_ts:
-                # None for a naive stamp — then iso_to_epoch's local reading of
-                # it is the best that is knowable, exactly as for readings.
+            if exact is None and raw_ts:
+                # None for a naive stamp with no epoch beside it — then
+                # iso_to_epoch's local reading of it is the best that is
+                # knowable, exactly as for readings.
                 exact = _storage_absolute_epoch(raw_ts)
+            if exact is not None:
+                # One hub, one timezone in the `ts` column — derived from the
+                # instant rather than copied off the wire, so a forwarded event
+                # reads in head office's wall clock like every row beside it.
+                ts = datetime.datetime.fromtimestamp(exact).isoformat(timespec="seconds")
+            elif raw_ts:
                 ts = _storage_to_local_naive(raw_ts)
             else:
-                exact = None
                 ts = datetime.datetime.now().isoformat(timespec="seconds")
-            epoch = int(iso_to_epoch(ts) if exact is None else float(exact))
+            epoch = int(iso_to_epoch(ts) if exact is None else exact)
             conn = self._conn()
             with self._write_lock:
                 conn.execute(

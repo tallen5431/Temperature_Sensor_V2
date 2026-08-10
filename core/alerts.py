@@ -83,7 +83,8 @@ def classify(temp_c: float, thr: dict, prev_condition: str = "ok",
 
 
 def find_missed_excursions(rows, thr: dict, probe_id: str = "",
-                           hysteresis: float = 0.0, state: Optional[dict] = None) -> List[dict]:
+                           hysteresis: float = 0.0, state: Optional[dict] = None,
+                           live_open: bool = False) -> List[dict]:
     """Excursions that came and went without the live evaluator ever seeing one.
 
     :func:`evaluate` judges the LATEST reading per probe, once per monitor cycle.
@@ -108,12 +109,19 @@ def find_missed_excursions(rows, thr: dict, probe_id: str = "",
     makes that promise hold across more than one batch. The caller sweeps rows in
     arrival order, a chunk per cycle, so a breach open at the end of one chunk
     resumes at the start of the next. Without carried state each call restarted
-    at ``prev_condition="ok"``: the deadband was re-armed mid-excursion, and —
-    worse — the run reappeared as brand new and was emitted as ``missed`` when it
-    recovered, so the live path and the sweep both claimed one incident. The
-    caller passes the same dict back each cycle; this function reads
-    ``state["condition"]`` on entry and writes the batch's trailing condition to
-    it on exit. Omit it and the behaviour is the single-batch one.
+    at ``prev_condition="ok"``: the deadband was re-armed mid-excursion, and the
+    run reappeared as brand new. The caller passes the same dict back each cycle;
+    this function reads ``state["condition"]`` on entry and writes the batch's
+    trailing condition to it on exit. Omit it and the behaviour is the
+    single-batch one.
+
+    ``live_open`` is the OTHER half, and the two are not interchangeable. A run
+    carried in from the previous batch is only :func:`evaluate`'s to report if
+    evaluate is actually holding a breach for this probe — which is what
+    ``live_open`` says. Suppressing on the carry alone loses real incidents: a
+    probe flushing a buffered outage sends readings that are OLD, the monitor's
+    freshness filter keeps them out of :func:`evaluate` entirely, and a long
+    enough excursion spans two sweeps. Nobody would ever have reported it.
 
     Each run collapses to ONE event: 13 minutes at a 7 s cadence is 110 readings
     and one problem.
@@ -121,11 +129,17 @@ def find_missed_excursions(rows, thr: dict, probe_id: str = "",
     out: List[dict] = []
 
     def _emit(finished: dict) -> None:
-        # A run that was ALREADY open when this batch began is the incident
-        # evaluate() alerted live last cycle, and evaluate() will emit its
-        # recovery. Reporting it here too would send a second, contradictory
-        # message — "while the hub was not watching" about an excursion the hub
-        # watched — and file a phantom row in the durable event log.
+        # A run that was ALREADY open when this batch began AND that the live
+        # engine is holding a breach for is evaluate()'s incident: it alerted it
+        # last cycle and will emit the recovery. Reporting it here too would
+        # send a second, contradictory message — "while the hub was not
+        # watching" about an excursion the hub watched — and file a phantom row
+        # in the durable event log.
+        #
+        # Both halves are required. Carried-in alone is not enough: backfilled
+        # readings are old, so the monitor's freshness filter keeps them out of
+        # evaluate() altogether, and an excursion long enough to span two
+        # sweeps would be dropped here having never been reported anywhere.
         if finished.pop("carried", False):
             return
         out.append(finished)
@@ -134,8 +148,10 @@ def find_missed_excursions(rows, thr: dict, probe_id: str = "",
     ordered = sorted((r for r in rows if r and r[1] is not None), key=lambda r: r[0])
     last_index = len(ordered) - 1
     prev_condition = str((state or {}).get("condition") or "ok")
-    # Only the batch's FIRST run can inherit the previous batch's open breach.
-    inherit = prev_condition if prev_condition in ("high", "low") else None
+    # Only the batch's FIRST run can inherit the previous batch's open breach,
+    # and only when the live engine is holding that breach (see ``live_open``).
+    inherit = (prev_condition
+               if (live_open and prev_condition in ("high", "low")) else None)
     for i, (epoch, temp_c) in enumerate(ordered):
         try:
             value = float(temp_c)

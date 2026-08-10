@@ -1186,20 +1186,22 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
                                        format="ISO8601", errors="coerce")
             probe_ids = list(df["probe_id"].unique())
             multi = len([p for p in probe_ids if str(p).strip()]) > 1
-            # Colour is keyed to a STORE-WIDE ordinal, not to position in this
+            # Colour is keyed to the probe id, sorted — not to position in this
             # window. window_df returns rows epoch-ascending, so enumerate()
-            # ordered probes by their oldest row INSIDE the selected range — a
+            # ordered probes by their oldest row INSIDE the selected range: a
             # value that changes as the rolling window advances past a probe's
             # earliest sample, or the moment the operator changes the range. Two
             # probes swapped colours between "1h" and "24h" on the same screen,
             # which is the one thing a chart legend has to be stable about.
-            # probe_ids() is an ascending loose-index scan documented as cheap
-            # enough for this 5 s path; a read error degrades to the old
-            # positional behaviour rather than losing the chart.
-            try:
-                color_index = {p: n for n, p in enumerate(db.probe_ids() or ())}
-            except Exception:  # noqa: BLE001 - colour must never cost the graph
-                color_index = {}
+            #
+            # Sorted among the probes PRESENT, rather than a store-wide ordinal:
+            # PROBE_COLORS has 12 entries, so indexing by a store-wide position
+            # would let two probes on the same chart land on the same colour on
+            # any hub with more than twelve probes — and two lines you cannot
+            # tell apart is a worse failure than a colour that moves. This still
+            # fixes both reported symptoms; only a probe joining or leaving the
+            # window shifts anything now, and that is a different chart.
+            color_index = {p: n for n, p in enumerate(sorted(probe_ids, key=str))}
             for i, pid in enumerate(probe_ids):
                 chunk = df[df["probe_id"] == pid]
                 y = chunk["temperature_c"].apply(lambda x: _convert(x, temp_unit))
@@ -1225,10 +1227,20 @@ def build_dashboard(db, cfg, finder, time_range, temp_unit, focus_probe="all", c
                 # band is this hub's limits, and a forwarded probe is not held
                 # to them. Drawing them behind a store freezer's line paints a
                 # healthy trace inside a red wash.
-                try:
-                    band_site = str(df[df["probe_id"] == band_pid]["site"].iloc[-1] or "")
-                except Exception:  # noqa: BLE001 - older frames may not carry site
-                    band_site = ""
+                #
+                # NOT from `df`: window_df selects timestamp/temperature_c/
+                # temperature_f/probe_id and no `site`, so reading it there
+                # always raised and always fell back to "" — the scoping would
+                # have been silently inert. A selected store answers it
+                # directly; otherwise the latest-per-probe scan has the column.
+                band_site = str(site_filter or "")
+                if site_filter is None and latest_each is not None:
+                    try:
+                        match = latest_each[latest_each["probe_id"] == band_pid]
+                        if not match.empty:
+                            band_site = str(match.iloc[-1].get("site") or "")
+                    except Exception:  # noqa: BLE001 - a band must not cost the graph
+                        band_site = ""
                 bthr = limits_for(cfg, band_pid, site=band_site)
                 lo_u = _convert(bthr["min"], temp_unit) if bthr.get("min") is not None else None
                 hi_u = _convert(bthr["max"], temp_unit) if bthr.get("max") is not None else None
@@ -1716,12 +1728,20 @@ def register_dashboard_callbacks(app, finder, cfg, db, public_base_func=None, to
     @app.callback(
         Output("export-probe", "options"),
         Input("export-open", "n_clicks"),
+        Input("site-selector", "value"),
         prevent_initial_call=True,
     )
-    def _export_probe_options(_n):
+    def _export_probe_options(_n, site):
+        # Scoped by the site picker, because the download now is too. Offering a
+        # probe from another store while a store is selected would build a
+        # (probe AND site) query that matches nothing and hand the operator an
+        # empty file with no explanation.
+        site_filter = _site_filter(site)
         opts = [{"label": "All probes", "value": "all"}]
         try:
             latest = db.latest_per_probe(window_seconds=30 * 86400)
+            if site_filter is not None and not latest.empty and "site" in latest:
+                latest = latest[latest["site"].fillna("") == site_filter]
             pids = [p for p in latest["probe_id"].tolist() if str(p).strip()]
             for pid in sorted(pids, key=lambda p: _friendly_name(cfg, p).lower()):
                 opts.append({"label": _friendly_name(cfg, pid), "value": pid})

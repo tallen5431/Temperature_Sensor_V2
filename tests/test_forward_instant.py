@@ -109,7 +109,8 @@ def _forward_one(tmp_path, store_tz, hq_tz, tz):
     hq.bulk_insert([(ts, t_c, t_f, "P1", None, None, None,
                      absolute_epoch(wire_rows[0]["timestamp"]))], site="store1")
     hq.record_event("high", "P1", temperature_c=9.0, limit=8.0,
-                    ts=wire_events[0]["timestamp"], site="store1")
+                    ts=wire_events[0]["timestamp"], epoch=wire_events[0].get("epoch"),
+                    site="store1")
     return rows[0], events[0], wire_rows[0], wire_events[0], hq
 
 
@@ -126,16 +127,46 @@ def test_head_office_stores_the_instant_the_store_recorded(tmp_path, tz, store_t
     # Events go through record_event, a different write path from readings —
     # fixing only the readings half left the audit trail skewed.
     assert hq_event["epoch"] == pytest.approx(event[2], abs=1.5)
-    # ...and the event's ts column is this hub's wall clock, like every other row.
+    # ...and the event's ts column is this hub's wall clock, like every row
+    # beside it — derived from the instant, not copied off the wire.
     assert not hq_event["ts"].endswith("Z")
+    assert hq_event["ts"] == datetime.datetime.fromtimestamp(
+        hq_event["epoch"]).isoformat(timespec="seconds")
 
 
-def test_the_wire_stamp_is_unambiguous_utc(tmp_path, tz):
-    _row, _event, wire_row, wire_event, _hq = _forward_one(
+def test_the_wire_carries_an_unambiguous_instant_for_both_records(tmp_path, tz):
+    """Readings send UTC; events send their naive stamp plus an `epoch` field.
+
+    The asymmetry is deliberate, and it is about the PREVIOUS release. A hub
+    running it already recovers a Z-suffixed reading stamp correctly, but its
+    record_event derives the epoch with iso_to_epoch, which strips the Z and
+    reads the rest as local — so sending UTC there would have skewed forwarded
+    events on an older head office by its whole UTC offset, including on the
+    same-timezone deployments that were previously right. An extra field is
+    ignored by that build and honoured by this one.
+    """
+    _row, event, wire_row, wire_event, _hq = _forward_one(
         tmp_path, "Europe/Berlin", "Europe/Berlin", tz)
     assert wire_row["timestamp"].endswith("Z")
-    assert wire_event["timestamp"].endswith("Z")
     assert absolute_epoch(wire_row["timestamp"]) is not None
+
+    assert not wire_event["timestamp"].endswith("Z"), \
+        "an older head office reads a Z-stamped event as local time"
+    assert wire_event["epoch"] == pytest.approx(event[2])
+
+
+def test_an_older_head_office_reads_a_forwarded_event_exactly_as_before(tmp_path, tz):
+    """The compatibility guarantee, spelled out: with the `epoch` field dropped
+    (as a build that does not know it would), the stamp still resolves the way
+    it did before this change."""
+    from core.db import iso_to_epoch
+    tz("Europe/Berlin")
+    store = Database(tmp_path / "store.db")
+    store.record_event("high", "P1", temperature_c=9.0, limit=8.0)
+    event = store.events_after(0)[0]
+    wire = events_to_payload([event])[0]
+    # What the old receiver computes, having ignored `epoch` entirely.
+    assert int(iso_to_epoch(wire["timestamp"])) == event[2]
 
 
 def test_a_store_to_the_east_is_not_restamped_as_future(tmp_path, tz):
@@ -258,3 +289,21 @@ def test_a_usable_site_label_still_forwards(tmp_path):
         fw.post_batch = real
     assert seen["site"] == "atl-1"
     assert fwd.last_error == ""
+
+
+def test_two_clamped_readings_in_one_millisecond_both_survive(tmp_path):
+    """The clamp must not become its own data-loss path.
+
+    _local_iso_now() has millisecond precision, so deriving the epoch from the
+    clamped `ts` would give two readings inside one millisecond the same epoch
+    — and UNIQUE(probe_id, epoch, site) would drop the second while the
+    endpoint still answered 200, which is the silent loss the bulk path spreads
+    its restamps 1 ms apart to avoid.
+    """
+    client, db, _ = _ingest_client(tmp_path)
+    ahead = datetime.datetime.fromtimestamp(
+        _time.time() + 86400 * 500, tz=datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+    for temp in (4.0, 5.0, 6.0):
+        client.post("/api/ingest",
+                    json={"temperature_c": temp, "probe_id": "P1", "timestamp": ahead})
+    assert db.count() == 3, "a clamped reading was swallowed by the unique index"

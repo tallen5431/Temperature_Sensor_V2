@@ -204,3 +204,36 @@ def test_count_readings_can_be_scoped_to_a_store(tmp_path):
     assert db.count_readings(site="savannah") == 1
     assert db.count_readings(site="") == 1, \
         "'' means this hub's own probes, not 'no filter'"
+
+
+def test_two_probes_on_one_chart_never_share_a_colour(tmp_path):
+    """Stability must not be bought with ambiguity.
+
+    Keying colour to a store-wide ordinal is perfectly stable, but PROBE_COLORS
+    has twelve entries — so on a hub with more than twelve probes two lines on
+    the same chart could land on the same colour, which is worse than the
+    instability being fixed. Sorted-among-those-present gives both.
+    """
+    from components.dashboard_view import PROBE_COLORS
+    db = Database(tmp_path / "many.db")
+    now = datetime.datetime.now()
+    # 20 probes in the store, 6 of them in the visible window.
+    for n in range(20):
+        ts = now - datetime.timedelta(days=30)
+        db.append(ts.isoformat(timespec="milliseconds"), 4.0, 39.2, f"P{n:02d}",
+                  epoch=ts.timestamp() + n)
+    for n in (0, 3, 7, 12, 15, 19):
+        ts = now - datetime.timedelta(minutes=n + 1)
+        db.append(ts.isoformat(timespec="milliseconds"), 4.0, 39.2, f"P{n:02d}",
+                  epoch=ts.timestamp())
+    cfg = _Cfg({"alert_thresholds": {}, "settings": {}, "notifications": {},
+                "calibration_offsets": {}, "probe_names": {}})
+    fig = build_dashboard(db, cfg, _NoFinder(), "1h", "celsius")[GAUGE + 1]
+    # Line traces only — the chart also carries an unnamed marker trace for the
+    # latest point.
+    colours = [t.line.color for t in fig.data
+               if t.name and getattr(t.line, "color", None)]
+    assert len(colours) == 6, colours
+    assert len(set(colours)) == len(colours), \
+        f"two probes drawn in the same colour: {colours}"
+    assert set(colours) <= set(PROBE_COLORS)

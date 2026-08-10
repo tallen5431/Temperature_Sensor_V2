@@ -286,9 +286,29 @@ def test_the_manual_provision_push_sends_the_watch(tmp_path, monkeypatch):
     client, _db, cfg = _make_client(tmp_path)
     cfg.update({"alert_thresholds": {"default": {"min": -30.0, "max": -12.0}},
                 "probe_sample_sec": 60, "interval_sec": 900})
-    r = client.post("/api/provision", json={"host": "192.168.1.77", "port": 80})
+    r = client.post("/api/provision",
+                    json={"host": "192.168.1.77", "port": 80, "interval_ms": 900000})
     assert r.status_code == 200
     assert sent.get("watch") == (-30.0, -12.0, 60000), sent
+
+
+def test_the_watch_is_judged_by_the_interval_this_request_sends(tmp_path, monkeypatch):
+    """desired_probe_config applies the always-on rule to the interval in
+    CONFIG. This request can carry a different one — so a body asking for a 6 s
+    interval must not be paired with a cadence resolved from the hub's
+    configured 15 minutes, which is exactly the "reads as armed, is not"
+    behaviour DEEP_SLEEP_MIN_MS was moved into core/protocol.py to stop."""
+    import api.routes as routes
+    sent = {}
+    monkeypatch.setattr(routes, "resolve_host", lambda h: "192.168.1.77")
+    monkeypatch.setattr(routes, "provision_probe",
+                        lambda h, p, base, **kw: sent.update(kw) or True)
+    client, _db, cfg = _make_client(tmp_path)
+    cfg.update({"alert_thresholds": {"default": {"min": -30.0, "max": -12.0}},
+                "probe_sample_sec": 60, "interval_sec": 900})
+    client.post("/api/provision",
+                json={"host": "192.168.1.77", "port": 80, "interval_ms": 6000})
+    assert sent.get("watch")[2] == 0, sent
 
 
 def test_the_manual_push_refuses_to_arm_a_watch_the_probe_cannot_run(tmp_path,
@@ -306,3 +326,16 @@ def test_the_manual_push_refuses_to_arm_a_watch_the_probe_cannot_run(tmp_path,
                 "probe_sample_sec": 5, "interval_sec": 6})
     client.post("/api/provision", json={"host": "192.168.1.77", "port": 80})
     assert sent.get("watch")[2] == 0, sent
+
+
+def test_the_ui_auth_gate_normalises_a_trailing_slash():
+    """The allowlist is an exact-path set now, where it used to be a prefix
+    test — so "/api/health/" would have drawn a 401 challenge instead of the
+    redirect Flask answers with. Asserted against the source, like the rest of
+    tests/test_ui_auth_gate.py, because importing app.py boots a whole hub."""
+    import pathlib
+    src = (pathlib.Path(__file__).resolve().parent.parent / "app.py").read_text()
+    gate = src.split("def _ui_auth_gate()")[1].split("\ndef ")[0]
+    assert 'rstrip("/")' in gate, (
+        "the gate compares request.path verbatim, so a trailing slash turns an "
+        "endpoint SECURITY.md documents as open into a 401")

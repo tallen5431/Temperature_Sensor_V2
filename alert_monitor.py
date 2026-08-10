@@ -150,7 +150,14 @@ class AlertMonitor(threading.Thread):
             ev = self._notify_q.get()
             if ev is None:  # sentinel from stop()
                 return
-            self._send(ev)
+            try:
+                self._send(ev)
+            except Exception:  # noqa: BLE001 - one bad item must not end the worker
+                # _send guards its own channel errors, but everything it reaches
+                # runs on this thread, and a worker that dies leaves every later
+                # alert to the inline fallback on the monitor loop — the exact
+                # stall this thread exists to prevent, and silently.
+                log.exception("notification dispatch failed for %s", ev.get("kind"))
 
     def _readings(self) -> dict:
         """Latest reading per probe, limited to recent data so we don't alert on
@@ -210,6 +217,12 @@ class AlertMonitor(threading.Thread):
         # --- threshold alerts ---
         thresholds = self.cfg.get("alert_thresholds", {}) or {}
         readings = self._readings()
+        # Captured BEFORE evaluate revises it: "which probes was the live engine
+        # holding a breach for when this cycle began?". That is the question the
+        # backfill sweep needs answered to know whose incident a carried-in run
+        # is — after evaluate runs, a breach it just cleared already reads 'ok'.
+        live_open = {pid for pid, st in self._states.items()
+                     if st.get("condition") in ("high", "low")}
         events, self._states = evaluate(
             readings, thresholds, self._states,
             cooldown_sec=cooldown,
@@ -222,7 +235,7 @@ class AlertMonitor(threading.Thread):
         # After evaluate(), so a run still open at the newest reading is reported
         # by the live path and this one leaves it alone — they can never both
         # claim the same incident.
-        all_events.extend(self._check_missed())
+        all_events.extend(self._check_missed(live_open))
 
         # --- rate-of-change alerts ---
         all_events.extend(self._check_rate(readings, cooldown))
@@ -338,7 +351,7 @@ class AlertMonitor(threading.Thread):
     MISSED_SCAN_MAX_ROWS = 50_000
     MISSED_MAX_PER_CYCLE = 3
 
-    def _check_missed(self) -> list:
+    def _check_missed(self, live_open=frozenset()) -> list:
         """Excursions that began AND ended without the live evaluator seeing one.
 
         ``evaluate`` judges one reading per probe per cycle — the latest. A breach
@@ -393,7 +406,12 @@ class AlertMonitor(threading.Thread):
                 # so an excursion that spans two chunks would otherwise look
                 # brand new in the second and be reported as "missed" on
                 # recovery — an incident the live path had already alerted.
-                state=self._missed_states.setdefault(pid, {}))
+                state=self._missed_states.setdefault(pid, {}),
+                # Only suppress a carried-in run when the live engine really is
+                # holding this probe's breach. A backfilled excursion is old
+                # enough that _readings() keeps it out of evaluate() entirely,
+                # so nothing else would ever report it.
+                live_open=(pid in live_open))
             if len(found) > self.MISSED_MAX_PER_CYCLE:
                 log.warning("%s: %d missed excursions in one backfill; reporting the "
                             "first %d — see the chart for the rest",
@@ -532,13 +550,19 @@ class AlertMonitor(threading.Thread):
         item = {"kind": "_daily_summary", "date": today, "email": dict(email),
                 "subject": subject, "message": body}
         if self._notify_thread and self._notify_thread.is_alive():
+            # Set BEFORE the hand-off, cleared if the hand-off fails. The other
+            # order is a race the worker wins often enough to matter: it can
+            # drain the item and clear the flag (a no-op, because the flag is
+            # still None) before this thread assigns it — and then nothing ever
+            # clears it again, so the day's retry is wedged for good.
+            self._summary_inflight = today
             try:
                 self._notify_q.put_nowait(item)
             except queue.Full:
+                self._summary_inflight = None
                 HEALTH.record_notify_dropped()
                 log.warning("notification queue full; dropping the daily summary")
                 return False
-            self._summary_inflight = today
             return True
         # No worker (unit tests, or a monitor driven directly): send inline so
         # the result is synchronous and observable, exactly as it used to be.
@@ -566,7 +590,16 @@ class AlertMonitor(threading.Thread):
             HEALTH.record_notify_failure()
             log.warning("daily summary email failed: %s", info)
             return False
-        self.cfg.set("daily_summary_last_sent", date)
+        try:
+            # cfg.set writes config.json. On a full or read-only disk it raises,
+            # and this runs ON the notification worker — an escape here would
+            # take that thread down and leave every later alert to the inline
+            # fallback on the monitor loop, which is the stall the worker exists
+            # to prevent. The mail did go out; failing to record that is worth a
+            # duplicate summary tomorrow, not a dead worker.
+            self.cfg.set("daily_summary_last_sent", date)
+        except Exception as e:  # noqa: BLE001
+            log.warning("daily summary sent but not recorded (%s); it may repeat", e)
         log.info("daily summary sent for %s", date)
         return True
 

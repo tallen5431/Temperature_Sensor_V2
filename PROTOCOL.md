@@ -373,9 +373,9 @@ Two body formats are accepted:
   array, each element the same object shape as a single `/api/ingest` body.
 
   The object form may also carry an optional **`events`** array — alert-lifecycle
-  records (`{"timestamp", "kind", "probe_id", "temperature_c", "limit_c"}`) from
-  a **forwarding hub**, never from a probe. Probes have no event log, which is
-  why this is JSON-only and absent from the CSV form. See §5.2.
+  records (`{"timestamp", "kind", "probe_id", "temperature_c", "limit_c", "epoch"}`)
+  from a **forwarding hub**, never from a probe. Probes have no event log, which
+  is why this is JSON-only and absent from the CSV form. See §5.2.
 
 Each reading is validated exactly like `/api/ingest` (§6: finite, `-60..150 °C`,
 timestamp normalisation, per-probe calibration). Invalid rows are skipped, not
@@ -439,15 +439,29 @@ the same `X-Token` and `X-Site` headers as the readings beside them:
 {
   "readings": [ … ],
   "events": [
-    {"timestamp": "2026-08-04T10:00:00", "kind": "high",
+    {"timestamp": "2026-08-04T10:00:00", "epoch": 1785837600, "kind": "high",
      "probe_id": "walkin", "temperature_c": 15.0, "limit_c": 8.0}
   ]
 }
 ```
 
-`kind` is one of `high low recovery offline online rate`; `temperature_c` and
-`limit_c` are optional. Rows are stamped with the batch's `X-Site`, so an event's
-site names the hub that **recorded** it — `''` for the receiving hub's own.
+`kind` is one of `high low recovery offline online rate`; `temperature_c`,
+`limit_c` and `epoch` are optional. Rows are stamped with the batch's `X-Site`,
+so an event's site names the hub that **recorded** it — `''` for the receiving
+hub's own.
+
+**`epoch`** is the POSIX instant the sending hub recorded the event at, and it is
+**hub-to-hub only** — nothing else sends events, so nothing else needs it. It
+exists because `timestamp` on this array is the sending hub's LOCAL wall clock
+with no zone marker, and a receiver in a different timezone re-reading it as its
+own shifts a store's audit trail by the offset between them. When `epoch` is
+present the receiver uses it verbatim and renders `timestamp` from it in its own
+wall clock; when it is absent the stamp is resolved exactly as before, so a
+sender that does not know this field is unaffected.
+
+Readings, by contrast, carry their instant IN the timestamp — a forwarding hub
+sends them as UTC with a trailing `Z`, which §6's normalisation already
+converts and `absolute_epoch` already recovers.
 
 A malformed event is skipped, never fatal: an event must not cost a reading. The
 `events` count in the response is informational for the same reason `accepted`
