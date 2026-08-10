@@ -574,12 +574,21 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
         # Optional battery level from mains-free probes; missing/invalid -> NULL.
         battery = extract_battery(data)
 
+        # Carry the unambiguous instant when the probe sent one (it stamps in
+        # UTC), so the DST fall-back hour doesn't collapse two readings onto one
+        # epoch — but NOT when normalize_payload just clamped that stamp for
+        # being implausibly far ahead. Keeping the probe's bad epoch beside the
+        # clamped ts defeated the clamp entirely: every read orders and filters
+        # on epoch, so one drifted probe pinned `latest`, could never be called
+        # offline (now - epoch is negative), and kept out-sorting its own
+        # corrected readings once its clock synced. is_future_stamp is the same
+        # test the clamp uses, floor and all, so an unsynced HUB clock still
+        # keeps the probe's true epoch.
+        raw_ts = data.get("timestamp") or data.get("ts")
+        exact_epoch = None if is_future_stamp(raw_ts) else absolute_epoch(raw_ts)
         db.append(ts, t_c, t_f, probe_id=probe_id, humidity=humidity, vpd=vpd,
                   battery=battery, site=sanitize_site(request.headers.get("X-Site")),
-                  # Carry the unambiguous instant when the probe sent one (it
-                  # stamps in UTC), so the DST fall-back hour doesn't collapse
-                  # two readings onto one epoch.
-                  epoch=absolute_epoch(data.get("timestamp") or data.get("ts")))
+                  epoch=exact_epoch)
         HEALTH.record_write()
 
         if probe_id:

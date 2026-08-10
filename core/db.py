@@ -128,12 +128,37 @@ def iso_to_epoch(ts: str) -> float:
         return time.time()
 
 
+def utc_iso(epoch) -> str:
+    """Format an epoch as an unambiguous ISO-8601 UTC string.
+
+    Carries millisecond precision when the value has it (sub-second/high-rate
+    logging), else keeps the clean seconds format.
+
+    Module level, not a private method, because it is the inverse of
+    :func:`core.storage.absolute_epoch` and both sides of the hub-to-hub wire
+    need it: the exports render a UTC column with it, and the upstream forwarder
+    stamps its payload with it so the receiving hub can recover the exact
+    instant instead of re-deriving one from a local-naive string in ITS OWN
+    timezone. ``Database._utc_string`` remains as the in-class alias.
+    """
+    utc_dt = datetime.datetime.fromtimestamp(float(epoch), tz=datetime.timezone.utc)
+    if utc_dt.microsecond:
+        return utc_dt.strftime("%Y-%m-%dT%H:%M:%S.") + f"{utc_dt.microsecond // 1000:03d}Z"
+    return utc_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 # A wall clock earlier than this is treated as not-yet-synced and is NOT trusted
 # for the destructive startup future-reading purge (see delete_future_readings).
 # Imported from core.storage, which uses the same floor to decide whether to trust
 # the hub's clock over a probe's timestamp on ingest — one definition so the two
 # guards can never disagree about when the clock became believable.
 from core.storage import CLOCK_TRUSTWORTHY_FLOOR_EPOCH as _CLOCK_TRUSTWORTHY_FLOOR_EPOCH
+# The events log accepts a timestamp straight off the wire (a forwarding hub
+# sends the instant its OWN alert engine decided something). Both helpers are
+# needed to store it the way every other row is stored: one hub-local wall clock
+# in ``ts``, and the true instant in ``epoch``.
+from core.storage import _to_local_naive as _storage_to_local_naive
+from core.storage import absolute_epoch as _storage_absolute_epoch
 
 
 class Database:
@@ -370,6 +395,13 @@ class Database:
         alert cycle that emits an event must never be broken by an unrecordable
         one, so bad numeric fields are coerced to NULL, a blank kind is skipped,
         and any storage error is swallowed rather than raised to the caller.
+
+        A ``ts`` carrying explicit timezone info (a ``Z`` or a ``+HH:MM``
+        offset) is handled the way an ingested reading is: converted to this
+        hub's wall clock for the ``ts`` column, with the TRUE instant kept for
+        ``epoch``. That path is the multi-site forwarder — a store hub sends the
+        moment its own alert engine decided something, and head office in
+        another timezone must not re-read that wall clock as its own.
         """
         def _f(v):
             try:
@@ -380,14 +412,23 @@ class Database:
             kind = str(kind or "").strip()
             if not kind:
                 return  # nothing meaningful to record
-            ts = str(ts) if ts else datetime.datetime.now().isoformat(timespec="seconds")
+            raw_ts = str(ts) if ts else ""
+            if raw_ts:
+                # None for a naive stamp — then iso_to_epoch's local reading of
+                # it is the best that is knowable, exactly as for readings.
+                exact = _storage_absolute_epoch(raw_ts)
+                ts = _storage_to_local_naive(raw_ts)
+            else:
+                exact = None
+                ts = datetime.datetime.now().isoformat(timespec="seconds")
+            epoch = int(iso_to_epoch(ts) if exact is None else float(exact))
             conn = self._conn()
             with self._write_lock:
                 conn.execute(
                     "INSERT OR IGNORE INTO events "
                     "(ts, epoch, kind, probe_id, temperature_c, limit_c, site) "
                     "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    (ts, int(iso_to_epoch(ts)), kind, str(probe_id or ""),
+                    (ts, epoch, kind, str(probe_id or ""),
                      _f(temperature_c), _f(limit), site or ""),
                 )
                 conn.commit()
@@ -1018,17 +1059,7 @@ class Database:
         where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
         return where, tuple(params_list)
 
-    @staticmethod
-    def _utc_string(epoch) -> str:
-        """Format a row's epoch as an unambiguous ISO-8601 UTC string.
-
-        Carries millisecond precision when the row has it (sub-second/high-rate
-        logging), else keeps the clean seconds format.
-        """
-        utc_dt = datetime.datetime.fromtimestamp(float(epoch), tz=datetime.timezone.utc)
-        if utc_dt.microsecond:
-            return utc_dt.strftime("%Y-%m-%dT%H:%M:%S.") + f"{utc_dt.microsecond // 1000:03d}Z"
-        return utc_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    _utc_string = staticmethod(utc_iso)
 
     @staticmethod
     def _local_date_time(ts, epoch):

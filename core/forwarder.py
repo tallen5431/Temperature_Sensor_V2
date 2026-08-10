@@ -59,7 +59,9 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 
+from core.db import utc_iso
 from core.protocol import MAX_BATCH_ROWS, MAX_INGEST_BYTES
+from core.storage import sanitize_site
 
 log = logging.getLogger("hub.forwarder")
 
@@ -79,9 +81,45 @@ def _explain(status: int) -> str:
         return "Head office answered, but not with a Setpoint hub — check the address."
     if status == 413:
         return "Batch too large for head office — lower the rows-per-send."
+    if 300 <= status < 400:
+        return ("Something on the network answered with a redirect instead of head "
+                "office — check the address (use the one it redirects to, usually "
+                "the https:// form), and whether a captive portal or proxy sits in "
+                "between.")
     if 500 <= status < 600:
         return f"Head office returned an error ({status}) — it may be starting up or overloaded."
     return f"Head office refused the readings (HTTP {status})."
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Refuse to chase ``Location`` on an upstream POST.
+
+    Forwarding targets one fixed, operator-configured endpoint, so a 3xx is
+    never head office answering. Following it costs two things, and both are
+    silent:
+
+    * ``HTTPRedirectHandler`` copies every header except the content ones onto
+      the new request with no same-origin test, so ``X-Token`` — head office's
+      device token — is replayed at whatever host ``Location`` names, on any
+      scheme or port. ``upstream.url`` is frequently plain ``http://``, so
+      anything on the path can inject that redirect.
+    * For 301/302/303 it rebuilds the request as a bodiless GET. The batch is
+      dropped, and if the redirect target answers 2xx (a captive portal, an SPA
+      catch-all, a proxy interstitial) :meth:`_run_once_locked` reads that as
+      delivery and advances BOTH cursors past readings and events that were
+      never sent — a permanent hole in the record, which is the one outcome
+      this module's docstring stakes itself on avoiding.
+
+    Returning ``None`` makes ``OpenerDirector`` fall through to
+    ``HTTPDefaultErrorHandler``, which raises ``HTTPError`` — so ``post_batch``
+    reports the real 3xx, the cursor holds and the backoff engages.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_OPENER = urllib.request.build_opener(_NoRedirect)
 
 _HWM_KEY = "forwarder.last_id"
 _EVENTS_KEY = "forwarder.last_event_id"
@@ -135,11 +173,21 @@ def rows_to_payload(rows) -> list:
     numbers its copy independently. ``vpd`` is dropped too, and deliberately: the
     receiving hub recomputes it from temperature + humidity at ingest, using ITS
     own ``vpd_leaf_offset_c``, so sending ours would be overwritten anyway.
+
+    The timestamp on the wire is the row's ``epoch`` rendered as UTC, NOT the
+    stored ``ts``. ``ts`` is local-naive — one hub, one timezone — and carries no
+    marker saying which one, so head office in a different zone re-read it as its
+    own wall clock and shifted every forwarded reading by the offset between
+    them (see :func:`core.storage.absolute_epoch`, which exists for exactly this
+    and which the receiver already honours for a ``Z``-suffixed stamp). A store
+    to the east also tripped the receiver's future-stamp guard and had its whole
+    batch re-stamped to arrival time. The epoch is the instant the store hub
+    already established; sending it unambiguously is all that was missing.
     """
     out = []
     for r in rows:
-        _id, ts, _epoch, t_c, t_f, pid, hum, _vpd, bat = r
-        row = {"timestamp": ts, "temperature_c": t_c,
+        _id, ts, epoch, t_c, t_f, pid, hum, _vpd, bat = r
+        row = {"timestamp": _wire_stamp(ts, epoch), "temperature_c": t_c,
                "temperature_f": t_f, "probe_id": pid}
         if hum is not None:
             row["humidity_pct"] = hum
@@ -152,16 +200,30 @@ def rows_to_payload(rows) -> list:
 def events_to_payload(rows) -> list:
     """Shape ``db.events_after()`` tuples into the ``events`` array ``/ingest_csv``
     accepts. Column order matches the SELECT in ``Database.events_after``; the
-    local id is dropped for the same reason readings drop theirs."""
+    local id is dropped for the same reason readings drop theirs, and the
+    timestamp is sent as UTC for the same reason readings send theirs."""
     out = []
-    for _id, ts, _epoch, kind, pid, t_c, limit_c in rows:
-        ev = {"timestamp": ts, "kind": kind, "probe_id": pid}
+    for _id, ts, epoch, kind, pid, t_c, limit_c in rows:
+        ev = {"timestamp": _wire_stamp(ts, epoch), "kind": kind, "probe_id": pid}
         if t_c is not None:
             ev["temperature_c"] = t_c
         if limit_c is not None:
             ev["limit_c"] = limit_c
         out.append(ev)
     return out
+
+
+def _wire_stamp(ts, epoch) -> str:
+    """The unambiguous instant for one forwarded record.
+
+    Falls back to the stored local-naive string only if the row somehow has no
+    usable epoch — an ambiguous stamp still beats no stamp, and the receiver
+    treats a naive one exactly as it always did.
+    """
+    try:
+        return utc_iso(epoch)
+    except (TypeError, ValueError, OSError, OverflowError):
+        return ts
 
 
 def batch_body(rows, events=()) -> bytes:
@@ -240,7 +302,9 @@ def post_batch(url: str, token: str, site: str, rows, events=(), timeout: float 
     if site:
         req.add_header("X-Site", site)
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        # _OPENER, not urlopen: the default opener follows redirects, which leaks
+        # the token and eats the batch. See _NoRedirect.
+        with _OPENER.open(req, timeout=timeout) as resp:
             return int(resp.status)
     except urllib.error.HTTPError as e:
         return int(e.code)
@@ -290,13 +354,26 @@ class UpstreamForwarder(threading.Thread):
             self.last_error = "No head-office address set."
             log.warning("upstream.enabled is set but upstream.url is empty; nothing to do")
             return _CycleResult()
-        site = str(block.get("site") or "").strip()
+        # Sanitise to the charset the RECEIVER will apply (it calls sanitize_site
+        # on the X-Site header). A label with no ASCII alphanumerics — "東京店",
+        # "###" — survives this check as truthy but arrives at head office as the
+        # empty string, which is the marker for "ingested locally HERE": those
+        # rows are then judged by HQ's own thresholds, swept by HQ's own alert
+        # monitor, and forwarded onward by HQ's own local_only cursor. Refusing
+        # here also keeps a non-latin-1 label from failing as a fake network
+        # outage when urllib encodes the header.
+        raw_site = str(block.get("site") or "").strip()
+        site = sanitize_site(raw_site)
         if not site:
             # Without a site label HQ cannot tell this store's readings from any
             # other's. Refuse rather than silently pooling six stores into one
             # anonymous heap that no later migration can separate.
-            self.last_error = "No site name set."
-            log.warning("upstream.enabled is set but upstream.site is empty; refusing to forward")
+            self.last_error = (
+                "No site name set." if not raw_site else
+                "Site name has no letters, digits, '-' or '_' — head office cannot "
+                "tell this store's readings apart. Rename it.")
+            log.warning("upstream.enabled is set but upstream.site (%r) is empty or "
+                        "sanitises away; refusing to forward", raw_site)
             return _CycleResult()
         batch = batch_size(block)
 
