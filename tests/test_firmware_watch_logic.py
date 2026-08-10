@@ -54,7 +54,12 @@ def test_the_copy_still_matches_the_firmware():
         "  uint32_t untilReport = rtc_msSinceReport < cfg_interval",
         "                         ? cfg_interval - rtc_msSinceReport : 0UL;",
         "  uint32_t gap = cfg_sample_ms < untilReport ? cfg_sample_ms : untilReport;",
-        "  if (untilReport == 0UL) gap = cfg_sample_ms;   // report just fired",
+        "      gap = cfg_sample_ms;                          // report just fired",
+        # The exit that cannot report at all — a persistent sensor fault leaves
+        # rtc_msSinceReport past cfg_interval forever, so every wake looks
+        # report-due and brings the radio up, every sample gap, on a probe whose
+        # DS18B20 is dead.
+        "      if (reportCadenceWhenOverdue) {",
         "watchArmed() && (rtc_msSinceReport + cfg_sample_ms / 2 < cfg_interval)",
         # nextSleepMs' unarmed branch. Every exit from loop() routes through
         # this function now -- including the sensor-fault path and the wake

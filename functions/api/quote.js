@@ -408,18 +408,18 @@ export async function onRequestPost({ request, env }) {
   let stored = false;
   if (env.WAITLIST) {
     try {
-      // The full record cannot fit KV's 1 KiB metadata cap (description alone
-      // is clipped at 4000 chars), so the metadata carries a summary and the
-      // value keeps everything. exportRecords() returns metadata inline with
-      // list(), which is what keeps the export off the per-invocation
-      // subrequest budget — see the GET below.
-      const summary = {
-        kind: record.kind, name: name, shop: shop, email: email, phone: phone,
-        ts: ts, country: record.country, photos: photos.length,
-        photo_prefix: record.photo_prefix || "", emailed: emailed, id: id,
-      };
+      // The FULL record, exactly as waitlist.js and contact.js do. A quote
+      // usually exceeds KV's 1 KiB metadata cap — the description alone is
+      // clipped at 4000 chars — so fitsMetadata returns null and exportRecords
+      // reads the value with a get(), which it budgets and pages for. That is
+      // the actual fix: no more 500 at ~49 records, truncation with a cursor
+      // instead. Writing a hand-built SUMMARY here would have made the export
+      // free and lossy — exportRecords returns metadata verbatim whenever it
+      // carries an `email`, so `description`, `ref`, `camscan_job` and the
+      // per-photo details would silently stop being exported, and `photos`
+      // would change from an array of objects to an integer.
       await env.WAITLIST.put("quote:" + ts + ":" + id, JSON.stringify(record),
-                             { metadata: fitsMetadata(summary) });
+                             { metadata: fitsMetadata(record) });
       stored = true;
     } catch (e) {
       console.error("quote: KV store failed", e);

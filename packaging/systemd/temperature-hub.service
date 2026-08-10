@@ -8,10 +8,12 @@
 #   sudo systemctl enable --now temperature-hub
 #
 # Logs:  journalctl -u temperature-hub -f
-# Data (config.json, temperature_log.db, logs/) is written to $DATA_DIR below,
-# NOT to WorkingDirectory: a frozen build with no config.json beside the
-# executable falls back to a per-user path under $HOME, which for a system
-# service is not where anyone would look for it.
+# Data (config.json, temperature_log.db, logs/) is NOT written to
+# WorkingDirectory. A frozen build uses the directory beside the executable if
+# it already holds a config.json/temperature_log.db, and otherwise a per-user
+# path under $HOME — for a root service, /root/.local/share/Setpoint. The
+# startup log prints the one in use. See the DATA_DIR note under [Service] for
+# pinning it somewhere a system service belongs.
 
 [Unit]
 Description=Temperature Hub
@@ -24,16 +26,33 @@ WorkingDirectory=/opt/temperature-hub
 ExecStart=/opt/temperature-hub/temperature-hub
 Restart=on-failure
 RestartSec=5
-# systemd creates this under /var/lib and chowns it to User= on every start, so
-# the data directory is correct and writable whether the service runs as root or
-# as temphub. DATA_DIR pins it explicitly, which also short-circuits the
-# expanduser("~") fallback in app.py — that raised PermissionError under a
-# nologin account with no home, so the hardening line below used to make the
-# service crash on startup.
+# systemd creates /var/lib/temperature-hub and chowns it to User= on every
+# start. Harmless on its own; nothing moves until DATA_DIR below is uncommented.
 StateDirectory=temperature-hub
-Environment=DATA_DIR=/var/lib/temperature-hub
-# Optional hardening — create the user first:
+#
+# ── Running as a non-root user, and pinning the data directory ──────────────
+# Uncomment BOTH of the next two lines TOGETHER, and only on a NEW install or
+# after moving your data.
+#
+# DATA_DIR takes absolute priority in app.py, so uncommenting it on an existing
+# install points the hub at an empty directory: it seeds a fresh config.json
+# from the example and GENERATES A NEW DEVICE TOKEN, at which point every
+# provisioned probe starts 401ing and the dashboard reads as a brand-new hub
+# with no history. The old data is still on disk — move it first:
+#
+#   sudo systemctl stop temperature-hub
+#   sudo mkdir -p /var/lib/temperature-hub
+#   # from wherever this install has been writing (check the startup log):
+#   sudo mv /root/.local/share/Setpoint/*   /var/lib/temperature-hub/   # root service
+#   sudo mv /opt/temperature-hub/config.json /opt/temperature-hub/temperature_log.db \
+#           /var/lib/temperature-hub/                                   # portable layout
 #   sudo useradd -r -d /var/lib/temperature-hub -s /usr/sbin/nologin temphub
+#   sudo chown -R temphub:temphub /var/lib/temperature-hub
+#
+# User= without DATA_DIR does NOT work: app.py falls back to expanduser("~"),
+# which raises under a nologin account with no home and the service crashes on
+# startup.
+# Environment=DATA_DIR=/var/lib/temperature-hub
 # User=temphub
 # Environment=PORT=8088
 

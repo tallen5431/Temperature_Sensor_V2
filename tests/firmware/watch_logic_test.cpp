@@ -46,8 +46,23 @@ static uint32_t watchSleepMs(uint32_t elapsed) {
 // goes through this in the firmware -- including the two that used to answer a
 // flat cfg_interval and so blinded an armed watch for a full report interval:
 // the DS18B20 fault path, and the wake after a disturbance burst.
-static uint32_t nextSleepMs(unsigned long elapsed) {
-  if (watchArmed()) return watchSleepMs((uint32_t)elapsed);
+static uint32_t nextSleepMs(unsigned long elapsed, uint32_t floorMs,
+                            bool reportCadenceWhenOverdue) {
+  if (watchArmed()) {
+    uint32_t untilReport = rtc_msSinceReport < cfg_interval
+                           ? cfg_interval - rtc_msSinceReport : 0UL;
+    uint32_t gap = cfg_sample_ms < untilReport ? cfg_sample_ms : untilReport;
+    if (untilReport == 0UL) {
+      if (reportCadenceWhenOverdue) {
+        return cfg_interval > (uint32_t)elapsed
+               ? (uint32_t)(cfg_interval - elapsed) : floorMs;
+      }
+      gap = cfg_sample_ms;                          // report just fired
+    }
+    return gap > (uint32_t)elapsed ? (uint32_t)(gap - elapsed) : floorMs;
+  }
+  // Unsigned arithmetic: if elapsed > cfg_interval, sleep a 100 ms minimum
+  // rather than wrapping into a tight reboot loop.
   return cfg_interval > (uint32_t)elapsed
          ? (uint32_t)(cfg_interval - elapsed) : 100UL;
 }
@@ -179,23 +194,53 @@ int main() {
   printf("a sensor fault retries at the sample cadence, not the report cadence\n");
   cfg_interval = 900000; cfg_sample_ms = 60000;
   rtc_msSinceReport = 300000;                     // mid-interval
-  CHECK(nextSleepMs(awake) == 60000 - awake,
+  CHECK(nextSleepMs(awake, 1000UL, true) == 60000 - awake,
         "a fault must not blind an armed watch for a whole report interval");
-  CHECK(nextSleepMs(awake) <= cfg_sample_ms, "fault sleep exceeded one sample gap");
+  CHECK(nextSleepMs(awake, 1000UL, true) <= cfg_sample_ms,
+        "fault sleep exceeded one sample gap");
+
+  printf("...but a PERSISTENT fault falls back to the report cadence\n");
+  // rtc_msSinceReport is only reset by a SUCCESSFUL post, so on a dead sensor
+  // it sits past cfg_interval forever. Every wake then looks report-due, and a
+  // report-due wake brings the radio up for a full association -- every sample
+  // gap, on a probe whose DS18B20 is simply unplugged.
+  rtc_msSinceReport = cfg_interval + 120000;
+  CHECK(nextSleepMs(awake, 1000UL, true) == cfg_interval - awake,
+        "a dead sensor woke the radio once per sample gap instead of per report");
+
+  printf("...and the normal exit still targets the next sample when due\n");
+  CHECK(nextSleepMs(awake, 100UL, false) == 60000 - awake,
+        "a report that just fired must still sleep one sample gap");
 
   printf("...and so does the wake after a disturbance burst\n");
   rtc_msSinceReport = 120000;
   {
     uint32_t untilReport = cfg_interval - rtc_msSinceReport;
     uint32_t bound = cfg_sample_ms < untilReport ? cfg_sample_ms : untilReport;
-    CHECK(nextSleepMs(awake) <= bound, "post-burst sleep exceeded min(sample, remainder)");
+    CHECK(nextSleepMs(awake, cfg_sample_ms, false) <= bound,
+          "post-burst sleep exceeded min(sample, remainder)");
+  }
+  {
+    // A burst runs for BURST_WINDOW_MS (20 s), so on any cadence shorter than
+    // that `elapsed` outruns the whole gap and the floor decides the answer.
+    // The generic 100 ms anti-reboot floor would wake the probe a tenth of a
+    // second after twenty seconds of radio -- the collapsed floor the v2.7.0
+    // guard exists to prevent, arrived at from the other side.
+    uint32_t saved = cfg_sample_ms;
+    cfg_sample_ms = 5000;                       // WATCH_SAMPLE_MIN_MS
+    rtc_msSinceReport = 120000;
+    CHECK(nextSleepMs(20000UL, 100UL, false) == 100UL,
+          "precondition: the generic floor is what would fire here");
+    CHECK(nextSleepMs(20000UL, cfg_sample_ms, false) == cfg_sample_ms,
+          "post-burst sleep collapsed to the anti-reboot floor");
+    cfg_sample_ms = saved;
   }
 
   printf("an UNARMED probe still sleeps the full reporting interval\n");
   cfg_alert_min_c = WATCH_UNSET_C; cfg_alert_max_c = WATCH_UNSET_C;
   rtc_msSinceReport = 0;
   CHECK(!watchArmed(), "the unarmed case must actually be unarmed");
-  CHECK(nextSleepMs(awake) == cfg_interval - awake,
+  CHECK(nextSleepMs(awake, 100UL, false) == cfg_interval - awake,
         "an unarmed probe must keep its v2.7.0 battery behaviour");
   cfg_alert_max_c = -12.0f;                       // re-arm for what follows
 

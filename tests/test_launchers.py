@@ -181,3 +181,51 @@ def test_start_sh_still_reports_when_no_python_is_usable(tmp_path):
     assert "Python 3.9 or newer is required" in res.stdout, (
         f"the launcher died silently instead of explaining itself.\n"
         f"rc={res.returncode}\nstdout={res.stdout}\nstderr={res.stderr}")
+
+
+def test_start_sh_does_not_cache_an_uncomputable_requirements_hash(tmp_path):
+    """The `|| REQ_HASH=""` that stops `set -e` aborting must not then be
+    written to the stamp file: caching an empty hash makes the next comparison
+    succeed against itself, so the dependency check is disabled for the life of
+    the venv — the exact opposite of the fallback's intent.
+
+    Runs the real requirements block with sha256sum/shasum/awk absent, twice,
+    and asserts it installs both times.
+    """
+    import shutil
+    import subprocess
+
+    shim = tmp_path / "bin"
+    shim.mkdir()
+    for tool in ("dirname", "cat", "env", "mkdir", "ln"):
+        found = shutil.which(tool)
+        if found:
+            (shim / tool).symlink_to(found)
+    # A python that answers the version probe and no-ops `-m pip install`.
+    (shim / "python3").write_text(
+        '#!/bin/sh\n'
+        'case "$*" in\n'
+        '  *"version_info >= (3,9)"*) echo True ;;\n'
+        '  *"sys.version_info[:2]"*)  echo 3.12 ;;\n'
+        '  *venv*) mkdir -p "$3/bin" && ln -sf "$0" "$3/bin/python" ;;\n'
+        '  *"pip install"*) echo "PIP-INSTALL" ;;\n'
+        'esac\n', encoding="utf-8")
+    (shim / "python3").chmod(0o755)
+
+    app = tmp_path / "app"
+    app.mkdir()
+    (app / "requirements.txt").write_text("dash\n", encoding="utf-8")
+    script = (REPO / "Start.sh").read_text(encoding="utf-8")
+    head = script.split("# ── 3. Resolve host / port")[0]
+    (app / "probe.sh").write_text(head, encoding="utf-8")
+    (app / "probe.sh").chmod(0o755)
+
+    bash = shutil.which("bash")
+    env = {"PATH": str(shim), "HOME": str(tmp_path)}
+    runs = [subprocess.run([bash, str(app / "probe.sh")], capture_output=True,
+                           text=True, timeout=120, cwd=str(app), input="", env=env)
+            for _ in range(2)]
+    assert "PIP-INSTALL" in runs[0].stdout, runs[0].stdout + runs[0].stderr
+    assert "PIP-INSTALL" in runs[1].stdout, (
+        "the second launch skipped the install — an empty hash was cached as a "
+        f"match, so dependencies can never be refreshed:\n{runs[1].stdout}")

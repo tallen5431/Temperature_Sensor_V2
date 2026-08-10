@@ -63,11 +63,17 @@ if [[ -f "$REQ_FILE" ]]; then
   # both halves fail and the assignment would abort the launcher rather than
   # simply reinstalling dependencies.
   REQ_HASH=$( (sha256sum "$REQ_FILE" 2>/dev/null || shasum -a 256 "$REQ_FILE" 2>/dev/null) | awk '{print $1}') || REQ_HASH=""
-  if [[ ! -f "$REQ_STAMP" || "$(cat "$REQ_STAMP" 2>/dev/null)" != "$REQ_HASH" ]]; then
+  # An EMPTY hash means we could not compute one, not that nothing changed. It
+  # must force the install every launch, and must never be written to the stamp
+  # -- caching "" makes the next comparison succeed against itself and the
+  # dependency check is disabled for the life of the venv, which is the exact
+  # opposite of what the fallback above is for.
+  if [[ -z "$REQ_HASH" || ! -f "$REQ_STAMP" \
+        || "$(cat "$REQ_STAMP" 2>/dev/null)" != "$REQ_HASH" ]]; then
     echo "[SETUP] Installing / verifying dependencies..."
     "$PYTHON_EXE" -m pip install --upgrade pip setuptools wheel -q
     if "$PYTHON_EXE" -m pip install --no-compile -r "$REQ_FILE" -q; then
-      echo "$REQ_HASH" > "$REQ_STAMP"
+      [[ -n "$REQ_HASH" ]] && echo "$REQ_HASH" > "$REQ_STAMP"
     else
       echo "[WARN] Dependency install failed; continuing with what is available."
     fi

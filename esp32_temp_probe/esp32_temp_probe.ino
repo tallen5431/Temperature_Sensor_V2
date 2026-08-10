@@ -595,21 +595,42 @@ static bool watchArmed();
 // whole REPORT interval when it should have been back in cfg_sample_ms. On a
 // 15-minute reporting probe watching a freezer that is a quarter of an hour of
 // not looking, immediately after the two events most likely to matter.
-static uint32_t nextSleepMs(unsigned long elapsed) {
+//
+// `floorMs` is the shortest sleep this exit may take. 100 ms is the generic
+// anti-reboot floor for a wake that merely overran its own deadline; a caller
+// that has just spent twenty seconds with the radio on needs a real one.
+// `reportCadenceWhenOverdue` is for the exit that cannot report at all -- see
+// the untilReport == 0 branch.
+static uint32_t nextSleepMs(unsigned long elapsed, uint32_t floorMs,
+                            bool reportCadenceWhenOverdue) {
   if (watchArmed()) {
     // To the next SAMPLE, not the next report -- but never past the report
     // itself, so a report is not delayed by up to one sample gap.
     uint32_t untilReport = rtc_msSinceReport < cfg_interval
                            ? cfg_interval - rtc_msSinceReport : 0UL;
     uint32_t gap = cfg_sample_ms < untilReport ? cfg_sample_ms : untilReport;
+    if (untilReport == 0UL) {
+      // The report deadline has passed. Normally that means one just fired and
+      // the next sample is the right target -- but rtc_msSinceReport is only
+      // reset by a SUCCESSFUL post, so on a persistent sensor fault it sits
+      // past cfg_interval forever. Every wake then looks report-due, which
+      // means the radio comes up for a full association, every sample gap, on
+      // a probe whose DS18B20 is simply dead. The fault exit asks for the
+      // report cadence here instead; a dead sensor costs one wake per
+      // reporting interval, exactly as it did before the watch was involved.
+      if (reportCadenceWhenOverdue) {
+        return cfg_interval > (uint32_t)elapsed
+               ? (uint32_t)(cfg_interval - elapsed) : floorMs;
+      }
+      gap = cfg_sample_ms;                          // report just fired
+    }
     // Only when the report is ALREADY DUE. This used to read
     // `gap < WATCH_SAMPLE_MIN_MS`, which also fired for any remainder of
     // 1..4999 ms -- undoing the clamp on the line above, which exists precisely
     // so a report is not delayed. The probe then slept a whole sample gap
     // instead of the short remainder and the report landed up to cfg_sample_ms
     // late, every cycle, whenever cfg_interval % cfg_sample_ms fell in that band.
-    if (untilReport == 0UL) gap = cfg_sample_ms;   // report just fired
-    return gap > (uint32_t)elapsed ? (uint32_t)(gap - elapsed) : 100UL;
+    return gap > (uint32_t)elapsed ? (uint32_t)(gap - elapsed) : floorMs;
   }
   // Unsigned arithmetic: if elapsed > cfg_interval, sleep a 100 ms minimum
   // rather than wrapping into a tight reboot loop.
@@ -1909,7 +1930,7 @@ void loop() {
         // The flat value also over-charged rtc_msSinceReport on top of progress
         // already accrued, pushing the next report up to an interval late.
         unsigned long elapsed = millis() - g_wakeStart;
-        uint32_t sleepMs = nextSleepMs(elapsed);
+        uint32_t sleepMs = nextSleepMs(elapsed, 1000UL, true);
         rtc_msSinceReport += (uint32_t)elapsed + sleepMs;
         enterDeepSleep(sleepMs);
       }
@@ -2044,7 +2065,14 @@ void loop() {
         // BURST_MAX_CONSECUTIVE still caps repeats.
         sleepMs = cfg_interval;
       } else {
-        sleepMs = nextSleepMs(elapsed);
+        // floorMs = cfg_sample_ms on the burst exit. runDisturbanceBurst runs
+        // for BURST_WINDOW_MS (20 s), so `elapsed` already exceeds any ordinary
+        // sample cadence and the generic 100 ms floor would fire -- waking the
+        // probe a tenth of a second after twenty seconds of radio, which is the
+        // collapsed floor the v2.7.0 guard exists to prevent, arrived at from
+        // the other side.
+        sleepMs = nextSleepMs(elapsed,
+                              doBurst ? cfg_sample_ms : 100UL, false);
       }
       // Charge this whole wake — the sleep AND the time spent awake — against
       // the report interval. Counting only the sleep would let the interval

@@ -256,6 +256,40 @@ console.log("quote POST");
   await eq("same-origin submission reaches validation", r.status, 422);
 }
 
+// ── a quote export must not be lossy ───────────────────────────────────────
+// exportRecords returns KV metadata VERBATIM whenever it carries an `email`,
+// so writing a hand-built summary there makes the export free and silently
+// incomplete: the customer's description, the referrer, the CamScan bundle and
+// the per-photo details all stop being exported, and `photos` turns from an
+// array of objects into an integer.
+console.log("quote export completeness");
+{
+  const env = { WAITLIST: new FakeKV(), WAITLIST_TOKEN: "right" };
+  const fd = new FormData();
+  fd.append("name", "A"); fd.append("shop", "S"); fd.append("email", "a@b.co");
+  fd.append("description", "x".repeat(1200));
+  const png = new Uint8Array(64);
+  png.set([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A], 0);
+  fd.append("photos", new File([png], "p.png", { type: "image/png" }));
+  const r = await quotePost({
+    request: new Request("https://datumlaboratories.com/api/quote", {
+      method: "POST", body: fd,
+      headers: { origin: "https://datumlaboratories.com" } }), env });
+  await eq("submission stored", (await parse(r)).stored, true);
+
+  const g = await quoteGet({
+    request: new Request("https://x/api/quote?token=right"), env });
+  const body = await parse(g);
+  await eq("one quote exported", body.count, 1);
+  const q = body.quotes[0];
+  check("the description survives the round trip",
+    q.description && q.description.length === 1200,
+    `got ${JSON.stringify(q.description || "").slice(0, 40)}`);
+  check("photos is still an array of objects, not a count",
+    Array.isArray(q.photos) && q.photos.length === 1 && !!q.photos[0].filename,
+    JSON.stringify(q.photos));
+}
+
 // ── quote export stays inside the subrequest budget ────────────────────────
 // A Worker invocation is capped at 50 subrequests on the free plan. The old
 // hand-rolled loop issued one KV.get() per key, so the export worked in testing
