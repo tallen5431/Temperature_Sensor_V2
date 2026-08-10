@@ -19,8 +19,14 @@ import textwrap
 # SECURITY.md calls these "operational endpoints (unauthenticated by design)":
 # Prometheus has to scrape, and support has to be able to read a health snapshot.
 EXEMPT = ["/metrics", "/api/health", "/api/diagnostics", "/api/probes"]
-# Everything a browser reaches, including the FULL database snapshot.
-GATED = ["/", "/download/temperature_log.csv", "/download/backup.db"]
+# Everything a browser reaches, including the FULL database snapshot -- and the
+# two read APIs, which enforce no auth of their own and serve the same history
+# the gated CSV download does. The gate used to exempt the whole `/api/` prefix
+# "because it has its own device-token auth", which was untrue for these two:
+# switching on the login that SECURITY.md says covers "every /download/* route"
+# left `GET /api/readings?from=&to=` walking the entire log unauthenticated.
+GATED = ["/", "/download/temperature_log.csv", "/download/backup.db",
+         "/api/readings", "/api/readings/latest"]
 
 _PROBE = textwrap.dedent("""
     import json, os, sys
@@ -73,3 +79,39 @@ def test_operational_endpoints_stay_open_by_design(tmp_path):
     got = _probe(tmp_path, EXEMPT)
     for path in EXEMPT:
         assert got["anon"][path] == 200, f"{path} now requires auth — intended?"
+
+
+def test_the_exempt_list_is_exactly_what_security_md_ratifies():
+    """The gate's allowlist, the document, and the blueprint's real routes, in
+    agreement. A new /api/ route now defaults to GATED rather than to open, so
+    the next one like /api/readings cannot slip through by inheriting a prefix.
+    """
+    import pathlib
+    import re
+    repo = pathlib.Path(__file__).resolve().parent.parent
+    src = (repo / "app.py").read_text(encoding="utf-8")
+
+    def _listed(name):
+        block = re.search(name + r"\s*=\s*frozenset\(\{(.*?)\}\)", src, re.S)
+        assert block, f"{name} is no longer a frozenset literal — update this test"
+        return set(re.findall(r'"([^"]+)"', block.group(1)))
+
+    assert _listed("UI_AUTH_OPEN_PATHS") == set(EXEMPT)
+
+    # Every token-authenticated exemption must really call _check_auth, or it is
+    # a hole rather than a probe-compatibility carve-out.
+    routes = (repo / "api" / "routes.py").read_text(encoding="utf-8")
+    for path in _listed("UI_AUTH_TOKEN_PATHS"):
+        rule = path[len("/api"):]
+        # A rule can be registered twice (POST /ingest plus the GET that answers
+        # 405), so it is enough that one of them enforces the token.
+        after = re.split(r'@bp\.(?:get|post|route)\("' + re.escape(rule) + r'"\)', routes)[1:]
+        assert after, f"{path} is not a route in api/routes.py"
+        assert any("_check_auth()" in chunk[:1500] for chunk in after), \
+            f"{path} is exempt from the login but enforces no token auth of its own"
+
+    # And SECURITY.md still names the same four operational endpoints.
+    security = (repo / "SECURITY.md").read_text(encoding="utf-8")
+    section = security.split("## Operational endpoints")[1].split("##")[0]
+    for path in EXEMPT:
+        assert f"`{path}`" in section, f"SECURITY.md no longer documents {path} as open"

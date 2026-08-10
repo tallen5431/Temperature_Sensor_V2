@@ -37,7 +37,14 @@ class AutoProvisioner(threading.Thread):
         self.interval_ms = int(interval_ms)
         self.period_sec = int(period_sec)
         self.cfg = cfg
-        self._stop = False
+        # NOT `self._stop`: threading.Thread._stop is a real METHOD in
+        # CPython, called by _wait_for_tstate_lock, so shadowing it with a
+        # bool makes both is_alive() and join() raise
+        # "TypeError: 'bool' object is not callable" -- on the very object
+        # the worker-liveness registry and shutdown path ask. Named to match
+        # AlertMonitor._stop_event and UpstreamForwarder.stop_event, and an
+        # Event rather than a flag so stop() also cuts the sleep short.
+        self._stop_event = threading.Event()
         # Probes we've pushed our config to at least once this session. The
         # status-check shortcut below can't see a probe's token (/status never
         # exposes it), so a probe with the right server_url+interval but a
@@ -64,7 +71,7 @@ class AutoProvisioner(threading.Thread):
     REVERIFY_EVERY_CYCLES = 30
 
     def stop(self):
-        self._stop = True
+        self._stop_event.set()
 
     def _refresh_ip_best_effort(self, key: str, p) -> Optional[str]:
         """Resolve probe hostname to a fresh IP (best-effort).
@@ -87,13 +94,12 @@ class AutoProvisioner(threading.Thread):
         return None
 
     def run(self):
-        while not self._stop:
+        while not self._stop_event.is_set():
             try:
                 self._run_cycle()
             except Exception:
                 log.exception("Error in provisioning cycle")
-
-            time.sleep(self.period_sec)
+            self._stop_event.wait(self.period_sec)
 
     def _run_cycle(self):
         """One provisioning pass over the discovery list (factored out of

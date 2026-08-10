@@ -133,6 +133,14 @@ class SSIDWatcher:
         # recently the section was opened.
         self.scanned = False
         self._stop = threading.Event()
+        # Serialises the commit of a scan result against stop(). scan_ssids()
+        # shells out with a 5 s subprocess timeout, so without this the worker
+        # can finish a scan, be stopped mid-flight, and then write its result
+        # over the cleared state -- leaving the watcher stopped but holding a
+        # sighting from before the stop, which is exactly what stop()'s
+        # docstring says must not happen. A retired thread could also clobber a
+        # live one's fresh answer the same way.
+        self._lock = threading.Lock()
         self._th: threading.Thread | None = None
 
     def start(self) -> None:
@@ -152,10 +160,17 @@ class SSIDWatcher:
         def _loop():
             while not stop.is_set():
                 try:
-                    self.latest = scan_ssids()
+                    found = scan_ssids()
                 except Exception:
-                    self.latest = set()
-                self.scanned = True
+                    found = set()
+                # Scan outside the lock (it blocks for seconds), commit inside
+                # it, and re-check THIS thread's own event while holding it --
+                # so a result can never land after the stop that discarded it.
+                with self._lock:
+                    if stop.is_set():
+                        return
+                    self.latest = found
+                    self.scanned = True
                 # wait(), not sleep(): stop() then takes effect at once rather
                 # than after up to one full interval of further scanning.
                 stop.wait(self.interval)
@@ -171,8 +186,9 @@ class SSIDWatcher:
         was stopped must not be reported as current when it starts again.
         """
         self._stop.set()
-        self.latest = set()
-        self.scanned = False
+        with self._lock:
+            self.latest = set()
+            self.scanned = False
 
     def running(self) -> bool:
         return bool(self._th and self._th.is_alive() and not self._stop.is_set())

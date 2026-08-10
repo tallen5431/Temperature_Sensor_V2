@@ -19,6 +19,7 @@ try:  # battery telemetry helper — may be absent on an older core.storage buil
 except ImportError:
     def extract_battery(payload):
         return None
+from core.netaddr import is_lan_address
 from core.probes import discovered_probes
 from core.status import reporting_probe_ids, hub_health_window
 from core.version import HUB_VERSION, PRODUCT_NAME
@@ -179,15 +180,42 @@ def _is_safe_provision_target(host: str) -> bool:
     only private addresses are valid — this blocks loopback, link-local (incl.
     the 169.254.169.254 cloud-metadata endpoint), and public/off-LAN hosts the
     hub could otherwise be tricked into POSTing to."""
+    return _checked_provision_target(host) is not None
+
+
+def _checked_provision_target(host: str):
+    """The address ``POST /api/provision`` may send to, or ``None``.
+
+    Returns the ADDRESS, not just a verdict, so the caller provisions the exact
+    thing that was checked — resolving here and again at the point of sending is
+    two answers to one question, and a hostile responder only has to make them
+    differ.
+
+    ``core.netaddr`` owns the definition of "a range a probe can live on", and
+    this used ``ipaddress.is_private`` instead — the test that module documents
+    at length as answering a different question and getting BOTH ends of this
+    one wrong: it calls 203.0.113.0/24 (RFC 5737 documentation space) private,
+    and it calls 100.64.0.0/10 public, which is the range Tailscale hands out.
+    So the two provisioning paths disagreed about the same host: the
+    auto-provisioner refused a documentation address this endpoint accepted, and
+    accepted an ordinary overlay probe this endpoint refused.
+
+    Stricter than the provisioner in one way, deliberately: that path only ever
+    targets mDNS-discovered probes, while this one takes a host out of the
+    request body — so loopback, link-local (169.254.169.254, the cloud-metadata
+    endpoint), multicast and the unspecified address stay refused. That is the
+    SSRF this guard exists for.
+    """
     resolved = resolve_host(host)  # bounded — never blocks the request thread
-    if not resolved:
-        return False
+    if not resolved or not is_lan_address(resolved):
+        return None
     try:
         ip = ipaddress.ip_address(resolved)
-    except Exception:
-        return False
-    return bool(ip.is_private and not ip.is_loopback and not ip.is_link_local
-                and not ip.is_multicast)
+    except ValueError:
+        return None
+    if ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_unspecified:
+        return None
+    return resolved
 
 
 def _batch_events(req) -> list:
@@ -386,7 +414,11 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
         """Update config values and persist (auth required)."""
         if not _check_auth():
             return _deny_unauthorized()
-        data = request.get_json(silent=True) or {}
+        # No `or {}`: that mapped an UNPARSEABLE body to an empty dict, so the
+        # guard below only ever fired for a body that was valid JSON but not an
+        # object. A truncated or corrupt body -- the case this error was written
+        # for -- reached cfg.update({}), did nothing, and was answered ok:true.
+        data = request.get_json(silent=True)
         if not isinstance(data, dict):
             return jsonify(ok=False, error="invalid_json"), 400
 
@@ -491,10 +523,25 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
                 raise ValueError
         except (ValueError, TypeError):
             return jsonify(ok=False, error="invalid port"), 400
-        interval_ms = int(data.get("interval_ms") or data.get("interval") or 5000)
+        # Guarded like `port` above, which sits three lines up: both come out of
+        # the same untrusted body, and a non-numeric interval or a non-string
+        # token escaped as an unhandled exception and 500ed.
+        try:
+            interval_ms = int(float(data.get("interval_ms") or data.get("interval") or 5000))
+        except (ValueError, TypeError, OverflowError):
+            return jsonify(ok=False, error="invalid interval"), 400
+        # Clamped to what the probe accepts: uint32 milliseconds, floored at the
+        # firmware's own minimum (esp32_temp_probe.ino: `interval < 500 ? 500`).
+        interval_ms = max(500, min(interval_ms, 4_294_967_295))
         # Optional per-probe DS18B20 resolution (9..12); omitted -> probe keeps its own.
         res_bits = data.get("resolution_bits")
-        tok = (data.get("token") or TOKEN or "").strip()
+        raw_tok = data.get("token")
+        if raw_tok is not None and not isinstance(raw_tok, str):
+            # Refused rather than str()-coerced: silently sending a probe the
+            # text of a JSON object as its device token would provision it with
+            # a credential that can never authenticate, and report success.
+            return jsonify(ok=False, error="invalid token"), 400
+        tok = (raw_tok or TOKEN or "").strip()
         base = public_base().rstrip("/")
 
         targets: List[Tuple[str, int]] = []
@@ -503,9 +550,13 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
             # so /provision can't be used to SSRF the hub's own local services or
             # the cloud-metadata endpoint. (The host-less branch below only uses
             # mDNS-discovered probes, which are already trusted LAN targets.)
-            if not _is_safe_provision_target(host):
+            checked = _checked_provision_target(host)
+            if checked is None:
                 return jsonify(ok=False, error="host must be a private LAN address"), 400
-            targets.append((host, port))
+            # The checked ADDRESS, not the name: re-resolving at send time is a
+            # second answer to the same question, and only one of them was
+            # validated. See _checked_provision_target.
+            targets.append((checked, port))
         else:
             for p in _iter_probes():
                 target = (p.get("ip") or p.get("host") or "").rstrip(".")
@@ -648,11 +699,16 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
         # of a percent of the time, so a settings change could sit undelivered
         # indefinitely. This POST, by contrast, happens every wake and always
         # succeeds. Costs no extra radio time and older firmware ignores the key.
-        # Look the override up under the SANITIZED id — that is the id the row was
-        # stored under and the one the Devices page writes overrides for, so using
-        # the raw header here would silently miss a per-probe setting.
+        # Look the override up under the id the row was FILED under. That is
+        # storage_probe_id, not sanitize_probe_id: the two agree for every real
+        # probe id, but a sender with no usable X-Probe-ID is filed under
+        # "unidentified" (so it lands somewhere a screen can show it and a button
+        # can remove it) while sanitize_probe_id gives "". Every per-probe lookup
+        # in desired_probe_config is guarded by `if probe_id:`, so that "" quietly
+        # skipped the settings the operator had just saved on the unidentified
+        # probe's own card.
         return jsonify(ok=True,
-                       config=desired_probe_config(cfg, sanitize_probe_id(probe_id)))
+                       config=desired_probe_config(cfg, storage_probe_id(probe_id)))
 
     @bp.get("/ingest")
     def ingest_query():
@@ -683,6 +739,10 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
             return jsonify(ok=False, error="too many rows (max %d)" % MAX_BATCH_ROWS), 413
 
         header_pid = request.headers.get("X-Probe-ID") or ""
+        # Read once. A non-empty label means, by definition, that this batch came
+        # from another HUB rather than from a probe -- which changes what
+        # request.remote_addr means, and so what may be done with it below.
+        site = sanitize_site(request.headers.get("X-Site"))
         valid = []        # (ts, t_c, t_f, probe_id) tuples for bulk_insert
         newest = {}       # probe_id -> (ts, t_c): most-recent accepted reading
         # Rows the parser could not even shape into a reading count as refused
@@ -757,8 +817,7 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
                 # with itself, and it works for the CSV body format too. Empty
                 # for a probe posting directly — every reading on a single-site
                 # hub — which is what keeps those rows eligible to forward.
-                accepted = db.bulk_insert(
-                    valid, site=sanitize_site(request.headers.get("X-Site")))
+                accepted = db.bulk_insert(valid, site=site)
             except Exception:
                 HEALTH.record_failure()
                 log.exception("batch ingest write failed")
@@ -799,7 +858,14 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
                     LATEST.record(pid, t_c)
                 except Exception:
                     pass
-                if discovery:
+                # ...but only for a probe posting to THIS hub. On a forwarded
+                # batch remote_addr is the sending hub, not a probe, so every
+                # store's probe ids were being filed in head office's local mDNS
+                # registry pointing at that store's hub -- which put them on the
+                # Devices grid and in /api/probes as local devices, and handed
+                # them to the auto-provisioner, which then POSTed this hub's
+                # device token to another hub's address.
+                if discovery and not site:
                     try:
                         discovery.update_last_seen(pid, host="", ip=request.remote_addr or "")
                     except Exception:
@@ -823,7 +889,6 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
         events_in = _batch_events(request)
         events_ok = 0
         if events_in:
-            site = sanitize_site(request.headers.get("X-Site"))
             for ev in events_in[:MAX_BATCH_ROWS]:
                 try:
                     db.record_event(str(ev.get("kind") or ""),

@@ -164,17 +164,45 @@ def _resolve_ui_auth():
 UI_AUTH_ENABLED, UI_AUTH_USER, UI_AUTH_PW = _resolve_ui_auth()
 
 
+# Paths that stay open when ui_auth is on. SECURITY.md ratifies exactly this
+# list of operational endpoints and says of everything else that ui_auth covers
+# it — so the list lives here, and tests/test_ui_auth_gate.py pins it against
+# both the blueprint's real routes and that document.
+UI_AUTH_OPEN_PATHS = frozenset({
+    "/metrics", "/api/health", "/api/probes", "/api/diagnostics",
+})
+
+# ...plus the endpoints that carry their own device-token auth. These are not a
+# gap: a probe POSTing a reading has a token and cannot offer Basic credentials,
+# so gating them would take the fleet offline the moment ui_auth was switched on.
+UI_AUTH_TOKEN_PATHS = frozenset({
+    "/api/ingest", "/api/ingest_csv", "/api/provision", "/api/config",
+    "/api/audit/verify",
+})
+
+
 @server.before_request
 def _ui_auth_gate():
     """Guard the dashboard (and downloads) when ui_auth is on.
 
-    Exempts the machine-facing surfaces: /api/* (its own device-token auth),
-    /metrics (Prometheus scraping), and static /assets so the login page styles.
+    Exempts the machine-facing surfaces: the operational endpoints Prometheus
+    and support tools read, the token-authenticated endpoints probes post to,
+    /metrics, and static /assets so the login page styles.
+
+    It used to exempt the whole ``/api/`` prefix, on the rationale that those
+    routes have "its own device-token auth" — which was untrue for two of them.
+    ``GET /api/readings`` and ``/api/readings/latest`` call no ``_check_auth``,
+    and ``/api/readings`` serves the same history as the gated CSV download
+    (an absolute ``?from=/?to=`` range walks the whole log). So switching on the
+    login that SECURITY.md says covers "every /download/* route" left the same
+    data readable, unauthenticated, one path over. Both are now behind the gate.
+    Nothing changes on a default install, where ui_auth is off and the whole
+    dashboard is open on the LAN anyway.
     """
     if not UI_AUTH_ENABLED:
         return None
     p = request.path or "/"
-    if p.startswith("/api/") or p == "/metrics" or p.startswith("/assets/"):
+    if p in UI_AUTH_OPEN_PATHS or p in UI_AUTH_TOKEN_PATHS or p.startswith("/assets/"):
         return None
     auth = request.authorization
     # constant_time_eq, not hmac.compare_digest directly: compare_digest rejects
