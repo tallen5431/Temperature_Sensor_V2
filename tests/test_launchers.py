@@ -120,3 +120,64 @@ def test_gitattributes_pins_the_line_endings_that_matter():
     ga = (REPO / ".gitattributes").read_text(encoding="utf-8")
     assert re.search(r"^\*\.bat\s+text\s+eol=crlf", ga, re.M)
     assert re.search(r"^\*\.sh\s+text\s+eol=lf", ga, re.M)
+
+
+def _discovery_probe(tmp_path, good_candidate=None):
+    """Run only Start.sh's interpreter hunt, against a PATH we control.
+
+    PATH holds nothing but our shims plus the handful of externals the script's
+    own preamble needs — otherwise the machine's real python3.x is found and the
+    scenario never arises.
+    """
+    import shutil
+    import subprocess
+    import sys
+
+    shim = tmp_path / "bin"
+    shim.mkdir()
+    for tool in ("dirname", "env", "cat", "awk"):
+        found = shutil.which(tool)
+        if found:
+            (shim / tool).symlink_to(found)
+    (shim / "python3").write_text("#!/bin/sh\nexit 127\n", encoding="utf-8")
+    (shim / "python3").chmod(0o755)
+    if good_candidate:
+        (shim / good_candidate).write_text(
+            f'#!/bin/sh\nexec "{sys.executable}" "$@"\n', encoding="utf-8")
+        (shim / good_candidate).chmod(0o755)
+
+    # Stop before the venv build: this is about discovery, not the install.
+    script = (REPO / "Start.sh").read_text(encoding="utf-8")
+    head = script.split("# \u2500\u2500 2. Create / reuse virtual environment")[0]
+    probe = tmp_path / "probe.sh"
+    probe.write_text(head + '\necho "PICKED=$PYTHON_BIN"\n', encoding="utf-8")
+    probe.chmod(0o755)
+
+    bash = shutil.which("bash")
+    assert bash, "bash is required to run Start.sh"
+    return subprocess.run([bash, str(probe)], capture_output=True, text=True,
+                          timeout=120, cwd=str(tmp_path), input="",
+                          env={"PATH": str(shim), "HOME": str(tmp_path)})
+
+
+def test_start_sh_survives_a_broken_python3_on_path(tmp_path):
+    """`set -e` + a bare `VAR=$(cmd)` assignment aborts on a non-zero exit.
+
+    The hunt tries `python3` first, so ONE broken candidate on PATH -- a
+    Microsoft Store stub, a dangling pyenv shim, a half-removed install --
+    killed the launcher inside the loop, before it could try python3.12 and
+    before the "Python 3.9 or newer is required" banner that exists to explain
+    exactly this. The customer double-clicks and the window closes.
+    """
+    res = _discovery_probe(tmp_path, good_candidate="python3.12")
+    assert "PICKED=python3.12" in res.stdout, (
+        f"discovery aborted instead of falling through.\n"
+        f"rc={res.returncode}\nstdout={res.stdout}\nstderr={res.stderr}")
+
+
+def test_start_sh_still_reports_when_no_python_is_usable(tmp_path):
+    """The other half: with nothing usable it must reach the banner, not die."""
+    res = _discovery_probe(tmp_path)
+    assert "Python 3.9 or newer is required" in res.stdout, (
+        f"the launcher died silently instead of explaining itself.\n"
+        f"rc={res.returncode}\nstdout={res.stdout}\nstderr={res.stderr}")

@@ -15,13 +15,20 @@ they are two lists, not one, and they do not have to match.
 - `core/version.py` — `HUB_VERSION`
 - `pyproject.toml` — `[project] version`
 
-**Firmware** — only when the `.ino` actually changed. All four must agree, and
-the last three are enforced against the first:
+**Firmware** — only when the `.ino` actually changed. All of these must agree,
+and every one of them is enforced against the first:
 
 - `esp32_temp_probe/esp32_temp_probe.ino` — `FW_VERSION` *(the source of truth)*
 - `firmware/src/protocol.h` — `TEMPSENSOR_FW_VERSION`
 - `flash/manifest.json` — `version`
 - `flash/index.html` — the `firmware v…` label
+- `docs/QC_CHECKLIST.md` — the version the factory gate compares `/whoami` to
+- `web/guide.html` — the version the deployed build guide advertises
+
+`firmware/factory_flash.py` needs no edit: it reads `FW_VERSION` out of the
+`.ino` at import. It used to hold a literal, and that literal is how the
+physical label and the QC gate came to name 2.8.2 while the sketch shipped
+2.9.3 — so every unit built would have failed its own `/whoami` check.
 
 > This list used to name `protocol.h` and omit `flash/manifest.json` and
 > `flash/index.html` — exactly backwards from what the tests check. Following it
@@ -58,17 +65,30 @@ git push && git push --tags
 
 ## 5. Build the hub
 
-Ship the source zip customers run with `Start.bat` / `Start.sh`, or produce a
-one-file Windows executable:
+Ship the source zip customers run with `Start.bat` / `Start.sh`, or produce the
+self-contained bundle — **the whole `dist/temperature-hub/` folder**, not just
+the executable inside it:
 
 ```
-pip install pyinstaller
-pyinstaller --onefile --name Setpoint app.py
+./packaging/build.sh          # Linux / macOS
+packaging\build.bat           # Windows
+# both run: pyinstaller --clean --noconfirm packaging/temperature_hub.spec
 ```
 
-(Bundle `config.example.json` and `assets/` alongside the binary.) Smoke-test the
-build: launch it, open http://localhost:8088, confirm the footer shows the new
-version and `GET /api/health` reports it.
+Always the spec, never a bare `pyinstaller --onefile`. Two reasons, and the
+first is a licence term:
+
+* `THIRD-PARTY-LICENSES.md` promises that the LGPL-licensed `zeroconf` module
+  ships as replaceable files under `_internal/`, so a user can modify and
+  relink it. `--onefile` bundles it into the executable and breaks that
+  commitment on every copy shipped.
+* The spec carries the `datas` the app loads at runtime (`assets/`,
+  `config.example.json`, `LICENSE`, `THIRD-PARTY-LICENSES.md`) and the
+  `hiddenimports` (paho-mqtt and friends) that a bare invocation drops — so a
+  `--onefile` build starts with no stylesheet and no MQTT.
+
+Smoke-test the build: launch it, open http://localhost:8088, confirm the footer
+shows the new version and `GET /api/health` reports it.
 
 ## 6. Flash + QC the probe batch
 

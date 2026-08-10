@@ -12,7 +12,7 @@ serial line, and prints the exact label + a matching QC list to tick on the benc
   is signed and the unit carries **"Contains FCC ID: 2AC7Z-ESPC3WROOM02"** plus the
   §15.19(a)(3) statement. A unit that passes every test below is *working*, not *sellable*;
   those are different gates. See [`COMPLIANCE.md`](COMPLIANCE.md).
-- Firmware: **v2.8.2**, protocol v1 — the **same image on both boards**, no build flag.
+- Firmware: **v2.9.3**, protocol v1 — the **same image on both boards**, no build flag.
   Identity rules and pin map are defined in
   [`firmware/src/protocol.h`](../firmware/src/protocol.h) (single source of truth);
   the shipping firmware is the sketch
@@ -69,7 +69,7 @@ tick each item below as the operator confirms it.
       across a power-cycle — it must **not** change between boots.
 - [ ] **2.3** `GET http://<probe-ip>/whoami` (or `Setpoint-<HEX6>.local`)
       returns `{id,name,mac,ds18b20_rom,fw_version,...}` with `id` == the printed
-      `probe_id` and `fw_version` == **`2.8.2`**.
+      `probe_id` and `fw_version` == **`2.9.3`**.
 - [ ] **2.4** **Uniqueness:** the `probe_id` is not already present in the batch
       serial log CSV. (A collision means a duplicate DS18B20 ROM or MAC-fallback
       chip — quarantine both if it ever happens.)
@@ -117,7 +117,7 @@ tick each item below as the operator confirms it.
 - [ ] **7.1** Note on the serial log that this firmware ships **open
       plug-and-play**: `POST /provision` is accepted on the trusted LAN with **no**
       `X-Provision-Secret` gate (a per-unit provision secret is a future option,
-      not implemented in v2.8.2). The setup network itself is an **open** per-unit
+      not implemented in v2.9.3). The setup network itself is an **open** per-unit
       SoftAP (step 3.2), present only during first-time setup.
 
 ### 8. Label + record

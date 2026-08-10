@@ -16,7 +16,13 @@ cd "$APP_DIR"
 PYTHON_BIN=""
 for candidate in python3 python3.13 python3.12 python3.11 python3.10 python3.9; do
   if command -v "$candidate" &>/dev/null; then
-    ver=$("$candidate" -c "import sys; print(sys.version_info >= (3,9))" 2>/dev/null)
+    # `|| ver=""` is load-bearing under `set -e`: a BARE assignment from a
+    # command substitution takes the command's exit status, so one broken
+    # `python3` on PATH -- a Microsoft Store stub, a dangling pyenv shim, a
+    # half-removed install -- killed the launcher HERE, before the loop could
+    # try python3.12, and before the "Python 3.9 or newer is required" banner
+    # that exists to explain it. The customer saw a window open and close.
+    ver=$("$candidate" -c "import sys; print(sys.version_info >= (3,9))" 2>/dev/null) || ver=""
     if [[ "$ver" == "True" ]]; then
       PYTHON_BIN="$candidate"
       break
@@ -36,7 +42,7 @@ if [[ -z "$PYTHON_BIN" ]]; then
   exit 1
 fi
 
-PY_VER=$("$PYTHON_BIN" -c "import sys; print('%d.%d' % sys.version_info[:2])")
+PY_VER=$("$PYTHON_BIN" -c "import sys; print('%d.%d' % sys.version_info[:2])") || PY_VER="unknown"
 echo "[INFO] Using Python $PY_VER ($PYTHON_BIN)"
 
 # ── 2. Create / reuse virtual environment ───────────────────────────────────
@@ -53,7 +59,10 @@ fi
 REQ_FILE="$APP_DIR/requirements.txt"
 REQ_STAMP="$VENV_DIR/.requirements.sha"
 if [[ -f "$REQ_FILE" ]]; then
-  REQ_HASH=$( (sha256sum "$REQ_FILE" 2>/dev/null || shasum -a 256 "$REQ_FILE" 2>/dev/null) | awk '{print $1}')
+  # Same hazard, plus `pipefail`: on a box with neither sha256sum nor shasum
+  # both halves fail and the assignment would abort the launcher rather than
+  # simply reinstalling dependencies.
+  REQ_HASH=$( (sha256sum "$REQ_FILE" 2>/dev/null || shasum -a 256 "$REQ_FILE" 2>/dev/null) | awk '{print $1}') || REQ_HASH=""
   if [[ ! -f "$REQ_STAMP" || "$(cat "$REQ_STAMP" 2>/dev/null)" != "$REQ_HASH" ]]; then
     echo "[SETUP] Installing / verifying dependencies..."
     "$PYTHON_EXE" -m pip install --upgrade pip setuptools wheel -q

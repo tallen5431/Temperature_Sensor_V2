@@ -154,3 +154,54 @@ def test_the_release_runbook_names_every_file_that_must_move():
         f"RELEASE.md does not mention {missing}. Every one of these carries a "
         f"version string the test suite enforces; a runbook that omits them "
         f"produces exactly the drift those tests exist to catch.")
+
+
+def test_the_qc_gate_checks_units_against_the_firmware_they_are_flashed_with():
+    """The factory label and the `/whoami` line an operator compares against.
+
+    These are not documentation. `firmware/factory_flash.py` prints FW_VERSION
+    on the physical label and puts it in the QC gate line, and the checklist
+    repeats it — so a stale copy means every unit built either fails its own
+    check or passes it by the operator trusting the wrong number. The literal
+    in factory_flash.py had drifted a whole release behind; it is derived from
+    the sketch now, and this pins the two documents that still spell it out.
+    """
+    import sys
+    sys.path.insert(0, str(REPO / "firmware"))
+    try:
+        import factory_flash
+    finally:
+        sys.path.pop(0)
+    assert factory_flash.FW_VERSION == firmware_version(), (
+        "the manufacturing script names a different firmware version than the "
+        "sketch it flashes")
+
+    qc = (REPO / "docs" / "QC_CHECKLIST.md").read_text(encoding="utf-8")
+    assert f"**v{firmware_version()}**" in qc, (
+        "docs/QC_CHECKLIST.md advertises a different firmware version than the "
+        f"sketch ({firmware_version()})")
+    assert f"`{firmware_version()}`" in qc, (
+        "the QC gate's fw_version comparison is against a stale version")
+
+    guide = (REPO / "web" / "guide.html").read_text(encoding="utf-8")
+    assert f"v{firmware_version()} image" in guide, (
+        "web/guide.html advertises a different firmware image than the flasher "
+        "on the same site ships")
+
+
+def test_the_release_runbook_does_not_teach_a_build_that_breaks_the_lgpl_promise():
+    """THIRD-PARTY-LICENSES.md promises `zeroconf` ships as replaceable files
+    under `_internal/`. `--onefile` bundles it into the executable, so a
+    runbook that says to build that way makes every shipped copy break a
+    licence term — and drops the spec's datas and hiddenimports besides."""
+    runbook = (REPO / "RELEASE.md").read_text(encoding="utf-8")
+    # In the COMMANDS, not the prose — the runbook is allowed to say "never
+    # --onefile", and should.
+    blocks = runbook.split("```")[1::2]
+    offenders = [b for b in blocks if "--onefile" in b]
+    assert not offenders, (
+        "RELEASE.md still gives a --onefile build as a command; the shipped "
+        f"licence notice promises an onedir bundle:\n{offenders}")
+    assert "packaging/temperature_hub.spec" in runbook, (
+        "RELEASE.md should point at the spec, which is what carries the data "
+        "files and hidden imports the app needs at runtime")
