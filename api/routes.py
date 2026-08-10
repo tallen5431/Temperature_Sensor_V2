@@ -584,17 +584,28 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
             # desired_probe_config owns the watch rule, including the refusal to
             # arm it below DEEP_SLEEP_MIN_MS — so the manual push and the
             # auto-provisioner cannot disagree about what a probe should run.
-            want = desired_probe_config(cfg, pid)
-            sample_ms = want.get("sample_ms", 0)
-            if interval_ms < DEEP_SLEEP_MIN_MS:
-                # desired_probe_config applies this rule to the interval in
-                # CONFIG; this request may be sending a different one. Below the
-                # threshold the probe stays always-on and cannot skip the radio
-                # on a sample wake, so a cadence here would promise behaviour it
-                # will not perform — the exact thing the hub stopped doing when
-                # DEEP_SLEEP_MIN_MS moved into core/protocol.py.
-                sample_ms = 0
-            watch = (want.get("alert_min_c"), want.get("alert_max_c"), sample_ms)
+            # No id, no watch. An explicit host that matches nothing in
+            # discovery — a hub restarted before mDNS re-saw the probe, one
+            # prune_stale evicted, one whose .local resolved off-LAN — would
+            # otherwise be handed alert_thresholds["default"], i.e. this hub's
+            # FRIDGE limits pushed onto whatever appliance that address is.
+            # The auto-provisioner guards the same way (`if ... and probe_id`),
+            # and watch=None makes provision_probe omit the three keys, so the
+            # probe keeps what it has.
+            watch = None
+            if pid:
+                want = desired_probe_config(cfg, pid)
+                sample_ms = want.get("sample_ms", 0)
+                if interval_ms < DEEP_SLEEP_MIN_MS:
+                    # desired_probe_config applies this rule to the interval in
+                    # CONFIG; this request may be sending a different one. Below
+                    # the threshold the probe stays always-on and cannot skip the
+                    # radio on a sample wake, so a cadence here would promise
+                    # behaviour it will not perform — the exact thing the hub
+                    # stopped doing when DEEP_SLEEP_MIN_MS moved into
+                    # core/protocol.py.
+                    sample_ms = 0
+                watch = (want.get("alert_min_c"), want.get("alert_max_c"), sample_ms)
             try:
                 if provision_probe(h, prt, base, token=tok, interval_ms=interval_ms,
                                    resolution_bits=res_bits, watch=watch):
@@ -665,19 +676,13 @@ def create_api(cfg: Any, db: Any, discovery: Any, public_base: Callable[[], str]
         # test the clamp uses, floor and all, so an unsynced HUB clock still
         # keeps the probe's true epoch.
         raw_ts = data.get("timestamp") or data.get("ts")
-        if is_future_stamp(raw_ts):
-            # Clamped. Take the epoch from the clock directly rather than
-            # letting append() re-derive it from `ts`: _local_iso_now() has
-            # MILLISECOND precision, so two clamped readings from one probe
-            # inside the same millisecond would land on one epoch and the
-            # second would be dropped by UNIQUE(probe_id, epoch, site) while the
-            # endpoint still answered 200. Microsecond resolution keeps them
-            # distinct, and agrees with the stored `ts` to well under a
-            # millisecond. (The bulk path spreads its restamps 1 ms apart for
-            # exactly this reason.)
-            exact_epoch = time.time()
-        else:
-            exact_epoch = absolute_epoch(raw_ts)
+        # None when the stamp was clamped, so append() derives the epoch from
+        # the `ts` it actually stored — one value, one clock read, and the two
+        # columns cannot disagree. (_clamp_future stamps to microseconds
+        # precisely so that derived epoch is still unique per reading; taking a
+        # second clock read here instead would have made `ts` and `epoch`
+        # describe two different instants a few statements apart.)
+        exact_epoch = None if is_future_stamp(raw_ts) else absolute_epoch(raw_ts)
         db.append(ts, t_c, t_f, probe_id=probe_id, humidity=humidity, vpd=vpd,
                   battery=battery, site=sanitize_site(request.headers.get("X-Site")),
                   epoch=exact_epoch)

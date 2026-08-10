@@ -202,12 +202,15 @@ def _ui_auth_gate():
     if not UI_AUTH_ENABLED:
         return None
     p = request.path or "/"
-    # Normalise a trailing slash before the lookup. The old prefix test matched
-    # "/api/health/" as readily as "/api/health"; an exact-set test does not, so
-    # a scraper configured with the slash would get a 401 challenge instead of
-    # the redirect Flask would otherwise answer with.
-    key = p.rstrip("/") or "/"
-    if key in UI_AUTH_OPEN_PATHS or key in UI_AUTH_TOKEN_PATHS \
+    # EXACT paths, deliberately. Normalising a trailing slash here looks like a
+    # kindness to a scraper configured with one and is an authentication hole:
+    # every blueprint rule is registered without the slash and Flask does not
+    # redirect to it, so "/metrics/" never reaches /metrics — it falls through
+    # to Dash's catch-all `GET /<path:path>`, which serves the DASHBOARD. A
+    # normalised allowlist therefore exempts the dashboard itself under nine
+    # different spellings. Verified: with ui_auth on, "/metrics/" and
+    # "/api/config/" both returned the index HTML with no credentials.
+    if p in UI_AUTH_OPEN_PATHS or p in UI_AUTH_TOKEN_PATHS \
             or p.startswith("/assets/"):
         return None
     auth = request.authorization

@@ -171,7 +171,14 @@ def _clamp_future(ts: str) -> str:
         if now < CLOCK_TRUSTWORTHY_FLOOR_EPOCH:
             return ts       # hub clock not yet synced — the probe's stamp wins
         if datetime.datetime.fromisoformat(str(ts)).timestamp() > now + _FUTURE_TOLERANCE_SEC:
-            return _local_iso_now()
+            # MICROSECONDS here, where _local_iso_now() uses milliseconds. Every
+            # clamped reading from one probe collapses onto the hub's clock, and
+            # the epoch is derived from this string — so at millisecond
+            # resolution two readings arriving inside the same millisecond land
+            # on one epoch and UNIQUE(probe_id, epoch, site) silently drops the
+            # second while the endpoint still answers 200. Only the clamped path
+            # is affected; a normally-stamped reading keeps the ms format.
+            return datetime.datetime.now().isoformat()
     except Exception:
         pass
     return ts

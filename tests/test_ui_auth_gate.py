@@ -19,6 +19,16 @@ import textwrap
 # SECURITY.md calls these "operational endpoints (unauthenticated by design)":
 # Prometheus has to scrape, and support has to be able to read a health snapshot.
 EXEMPT = ["/metrics", "/api/health", "/api/diagnostics", "/api/probes"]
+# The trailing-slash spelling of every exempt path. None of these reaches the
+# endpoint it looks like: the blueprint rules are registered without the slash
+# and Flask does not redirect to it, so each falls through to Dash's catch-all
+# `GET /<path:path>` -- which serves the DASHBOARD. Normalising the gate's
+# lookup key therefore hands out the index HTML, unauthenticated, under one
+# spelling per allowlisted path. Checked live, because a source assertion alone
+# did not catch it the first time.
+SLASHED = ["/metrics/", "/api/health/", "/api/probes/", "/api/diagnostics/",
+           "/api/config/", "/api/ingest/", "/api/audit/verify/"]
+
 # Everything a browser reaches, including the FULL database snapshot -- and the
 # two read APIs, which enforce no auth of their own and serve the same history
 # the gated CSV download does. The gate used to exempt the whole `/api/` prefix
@@ -115,3 +125,17 @@ def test_the_exempt_list_is_exactly_what_security_md_ratifies():
     section = security.split("## Operational endpoints")[1].split("##")[0]
     for path in EXEMPT:
         assert f"`{path}`" in section, f"SECURITY.md no longer documents {path} as open"
+
+
+def test_a_trailing_slash_does_not_serve_the_dashboard_unauthenticated(tmp_path):
+    """The regression an exact-path allowlist exists to prevent.
+
+    "/metrics/" is not /metrics. It matches Dash's catch-all and returns the
+    dashboard, so if the gate normalises the slash before its lookup, ui_auth
+    is off for the dashboard under every allowlisted path's slashed form.
+    """
+    got = _probe(tmp_path, SLASHED)
+    for path in SLASHED:
+        assert got["anon"][path] == 401, (
+            f"{path} served without credentials — it reaches Dash's catch-all, "
+            f"not the endpoint it is spelled like")

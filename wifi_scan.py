@@ -175,7 +175,19 @@ class SSIDWatcher:
             while not stop.is_set():
                 if self.idle_timeout and \
                         (time.monotonic() - self._last_touch) > self.idle_timeout:
-                    self.stop()
+                    # THIS thread's event, not the public stop(). start() swaps
+                    # in a fresh event per thread, so an expiring thread calling
+                    # stop() can set the event of a thread that started
+                    # microseconds ago — killing the scan someone is actively
+                    # watching, and clearing its results. Under the lock, and
+                    # only while this thread is still the current one.
+                    with self._lock:
+                        if self._stop is not stop:
+                            return          # superseded; leave the new one alone
+                        stop.set()
+                        self._stop.set()
+                        self.latest = set()
+                        self.scanned = False
                     return
                 try:
                     found = scan_ssids()

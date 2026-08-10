@@ -307,3 +307,18 @@ def test_two_clamped_readings_in_one_millisecond_both_survive(tmp_path):
         client.post("/api/ingest",
                     json={"temperature_c": temp, "probe_id": "P1", "timestamp": ahead})
     assert db.count() == 3, "a clamped reading was swallowed by the unique index"
+
+
+def test_a_clamped_rows_ts_and_epoch_describe_the_same_instant(tmp_path):
+    """db.append's contract is that `epoch` IS the instant of `ts`, and
+    export_csv writes `timestamp_utc` from one beside `timestamp` from the
+    other — so taking a second clock read for the epoch would let one row show
+    two different times. One value, derived from the stored string."""
+    from core.db import iso_to_epoch
+    client, db, _ = _ingest_client(tmp_path)
+    ahead = datetime.datetime.fromtimestamp(
+        _time.time() + 86400 * 500, tz=datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+    client.post("/api/ingest",
+                json={"temperature_c": 4.0, "probe_id": "P1", "timestamp": ahead})
+    row = db._conn().execute("SELECT ts, epoch FROM readings").fetchone()
+    assert row["epoch"] == pytest.approx(iso_to_epoch(row["ts"]), abs=1e-6)
