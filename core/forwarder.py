@@ -141,6 +141,13 @@ class _CycleResult:
 
     readings_sent: int = 0
     full_batch: bool = False
+    # Did a request actually complete with a 2xx? Distinct from readings_sent,
+    # which is 0 both when nothing was queued (no request made, nothing proved)
+    # and when an events-only batch landed. Settings' Save needs the difference:
+    # it reported "connected to head office" off a cycle that short-circuited
+    # before any HTTP at all, so an unreachable address or a wrong token looked
+    # like a working one.
+    posted: bool = False
 
 
 def _cfg_block(cfg) -> dict:
@@ -345,6 +352,13 @@ class UpstreamForwarder(threading.Thread):
         with self._cycle_lock:
             return self._run_once_locked().readings_sent
 
+    def run_once_detailed(self) -> _CycleResult:
+        """One cycle, with whether a request actually completed — see
+        :class:`_CycleResult`.``posted``. ``run_once`` stays as the row count
+        every existing caller wants."""
+        with self._cycle_lock:
+            return self._run_once_locked()
+
     def _run_once_locked(self) -> _CycleResult:
         block = _cfg_block(self.cfg)
         if not block.get("enabled"):
@@ -429,7 +443,8 @@ class UpstreamForwarder(threading.Thread):
             return _CycleResult(len(rows),
                                 wanted_rows >= batch or wanted_events >= batch
                                 or len(rows) < wanted_rows
-                                or len(events) < wanted_events)
+                                or len(events) < wanted_events,
+                                posted=True)
 
         # 4xx means the request itself is wrong (bad token, malformed body).
         # Retrying identical bytes will not fix it, so keep the cursor and let the
@@ -518,13 +533,22 @@ class _ForwarderHandle:
 
     def sync_now(self) -> tuple:
         """Force one cycle. Returns ``(rows_sent, error_text)`` for the UI."""
+        return self.sync_now_detailed()[:2]
+
+    def sync_now_detailed(self) -> tuple:
+        """Force one cycle. Returns ``(rows_sent, error_text, contacted)``.
+
+        ``contacted`` is what tells "head office answered" apart from "there was
+        nothing to send, so nobody was asked" — the two cases the two-value form
+        collapses into ``(0, "")``.
+        """
         if self._fwd is None:
-            return 0, "Forwarding is not running on this hub."
+            return 0, "Forwarding is not running on this hub.", False
         try:
-            sent = self._fwd.run_once()
+            result = self._fwd.run_once_detailed()
         except Exception as e:  # noqa: BLE001 - surfaced to the operator, not raised
-            return 0, str(e)
-        return sent, self._fwd.last_error
+            return 0, str(e), False
+        return result.readings_sent, self._fwd.last_error, result.posted
 
     def status(self) -> dict:
         """Backlog, last success and last error — the three things both callers

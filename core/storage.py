@@ -238,6 +238,24 @@ def is_future_stamp(raw_ts, now: float | None = None) -> bool:
         return False
 
 
+def _as_float(v) -> float:
+    """``float()`` that reports an out-of-range JSON integer as a ``ValueError``.
+
+    ``json.loads`` yields arbitrary-precision ints, and ``float(10**400)`` raises
+    **OverflowError** — which is not a ValueError subclass, so it escaped both
+    ingest handlers (they catch ``(ValueError, KeyError, TypeError)``, matching
+    what :func:`normalize_payload` documents itself as raising). One such reading
+    500ed the endpoint: on the bulk path that loses the probe's WHOLE batch and
+    counts a write failure, so the hub also starts reporting itself unhealthy.
+    A number the hub cannot represent is a rejected reading, like any other
+    out-of-range value.
+    """
+    try:
+        return float(v)
+    except OverflowError as e:
+        raise ValueError(str(e)) from e
+
+
 def normalize_payload(payload: dict):
     """Normalise an ingest payload.
 
@@ -252,8 +270,8 @@ def normalize_payload(payload: dict):
     c_keys = ["temperature_c", "temp_c", "t_c", "c"]
     f_keys = ["temperature_f", "temp_f", "t_f", "f"]
 
-    t_c = next((float(payload[k]) for k in c_keys if k in payload and payload[k] not in (None, "")), None)
-    t_f = next((float(payload[k]) for k in f_keys if k in payload and payload[k] not in (None, "")), None)
+    t_c = next((_as_float(payload[k]) for k in c_keys if k in payload and payload[k] not in (None, "")), None)
+    t_f = next((_as_float(payload[k]) for k in f_keys if k in payload and payload[k] not in (None, "")), None)
 
     if t_c is None and t_f is None:
         raise ValueError("No temperature value found")
@@ -314,7 +332,7 @@ def extract_humidity(payload: dict):
     for k in ("humidity_pct", "humidity", "rh", "h"):
         if k in payload and payload[k] not in (None, ""):
             try:
-                rh = float(payload[k])
+                rh = _as_float(payload[k])
             except (TypeError, ValueError):
                 return None
             if math.isfinite(rh) and 0.0 <= rh <= 100.0:
@@ -337,7 +355,7 @@ def extract_battery(payload: dict):
     """
     if "battery_pct" in payload and payload["battery_pct"] not in (None, ""):
         try:
-            pct = float(payload["battery_pct"])
+            pct = _as_float(payload["battery_pct"])
         except (TypeError, ValueError):
             return None
         if math.isfinite(pct) and 0.0 <= pct <= 100.0:
@@ -345,7 +363,7 @@ def extract_battery(payload: dict):
         return None
     if "battery_v" in payload and payload["battery_v"] not in (None, ""):
         try:
-            volts = float(payload["battery_v"])
+            volts = _as_float(payload["battery_v"])
         except (TypeError, ValueError):
             return None
         if not (math.isfinite(volts) and 2.5 <= volts <= 5.0):

@@ -36,7 +36,15 @@ _HASHED = ("ts", "actor", "action", "detail", "prev")
 
 
 def _hash_entry(entry: dict) -> str:
-    payload = json.dumps({k: entry[k] for k in _HASHED}, sort_keys=True, separators=(",", ":"))
+    # .get(), not [k]: a field DELETED from an entry raised KeyError here,
+    # which verify() caught as a read error and reported as
+    # {"ok": False, "error": "'detail'"} -- a result with no `intact` key at
+    # all. The one modification style that should be loudest was the one the
+    # tamper-evident log could not call tampering. A stripped field now
+    # hashes as null, which record() can never produce (it writes all five
+    # as strings), so it fails the digest comparison like any other edit.
+    payload = json.dumps({k: entry.get(k) for k in _HASHED}, sort_keys=True,
+                         separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
@@ -53,12 +61,25 @@ class AuditLog:
         """The out-of-band anchor: {count, hash} of the true chain tip. Linkage
         alone can't detect deleting trailing entries (the shorter chain still
         verifies from genesis); this records the real length + head so a
-        tail-truncation is caught."""
+        tail-truncation is caught.
+
+        Validated HERE rather than at the two call sites, both of which then did
+        an unguarded ``int(tip.get("count", 0))``. An anchor holding valid JSON
+        that is not an object (``[]``, ``5``) or a non-numeric count therefore
+        raised out of ``configure()`` -- which app.py calls at import, so a
+        corrupt 40-byte file stopped the hub from starting at all -- and 500ed
+        ``GET /api/audit/verify``. A damaged anchor disables truncation
+        detection; it must not take the hub with it.
+        """
         try:
             if self._tip_path and self._tip_path.exists():
-                return json.loads(self._tip_path.read_text(encoding="utf-8"))
-        except Exception:
-            pass
+                raw = json.loads(self._tip_path.read_text(encoding="utf-8"))
+                if not isinstance(raw, dict):
+                    raise ValueError("anchor is not a JSON object")
+                return {"count": int(raw.get("count", 0)), "hash": raw.get("hash")}
+        except Exception as e:
+            log.error("Audit anchor at %s is unreadable (%s) — truncation detection "
+                      "is disabled until the next write rewrites it", self._tip_path, e)
         return None
 
     def _write_tip(self) -> None:
@@ -165,7 +186,16 @@ class AuditLog:
                     prev = e["hash"]
                     n += 1
         except Exception as ex:
-            return {"ok": False, "error": str(ex)}
+            # Always carry `intact`. Callers (and GET /api/audit/verify) read it
+            # to decide whether to shout, and a result that omitted it made them
+            # KeyError -- or, worse, read as "no problem reported". An
+            # unreadable line is not proof of integrity, and it must not erase
+            # an anchor mismatch the startup check already established.
+            return {"ok": False, "error": str(ex), "intact": False,
+                    "entries": n, "broken_at": n,
+                    "reason": ("anchor mismatch detected at startup (possible "
+                               "truncation)" if anchor_broken else
+                               "the audit log could not be read to the end")}
         result = {"ok": True, "entries": n, "intact": True, "anchored": tip is not None}
         # Cross-check the anchor: a tail-truncation leaves an internally-consistent
         # shorter chain the linkage check can't catch, but the anchor still knows

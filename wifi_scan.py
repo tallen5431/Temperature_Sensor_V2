@@ -7,7 +7,7 @@ Exposes:
   - SSIDWatcher: background refresher with latest set
 """
 from __future__ import annotations
-import os, subprocess, sys, threading, shutil, re
+import os, subprocess, sys, threading, shutil, re, time
 from typing import Set, List
 
 def _run(cmd: List[str]) -> str:
@@ -124,9 +124,20 @@ class SSIDWatcher:
     of leaving the thread to notice up to an interval later.
     """
 
-    def __init__(self, target_ssid: str, interval_sec: float = 5.0):
+    def __init__(self, target_ssid: str, interval_sec: float = 5.0,
+                 idle_timeout_sec: float = 0.0):
         self.target = target_ssid
         self.interval = interval_sec
+        # Stop scanning by itself if nothing has asked for results in this long.
+        # The explicit stop() only fires when the UI section is COLLAPSED, and
+        # Dash does not dispatch callbacks for components that unmount -- so
+        # navigating away from Settings, closing the tab, or a browser crash all
+        # left the thread shelling out to netsh/nmcli every few seconds for the
+        # life of the hub process, on a module-level singleton shared by every
+        # client. Each poll for results is a keepalive (see ``start``); 0
+        # disables the expiry.
+        self.idle_timeout = float(idle_timeout_sec or 0.0)
+        self._last_touch = time.monotonic()
         self.latest: Set[str] = set()
         # Has a scan actually completed since start()? Until one has, "no
         # networks seen" is not yet a fact about the airwaves, only about how
@@ -149,6 +160,9 @@ class SSIDWatcher:
         # moment while it winds down, and treating that as "already running"
         # would return without starting anything, leaving a watcher that looks
         # started and never scans again.
+        # Every call is also a keepalive: the caller polling for results is what
+        # proves someone is still watching. See idle_timeout.
+        self._last_touch = time.monotonic()
         if self._th and self._th.is_alive() and not self._stop.is_set():
             return
         # A FRESH event per thread, closed over by the loop. Re-using one event
@@ -159,6 +173,10 @@ class SSIDWatcher:
 
         def _loop():
             while not stop.is_set():
+                if self.idle_timeout and \
+                        (time.monotonic() - self._last_touch) > self.idle_timeout:
+                    self.stop()
+                    return
                 try:
                     found = scan_ssids()
                 except Exception:

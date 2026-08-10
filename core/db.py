@@ -1124,7 +1124,11 @@ class Database:
         # customer's export and break whatever imports it, so it is conditional,
         # exactly like the dashboard's site picker.
         multi = bool(self.sites())
-        named = any((names.get(k) or "").strip() for k in names)
+        # str() first: config values are user-editable and normalize_config does
+        # not coerce probe_names, so a numeric name reached here and .strip()
+        # raised -- breaking the canonical export while the Excel ones, which
+        # funnel every value through _csv_safe/_xlsx_safe, were fine.
+        named = any(str(names.get(k) or "").strip() for k in names)
         writer = _csv.writer(file_obj)
         header = ["timestamp", "timestamp_utc", "temperature_c", "temperature_f",
                   "probe_id"]

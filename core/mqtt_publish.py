@@ -109,6 +109,25 @@ class MqttPublisher:
         self._discovery_enabled = bool(de)
         try:
             client = mqtt.Client()
+            # connect() below completes the TCP handshake and sends CONNECT --
+            # it does NOT wait for CONNACK, so a broker that refuses the
+            # credentials says so later, on the network loop. Without these the
+            # refusal is never observed anywhere: publish() on a disconnected
+            # client RETURNS an error code rather than raising, so
+            # publish_reading's except never fires either, and Settings sat on
+            # a green "publishing to <host>" while nothing was.
+            def _on_connect(_client, _userdata, _flags, rc, *_a):
+                if rc != 0:
+                    log.warning("MQTT broker refused the connection (%s) — check the "
+                                "host, port and credentials; readings are NOT being "
+                                "published.", mqtt.connack_string(rc))
+
+            def _on_disconnect(_client, _userdata, rc, *_a):
+                if rc != 0:
+                    log.warning("MQTT connection lost (code %s); paho will retry.", rc)
+
+            client.on_connect = _on_connect
+            client.on_disconnect = _on_disconnect
             if m.get("username"):
                 client.username_pw_set(m.get("username"), m.get("password", ""))
             client.connect(m.get("host", "localhost"), int(m.get("port", 1883)), keepalive=60)
@@ -122,9 +141,31 @@ class MqttPublisher:
             log.warning("Could not connect to MQTT broker: %s", e)
 
     def is_ready(self) -> bool:
-        """True when a broker connection is up and readings will be published."""
+        """True when a broker connection is up and readings will be published.
+
+        Asks the client, rather than trusting that ``start()`` got that far.
+        ``connect()`` returns before CONNACK, so "start() did not raise" only
+        means the TCP handshake worked — a wrong username, a wrong port with
+        something else listening, or an ACL rejection all produced a client that
+        reported ready and published nothing. This is the one place Settings
+        reads to tell the operator MQTT is working, so it has to mean it.
+
+        A stand-in client without ``is_connected`` (tests, a future transport)
+        is taken at face value: the honesty being restored is about the real
+        paho client, not about inventing a failure for an object that cannot
+        report one.
+        """
         with self._lock:
-            return bool(self._enabled and self._client is not None)
+            client, enabled = self._client, self._enabled
+        if not (enabled and client is not None):
+            return False
+        probe = getattr(client, "is_connected", None)
+        if probe is None:
+            return True
+        try:
+            return bool(probe())
+        except Exception:  # noqa: BLE001 - a status readout must never raise
+            return False
 
     def publish_reading(self, probe_id: str, temp_c: float, friendly_name: str = "",
                         humidity: float | None = None, vpd: float | None = None) -> None:

@@ -192,6 +192,14 @@ def build_diagnostics(cfg, db, finder, public_base: str, version: str,
             # indistinguishable from "hub down".
             "unauthorized": health["unauthorized"],
             "last_unauthorized_age_sec": health["last_unauthorized_age_sec"],
+            # This block is a hand-copied subset of HealthState.snapshot(), and
+            # these two were left out of it — so the Diagnostics page's
+            # "Background tasks" row and its red "Alerting has stopped … no
+            # alarm will be raised" banner were both unreachable in production,
+            # as was the same information in /api/diagnostics. A dead alert
+            # monitor is the single failure this product most needs to announce.
+            "workers": health["workers"],
+            "workers_down": health["workers_down"],
         },
         "retention_days": _int(cfg.get("retention_days", 0), 0),
         "notifications": {

@@ -1351,7 +1351,7 @@ def register_settings_callbacks(app, cfg, public_base_func=None):
 
         # Report what actually happened, not that a file was written. A saved
         # setting that cannot reach head office must never look like a working one.
-        sent, err = FORWARDER.sync_now()
+        sent, err, contacted = FORWARDER.sync_now_detailed()
         if err:
             return (dbc.Alert(f"Saved, but nothing has reached head office yet. {err}",
                               color="warning", dismissable=True, className="mb-0"),
@@ -1361,9 +1361,18 @@ def register_settings_callbacks(app, cfg, public_base_func=None):
             tail = f" {pending:,} still to send." if pending else " Everything is up to date."
             body = (f"Saved — sent {sent:,} reading{'s' if sent != 1 else ''} "
                     f"to head office as “{block['site']}”.{tail}")
-        else:
+        elif contacted:
+            # A request completed with a 2xx, carrying events only.
             body = (f"Saved — connected to head office as “{block['site']}”. "
                     "New readings will be sent as they arrive.")
+        else:
+            # Nothing was queued, so the cycle short-circuited before making any
+            # request: no address was reached and no token was checked. Claiming
+            # "connected to head office" here is the one thing this whole
+            # save-then-sync dance exists to avoid.
+            body = (f"Saved as “{block['site']}”. There is nothing waiting to send "
+                    "yet, so head office has not been contacted — the address and "
+                    "token are checked with the first batch of readings.")
         if insecure:
             return (dbc.Alert(
                 ["✅ ", body, html.Br(),

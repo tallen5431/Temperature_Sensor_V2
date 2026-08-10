@@ -216,8 +216,8 @@ def test_the_warning_reaches_the_operator_on_save(tmp_path, monkeypatch):
     monkeypatch.setattr(sp, "_upstream_is_cleartext_offsite", lambda url: True)
 
     class _Fwd:
-        def sync_now(self):
-            return 3, ""
+        def sync_now_detailed(self):
+            return 3, "", True
 
         def status(self):
             return {"pending": 0}

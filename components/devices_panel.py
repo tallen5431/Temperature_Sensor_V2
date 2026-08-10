@@ -328,6 +328,11 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
         # Only whether a limit exists matters here, and that is the same answer in
         # any unit -- so the form's displayed values need no conversion.
         limits = {k: v for k, v in (('min', lo), ('max', hi)) if v not in (None, '')}
+        if not limits:
+            # Blank fields mean "inherit", not "unwatched". Reading them as no
+            # limit made this note say nothing was being checked about a probe
+            # the card behind the modal was showing as alarming.
+            limits = limits_for(cfg, _probe_id) if _probe_id else {}
         plan = reporting_plan({'interval_sec': interval_sec,
                                'probe_sample_sec': check_sec,
                                'alert_thresholds': {'default': limits}})
@@ -698,7 +703,16 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                 global_interval_sec = cfg.get('interval_sec', 5)
                 current_interval_sec = probe_intervals.get(probe_id, global_interval_sec)
 
-                # Per-probe alert thresholds
+                # Per-probe alert thresholds. The VALUE fields stay the
+                # per-probe entry only: Save treats a filled field as an
+                # override, so pre-filling an inherited limit would silently pin
+                # it to this probe the next time any field is saved. What was
+                # wrong is that a probe inheriting `default` looked completely
+                # unmonitored here — blank fields, and a live cadence note
+                # derived from them saying no limit was set — while the card
+                # directly behind the modal, which resolves through
+                # core.status.limits_for, correctly showed it alarming. The
+                # inheritance is now shown in the placeholders instead (below).
                 alert_thresholds = cfg.get('alert_thresholds', {})
                 probe_thresholds = alert_thresholds.get(probe_id, {})
                 current_min = probe_thresholds.get('min', None)
@@ -735,11 +749,16 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                 # on the page behind the modal — and a range typed in the wrong
                 # unit looks perfectly reasonable until it is next to the reading.
                 now_note = ''
+                row_site = ''
                 if db is not None:
                     try:
                         df = db.latest_per_probe(window_seconds=7 * 86400)
                         row = df[df['probe_id'] == probe_id]
                         if not row.empty:
+                            # Carried out of this query for the threshold
+                            # resolution below — a forwarded probe is judged by
+                            # the hub that owns it, not by this one.
+                            row_site = str(row.iloc[0].get('site') or '')
                             t_c = row.iloc[0]['temperature_c']
                             if t_c is not None and pd.notna(t_c):
                                 now_note = (f"This probe currently reads "
@@ -760,6 +779,16 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                 # someone should match rather than a number to replace.
                 ph_min = f"e.g. {round(temp_c_to_unit(1.0, unit)):g}"
                 ph_max = f"e.g. {round(temp_c_to_unit(5.0, unit)):g}"
+                # ...unless this probe inherits a hub-wide limit. Then say so —
+                # the same rule the card behind the modal used, so the two agree
+                # about whether anything is watching this probe.
+                inherited = limits_for(cfg, probe_id, site=row_site)
+                if current_min is None and inherited.get('min') is not None:
+                    ph_min = (f"inherits "
+                              f"{temp_c_to_unit(float(inherited['min']), unit):g}")
+                if current_max is None and inherited.get('max') is not None:
+                    ph_max = (f"inherits "
+                              f"{temp_c_to_unit(float(inherited['max']), unit):g}")
                 return (True, probe_id, probe_id, current_name, current_interval_sec,
                         disp_min, disp_max, disp_cal, current_res,
                         thresholds_label, cal_label, breadcrumb, ph_min, ph_max,

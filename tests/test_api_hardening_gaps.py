@@ -223,3 +223,49 @@ def test_a_running_ssid_watcher_still_reports_what_it_finds(monkeypatch):
         assert w.matched() == ["Setpoint-9A3F2C"]
     finally:
         w.stop()
+
+
+# --- numbers the hub cannot represent ---------------------------------------
+
+@pytest.mark.parametrize("field", ["temperature_c", "humidity_pct", "battery_pct",
+                                   "battery_v"])
+def test_an_oversized_json_integer_is_a_rejected_reading_not_a_500(tmp_path, field):
+    # json.loads yields arbitrary-precision ints, and float(10**400) raises
+    # OverflowError -- which is not a ValueError subclass, so it escaped both
+    # ingest handlers. On the bulk path that loses the probe's WHOLE batch and
+    # counts a write failure, so the hub also starts reporting itself unhealthy.
+    client, _db, _cfg = _make_client(tmp_path)
+    huge = "1" + "0" * 400
+    body = '{"probe_id": "P1", "temperature_c": 4.0, "%s": %s}' % (field, huge)
+    r = client.post("/api/ingest", data=body,
+                    headers={"Content-Type": "application/json"})
+    assert r.status_code in (200, 400), r.get_data(as_text=True)
+    assert r.status_code != 500
+
+
+def test_an_oversized_temperature_does_not_lose_the_rest_of_a_batch(tmp_path):
+    client, db, _cfg = _make_client(tmp_path)
+    huge = "1" + "0" * 400
+    body = ('{"readings": ['
+            '{"probe_id": "P1", "temperature_c": 4.0},'
+            '{"probe_id": "P1", "temperature_c": %s},'
+            '{"probe_id": "P1", "temperature_c": 5.0}]}' % huge)
+    r = client.post("/api/ingest_csv", data=body,
+                    headers={"Content-Type": "application/json"})
+    assert r.status_code == 200, r.get_data(as_text=True)
+    payload = r.get_json()
+    assert payload["accepted"] == 2 and payload["rejected"] == 1
+    assert db.count() == 2
+
+
+def test_a_numeric_probe_name_does_not_break_the_canonical_export(tmp_path):
+    # normalize_config does not coerce probe_names values, so a hand-edited or
+    # API-set numeric name reached export_csv and .strip() raised there — while
+    # the Excel exports, which funnel every value through _csv_safe, were fine.
+    import io
+    from core.db import Database
+    db = Database(tmp_path / "n.db")
+    db.append("2026-07-30T12:00:00.000", 4.0, 39.2, "P1")
+    buf = io.StringIO()
+    db.export_csv(buf, name_map={"P1": 42})
+    assert "4.0" in buf.getvalue()

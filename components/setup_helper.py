@@ -17,7 +17,13 @@ from wifi_scan import SSIDWatcher, scanner_available
 # It is created lazily and only started the first time a user actually opens the
 # "Set up a new probe" section, so hubs whose owners never use the wizard never
 # run Wi-Fi scans in the background.
-_watcher = SSIDWatcher("Setpoint", interval_sec=10.0)
+# idle_timeout_sec: the section's ap-poll fires every 5 s while it is open,
+# and each poll calls start(), which is the keepalive. A minute of silence
+# means nothing is watching any more -- the operator navigated away, closed
+# the tab, or the browser died -- none of which fires the collapse callback
+# that set_scanning(False) hangs off, because Dash does not dispatch
+# callbacks for components that have unmounted.
+_watcher = SSIDWatcher("Setpoint", interval_sec=10.0, idle_timeout_sec=60.0)
 
 _IDLE_MESSAGE = ("Open this section and the hub starts watching for the probe's "
                  "Setpoint-XXXXXX setup network.")
