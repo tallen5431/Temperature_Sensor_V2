@@ -751,7 +751,6 @@
   var N = 140;
   var data = [];
   var t = 0;
-  var mn = Infinity, mx = -Infinity;
   var reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   function css(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
@@ -839,7 +838,17 @@
 
     // readouts
     tempEl.textContent = latest.toFixed(1);
-    mn = Math.min(mn, latest); mx = Math.max(mx, latest);
+    // Over the WHOLE visible buffer, which is the series drawn immediately
+    // above. A running accumulator seeded at ±Infinity only ever saw `latest`,
+    // so on first paint MIN, MAX and the current reading were all the same
+    // number over a chart with a visible peak and trough -- and with
+    // prefers-reduced-motion there is no tick to widen them, so it stayed that
+    // way. It also drifted outside the window once the tick did run.
+    var mn = data[0], mx = data[0];
+    for (var k = 1; k < data.length; k++) {
+      if (data[k] < mn) mn = data[k];
+      if (data[k] > mx) mx = data[k];
+    }
     minEl.textContent = mn.toFixed(1);
     maxEl.textContent = mx.toFixed(1);
 

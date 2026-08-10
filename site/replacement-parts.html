@@ -450,8 +450,7 @@
         <!-- Honeypot — see the matching field on index.html. Off-screen rather than
              display:none (cruder bots skip hidden fields but fill what is in the DOM);
              aria-hidden + tabindex=-1 keeps it out of the tab order and off screen
-             readers. NOTE: /api/quote does not check `company` yet — the server-side
-             discard still has to be added there before this actually blocks anything. -->
+             readers. /api/quote discards any submission that fills it. -->
         <input type="text" id="qCompany" name="company" tabindex="-1" aria-hidden="true"
                autocomplete="off" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
         <button type="submit" class="btn signal" id="qSubmit" style="width:100%;">Send for a quote</button>
@@ -975,7 +974,7 @@
     fd.append("phone", document.getElementById("qPhone").value.trim());
     fd.append("description", document.getElementById("qDesc").value.trim());
     // Honeypot, always sent — same field name the waitlist and contact forms use, so the
-    // server can discard anything that filled it. /api/quote does NOT check it yet.
+    // server can discard anything that filled it.
     fd.append("company", document.getElementById("qCompany").value);
     var angles = [];
     keys.forEach(function (k) { fd.append("photos", photos[k].blob, photos[k].name); angles.push(photos[k].angle || LABEL[k]); });

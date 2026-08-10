@@ -26,7 +26,11 @@
   -->
   <script
     type="module"
-    src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js"></script>
+    src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js"
+    onerror="var u=document.getElementById('unsupported'); if(u){u.style.display='block';
+             u.textContent='The browser installer could not load (no internet, or '
+             + 'unpkg.com is blocked here). Flash with arduino-cli instead — see below.';}"
+  ></script>
   <style>
     :root {
       --brand: #17b3cc;
@@ -103,6 +107,16 @@
     }
     esp-web-install-button button[slot="activate"]:hover {
       transform: translateY(-1px); box-shadow: 0 10px 24px -12px var(--brand); }
+
+    /* Until customElements.define runs, <esp-web-install-button> is an unknown
+       element and the browser renders its CHILDREN as ordinary inline content —
+       so if the module never loads (offline, unpkg blocked, CDN down) the raw
+       slot fallbacks appear as loose sentences under the heading: "Serial
+       access was blocked — reload and allow the port." with nothing to reload.
+       :not(:defined) stops matching the instant the element upgrades, so the
+       real slot content still shows afterwards. The activate button stays
+       visible so the page is not blank while the module loads. */
+    esp-web-install-button:not(:defined) > [slot]:not([slot="activate"]) { display: none; }
 
     .unsupported { display: none; background: rgba(239,176,46,.10);
       border: 1px solid rgba(239,176,46,.4); color: #ffe9bd;

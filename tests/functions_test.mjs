@@ -12,7 +12,8 @@ import { onRequestPost as waitlistPost, onRequestGet as waitlistGet }
   from "../functions/api/waitlist.js";
 import { onRequestPost as contactPost, onRequestGet as contactGet }
   from "../functions/api/contact.js";
-import { onRequestGet as quoteGet } from "../functions/api/quote.js";
+import { onRequestPost as quotePost, onRequestGet as quoteGet }
+  from "../functions/api/quote.js";
 import { timingSafeEqual, isAllowedOrigin, exportRecords, fitsMetadata }
   from "../functions/api/_shared.js";
 
@@ -210,6 +211,73 @@ console.log("export auth");
   r = await quoteGet({ request: new Request("https://x/api/quote?token=r%C3%AFght"),
     env: { WAITLIST: kv, WAITLIST_TOKEN: "right" } });
   await eq("quote export rejects non-ASCII token", r.status, 403);
+}
+
+// ── quote POST ─────────────────────────────────────────────────────────────
+// This endpoint accepts 20 MB of photos and writes to R2, KV and Resend, and it
+// had NEITHER of the two guards its siblings have — its only protection was a
+// rate limiter that fails open by design. The honeypot field has shipped on
+// site/replacement-parts.html all along; the server never read it.
+console.log("quote POST");
+{
+  const env = { WAITLIST: new FakeKV() };
+
+  function multipart(fields) {
+    const fd = new FormData();
+    for (const [k, v] of Object.entries(fields)) fd.append(k, v);
+    return fd;
+  }
+  function quoteReq(fields, headers) {
+    return new Request("https://datumlaboratories.com/api/quote", {
+      method: "POST", body: multipart(fields),
+      headers: Object.assign({ origin: "https://datumlaboratories.com" }, headers || {}),
+    });
+  }
+
+  let r = await quotePost({
+    request: quoteReq({ name: "A", shop: "S", email: "a@b.co" },
+                      { origin: "https://evil.example" }), env });
+  await eq("foreign origin -> 403", r.status, 403);
+  await eq("foreign origin wrote nothing", env.WAITLIST.puts, 0);
+
+  r = await quotePost({
+    request: quoteReq({ name: "A", shop: "S", email: "a@b.co", company: "AcmeCorp" }), env });
+  await eq("honeypot -> 200", r.status, 200);
+  await eq("honeypot stored nothing", env.WAITLIST.puts, 0);
+
+  // ...and the honeypot must be checked BEFORE validation, or a bot learns
+  // which of its fields were wrong.
+  r = await quotePost({
+    request: quoteReq({ name: "", shop: "", email: "nope", company: "AcmeCorp" }), env });
+  await eq("honeypot short-circuits validation", r.status, 200);
+
+  r = await quotePost({
+    request: quoteReq({ name: "A", shop: "S", email: "not-an-email" }), env });
+  await eq("same-origin submission reaches validation", r.status, 422);
+}
+
+// ── quote export stays inside the subrequest budget ────────────────────────
+// A Worker invocation is capped at 50 subrequests on the free plan. The old
+// hand-rolled loop issued one KV.get() per key, so the export worked in testing
+// and started throwing at roughly 49 stored quotes.
+console.log("quote export");
+{
+  const kv = new FakeKV();
+  for (let i = 0; i < 120; i++) {
+    const ts = `2026-08-${String((i % 28) + 1).padStart(2, "0")}T00:00:00.000Z`;
+    await kv.put(`quote:${ts}:${i}`, JSON.stringify({ ts, email: `a${i}@b.co` }),
+                 { metadata: { kind: "replacement_part", email: `a${i}@b.co`, ts } });
+  }
+  kv.gets = 0; kv.lists = 0;
+  const r = await quoteGet({
+    request: new Request("https://x/api/quote?token=right"),
+    env: { WAITLIST: kv, WAITLIST_TOKEN: "right" } });
+  const body = await parse(r);
+  await eq("120 stored quotes still export", r.status, 200);
+  await eq("metadata rows cost no gets", kv.gets, 0);
+  check("subrequests stay under the 50-per-invocation cap",
+    kv.gets + kv.lists < 50, `used ${kv.gets + kv.lists}`);
+  await eq("every record returned", body.count, 120);
 }
 
 // ── fitsMetadata ───────────────────────────────────────────────────────────

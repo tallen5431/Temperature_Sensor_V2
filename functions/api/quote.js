@@ -17,7 +17,8 @@
 // Photos never become public: R2 objects are private and only readable through
 // the token-gated GET below.
 
-import { timingSafeEqual } from "./_shared.js";
+import { allowedHostsFor, exportRecords, fitsMetadata, isAllowedOrigin,
+         timingSafeEqual } from "./_shared.js";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -271,13 +272,25 @@ async function rateLimited(env, ip) {
     const n = parseInt((await env.WAITLIST.get(key)) || "0", 10);
     if (n >= RATE_LIMIT) return true;
     await env.WAITLIST.put(key, String(n + 1), { expirationTtl: 60 });
-  } catch (e) { /* never block a real customer on limiter failure */ }
+  } catch (e) {
+    // Never block a real customer on limiter failure -- but do not let the
+    // speed bump switch itself off in silence either.
+    console.error("quote: rate limiter unavailable", e);
+  }
   return false;
 }
 
 /* ------------------------------------------------------------------ POST --- */
 
 export async function onRequestPost({ request, env }) {
+  // The same drive-by filter waitlist.js and contact.js apply, and this is the
+  // endpoint that most needed it: it accepts 20 MB of photos and writes to R2,
+  // KV and Resend, and its ONLY guard was rateLimited() -- which fails OPEN by
+  // design, so a KV blip left it completely unprotected. Not authentication;
+  // an Origin is trivially forged. It stops the loop-in-a-script case.
+  if (!isAllowedOrigin(request, allowedHostsFor(request, env))) {
+    return json({ ok: false, error: "forbidden_origin" }, 403);
+  }
   const ip = request.headers.get("cf-connecting-ip") || "";
   if (await rateLimited(env, ip)) return json({ ok: false, error: "rate_limited" }, 429);
 
@@ -287,6 +300,12 @@ export async function onRequestPost({ request, env }) {
   } catch (e) {
     return json({ ok: false, error: "bad_request" }, 400);
   }
+
+  // Honeypot. site/replacement-parts.html has shipped the hidden `company`
+  // field all along and the form posts it; this endpoint was the one that never
+  // read it. Answer 200 so the bot sees success and does not retry, and store
+  // nothing -- before any R2, Resend or KV work.
+  if (clip(form.get("company"), 80)) return json({ ok: true, stored: true });
 
   const name = clip(form.get("name"), 120);
   const shop = clip(form.get("shop"), 160);
@@ -389,7 +408,18 @@ export async function onRequestPost({ request, env }) {
   let stored = false;
   if (env.WAITLIST) {
     try {
-      await env.WAITLIST.put("quote:" + ts + ":" + id, JSON.stringify(record));
+      // The full record cannot fit KV's 1 KiB metadata cap (description alone
+      // is clipped at 4000 chars), so the metadata carries a summary and the
+      // value keeps everything. exportRecords() returns metadata inline with
+      // list(), which is what keeps the export off the per-invocation
+      // subrequest budget — see the GET below.
+      const summary = {
+        kind: record.kind, name: name, shop: shop, email: email, phone: phone,
+        ts: ts, country: record.country, photos: photos.length,
+        photo_prefix: record.photo_prefix || "", emailed: emailed, id: id,
+      };
+      await env.WAITLIST.put("quote:" + ts + ":" + id, JSON.stringify(record),
+                             { metadata: fitsMetadata(summary) });
       stored = true;
     } catch (e) {
       console.error("quote: KV store failed", e);
@@ -438,18 +468,13 @@ export async function onRequestGet({ request, env }) {
 
   if (!env.WAITLIST) return json({ ok: true, count: 0, quotes: [] });
 
-  const quotes = [];
-  let cursor;
-  do {
-    const page = await env.WAITLIST.list({ prefix: "quote:", cursor: cursor });
-    for (const k of page.keys) {
-      const v = await env.WAITLIST.get(k.name);
-      if (v) {
-        try { quotes.push(JSON.parse(v)); } catch (e) { /* skip bad row */ }
-      }
-    }
-    cursor = page.list_complete ? undefined : page.cursor;
-  } while (cursor);
-  quotes.sort(function (a, b) { return a.ts < b.ts ? 1 : -1; });
-  return json({ ok: true, count: quotes.length, quotes: quotes });
+  // exportRecords, not a get() per key: a Worker invocation is capped at 50
+  // subrequests on the free plan, so the hand-rolled loop this replaces started
+  // throwing at roughly 49 stored quotes — which is exactly the point where the
+  // list becomes worth exporting. _shared.js exists because waitlist.js and
+  // contact.js had this same bug; quote.js kept its own copy and kept the bug.
+  const { records, truncated, cursor } = await exportRecords(
+    env, "quote:", { cursor: url.searchParams.get("cursor") || undefined });
+  return json({ ok: true, count: records.length, truncated: truncated,
+                cursor: cursor, quotes: records });
 }
