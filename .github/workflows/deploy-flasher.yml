@@ -50,7 +50,7 @@ jobs:
           arduino-cli core update-index
           arduino-cli core install esp32:esp32
           arduino-cli lib install \
-            "WiFiManager" "ArduinoJson" "OneWire" "DallasTemperature"
+            "WiFiManager" "ArduinoJson@6.21.6" "OneWire" "DallasTemperature"
 
       - name: Install esptool
         run: pip install --quiet esptool

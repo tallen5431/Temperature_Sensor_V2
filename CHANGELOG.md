@@ -90,6 +90,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that starts failing at ~49 records, which is what `_shared.js` exists to
   prevent.
 
+### Firmware 2.9.5
+
+- **The JSON buffer sizes are measured now, not estimated** — and the measurement
+  found one the review had missed. Compiling the real documents against
+  ArduinoJson 6.21.6 showed `/whoami` needs **349 bytes** against its declared
+  320 with the 128-character server URL the captive portal accepts, so it was
+  silently dropping members. ArduinoJson v6 does not error when a document being
+  built overflows; it just omits whatever does not fit — and `/whoami` is the
+  endpoint the QC checklist has the factory read `fw_version` from before a unit
+  ships. `applyHubConfig` had the same shape of problem in waiting: it parsed
+  into 320 bytes while its caller accepts replies up to 512. Both are 512 now.
+- **The 2.9.4 sizes are confirmed adequate.** `/provision` needs 385 B against
+  512 and `/status` 474 B against 640 at the same worst case. The comments that
+  justified those numbers cited hand arithmetic that was wrong in both
+  directions; they cite the measurement now.
+- **ArduinoJson is pinned to 6.x** in CI and in `firmware/README.md`. Under v7
+  `StaticJsonDocument` ignores its size parameter and allocates on the heap, so
+  a v7 build hides exactly the mistakes a v6 build ships — and an unpinned
+  `lib install` let the calendar decide which one the published firmware got.
+
 ### Firmware 2.9.4
 
 - **`POST /provision` persists the threshold watch.** It parsed four fields and

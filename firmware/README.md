@@ -32,13 +32,18 @@ Install the Arduino ESP32 core and the sketch's libraries. With `arduino-cli`:
 ```bash
 arduino-cli core update-index
 arduino-cli core install esp32:esp32
-arduino-cli lib install WiFiManager ArduinoJson OneWire DallasTemperature
+arduino-cli lib install WiFiManager ArduinoJson@6.21.6 OneWire DallasTemperature
 ```
 
 Libraries used by the sketch:
 
 - **WiFiManager** (by tzapu) — captive-portal Wi-Fi setup
-- **ArduinoJson** (v6 or v7) — ingest + API JSON
+- **ArduinoJson** — ingest + API JSON. **Pinned to 6.x**, and the pin matters:
+  the sketch's `StaticJsonDocument<N>` buffers are sized against v6's FIXED
+  pool, where overflow is silent in both directions (a parse returns
+  NoMemory, a build just omits members). v7 ignores `N` and allocates
+  dynamically, so a v7 build hides sizing mistakes that a v6 build ships.
+  `tests/test_firmware_json_capacity.py` holds the measured requirements.
 - **OneWire** + **DallasTemperature** — DS18B20
 - **ESPmDNS**, **LittleFS**, **Preferences** (NVS) — bundled with the ESP32 core
 - Core headers: `WiFi`, `HTTPClient`, `WebServer`, `time.h`, `esp_sntp.h`, `esp_sleep`, `esp_random`

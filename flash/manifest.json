@@ -1,6 +1,6 @@
 {
   "name": "Setpoint",
-  "version": "2.9.4",
+  "version": "2.9.5",
   "new_install_prompt_erase": true,
   "builds": [
     {

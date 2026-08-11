@@ -1,4 +1,21 @@
 // ESP32 + DS18B20 + WiFiManager + mDNS + OTA + WebServer
+// v2.9.5 — JSON buffer sizing, MEASURED this time rather than reasoned about.
+//           Compiling the real documents against ArduinoJson 6.21.6 showed
+//           /whoami needed 349 B against its declared 320 with the 128-char
+//           server_url the captive portal accepts — so it was silently DROPPING
+//           members, and /whoami is what the QC checklist has the factory read
+//           fw_version from before a unit ships. Raised to 512.
+//           applyHubConfig parsed into 320 B while its caller admits replies up
+//           to 512; today's five-field config needs 184 B, but an eight-field
+//           one would need 327 and be rejected as NoMemory, silently, since the
+//           caller discards the bool. Raised to 512.
+//           The 2.9.4 sizes for /provision (512) and /status (640) are
+//           confirmed adequate: 385 B and 474 B at the same worst case. The
+//           comments that justified them cited hand arithmetic that was wrong
+//           in both directions, and now cite the measurement.
+//           ArduinoJson is pinned to 6.x in CI and in firmware/README: under v7
+//           StaticJsonDocument ignores its size parameter, so a v7 build hides
+//           exactly the mistakes a v6 build ships.
 // v2.9.4 — four fixes, all of them silent.
 //           POST /provision parsed four fields and DROPPED the three
 //           threshold-watch ones PROTOCOL.md §4.1 requires it to persist, so
@@ -218,7 +235,7 @@ inline void ledBlink(uint8_t n, uint16_t onMs = 60, uint16_t offMs = 120) {
 
 // ---------------- Identity --------------------------------------------------
 static const char* SENSOR_NAME = "Setpoint";
-static const char* FW_VERSION  = "2.9.4";
+static const char* FW_VERSION  = "2.9.5";
 
 // The setup SoftAP is intentionally OPEN (no password): it only exists during
 // first-time Wi-Fi setup and is torn down once the probe joins the home network,
@@ -798,7 +815,15 @@ void bufferAppend(const String& ts, float tC, float tF) {
 // the deep-sleep mode with the same expression setup() uses so a probe switched
 // across the DEEP_SLEEP_MIN_MS boundary starts sleeping without a power cycle.
 bool applyHubConfig(const String& payload) {
-  StaticJsonDocument<320> doc;
+  // 512, to agree with the caller's own guard. postReading only calls this for
+  // a reply under 512 bytes, but the pool was sized at 320 -- and a pool needs
+  // MORE than the body it parses, not less (a slot per member plus a copy of
+  // every key and string value). Measured against ArduinoJson 6.21.6: today's
+  // five-field config reply needs 184 B, but the eight-field one a hub would
+  // send if desired_probe_config ever carried server_url/token needs 327 B and
+  // would have been rejected here as NoMemory -- silently, since the caller
+  // discards the bool. See tests/test_firmware_json_capacity.py.
+  StaticJsonDocument<512> doc;
   if (deserializeJson(doc, payload)) return false;
   JsonVariantConst c = doc["config"];
   if (c.isNull()) return false;          // older hub — nothing to apply
@@ -1195,7 +1220,15 @@ void handleRoot() {
 }
 
 void handleWhoAmI() {
-  StaticJsonDocument<320> doc;
+  // 512. Measured against ArduinoJson 6.21.6: nine members need 256 B with a
+  // typical hub URL and 349 B with the 128-character one the captive portal
+  // accepts (P_SERVER_LEN) -- so at 320 this silently DROPPED members on a
+  // long-URL deployment. v6 does not error on overflow, it just omits, and the
+  // field most likely to go is whichever is added last. This is the endpoint
+  // docs/QC_CHECKLIST.md has the factory read `fw_version` from before a unit
+  // ships, so a silently missing key there fails a good unit or passes a bad
+  // one. See tests/test_firmware_json_capacity.py.
+  StaticJsonDocument<512> doc;
   doc["id"]          = g_probeId;
   doc["name"]        = g_instanceName;
   doc["mac"]         = g_chipId;
@@ -1209,12 +1242,13 @@ void handleWhoAmI() {
 }
 
 void handleStatus() {
-  // 640: 19 members cost ~304 B of slots on ESP32, plus the copied id (16),
-  // last_ts (25) and server_url (up to the field's own 128-char limit). At 384
-  // this fitted only a server_url of 38 characters or fewer -- past that
-  // ArduinoJson v6 silently OMITS members rather than erroring, so /status
-  // quietly stopped reporting the watch fields on exactly the deployments with
-  // a longer hub URL.
+  // 640. Measured against ArduinoJson 6.21.6, not estimated: the 19 members
+  // that can be set at once need 381 B with a typical hub URL and 474 B with
+  // the 128-character one the captive portal accepts. At 384 that means a
+  // TYPICAL deployment was already within three bytes of the cap and a
+  // long-URL one was well over it -- and v6 does not error on overflow, it
+  // silently OMITS members, so /status just stopped reporting whichever field
+  // did not fit. See tests/test_firmware_json_capacity.py.
   StaticJsonDocument<640> doc;
   doc["id"]          = g_probeId;
   doc["interval_ms"] = cfg_interval;
@@ -1263,10 +1297,12 @@ void handleProvision() {
   // 512, not 256. Under ArduinoJson v6 (the .ino header and firmware/README
   // both say v6 or v7, so v6 has to fit) a StaticJsonDocument is a hard pool
   // cap, and deserializeJson parses the WHOLE body regardless of which keys are
-  // read afterwards. The documented 7-field body costs ~112 B of slots + ~79 B
-  // of copied keys + the server_url (~36) + the hub's 32-char token (33) = ~260
-  // -- already over. Over the line, deserializeJson returns NoMemory, the
-  // handler answers 400 "bad json", and the probe is never provisioned at all.
+  // read afterwards. Measured against 6.21.6: the documented 7-field body needs
+  // 260 B with a typical hub URL and the 32-character token app.py generates --
+  // four bytes over the old 256 -- and 385 B at the portal's maximum URL and
+  // token. Over the cap deserializeJson returns NoMemory, the handler answers
+  // 400 "bad json", and the probe is never provisioned at all.
+  // See tests/test_firmware_json_capacity.py.
   StaticJsonDocument<512> doc;
   DeserializationError err = deserializeJson(doc, http.arg("plain"));
   if (err) {
