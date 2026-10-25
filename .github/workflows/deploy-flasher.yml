@@ -47,9 +47,21 @@ jobs:
 
       - name: Install ESP32 core + libraries
         run: |
-          arduino-cli core update-index
-          arduino-cli core install esp32:esp32
-          arduino-cli lib install \
+          # downloads.arduino.cc drops connections now and then (run #19 died on
+          # "http2: server sent GOAWAY" mid-download), and one dropped transfer
+          # left the public flasher a firmware version behind the repo. Retry
+          # with backoff rather than failing the whole deploy on it.
+          retry() {
+            for delay in 0 10 30 60; do
+              sleep "$delay"
+              "$@" && return 0
+              echo "::warning::attempt failed: $*"
+            done
+            return 1
+          }
+          retry arduino-cli core update-index
+          retry arduino-cli core install esp32:esp32
+          retry arduino-cli lib install \
             "WiFiManager" "ArduinoJson@6.21.6" "OneWire" "DallasTemperature"
 
       - name: Install esptool

@@ -13,7 +13,7 @@ offline buffer, NTP time). The former PlatformIO project (`platformio.ini` +
 
 - **MCU:** ESP32-C3 SuperMini (WROOM-32/-32E works as a fallback build target)
 - **Toolchain:** Arduino (Arduino IDE or `arduino-cli`) — **not** PlatformIO
-- **Firmware version:** 2.7.0 · **Protocol:** 1
+- **Firmware version:** 2.9.5 · **Protocol:** 1
 - **Sensor:** DS18B20 (1-Wire) — the **only** sensor in the current firmware
 - **Power:** rechargeable-lithium battery; deep-sleeps between readings for long
   battery life

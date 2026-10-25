@@ -26,7 +26,7 @@ build and why. Pin assignments referenced here come from `firmware/src/protocol.
 > and GPIO8 is kept boot-safe (a strapping pin held high at reset). DS18B20 stays on
 > **GPIO5 + 4.7 kΩ pull-up**. Build/flash with FQBN `esp32:esp32:esp32c3`.
 
-- **Firmware target:** ESP32-C3 (rev-1 SuperMini or rev-2 `ESP32-C3-WROOM-02`), firmware **v2.8.2**, protocol v1 (FQBN `esp32:esp32:esp32c3`).
+- **Firmware target:** ESP32-C3 (rev-1 SuperMini or rev-2 `ESP32-C3-WROOM-02`), firmware **v2.9.5**, protocol v1 (FQBN `esp32:esp32:esp32c3`).
 - **Sensor:** DS18B20 (waterproof probe) on **GPIO5** with a 4.7 kΩ pull-up to
   3V3. This is the **only** sensor the current firmware supports.
 - **Status LED:** GPIO8 (the C3 SuperMini's on-board LED, **active-low**), so no external LED is
@@ -73,7 +73,7 @@ drops this to **~$13–15/unit**.
 ### Future / experimental sensor variants (NOT in current firmware)
 
 The MAX31855 K-type thermocouple and SHT4x temp+humidity options that earlier
-docs described are **not implemented in firmware v2.8.2** — there is no build
+docs described are **not implemented in firmware v2.9.5** — there is no build
 flag or code path for them in `esp32_temp_probe.ino`. Building either variant
 would require new firmware first. They are recorded here only as future R&D
 reference (parts, not costed into shipping units):

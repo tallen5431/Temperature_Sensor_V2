@@ -241,7 +241,7 @@ These appear across the go-to-market docs and the site — change them together 
 
 - **DIY kit price** — currently **$39**.
 - **Battery life** — do **not** claim "weeks." `site/field-test.html` states run-to-empty "was not exercised and remains pending," so say the hardware (USB-C, 18650, hard power switch) and leave runtime unstated until measured.
-- **Firmware version** — currently **2.8.2** (hub **2.6.2**).
+- **Firmware version** — currently **2.9.5** (hub **2.8.0**).
 - **Accuracy claim** — ±0.5 °C typical from −10 to +85 °C, ±2 °C outside that band, uncalibrated. Post the whole band, never just the ±0.5 half. Only a unit that passed the ice-bath
   check in [`QC_CHECKLIST.md`](QC_CHECKLIST.md) §5.3 may be described as "verified at 0 °C to
   within ±0.5 °C."

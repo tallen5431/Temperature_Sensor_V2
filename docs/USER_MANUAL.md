@@ -184,7 +184,7 @@ You can also be told when a probe **stops reporting**, using the switch under *W
 ## 11. Humidity & VPD (not yet available)
 
 > **No shipping Setpoint measures humidity today.** The grow variant described here is a
-> **planned** product, not one you can buy or build: firmware v2.8.2 has no SHT4x support and no
+> **planned** product, not one you can buy or build: firmware v2.9.5 has no SHT4x support and no
 > shipping unit is populated with the sensor (see [`BOM.md`](BOM.md)). The *hub* side is already
 > built and waiting — storage, dashboard readouts, VPD maths, CSV export, API and MQTT all handle
 > humidity the moment a probe reports it — which is why this section exists. Read it as a

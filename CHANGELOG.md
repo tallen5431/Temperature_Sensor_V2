@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.8.0] - 2026-10-25
+
+### Versioning
+
+- **Hub 2.8.0 cuts the review fixes below as a release.** They had shipped under
+  2.7.2 for 39 hub commits, so a dashboard footer could not tell a pre-review hub
+  from a post-review one. Docs that state the current version as a fact
+  (`firmware/README.md` said 2.7.0; the BOM, user manual and factory label
+  mock-up 2.8.2; the go-to-market sync list hub 2.6.2) now name 2.9.5 / 2.8.0,
+  and `tests/test_version_sync.py` checks them against the sketch and
+  `core/version.py`. `deploy-flasher.yml` retries the Arduino downloads, whose
+  one dropped transfer left the public flasher serving 2.9.4.
+
 ### Fixed
 
 - **A codebase-wide bug review.** Every subsystem was read against its own

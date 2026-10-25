@@ -225,3 +225,39 @@ def test_the_badges_and_docs_name_the_version_the_code_reports():
     developing = (REPO / "docs" / "DEVELOPING.md").read_text(encoding="utf-8")
     assert f"version **{HUB_VERSION}**" in developing, (
         "docs/DEVELOPING.md names a hub version core/version.py does not")
+
+
+def test_the_docs_that_state_the_current_version_name_the_current_version():
+    """Every doc that tells a reader "the firmware/hub is X" as a present-tense
+    fact, against the sketch and core/version.py.
+
+    The badges were enforced and these were not, so they rotted the same way:
+    firmware/README.md said 2.7.0, the BOM and user manual 2.8.2, the label
+    mock-up a factory prints from 2.8.2, and the go-to-market "keep in sync"
+    list -- the one place that exists to stop this -- named hub 2.6.2. Historical
+    mentions ("added in fw 2.8.0", the field-test reports, CHANGELOG) are
+    deliberately not checked; they are true about the version they name.
+    """
+    from core.version import HUB_VERSION
+    fw = firmware_version()
+
+    def doc(rel):
+        return (REPO / rel).read_text(encoding="utf-8")
+
+    checks = [
+        ("firmware/README.md", r"\*\*Firmware version:\*\*\s*([\d.]+)", fw),
+        ("docs/BOM.md", r"\*\*Firmware target:\*\*.*?firmware \*\*v([\d.]+)\*\*", fw),
+        ("docs/USER_MANUAL.md", r"firmware v([\d.]+) has no SHT4x support", fw),
+        ("docs/COMMUNITY_POSTS_SETPOINT.md",
+         r"\*\*Firmware version\*\* — currently \*\*([\d.]+)\*\*", fw),
+        ("docs/COMMUNITY_POSTS_SETPOINT.md", r"\(hub \*\*([\d.]+)\*\*\)", HUB_VERSION),
+        ("docs/DEVELOPING.md", r'"version":\s*"([\d.]+)"', HUB_VERSION),
+    ]
+    for rel, pattern, want in checks:
+        m = re.search(pattern, doc(rel), re.S)
+        assert m, f"{rel}: the version statement moved — update this test"
+        assert m.group(1) == want, f"{rel} says {m.group(1)}, the code says {want}"
+
+    labels = re.findall(r"fw ([\d.]+) / proto", doc("docs/LABEL_TEMPLATE.md"))
+    assert labels and set(labels) == {fw}, (
+        f"docs/LABEL_TEMPLATE.md label mock-ups print fw {labels}; units ship {fw}")
