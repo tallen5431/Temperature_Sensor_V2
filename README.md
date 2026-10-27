@@ -118,7 +118,7 @@ runs server-side, so alerts fire even with no browser open.
 | Channel | What you need |
 |---|---|
 | **Email** | Your address and its password. The hub infers the SMTP host, port and encryption from the address's domain (~30 providers, plus an `smtp.<domain>:587` fallback it labels as a guess), and defaults the From/To addresses to the same account — override any of it under **Server settings**. Port 465 uses SSL; 587 uses STARTTLS. Gmail/Yahoo/iCloud/Fastmail need a provider **app password**, and the form says so as soon as it recognises the domain. |
-| **Webhook** | A URL. The hub POSTs JSON with a Slack-compatible `text` field, so Slack/Discord/Teams/Zapier/IFTTT and custom relays (e.g. Twilio for SMS) all work — and names the service back to you once it recognises the URL. |
+| **Webhook** | A URL. The hub POSTs JSON with a Slack-compatible `text` field for Slack/Teams/Google Chat/Zapier/IFTTT and custom relays (e.g. Twilio for SMS), and sends **ntfy**, **Pushover** and **Discord** the formats those services require — ntfy and Pushover make it a phone notification, urgent alerts at high priority. It names the service back to you once it recognises the URL. |
 
 Under **Advanced settings** in the same card you also control a **reminder interval**
 (how often to re-notify while a probe stays out of range), an **alert deadband /
@@ -141,6 +141,14 @@ brief blip doesn't clear the outage. When it finally recovers, the single
 back-online message notes if the link was unstable and how many times it dropped.
 Leave the field **blank for auto** (it matches each probe's offline window),
 set minutes to pin it, or **0 to switch damping off** (`notifications.flap_grace_sec`).
+
+**If the hub itself stops (Settings → Reliability & access):** every alert comes from
+the hub, so a crashed, sleeping or unpowered hub PC can't report itself. Give it a
+check-in URL from healthchecks.io or an Uptime Kuma push monitor and it checks in every
+few minutes while it is working (`heartbeat` in config; off by default, nothing is sent
+until you add a URL). The same section keeps Windows/macOS from idling to sleep
+(`keep_awake`, on by default) and switches the dashboard login on or off without a restart.
+Phone alerts and remote viewing: [`docs/USER_MANUAL.md`](docs/USER_MANUAL.md) §11–13.
 
 **Calibration:** if a probe reads slightly high or low, enter a **Calibration Offset (°C)**
 in its Edit dialog — it's added to every reading at ingest, so stored data and alerts

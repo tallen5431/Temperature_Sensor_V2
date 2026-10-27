@@ -34,8 +34,15 @@ default. The threat model below assumes an attacker who is **another device/user
   its integrity is verifiable at `GET /api/audit/verify`.
 - **Optional dashboard login** (`ui_auth`) adds HTTP Basic auth to the dashboard and **every**
   `/download/*` route — the CSV/Excel exports *and* `/download/backup.db`, which is a full SQLite
-  snapshot of every reading — for shared office/lab LANs (config, or `UI_USERNAME`/`UI_PASSWORD`),
-  off by default. Only the operational endpoints below are exempt.
+  snapshot of every reading — for shared office/lab LANs, off by default. Switch it on under
+  **Settings → Reliability & access** (takes effect immediately, no restart), in `config.json`, or
+  with `UI_USERNAME`/`UI_PASSWORD`, which override both. Only the operational endpoints below are
+  exempt.
+- **Login throttling:** ten wrong passwords from one client inside 15 minutes lock that client out
+  of the dashboard for 15 minutes (HTTP 429, `Retry-After`), even with the right password. A request
+  with no credentials (a browser asking for the prompt) is not counted. Keyed by client address, so
+  behind a tunnel or reverse proxy every visitor shares one lockout — put an authenticating proxy
+  in front instead of exposing the hub directly (`docs/MULTI_SITE.md`).
 
 ## Operational endpoints (unauthenticated by design)
 
@@ -51,7 +58,11 @@ and medium severity, but a maker shipping to customers should plan to address th
 
 1. **Dashboard is open on the LAN by default.** The read-only dashboard (and the operational
    endpoints above) are reachable by any device on the network unless `ui_auth` is enabled. On a
-   shared/office LAN, **turn on `ui_auth`** (config or `UI_USERNAME`/`UI_PASSWORD`). Recipient emails
+   shared/office LAN, **turn on `ui_auth`** (Settings → Reliability & access, which flags "No login"
+   on its header until you do). The login is HTTP Basic over plain HTTP, so it keeps out casual
+   access on a LAN but is not protection against someone sniffing that LAN, and the hub must not be
+   port-forwarded to the internet — use Tailscale or Cloudflare Access for remote viewing
+   (`docs/USER_MANUAL.md` §13). Recipient emails
    and the SMTP host/user entered in Settings are visible to anyone who can open the dashboard —
    gate it with `ui_auth`.
 

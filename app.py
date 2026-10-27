@@ -15,6 +15,7 @@ from core.logging_setup import configure_logging
 from core.mdns_advert import MdnsAdvert
 from core.metrics import LATEST, render_prometheus
 from core.probes import discovered_probe_ids
+from core.login_throttle import LoginThrottle
 from core.secret_compare import constant_time_eq
 from core.status import reporting_probe_ids, hub_health_window
 from core.applog import HEALTH
@@ -161,7 +162,14 @@ def _resolve_ui_auth():
     return enabled, user, pw
 
 
+# The state at startup, for callers that only want to know whether a login was
+# configured when the hub came up. The gate itself re-resolves per request, so
+# turning the login on or off in Settings takes effect without a restart.
 UI_AUTH_ENABLED, UI_AUTH_USER, UI_AUTH_PW = _resolve_ui_auth()
+
+
+# One per process: the lockout has to outlive the request that triggered it.
+LOGIN_THROTTLE = LoginThrottle()
 
 
 # Paths that stay open when ui_auth is on. SECURITY.md ratifies exactly this
@@ -199,7 +207,8 @@ def _ui_auth_gate():
     Nothing changes on a default install, where ui_auth is off and the whole
     dashboard is open on the LAN anyway.
     """
-    if not UI_AUTH_ENABLED:
+    enabled, user, pw = _resolve_ui_auth()
+    if not enabled:
         return None
     p = request.path or "/"
     # EXACT paths, deliberately. Normalising a trailing slash here looks like a
@@ -213,15 +222,23 @@ def _ui_auth_gate():
     if p in UI_AUTH_OPEN_PATHS or p in UI_AUTH_TOKEN_PATHS \
             or p.startswith("/assets/"):
         return None
+    client = request.remote_addr or "?"
+    wait = LOGIN_THROTTLE.retry_after(client)
+    if wait:
+        return Response("Too many wrong passwords — try again later.", 429,
+                        {"Retry-After": str(wait)})
     auth = request.authorization
     # constant_time_eq, not hmac.compare_digest directly: compare_digest rejects
     # non-ASCII str operands with TypeError, and BOTH sides here can be non-ASCII
     # — the configured password (an accented character would 500 every request
     # and lock the operator out for good) and the client-supplied one (any
     # unauthenticated caller could turn its own 401 into a 500).
-    if auth and constant_time_eq(auth.username, UI_AUTH_USER) \
-            and constant_time_eq(auth.password, UI_AUTH_PW):
+    if auth and constant_time_eq(auth.username, user) \
+            and constant_time_eq(auth.password, pw):
+        LOGIN_THROTTLE.success(client)
         return None
+    if auth is not None:
+        LOGIN_THROTTLE.failure(client)
     return Response("Authentication required", 401,
                     {"WWW-Authenticate": f'Basic realm="{PRODUCT_NAME}"'})
 
@@ -494,6 +511,8 @@ def _start_background_services(port: int):
     # keeps drawing and every counter keeps looking fine — and no alarm is ever
     # raised again. Nothing else in the hub can notice that, so health has to.
     HEALTH.register_worker("alert_monitor", monitor, required=True)
+    import core.heartbeat
+    core.heartbeat.CURRENT = monitor.heartbeat
 
     # Optional multi-site roll-up — off unless the `upstream` config block
     # enables it. A store hub pushes a copy of its readings to an aggregating
@@ -522,10 +541,18 @@ def _start_background_services(port: int):
     except Exception as e:
         log.warning("MQTT start failed: %s", e)
 
+    # Keep the PC from idling into sleep (Windows/macOS) — a sleeping hub raises
+    # no alarms at all. Reads `keep_awake` live, so Settings can turn it off.
+    from core.keepawake import KeepAwake
+    keep_awake = KeepAwake(cfg)
+    keep_awake.start()
+    HEALTH.register_worker("keep_awake", keep_awake)
+
     AUDIT.record("hub.start", detail=f"v{HUB_VERSION} port={port}")
 
     def _cleanup():
         monitor.stop()
+        keep_awake.stop()
         try:
             MQTT.stop()
         except Exception:

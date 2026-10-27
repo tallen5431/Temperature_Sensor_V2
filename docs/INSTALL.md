@@ -16,7 +16,8 @@ browser automatically at <http://localhost:8088>.
 1. Download **`Setpoint-Setup-<version>.exe`**.
 2. Double-click it and follow the installer. It installs just for you (no admin
    password needed) and offers to add a desktop shortcut and to start
-   automatically when you sign in.
+   automatically when you sign in. **Leave that second box ticked** — a hub
+   that isn't running after a restart can't alert you.
 3. Launch **Setpoint** from the Start menu (or the desktop). The dashboard
    opens in your browser.
 
@@ -63,6 +64,14 @@ To run it automatically on boot, install it as a **systemd service** — see
   another computer, use the hub computer's IP address, e.g. `http://192.168.1.50:8088`.
 - Add a probe: power it on, and follow **Help → Get a probe online** in the app.
 - No hardware yet? Click **Load demo data** on the dashboard to explore first.
+- **Before you rely on it**, open **Settings → Reliability & access**: turn on the
+  outside check-in (so you hear if this PC stops), and a login if anyone else uses
+  this network. Setpoint already keeps Windows and macOS from idling to sleep
+  while it runs. On a **Linux desktop** that suspends, run
+  `sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target`.
+  Details: [User manual §12](USER_MANUAL.md#12-make-it-safe-to-walk-away).
+- **Alerts on your phone, and viewing the dashboard away from home:**
+  [User manual §11 and §13](USER_MANUAL.md#11-get-alerts-on-your-phone).
 
 ## Updating
 

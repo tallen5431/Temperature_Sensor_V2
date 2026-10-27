@@ -84,7 +84,7 @@ That's it — the hub found the probe and set it up for you automatically. Readi
 - **Export to a spreadsheet:** click **Export…** on the dashboard, pick a probe and (optionally) a date range, then choose a **format** and download:
     - **Excel-friendly CSV** (recommended) — opens straight into Excel or Google Sheets ready to work with: the **date** and **time** are in their own columns so you can sort and filter them like normal dates, each probe shows the **friendly name** you gave it, and the clutter columns are left out. This is the easiest choice for most people.
     - **Excel workbook (`.xlsx`)** — a real Excel file: double-click and the dates, times and temperatures are already the right types, with a frozen header row and filter buttons. (For very large date ranges, use a CSV instead — a single Excel sheet can't hold more than about a million rows.)
-    - **Raw CSV** — the complete, unabbreviated file (full ISO timestamps and every column; the humidity/VPD columns are present but stay empty until a humidity-capable probe exists — see Section 11). Best if you feed the data into another program or re-import it later.
+    - **Raw CSV** — the complete, unabbreviated file (full ISO timestamps and every column; the humidity/VPD columns are present but stay empty until a humidity-capable probe exists — see Section 14). Best if you feed the data into another program or re-import it later.
   <br>Each row is one reading with the temperature in °C and °F and which probe it came from; every format also includes an exact **UTC** timestamp so the data stays correct across computers and daylight-saving changes.
 - **Home Assistant (MQTT):** if you use Home Assistant, open **Settings → Integrations**, switch on **Publish to MQTT**, enter your broker's address, and click **Save**. Each probe then appears in Home Assistant automatically (auto-discovery) — it's all done from the Settings page, with no configuration files to edit.
 - **Put it on your phone:** open the dashboard in your phone's browser — use the Setpoint PC's network address instead of `localhost`, for example `http://192.168.1.50:8088` — then choose your browser's **Add to Home Screen** option. The dashboard installs like an app and opens full-screen from its own icon.
@@ -154,7 +154,7 @@ The Settings page is a list of sections, each showing what it is currently set t
 2. Turn on **Enable alerts**.
 3. Switch on **Email** and/or **Webhook**, and fill in the boxes that appear:
    - **Email:** type your **email address** and its **password** — that's all. The hub recognises the address and fills in the mail server, port and encryption for you, and sends the alerts to that same address unless you enter someone else in **Send alerts to**. If you've saved a password here before, leaving the password box blank keeps the saved one.
-   - **Webhook:** paste a URL from Slack, Discord, Teams, Zapier or a similar service. The hub names the service back to you so you know it recognised it.
+   - **Webhook:** paste a URL from ntfy, Pushover, Slack, Discord, Teams, Zapier or a similar service. The hub names the service back to you so you know it recognised it. To get alerts as **phone notifications**, see Section 11.
 4. Click **Save**, then click **Send test**. A test message goes to every channel you switched on, so you know it works before you rely on it.
 
 > **If your provider needs an "app password".** Gmail, Yahoo, iCloud, Fastmail and
@@ -181,7 +181,97 @@ You can also be told when a probe **stops reporting**, using the switch under *W
 
 ---
 
-## 11. Humidity & VPD (not yet available)
+## 11. Get alerts on your phone
+
+Alerts reach your phone without opening anything to the internet — the hub sends
+them out; nothing needs to reach in. The easiest way is **ntfy**, which is free:
+
+1. Install the **ntfy** app (iPhone App Store or Google Play).
+2. In the app, tap **+** and subscribe to a topic. Make the name long and hard to
+   guess, like `setpoint-smiths-kitchen-7f3k9` — on the public ntfy.sh server,
+   anyone who knows a topic name can read it.
+3. In Setpoint, open **Settings → Alerts & notifications**, turn on **Webhook**,
+   and paste `https://ntfy.sh/` followed by your topic name, for example
+   `https://ntfy.sh/setpoint-smiths-kitchen-7f3k9`.
+4. Click **Save**, then **Send test**. Your phone should buzz within seconds.
+
+Out-of-range and offline alerts arrive at high priority; "back to normal"
+messages arrive quietly. Already run your own ntfy server? Use its address
+instead of `ntfy.sh`.
+
+**Pushover** works too: paste
+`https://api.pushover.net/1/messages.json?token=YOUR_APP_TOKEN&user=YOUR_USER_KEY`
+as the webhook. Email to your phone's mail app is the other option (Section 10).
+
+---
+
+## 12. Make it safe to walk away
+
+Every alert comes **from the hub PC**. Three settings make sure it keeps running,
+and that you hear about it if it doesn't. All three are under **Settings →
+Reliability & access**.
+
+**Get told if the hub itself stops.** If the PC crashes, loses power or restarts
+for Windows Update, the hub can't send an alert about that — it's the thing
+that's down. So let an outside service watch for it:
+
+1. Make a free account at **healthchecks.io** and click **Add Check**. Set the
+   period to **5 minutes** and the grace time to **10 minutes**, and choose how
+   it should reach you (email, ntfy, SMS and more).
+2. Copy the check's ping URL (it looks like `https://hc-ping.com/…`).
+3. In Setpoint, switch on **Send a check-in to an outside service**, paste the
+   URL, and click **Send a test check-in**. healthchecks.io should show the check
+   turning green. Click **Save**.
+
+From then on, the hub checks in every 5 minutes while it is working, and
+healthchecks.io tells you if those check-ins stop. It also stops checking in if
+the hub can't save readings. Keep the URL private. Run your own **Uptime Kuma**?
+A "Push" monitor's URL works the same way.
+
+**Keep the PC awake.** A sleeping PC raises no alarms. **Stop this PC from going
+to sleep while Setpoint runs** is on by default (Windows and macOS). The screen
+can still turn off. Choosing **Sleep** yourself or closing a laptop's lid still
+puts it to sleep, so on a laptop set *When I close the lid* to **Do nothing**.
+
+**Start automatically.** The Windows installer starts Setpoint when you sign in
+(the box is ticked by default). After an unattended restart, Windows waits at
+the sign-in screen and Setpoint doesn't start until someone signs in. The
+check-in above is what tells you that has happened.
+
+**Require a login.** Without one, anyone on your Wi-Fi can open the dashboard,
+change alert limits and see your email settings. Switch on **Require a login**,
+choose a username and a password of at least 8 characters, and click **Save**.
+Your browser asks for them straight away. Do this on any shared, guest or
+business network. Ten wrong passwords in a row lock that device out for 15
+minutes. Forgot the password? Remove the `"ui_auth"` section from `config.json`
+in the data folder (see [INSTALL.md](INSTALL.md)) and restart Setpoint.
+
+---
+
+## 13. See the dashboard away from home
+
+On your own Wi-Fi, the dashboard is at the hub PC's address (Section 7). Away
+from home it isn't reachable, on purpose: Setpoint has no cloud and nothing is
+open to the internet. If you want to see it from anywhere:
+
+- **Tailscale (recommended):** a free private network between your own devices.
+  Install Tailscale on the hub PC and on your phone, and sign in to both with the
+  same account. Then open `http://<hub PC name>:8088` on your phone from
+  anywhere, using the name the Tailscale app shows for the PC. Nothing is
+  exposed to the internet.
+- **For a business with IT support:** a Cloudflare Tunnel on **your own**
+  Cloudflare account, with **Cloudflare Access** (a login) in front of it.
+  Without Access, the hub's monitoring pages would be readable by anyone who
+  finds the address.
+- **Don't** forward a port on your router to the hub. The dashboard is plain
+  HTTP and isn't built to face the open internet.
+
+You don't need any of this to get **alerts** away from home. Those already
+reach your phone (Section 11).
+
+---
+
+## 14. Humidity & VPD (not yet available)
 
 > **No shipping Setpoint measures humidity today.** The grow variant described here is a
 > **planned** product, not one you can buy or build: firmware v2.9.5 has no SHT4x support and no
@@ -203,7 +293,7 @@ probes will measure **temperature and humidity**, and the hub uses both to calcu
 
 ---
 
-## 12. Troubleshooting FAQ
+## 15. Troubleshooting FAQ
 
 **The dashboard won't open at http://localhost:8088.**
 Make sure the hub program (`Start.bat` / `Start.sh`) is still running. Look for its window. If it closed, start it again.

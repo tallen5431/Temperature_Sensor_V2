@@ -9,6 +9,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **The hub can now report its own outage.** Every alarm is raised by the hub,
+  so a hub PC that crashed, lost power, slept or was restarted by Windows Update
+  went silent with nobody told — the failure that loses a freezer. An optional
+  check-in (`heartbeat`; Settings → Reliability & access) requests a
+  healthchecks.io or Uptime Kuma URL every few minutes, and that service alerts
+  when the requests stop. It is sent from the alert monitor's own loop after a
+  clean cycle and withheld while database writes fail, so a wedged monitor or a
+  full disk stops it exactly as a dead PC does. Off by default; nothing is sent
+  until a URL is entered. The URL is treated as a credential: diagnostics show
+  only its host.
+- **The PC no longer idles to sleep under the hub** (`keep_awake`, on by
+  default): Windows re-asserts `SetThreadExecutionState(ES_SYSTEM_REQUIRED)`
+  every minute, macOS holds `caffeinate -i` tied to the process. Nothing
+  lingers if the hub dies, and a person choosing Sleep still wins.
+- **Settings → Reliability & access** holds those two plus the dashboard login,
+  which previously needed a hand-edited `config.json` and a restart. The gate
+  now reads `ui_auth` per request, so it applies on save. The section header
+  reads "No login" in amber until one is set.
+- **Login throttling:** ten wrong passwords from one client in 15 minutes lock
+  it out for 15 minutes (429 with `Retry-After`). Credential-less requests — a
+  browser asking for the prompt — do not count.
+- User manual §11–13: alerts on your phone (ntfy, Pushover), making the hub safe
+  to walk away from, and viewing the dashboard away from home (Tailscale;
+  Cloudflare Access for businesses; never a port forward).
+
+### Fixed
+
+- **ntfy, Pushover and Discord webhooks did not deliver.** Settings called all
+  three "Recognised — alerts will post there as messages", but the hub sent each
+  the same Slack-style JSON: ntfy displayed it as raw JSON, and Pushover and
+  Discord rejected it (400). Each now gets the format it requires — ntfy's JSON
+  publish with a title and high priority for alarms, Pushover's form with the
+  `token`/`user` taken from the URL, Discord's `content`. PagerDuty, which needs
+  an Events API envelope this sender does not build, is no longer called
+  recognised; the note points at its email integration instead.
+
+### Changed
+
+- The Windows installer's "start when I sign in" box is ticked by default.
+
 ## [2.8.0] - 2026-10-25
 
 ### Versioning

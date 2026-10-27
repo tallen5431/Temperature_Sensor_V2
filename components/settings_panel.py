@@ -199,6 +199,35 @@ def webhook_service(url):
     return None
 
 
+def webhook_service_note(url):
+    """``(text, className)`` for the line under the webhook URL.
+
+    "Recognised" is a promise that alerts will arrive, so it is only made for a
+    service the sender actually formats for (see core.notifications'
+    _webhook_request). PagerDuty's Events API wants a routing key and an event
+    envelope this sender does not build, and a Pushover URL is useless without
+    its two keys -- both say what is missing instead of looking finished.
+    """
+    name = webhook_service(url)
+    if not name:
+        return "", "d-block mt-1"
+    if name == "PagerDuty":
+        return ("PagerDuty's Events API needs a payload this webhook does not send — "
+                "use PagerDuty's email integration address in the Email channel "
+                "instead."), "d-block mt-1 text-warning"
+    if name == "Pushover":
+        from urllib.parse import parse_qs, urlsplit
+        q = parse_qs(urlsplit(str(url).strip()).query)
+        if not (q.get("token") and q.get("user")):
+            return ("Recognised Pushover — add ?token=<app token>&user=<user key> to "
+                    "the end of the URL."), "d-block mt-1 text-warning"
+    if name == "ntfy":
+        return ("Recognised ntfy — alerts arrive as phone notifications on that topic "
+                "(urgent ones at high priority)."), "d-block mt-1 text-info"
+    return f"Recognised {name} — alerts will post there as messages.", \
+        "d-block mt-1 text-info"
+
+
 def default_site_name():
     """This machine's hostname, slugged — the obvious default for a site label.
 
@@ -291,8 +320,72 @@ def settings_badges(cfg):
     else:
         multisite = (f"Sending as “{u.get('site') or '?'}”", "success")
 
-    return {"alerts": alerts, "probes": probes, "data": data,
-            "integrations": integrations, "multisite": multisite}
+    reliability = reliability_badge(cfg)
+
+    return {"alerts": alerts, "probes": probes, "reliability": reliability,
+            "data": data, "integrations": integrations, "multisite": multisite}
+
+
+def ui_auth_from_env() -> bool:
+    """True when UI_USERNAME/UI_PASSWORD are set, which override the config."""
+    import os
+    return bool(os.getenv("UI_USERNAME"))
+
+
+def reliability_badge(cfg):
+    """``(label, colour)`` for the Reliability & access header.
+
+    No login is the warning: it is the one item here that is a risk on the very
+    networks this product is sold into (a restaurant's shared Wi-Fi), and a grey
+    badge would read as a settled default. A missing heartbeat is information,
+    not a warning — a homelab already watching the box another way is fine.
+    """
+    from core.heartbeat import heartbeat_settings
+    ua = cfg.get("ui_auth", {}) or {}
+    login = ui_auth_from_env() or bool(
+        ua.get("enabled") and str(ua.get("username") or "").strip() and ua.get("password"))
+    beat = bool(heartbeat_settings(cfg)[0])
+    parts = [p for p, on in (("Login on", login), ("Heartbeat", beat)) if on]
+    if not login:
+        return ("No login" + (" · Heartbeat" if beat else ""), "warning")
+    return (" · ".join(parts), "success" if beat else "info")
+
+
+def build_reliability_config(hb_enabled, hb_url, hb_interval_min, keep_awake,
+                             ua_enabled, ua_user, ua_pass, existing=None):
+    """``(updates, error)`` from the Reliability & access form.
+
+    Pure, so the rules can be tested without a form. ``error`` is a sentence for
+    the operator and ``updates`` is None whenever it is set — nothing is saved
+    from a form that would leave the hub in a state the operator did not ask for
+    (a heartbeat that cannot send, or a login with no password, which
+    ``_resolve_ui_auth`` would silently treat as OFF).
+    """
+    from core.heartbeat import DEFAULT_INTERVAL_SEC, MIN_INTERVAL_SEC, valid_heartbeat_url
+    existing = existing or {}
+    url = (hb_url or "").strip()
+    if hb_enabled and not valid_heartbeat_url(url):
+        return None, "Enter the check-in URL (it starts with https://) or turn the check-in off."
+    try:
+        interval = max(MIN_INTERVAL_SEC, int(float(hb_interval_min)) * 60)
+    except (TypeError, ValueError):
+        interval = DEFAULT_INTERVAL_SEC
+
+    old = existing.get("ui_auth", {}) or {}
+    user = (ua_user or "").strip()
+    password = ua_pass or ""
+    if password and len(password) < 8:
+        return None, "Use a password of at least 8 characters."
+    kept = password or str(old.get("password") or "")
+    if ua_enabled and not user:
+        return None, "Enter a username for the login."
+    if ua_enabled and not kept:
+        return None, "Enter a password for the login."
+    return {
+        "heartbeat": {"enabled": bool(hb_enabled), "url": url, "interval_sec": interval},
+        "keep_awake": bool(keep_awake),
+        "ui_auth": {"enabled": bool(ua_enabled), "username": user, "password": kept},
+    }, None
 
 
 # --- Alerts ------------------------------------------------------------------
@@ -495,6 +588,69 @@ _DATA_BODY = [
 ]
 
 
+# --- Reliability & access ---------------------------------------------------
+# The three things between "installed" and "safe to walk away from": somebody
+# outside the hub notices if it stops, the PC does not sleep it, and the
+# dashboard is not open to everyone on a shared network.
+_RELIABILITY_BODY = [
+    _section_title("Tell me if the hub itself stops"),
+    html.P("Every alert comes from this hub — so if the PC crashes, loses power or "
+           "is restarted by Windows Update, nothing can tell you. Give it a "
+           "check-in address from a free service like healthchecks.io (or your own "
+           "Uptime Kuma) and that service will alert you when the check-ins stop.",
+           className="text-muted small"),
+    dbc.Switch(id="heartbeat-enabled", label="Send a check-in to an outside service",
+               value=False),
+    dbc.Row([
+        dbc.Col([
+            html.Small("Check-in URL", className="text-muted d-block"),
+            dbc.Input(id="heartbeat-url", placeholder="https://hc-ping.com/your-check-id",
+                      debounce=True),
+            html.Small("Keep it private — anyone with this address can check in "
+                       "for your hub.", className="text-muted"),
+        ], md=8),
+        dbc.Col([
+            html.Small("Every (minutes)", className="text-muted d-block"),
+            dbc.Input(id="heartbeat-interval-min", type="number", min=1, step=1, value=5),
+        ], md=4),
+    ], className="g-2 mt-1"),
+    dbc.Button("Send a test check-in", id="heartbeat-test", color="secondary",
+               outline=True, size="sm", className="mt-2"),
+    html.Div(id="heartbeat-test-status", className="mt-1 small"),
+
+    _section_title("Keep this PC awake"),
+    dbc.Switch(id="keep-awake",
+               label="Stop this PC from going to sleep while Setpoint runs", value=True),
+    html.Small("Windows and macOS. The screen can still turn off; choosing Sleep or "
+               "closing a laptop lid still works.", className="text-muted d-block"),
+
+    _section_title("Dashboard login"),
+    html.P("Without a login, anyone on this network can open the dashboard, change "
+           "alert limits, and read the email settings. Turn it on for any shared, "
+           "guest or business Wi-Fi.", className="text-muted small"),
+    html.Div(id="ui-auth-env-note"),
+    dbc.Switch(id="ui-auth-enabled", label="Require a login", value=False),
+    dbc.Row([
+        dbc.Col([html.Small("Username", className="text-muted"),
+                 dbc.Input(id="ui-auth-user", placeholder="admin")], md=6),
+        dbc.Col([html.Small("Password", className="text-muted"),
+                 dbc.Input(id="ui-auth-pass", type="password", placeholder="(unchanged)"),
+                 html.Small("At least 8 characters. Leave blank to keep the saved one.",
+                            className="text-muted")], md=6),
+    ], className="g-2 mt-1"),
+    html.Small("Your browser asks for these as soon as you save. Forgot it? Remove "
+               "the \"ui_auth\" block from config.json and restart the hub.",
+               className="text-muted d-block mt-1"),
+
+    dbc.Button("Save", id="reliability-save", color="primary", className="mt-3"),
+    html.Div(id="reliability-status", className="mt-2"),
+    # Saving a new login closes the gate on this page's own background requests,
+    # which would leave it looking frozen. A full reload instead gets the
+    # browser's sign-in prompt in front of the operator at once.
+    dcc.Location(id="reliability-reload", refresh=True),
+]
+
+
 _INTEGRATIONS_BODY = [
     html.P("Publish every reading to an MQTT broker with Home Assistant "
            "auto-discovery — each probe appears there as a sensor automatically.",
@@ -643,6 +799,9 @@ SETTINGS_SECTIONS = [
     ("setup", "Set up a new probe",
      "Find a brand-new probe's temporary Wi-Fi network and point it at yours.",
      SetupHelperBody),
+    ("reliability", "Reliability & access",
+     "Get told if the hub stops, keep the PC awake, and require a login.",
+     _RELIABILITY_BODY),
     ("data", "Data & storage",
      "How long readings are kept, and a one-click database backup.", _DATA_BODY),
     ("integrations", "Integrations",
@@ -945,6 +1104,7 @@ def register_settings_callbacks(app, cfg, public_base_func=None):
         Input("mqtt-status", "children"),
         Input("auto-provision-status", "children"),
         Input("upstream-status", "children"),
+        Input("reliability-status", "children"),
     )
     def _section_badges(*_):
         badges = settings_badges(cfg)
@@ -1119,11 +1279,7 @@ def register_settings_callbacks(app, cfg, public_base_func=None):
         Input("webhook-url", "value"),
     )
     def _webhook_note(url):
-        name = webhook_service(url)
-        if not name:
-            return "", "d-block mt-1"
-        return f"Recognised {name} — alerts will post there as messages.", \
-            "d-block mt-1 text-info"
+        return webhook_service_note(url)
 
     # --- Integrations (MQTT) --------------------------------------------------
     @app.callback(
@@ -1544,6 +1700,79 @@ def register_settings_callbacks(app, cfg, public_base_func=None):
                              color="warning", dismissable=True, className="mb-0")
         return (_ok if all_ok else _err)(
             html.Span([html.Strong("Test result: "), html.Br(), *lines]))
+
+    # --- Reliability & access ---------------------------------------------
+    @app.callback(
+        Output("heartbeat-enabled", "value"),
+        Output("heartbeat-url", "value"),
+        Output("heartbeat-interval-min", "value"),
+        Output("keep-awake", "value"),
+        Output("ui-auth-enabled", "value"),
+        Output("ui-auth-user", "value"),
+        Output("ui-auth-env-note", "children"),
+        Input("settings-loaded", "n_intervals"),
+    )
+    def _load_reliability(_n):
+        hb = cfg.get("heartbeat", {}) or {}
+        ua = cfg.get("ui_auth", {}) or {}
+        try:
+            minutes = max(1, int(hb.get("interval_sec", 300)) // 60)
+        except (TypeError, ValueError):
+            minutes = 5
+        env = (dbc.Alert("The login is set by the UI_USERNAME / UI_PASSWORD environment "
+                         "variables, which override what is saved here.",
+                         color="info", className="small py-2")
+               if ui_auth_from_env() else None)
+        return (bool(hb.get("enabled", False)), hb.get("url", "") or "", minutes,
+                bool(cfg.get("keep_awake", True)), bool(ua.get("enabled", False)),
+                ua.get("username", "") or "", env)
+
+    @app.callback(
+        Output("reliability-status", "children"),
+        Output("reliability-reload", "href"),
+        Input("reliability-save", "n_clicks"),
+        State("heartbeat-enabled", "value"),
+        State("heartbeat-url", "value"),
+        State("heartbeat-interval-min", "value"),
+        State("keep-awake", "value"),
+        State("ui-auth-enabled", "value"),
+        State("ui-auth-user", "value"),
+        State("ui-auth-pass", "value"),
+        prevent_initial_call=True,
+    )
+    def _save_reliability(_n, hb_enabled, hb_url, hb_minutes, keep_awake,
+                          ua_enabled, ua_user, ua_pass):
+        try:
+            before = cfg.get("ui_auth", {}) or {}
+            updates, error = build_reliability_config(
+                hb_enabled, hb_url, hb_minutes, keep_awake, ua_enabled, ua_user,
+                ua_pass, existing=cfg.to_dict() if hasattr(cfg, "to_dict") else {})
+            if error:
+                return _err(error), no_update
+            cfg.update(updates)
+            after = updates["ui_auth"]
+            if after["enabled"] and after != {k: before.get(k) for k in after}:
+                return _ok("✅ Saved — reloading so your browser can ask you to sign in."), \
+                    "/settings"
+            return _ok("✅ Saved."), no_update
+        except Exception as e:  # noqa: BLE001
+            return _err(f"Could not save: {e}"), no_update
+
+    @app.callback(
+        Output("heartbeat-test-status", "children"),
+        Input("heartbeat-test", "n_clicks"),
+        State("heartbeat-url", "value"),
+        prevent_initial_call=True,
+    )
+    def _test_heartbeat(_n, url):
+        from core.heartbeat import ping, valid_heartbeat_url
+        if not valid_heartbeat_url(url or ""):
+            return html.Span("Enter the check-in URL first.", className="text-warning")
+        ok, detail = ping(url.strip())
+        if ok:
+            return html.Span(f"✅ Check-in received — {detail}. Save to keep it running.",
+                             className="text-success")
+        return html.Span(f"❌ {detail}", className="text-danger")
 
     @app.callback(
         Output("data-status", "children"),

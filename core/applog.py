@@ -112,6 +112,18 @@ class HealthState:
             self.notify_dropped += 1
             self.last_notify_failure_ts = time.time()
 
+    def write_failing(self) -> bool:
+        """True while the newest database write attempt failed.
+
+        The same rule ``snapshot()`` uses for its ``healthy`` flag, without the
+        staleness half: a fleet that has simply gone quiet is the alert
+        monitor's offline alarm to raise, not evidence the hub itself is down.
+        """
+        with self._lock:
+            last = self.last_write_ts
+            return (self.last_failure_ts is not None
+                    and (last is None or self.last_failure_ts > last))
+
     def register_worker(self, name: str, thread, required: bool = False) -> None:
         """Watch a background thread.
 

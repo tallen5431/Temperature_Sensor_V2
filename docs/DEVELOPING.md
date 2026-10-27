@@ -86,6 +86,9 @@ Setpoint ──POST /api/ingest {temperature_c, probe_id, timestamp}──▶ Hu
 | `core/netaddr.py` | `token_safe_target` — may the hub send its device token here? Discovery and the auto-provisioner both ask before an address gets the credential. |
 | `core/demo.py` | Seeds/clears clearly-labelled `DEMO-` readings so a new user can explore before any probe exists. |
 | `core/metrics.py` | Prometheus `/metrics` exposition + the in-memory `LATEST` per-probe registry. |
+| `core/heartbeat.py` | Optional outbound "hub alive" check-in (`Heartbeat`) to healthchecks.io / Uptime Kuma, ticked by the alert monitor after each clean cycle. Off unless a URL is set. |
+| `core/keepawake.py` | `KeepAwake` thread — stops the hub PC idling into sleep on Windows (`SetThreadExecutionState`) and macOS (`caffeinate`). Live `keep_awake` config. |
+| `core/login_throttle.py` | `LoginThrottle` — 429 lockout after repeated wrong dashboard passwords (used by `app.py`'s `ui_auth` gate). |
 | `core/mqtt_publish.py` | Optional MQTT publishing + Home Assistant auto-discovery (`MQTT`). |
 | `core/audit.py` | Tamper-evident hash-chained audit log (`AUDIT`), verified at `/api/audit/verify`. |
 | `core/diagnostics.py` / `core/status.py` | Secret-free health snapshot for `/api/diagnostics` + the Diagnostics view. |
@@ -178,6 +181,9 @@ Config is layered: `config.json` (seeded from `config.example.json`) with `confi
 | `branding` | `{ product_name, brand_name, support_url, primary_color, copyright, logo_path }` — white-labeling. |
 | `settings` | `{ default_unit, timezone }`. |
 | `notifications` | `{ enabled, recipients[], webhook_url, debounce_sec, smtp_host, smtp_port, smtp_user, smtp_password, smtp_from, smtp_tls }`. |
+| `heartbeat` | `{ enabled, url, interval_sec }` — outbound check-in for an outside monitor; `interval_sec` ≥ 60, default 300. |
+| `keep_awake` | Stop the PC idling into sleep while the hub runs (Windows/macOS; default true). |
+| `ui_auth` | `{ enabled, username, password }` — dashboard login; read per request, so Settings changes apply without a restart. `UI_USERNAME`/`UI_PASSWORD` override it. |
 | `calibration` | `{ <probe_id>: { offset_c, gain } }` (a `default` entry applies to unlisted probes). |
 | `alert_thresholds` | `{ default: { min, max } }` (per-probe entries override the default). |
 | `probe_names` | `{ <probe_id>: <friendly name> }`. |

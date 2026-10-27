@@ -49,7 +49,11 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"
-Name: "startup"; Description: "Start {#AppName} automatically when I sign in"; GroupDescription: "Startup:"; Flags: unchecked
+; Checked by default: a monitoring hub that is not running after a reboot raises
+; no alarms, and the customer who leaves this box unticked has no way to notice.
+; It starts at SIGN-IN, so a PC that reboots unattended also needs Windows
+; automatic sign-in (docs/INSTALL.md) or the heartbeat in Settings to catch it.
+Name: "startup"; Description: "Start {#AppName} automatically when I sign in (recommended)"; GroupDescription: "Startup:"
 
 [Files]
 ; The whole PyInstaller onedir folder (exe + _internal\).

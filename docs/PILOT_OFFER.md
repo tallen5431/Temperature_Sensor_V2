@@ -12,6 +12,14 @@
 > **Install the Fixed (USB) version** for pilots (see [`VERSIONS.md`](VERSIONS.md)): a walk-in has power,
 > so drop the battery — you get always-on live readings and instant alerts with **no lithium liability**
 > and nothing to swap. The battery (Portable) version is for portable/homelab use, not fixed installs.
+>
+> **Before you leave the install** (Settings → Reliability & access, then Alerts):
+> 1. **Login on** — a restaurant's Wi-Fi is shared with staff and often guests.
+> 2. **Outside check-in on** (healthchecks.io), alerting *you* as well as the owner — if the
+>    back-office PC is switched off or restarts overnight, this is the only thing that notices.
+> 3. **Keep-awake on** (default), Windows auto-start ticked, and laptop lid set to *Do nothing*.
+> 4. **Alerts to the owner's phone** via ntfy (`USER_MANUAL.md` §11), then press **Send test** with
+>    them standing there.
 
 ---
 

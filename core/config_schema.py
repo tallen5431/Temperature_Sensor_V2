@@ -271,6 +271,19 @@ def normalize_config(raw: Any) -> Tuple[Dict[str, Any], Warnings]:
         _fix_number(upstream, "batch", 500, 1, True, warns, maximum=1000,
                     label="upstream.batch")
 
+    # --- heartbeat (outbound "hub alive" ping; see core/heartbeat.py) ---------
+    hb = _subtree(cfg, "heartbeat", warns)
+    if hb is not None:
+        _fix_bool(hb, "enabled", False, warns, label="heartbeat.enabled")
+        if "url" in hb and hb["url"] is not None and not isinstance(hb["url"], str):
+            warns.append("heartbeat.url must be a string; coercing")
+            hb["url"] = str(hb["url"])
+        _fix_number(hb, "interval_sec", 300, 60, True, warns,
+                    label="heartbeat.interval_sec")
+
+    # --- keep the hub PC awake (see core/keepawake.py) ----------------------
+    _fix_bool(cfg, "keep_awake", True, warns, label="keep_awake")
+
     mqtt = _subtree(cfg, "mqtt", warns)
     if mqtt is not None:
         _fix_bool(mqtt, "enabled", False, warns, label="mqtt.enabled")

@@ -221,7 +221,17 @@ def build_diagnostics(cfg, db, finder, public_base: str, version: str,
         # whole diagnosis. The token is deliberately absent — this blob is meant
         # to be pasted into an email.
         "upstream": _upstream_diag(cfg, now),
+        "heartbeat": _heartbeat_diag(cfg),
     }
+
+
+def _heartbeat_diag(cfg) -> Dict[str, Any]:
+    """On/off, host and last outcome — never the URL, which is the credential."""
+    try:
+        from core.heartbeat import current_status
+        return current_status(cfg)
+    except Exception:  # noqa: BLE001 - diagnostics must never raise
+        return {"enabled": False}
 
 
 def _upstream_diag(cfg, now: float) -> Dict[str, Any]:

@@ -77,15 +77,71 @@ def send_email(email_cfg: dict, subject: str, body: str) -> Tuple[bool, str]:
         return False, str(e)
 
 
+# Alert kinds a person should be interrupted for. Recoveries, tests and summaries
+# go out at normal priority so a phone does not ring for good news.
+_URGENT_KINDS = frozenset({"high", "low", "offline", "rate", "missed"})
+
+
+def _webhook_request(url: str, event: dict):
+    """``(post_url, requests.post kwargs)`` shaped for the service at ``url``.
+
+    One generic body — Slack's ``text`` plus the structured fields — suits
+    Slack, Teams, Google Chat, Zapier, IFTTT and custom relays. Three services
+    the Settings page names as recognised do NOT accept it, and fail in ways an
+    operator would not see until the night it mattered:
+
+    - **ntfy** treats a POST body to ``/<topic>`` as the literal message, so the
+      phone showed a wall of JSON. Its documented JSON form goes to the server
+      root with the topic inside the body, which also carries a title and a
+      priority the phone can act on.
+    - **Pushover** requires ``token``, ``user`` and ``message`` and rejects
+      anything else with a 400. The URL the operator pastes carries the first
+      two (``?token=…&user=…``).
+    - **Discord** requires ``content`` and rejects ``text`` as an empty message.
+    """
+    parts = urlsplit(url)
+    host = (parts.hostname or "").lower()
+    subject = event.get("subject", "") or ""
+    message = event.get("message", "") or ""
+    urgent = event.get("kind") in _URGENT_KINDS
+
+    if "ntfy" in host:
+        segments = [s for s in parts.path.split("/") if s]
+        if segments:
+            root = parts._replace(path="/" + "/".join(segments[:-1])).geturl()
+            body = {"topic": segments[-1], "title": subject, "message": message,
+                    "priority": 4 if urgent else 3,
+                    "tags": ["warning"] if urgent else ["white_check_mark"]}
+            return root, {"json": body}
+
+    if host == "api.pushover.net":
+        from urllib.parse import parse_qs
+        q = parse_qs(parts.query)
+        form = {"token": (q.get("token") or [""])[0], "user": (q.get("user") or [""])[0],
+                "title": subject[:250], "message": message[:1024] or subject,
+                "priority": 1 if urgent else 0}
+        return parts._replace(query="").geturl(), {"data": form}
+
+    if host in ("discord.com", "discordapp.com") and "/api/webhooks/" in parts.path:
+        content = f"**{subject}**\n{message}" if subject else message
+        return url, {"json": {"content": content[:2000]}}
+
+    # A "text" field makes the payload work out-of-the-box with Slack-style
+    # endpoints, while the structured fields suit Zapier/IFTTT/custom relays.
+    return url, {"json": {"text": message, **event}}
+
+
 def send_webhook(webhook_cfg: dict, event: dict) -> Tuple[bool, str]:
     url = (webhook_cfg.get("url") or "").strip()
     if not url:
         return False, "webhook not configured (need url)"
-    # A "text" field makes the payload work out-of-the-box with Slack-style
-    # endpoints, while the structured fields suit Zapier/IFTTT/custom relays.
-    payload = {"text": event.get("message", ""), **event}
+    post_url, kwargs = _webhook_request(url, event)
+    form = kwargs.get("data")
+    if form is not None and not (form["token"] and form["user"]):
+        return False, ("Pushover needs ?token=<app token>&user=<user key> "
+                       "on the end of the webhook URL")
     try:
-        r = requests.post(url, json=payload, timeout=10)
+        r = requests.post(post_url, timeout=10, **kwargs)
         if r.ok:
             return True, "sent"
         return False, f"HTTP {r.status_code}"

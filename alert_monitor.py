@@ -16,6 +16,7 @@ from core.alerts import (HELD, evaluate, evaluate_offline, evaluate_rate,
                          find_missed_excursions, format_event)
 from core.applog import HEALTH
 from core.db import iso_to_epoch
+from core.heartbeat import Heartbeat
 from core.notifications import Notifier, send_email
 from core.status import (REPORTING_LOOKBACK_SEC, probe_fresh_window,
                          probe_prune_window)
@@ -96,6 +97,10 @@ class AlertMonitor(threading.Thread):
         # alert evaluation, offline detection, and retention on the monitor loop.
         self._notify_q: "queue.Queue" = queue.Queue(maxsize=500)
         self._notify_thread: threading.Thread | None = None
+        # Outbound dead man's switch (core/heartbeat.py). Ticked from run() only
+        # after a clean cycle, so a monitor that is wedged or erroring stops
+        # pinging exactly as a dead PC does.
+        self.heartbeat = Heartbeat(cfg, HEALTH)
 
     def stop(self):
         self._stop_event.set()
@@ -646,5 +651,10 @@ class AlertMonitor(threading.Thread):
                 self.maybe_daily_summary()
             except Exception as e:  # noqa: BLE001
                 log.warning("alert monitor cycle error: %s", e)
+            else:
+                try:
+                    self.heartbeat.tick()
+                except Exception as e:  # noqa: BLE001 - never let it end the loop
+                    log.warning("heartbeat error: %s", e)
             self._stop_event.wait(self.period_sec)
         self._notify_q.put(None)  # ensure the worker exits even without stop()
