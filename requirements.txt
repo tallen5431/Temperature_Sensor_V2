@@ -12,3 +12,6 @@ paho-mqtt~=2.1
 # Optional native .xlsx export (the CSV exports need no extra packages);
 # imported lazily so a missing install only disables the .xlsx download.
 openpyxl~=3.1
+# Optional QR code for "Open on your phone" (BSD-3, no dependencies); imported
+# lazily so a missing install only drops the code — the addresses still show.
+segno~=1.6

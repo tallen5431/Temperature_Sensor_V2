@@ -30,7 +30,9 @@ hiddenimports = []
 # paho.mqtt is imported lazily by core/mqtt_publish.py; without collecting it the
 # frozen build omits it and the MQTT / Home Assistant integration is dead in every
 # shipped installer even though it's a declared runtime dependency.
-for pkg in ("dash", "dash_bootstrap_components", "plotly", "zeroconf", "waitress", "pandas", "paho.mqtt"):
+# segno draws the "Open on your phone" QR code and is imported the same lazy way.
+for pkg in ("dash", "dash_bootstrap_components", "plotly", "zeroconf", "waitress", "pandas", "paho.mqtt",
+            "segno"):
     d, b, h = collect_all(pkg)
     datas += d
     binaries += b

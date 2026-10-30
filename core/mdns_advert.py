@@ -2,7 +2,25 @@
 from __future__ import annotations
 from contextlib import suppress
 from zeroconf import Zeroconf, ServiceInfo
+import os
 import socket
+
+# The name phones and laptops on the LAN can type instead of an IP address:
+# http://setpoint.local:8088 keeps working when the router hands the hub PC a new
+# IP after a reboot. It was "temps-hub.local", the pre-rebrand name; nothing
+# resolves it programmatically (probes are provisioned with the hub's IP), so
+# only a human bookmark is affected by the change. MDNS_HOSTNAME overrides it —
+# set it per hub when two hubs share one network, or both answer to one name.
+DEFAULT_HOSTNAME = "setpoint.local."
+
+
+def hub_hostname() -> str:
+    """The advertised host name, fully qualified with a trailing dot."""
+    name = (os.getenv("MDNS_HOSTNAME") or DEFAULT_HOSTNAME).strip().rstrip(".")
+    if not name.endswith(".local"):
+        name += ".local"
+    return name + "."
+
 
 class MdnsAdvert:
     def __init__(self):
@@ -20,7 +38,8 @@ class MdnsAdvert:
                 s.close()
         return ip
 
-    def start(self, port: int, instance_name: str = "Setpoint Hub", hostname: str = "temps-hub.local."):
+    def start(self, port: int, instance_name: str = "Setpoint Hub", hostname: str = ""):
+        hostname = hostname or hub_hostname()
         ip = self._lan_ip()
         addr = socket.inet_aton(ip)
         self.info = ServiceInfo(

@@ -5,6 +5,9 @@ import pandas as pd
 from dash import html, dcc, Output, Input, State, no_update, ALL
 import dash_bootstrap_components as dbc
 
+from components.probe_details import (checked_at, fetch_probe_status, find_probe,
+                                      not_answering_message, probe_page_url,
+                                      status_rows)
 from core.probes import discovered_probes, probe_address
 from core.protocol import DEEP_SLEEP_MIN_MS
 from core.status import limits_for, probe_fresh_window, probe_state
@@ -274,6 +277,12 @@ DevicesLayout = html.Div([
     # just closes and the operator has no way to tell a slow delivery from a
     # broken one -- the hub cannot query a sleeping probe to confirm.
     html.Div(id='device-save-status', className='mt-3'),
+    # What the probe itself reports, fetched by the hub (components/probe_details.py).
+    dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle(id='probe-details-title')),
+        dbc.ModalBody(id='probe-details-body'),
+        dbc.ModalFooter(dbc.Button("Close", id='probe-details-close', color='secondary')),
+    ], id='probe-details-modal', is_open=False, scrollable=True),
 ])
 
 
@@ -598,6 +607,24 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
                     addr = ''
                 card_body_children.append(
                     html.Small(addr or 'Reporting over Wi-Fi', className='text-muted d-block'))
+                # The probe's own page and status — only for a probe the hub has
+                # actually discovered on the LAN, because that is the only kind
+                # either can reach.
+                page_url = probe_page_url(addr, info.get('port')) if probe_id else None
+                if page_url:
+                    card_body_children.append(html.Div([
+                        dbc.Button('Details', id={'type': 'probe-details-btn',
+                                                  'index': probe_id},
+                                   n_clicks=0, size='sm', color='secondary',
+                                   outline=True, className='me-2',
+                                   title='Ask the probe for its firmware, power mode '
+                                         'and upload backlog'),
+                        html.A('Probe page ↗', href=page_url, target='_blank',
+                               rel='noopener', className='small',
+                               title='Opens the probe\'s own page. Works from a device '
+                                     'on the same Wi-Fi; battery probes only answer '
+                                     'for a few seconds after each report.'),
+                    ], className='mt-2'))
                 # Battery level rides along DB-merged rows (latest_per_probe);
                 # mDNS-only entries have no reading and therefore no battery.
                 # Same presentation as the dashboard probe cards.
@@ -634,6 +661,43 @@ def register_devices_callbacks(app, finder, cfg, db=None, public_base_func=None,
         except Exception as e:
             log.exception('Discovery service error')
             return [dbc.Alert(f'Discovery service error: {e}', color='danger')]
+
+    @app.callback(
+        Output('probe-details-modal', 'is_open'),
+        Output('probe-details-title', 'children'),
+        Output('probe-details-body', 'children'),
+        Input({'type': 'probe-details-btn', 'index': ALL}, 'n_clicks'),
+        Input('probe-details-close', 'n_clicks'),
+        prevent_initial_call=True,
+    )
+    def show_probe_details(_clicks, _close):
+        from dash import ctx
+        trig = ctx.triggered_id
+        if trig == 'probe-details-close':
+            return False, no_update, no_update
+        # The grid re-renders every few seconds, which re-creates these buttons
+        # with n_clicks=0 and fires this callback — only a real click opens it.
+        if not isinstance(trig, dict) or not (ctx.triggered and ctx.triggered[0].get('value')):
+            return no_update, no_update, no_update
+        probe_id = trig.get('index')
+        name = (cfg.get('probe_names', {}) or {}).get(probe_id) or probe_id
+        title = f'{name} — details'
+        where = find_probe(finder, probe_id)
+        if where is None:
+            return True, title, dbc.Alert(
+                'The hub cannot see this probe on the network right now, so it '
+                'cannot ask it for details.', color='warning')
+        st = fetch_probe_status(*where)
+        if not st:
+            return True, title, dbc.Alert(not_answering_message(name), color='warning')
+        rows = status_rows(st)
+        return True, title, html.Div([
+            html.Table(html.Tbody([
+                html.Tr([html.Td(k, className='text-muted pe-3'), html.Td(v)])
+                for k, v in rows
+            ]), className='table table-sm mb-2'),
+            html.Small(f'Reported by the probe at {checked_at()}.', className='text-muted'),
+        ])
 
     # Open modal when edit button clicked, close on cancel/save
     @app.callback(

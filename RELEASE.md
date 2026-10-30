@@ -75,6 +75,12 @@ packaging\build.bat           # Windows
 # both run: pyinstaller --clean --noconfirm packaging/temperature_hub.spec
 ```
 
+Before building, regenerate the licence notice **in the build environment** (the
+Windows machine for the Windows installer), so it lists the exact versions being
+bundled — `python packaging/gen_third_party_licenses.py`. Generated anywhere
+else it records that machine's packages instead (a Linux box omits Windows-only
+ones such as `colorama`).
+
 Always the spec, never a bare `pyinstaller --onefile`. Two reasons, and the
 first is a licence term:
 

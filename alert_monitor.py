@@ -63,6 +63,17 @@ OFFLINE_MONITOR_WINDOW_SEC = REPORTING_LOOKBACK_SEC
 OWN_SITE = ""
 
 
+# The hub's own "still watching" mark, kept in the durable meta table so it
+# survives the outage it is there to measure. Written at most once a minute,
+# after a clean cycle, so its age on the next start is how long nothing was
+# watching (to within about a minute).
+ALIVE_KEY = "monitor_alive_epoch"
+ALIVE_EVERY_SEC = 60
+# Shorter gaps are an ordinary restart (an update, a settings change) and not
+# worth interrupting anyone for.
+GAP_ALERT_SEC = 300
+
+
 class AlertMonitor(threading.Thread):
     def __init__(self, db, cfg, notifier=None, period_sec: int = 30, discovery=None):
         super().__init__(daemon=True)
@@ -101,6 +112,7 @@ class AlertMonitor(threading.Thread):
         # after a clean cycle, so a monitor that is wedged or erroring stops
         # pinging exactly as a dead PC does.
         self.heartbeat = Heartbeat(cfg, HEALTH)
+        self._last_alive_mark = 0.0
 
     def stop(self):
         self._stop_event.set()
@@ -638,11 +650,56 @@ class AlertMonitor(threading.Thread):
             lines.append("No readings in the last 24 hours.")
         return f"Setpoint daily summary — {date_str}", "\n".join(lines)
 
+    def mark_alive(self, now: float | None = None) -> None:
+        """Record that monitoring is working right now (rate-limited)."""
+        now = time.time() if now is None else now
+        if now - self._last_alive_mark < ALIVE_EVERY_SEC:
+            return
+        try:
+            self.db.meta_set(ALIVE_KEY, f"{now:.0f}")
+            self._last_alive_mark = now
+        except Exception as e:  # noqa: BLE001 - the mark is a nicety, monitoring is not
+            log.debug("could not record monitor alive mark: %s", e)
+
+    def check_restart_gap(self, now: float | None = None) -> dict | None:
+        """On startup: was the hub away long enough that someone should know?
+
+        Every alarm comes from this loop, so the time it was not running is time
+        nobody was protected — after a power cut, a Windows Update restart, or a
+        sleep. The heartbeat tells an outside service while it happens; this
+        tells the operator afterwards, with the window to go and check. Returns
+        the event it raised, or None.
+        """
+        now = time.time() if now is None else now
+        try:
+            last = float(self.db.meta_get(ALIVE_KEY, "") or 0)
+        except Exception:  # noqa: BLE001 - unreadable mark: nothing to report
+            last = 0.0
+        if not last or now - last < GAP_ALERT_SEC:
+            return None
+        ev = {"probe_id": "", "kind": "hub_down", "start_epoch": last, "end_epoch": now}
+        try:
+            self.db.record_event("hub_down", "", epoch=last)
+            self.db.record_event("hub_up", "", epoch=now)
+        except Exception as e:  # noqa: BLE001
+            log.warning("could not record hub outage: %s", e)
+        log.warning("hub was not monitoring for %d min (since %s)",
+                    int(now - last) // 60, datetime.datetime.fromtimestamp(last))
+        conf = self.cfg.get("notifications", {}) or {}
+        if conf.get("enabled"):
+            subject, message = format_event(ev, {})
+            self._dispatch({**ev, "subject": subject, "message": message})
+        return ev
+
     def run(self):
         log.info("alert monitor started (checking every %s s)", self.period_sec)
         self._notify_thread = threading.Thread(
             target=self._dispatch_loop, name="alert-dispatch", daemon=True)
         self._notify_thread.start()
+        try:
+            self.check_restart_gap()
+        except Exception as e:  # noqa: BLE001 - must never stop monitoring starting
+            log.warning("restart-gap check failed: %s", e)
         while not self._stop_event.is_set():
             try:
                 self.check_once()
@@ -656,5 +713,6 @@ class AlertMonitor(threading.Thread):
                     self.heartbeat.tick()
                 except Exception as e:  # noqa: BLE001 - never let it end the loop
                     log.warning("heartbeat error: %s", e)
+                self.mark_alive()
             self._stop_event.wait(self.period_sec)
         self._notify_q.put(None)  # ensure the worker exits even without stop()

@@ -11,6 +11,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Probe details from the Devices page.** Each discovered probe's card has a
+  **Details** button: the hub fetches the probe's `/status` and shows firmware,
+  power mode, on-probe limits, upload backlog and storage in plain words. It
+  works when the dashboard is viewed remotely, because the hub does the fetch.
+  The probe is looked up by id in the hub's own discovery table and only a LAN
+  address is fetched. A **Probe page ↗** link opens the probe's own page. A
+  battery probe that is asleep is explained ("listens for about 3 seconds after
+  each report") rather than reported as broken.
+- **📱 Phone** in the navbar: a QR code and the addresses a phone can use, namely
+  the LAN IP, `setpoint.local`, and the Tailscale address when the PC is on a
+  tailnet. The QR code needs `segno` (optional, BSD-3); without it the addresses
+  still show.
+- **The hub tells you about its own outage afterwards.** A "still monitoring" mark
+  is kept in the database once a minute. On a start more than 5 minutes after the
+  last one, the hub records **HUB STOPPED / HUB BACK** events and sends "Setpoint
+  was not monitoring for 47 min" with the times, at high priority.
+- **One hub per port.** A second launch, such as clicking the Start-menu icon
+  while the hub runs in the background, now opens the running hub's dashboard and
+  exits. It used to start its own alert monitor, provisioner and mDNS advert
+  first (duplicate alerts) and then crash on the port. A port held by another
+  program fails with exit code 2 and a reason instead of a traceback.
+- **All-users installs add a Windows Firewall rule** (Private networks) and remove
+  it on uninstall. The installer now offers the all-users option.
+
 - **The hub can now report its own outage.** Every alarm is raised by the hub,
   so a hub PC that crashed, lost power, slept or was restarted by Windows Update
   went silent with nobody told — the failure that loses a freezer. An optional
@@ -50,6 +74,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - The Windows installer's "start when I sign in" box is ticked by default.
+- The hub advertises itself on the LAN as **`setpoint.local`** (was the
+  pre-rebrand `temps-hub.local`; nothing resolves it programmatically, so only a
+  bookmark is affected). `MDNS_HOSTNAME` names a second hub on the same network.
+- `packaging/README.md`'s Windows service recipe ran the hub as LocalSystem with
+  no `DATA_DIR`, which starts an empty hub with a new device token, so every
+  probe got a 401 and the history looked gone. It is now a Task Scheduler recipe
+  under your own account (including unticking the default "stop after 3 days")
+  or NSSM with `DATA_DIR` and a data move, plus the BIOS power-restore step.
+- The licence-notice generator called the firmware proprietary; it is MIT. The
+  shipped file had been corrected by hand, so the next regeneration would have
+  reverted it. `RELEASE.md` now says to regenerate on the build machine.
 
 ## [2.8.0] - 2026-10-25
 

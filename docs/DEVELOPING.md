@@ -89,6 +89,8 @@ Setpoint ──POST /api/ingest {temperature_c, probe_id, timestamp}──▶ Hu
 | `core/heartbeat.py` | Optional outbound "hub alive" check-in (`Heartbeat`) to healthchecks.io / Uptime Kuma, ticked by the alert monitor after each clean cycle. Off unless a URL is set. |
 | `core/keepawake.py` | `KeepAwake` thread — stops the hub PC idling into sleep on Windows (`SetThreadExecutionState`) and macOS (`caffeinate`). Live `keep_awake` config. |
 | `core/login_throttle.py` | `LoginThrottle` — 429 lockout after repeated wrong dashboard passwords (used by `app.py`'s `ui_auth` gate). |
+| `core/phone_access.py` | Addresses a phone can open the dashboard at (LAN IP, `setpoint.local`, Tailscale) and the QR code for the navbar's 📱 Phone button (`components/phone_modal.py`). |
+| `core/single_instance.py` | `probe_port()` — is a hub already on this port? A second launch opens that hub's dashboard instead of starting duplicate background services. |
 | `core/mqtt_publish.py` | Optional MQTT publishing + Home Assistant auto-discovery (`MQTT`). |
 | `core/audit.py` | Tamper-evident hash-chained audit log (`AUDIT`), verified at `/api/audit/verify`. |
 | `core/diagnostics.py` / `core/status.py` | Secret-free health snapshot for `/api/diagnostics` + the Diagnostics view. |
@@ -197,6 +199,7 @@ The CSV **export** columns are fixed: `timestamp,temperature_c,temperature_f,pro
 | Variable | Default | Purpose |
 |---|---|---|
 | `HOST` | `0.0.0.0` | Bind address for the server. |
+| `MDNS_HOSTNAME` | `setpoint.local` | Name the hub advertises on the LAN; give a second hub on the same network its own. |
 | `PORT` | `8088` | HTTP port for UI + API. |
 | `PUBLIC_BASE` | `http://<detected-LAN-IP>:<PORT>` | Base URL advertised to probes; set to override auto-detection. |
 | `SERVER_TOKEN` | *(empty → generated)* | Forces the device token; takes precedence over config. |

@@ -9,6 +9,7 @@ from components.diagnostics_view import DiagnosticsLayout, register_diagnostics_
 from components.setup_helper import register_setup_helper_callbacks
 from components.settings_panel import SettingsPanel, register_settings_callbacks
 from components.help_modal import HelpModal, HelpPage
+from components.phone_modal import PhoneModal, register_phone_callbacks
 from core.status import hub_status
 from core.version import HUB_VERSION, PRODUCT_NAME
 
@@ -87,6 +88,9 @@ NAVBAR = dbc.Navbar(
             dbc.NavItem(dbc.NavLink("Devices", href="/devices", active="exact")),
             dbc.NavItem(dbc.NavLink("Settings", href="/settings", active="exact")),
             dbc.NavItem(dbc.NavLink("Diagnostics", href="/diagnostics", active="exact")),
+            dbc.NavItem(dbc.Button("📱 Phone", id="phone-open", color="secondary", outline=True,
+                                   size="sm", className="ms-2",
+                                   title="Open this dashboard on your phone")),
             dbc.NavItem(dbc.Button("Help", id="help-open", color="info", size="sm", className="ms-2")),
         ], className="ms-auto", navbar=True),
     ]), color="dark", dark=True, sticky="top",
@@ -118,6 +122,7 @@ LAYOUT = html.Div([
     NAVBAR,
     html.Div(id="page-content", className="p-4"),
     HelpModal(),
+    PhoneModal(),
     FOOTER,
 ], className="app-shell")
 
@@ -151,3 +156,4 @@ def register_all_callbacks(app, finder, cfg, db, public_base_func=None, token=""
     register_setup_helper_callbacks(app)
     register_settings_callbacks(app, cfg, public_base_func=public_base_func)
     register_footer_callbacks(app, finder, cfg, db)
+    register_phone_callbacks(app, cfg, public_base_func=public_base_func)

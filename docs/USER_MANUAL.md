@@ -87,11 +87,13 @@ That's it — the hub found the probe and set it up for you automatically. Readi
     - **Raw CSV** — the complete, unabbreviated file (full ISO timestamps and every column; the humidity/VPD columns are present but stay empty until a humidity-capable probe exists — see Section 14). Best if you feed the data into another program or re-import it later.
   <br>Each row is one reading with the temperature in °C and °F and which probe it came from; every format also includes an exact **UTC** timestamp so the data stays correct across computers and daylight-saving changes.
 - **Home Assistant (MQTT):** if you use Home Assistant, open **Settings → Integrations**, switch on **Publish to MQTT**, enter your broker's address, and click **Save**. Each probe then appears in Home Assistant automatically (auto-discovery) — it's all done from the Settings page, with no configuration files to edit.
-- **Put it on your phone:** open the dashboard in your phone's browser — use the Setpoint PC's network address instead of `localhost`, for example `http://192.168.1.50:8088` — then choose your browser's **Add to Home Screen** option. The dashboard installs like an app and opens full-screen from its own icon.
+- **Put it on your phone:** click **📱 Phone** at the top of the dashboard and point your phone's camera at the QR code. It also lists the addresses to type instead: the PC's network address (for example `http://192.168.1.50:8088`) and **`http://setpoint.local:8088`**, which keeps working if the PC's address changes (iPhone, Mac and Windows understand it; some Android phones don't). Then choose your browser's **Add to Home Screen** option. The dashboard installs like an app and opens full-screen from its own icon.
 
 Your data lives only on this PC, in a local database. Backing it up is as simple as exporting the CSV from the dashboard (or downloading a full database backup).
 
 ---
+
+**Look at a probe up close (Devices page).** Each probe card has a **Details** button. The hub asks the probe for its firmware version, power mode, alert limits, how many readings it is still waiting to upload, and how much storage it has left. This works even when you're viewing the dashboard from away. **Probe page ↗** opens the probe's own web page directly, which works from a device on the same Wi-Fi. A battery probe sleeps between reports and only answers for about 3 seconds after each one, so if it doesn't answer, try again just after its next reading arrives.
 
 ## 8. Name your probes
 
@@ -236,7 +238,15 @@ puts it to sleep, so on a laptop set *When I close the lid* to **Do nothing**.
 **Start automatically.** The Windows installer starts Setpoint when you sign in
 (the box is ticked by default). After an unattended restart, Windows waits at
 the sign-in screen and Setpoint doesn't start until someone signs in. The
-check-in above is what tells you that has happened.
+check-in above is what tells you that has happened. To start it at boot before
+anyone signs in, and to make the PC switch itself back on after a power cut, see
+[`../packaging/README.md`](../packaging/README.md#windows-start-at-boot-before-anyone-signs-in).
+Clicking the Setpoint icon while it is already running just opens the dashboard.
+
+**You'll be told about any gap.** When Setpoint starts after being off for more
+than 5 minutes, it sends an alert saying how long it was not monitoring, with the
+times, so you know what to check. The gap also shows in *Recent events* on the
+dashboard as **HUB STOPPED** and **HUB BACK**.
 
 **Require a login.** Without one, anyone on your Wi-Fi can open the dashboard,
 change alert limits and see your email settings. Switch on **Require a login**,

@@ -76,7 +76,7 @@ Probe ──HTTP POST /api/ingest──► Hub API ──► temperature_log.db 
                                    └──────► Live dashboard ──► CSV / backup export
 ```
 
-1. **Discovery** — the hub listens for probes advertising `_temps-probe._tcp` via mDNS (Bonjour / Zeroconf) and itself advertises as `temps-hub.local`.
+1. **Discovery** — the hub listens for probes advertising `_temps-probe._tcp` via mDNS (Bonjour / Zeroconf) and itself advertises as `setpoint.local` — so `http://setpoint.local:8088` opens the dashboard from any phone or laptop on the network, even after the hub PC's IP changes (set `MDNS_HOSTNAME` to give a second hub on the same network its own name).
 2. **Auto-Provisioner** — the hub automatically tells each probe where to POST readings (`http://<hub-ip>:8088/api/ingest`). No manual configuration on the probe is needed.
 3. **Ingest** — the probe POSTs JSON every few seconds (temperature, and optionally `humidity_pct` on grow probes); the hub stores it in `temperature_log.db` and updates the dashboard. Use the dashboard's **Download CSV** button (or `/download/temperature_log.csv`, optionally `?window=24h`) to export, or `/download/backup.db` for a full snapshot.
 

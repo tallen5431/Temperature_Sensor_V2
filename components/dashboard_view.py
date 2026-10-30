@@ -651,7 +651,7 @@ def clicked_id(triggered):
 
 # Badge colour per event kind: breaches read as alerts (high hot-red, low
 # cool-blue), offline/rate as cautions, recovery/online as good news.
-_EVENT_COLORS = {"missed": "warning",
+_EVENT_COLORS = {"missed": "warning", "hub_down": "warning", "hub_up": "success",
                  "high": "danger", "low": "info", "offline": "warning",
                  "rate": "warning", "recovery": "success", "online": "success"}
 
@@ -685,7 +685,12 @@ def _relative_time(epoch, now=None):
 # The badge is normally the kind, upper-cased, which reads fine for HIGH / LOW /
 # OFFLINE. "MISSED" on its own does not — missed what? A reading? The badge has to
 # survive being read at a glance beside the others.
-_EVENT_LABELS = {"missed": "WAS OUT OF RANGE"}
+_EVENT_LABELS = {"missed": "WAS OUT OF RANGE",
+                 "hub_down": "HUB STOPPED", "hub_up": "HUB BACK"}
+
+# The hub's own outage is not about any probe; naming one ("Unknown") would
+# read as a mystery device.
+_HUB_KINDS = {"hub_down", "hub_up"}
 
 
 def _event_row(badge_kind, bits):
@@ -739,7 +744,8 @@ def build_events(db, cfg, temp_unit, limit=8, window_seconds=86400, site="all"):
     entries = []  # (epoch, html.Div) — alerts and coalesced connectivity, then sorted
     for ev in alerts:
         kind = str(ev.get("kind", "")).strip().lower()
-        bits = [_friendly_name(cfg, ev.get("probe_id"))]
+        bits = ["Not monitoring" if kind == "hub_down" else "Monitoring again"] \
+            if kind in _HUB_KINDS else [_friendly_name(cfg, ev.get("probe_id"))]
         t_c, lim = ev.get("temperature_c"), ev.get("limit_c")
         if t_c is not None:
             txt = _fmt(t_c, temp_unit)

@@ -79,7 +79,7 @@ def send_email(email_cfg: dict, subject: str, body: str) -> Tuple[bool, str]:
 
 # Alert kinds a person should be interrupted for. Recoveries, tests and summaries
 # go out at normal priority so a phone does not ring for good news.
-_URGENT_KINDS = frozenset({"high", "low", "offline", "rate", "missed"})
+_URGENT_KINDS = frozenset({"high", "low", "offline", "rate", "missed", "hub_down"})
 
 
 def _webhook_request(url: str, event: dict):

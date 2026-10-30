@@ -413,6 +413,25 @@ def format_event(event: dict, names: Optional[dict] = None) -> Tuple[str, str]:
     kind = event["kind"]
     limit = event.get("limit")
 
+    # The hub's own outage, found on restart (alert_monitor.check_restart_gap).
+    # Past tense and specific about WHEN: nothing was watching in that window, so
+    # the person needs the times to know what to go and check.
+    if kind == "hub_down":
+        start, end = event.get("start_epoch"), event.get("end_epoch")
+        try:
+            mins = max(1, int(float(end) - float(start)) // 60)
+        except (TypeError, ValueError):
+            mins = 0
+        span = f"{mins} min" if mins < 120 else f"{mins // 60} h {mins % 60} min"
+        return (f"⚠️ Setpoint was not monitoring for {span}",
+                f"The Setpoint hub was not running from about {_local_clock(start)} "
+                f"until {_local_clock(end)} ({span}), so no alerts could be sent in that "
+                f"time. The usual causes are a power cut, the PC restarting (for example "
+                f"for Windows Update) or the PC going to sleep.\n\n"
+                f"Readings the probes stored while the hub was away are uploaded as they "
+                f"reconnect; anything out of range in that window is reported "
+                f"separately. Check anything critical that was not covered.")
+
     # Connectivity events carry no temperature.
     if kind == "offline":
         mins = max(1, int(event.get("age_sec", 0)) // 60)

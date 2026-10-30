@@ -10,7 +10,15 @@
 ;    with the app writing its data to %LOCALAPPDATA%\Setpoint (see app.py
 ;    _default_data_dir), the whole thing works without administrator rights.
 ;  * The launched exe opens the dashboard in the browser on its own (the frozen
-;    build defaults OPEN_BROWSER=1).
+;    build defaults OPEN_BROWSER=1). A second launch while a hub is already
+;    running just opens that hub's dashboard (core/single_instance.py), so the
+;    Start-menu icon is safe to click when the hub runs in the background.
+;  * Firewall: probes must reach the hub on TCP 8088, and discovery uses mDNS
+;    (UDP 5353). Adding a rule needs administrator rights, so it is added only
+;    when the person chooses "Install for all users" (the dialog that
+;    PrivilegesRequiredOverridesAllowed=dialog offers). A per-user install relies
+;    on the Windows Firewall prompt the first time the hub starts — docs/INSTALL.md
+;    tells them to allow it on Private networks.
 
 #ifndef AppVersion
   #define AppVersion "0.0.0"
@@ -39,6 +47,7 @@ Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=lowest
+PrivilegesRequiredOverridesAllowed=dialog
 ArchitecturesInstallIn64BitMode=x64compatible
 LicenseFile=..\..\LICENSE
 UninstallDisplayIcon={app}\{#AppExe}
@@ -66,4 +75,12 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopico
 Name: "{userstartup}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: startup
 
 [Run]
+; Admin installs only (see the note at the top). Delete first so an upgrade or a
+; reinstall to a new folder never leaves a stale rule behind. A program rule
+; covers both the dashboard/ingest port and mDNS, on Private networks only.
+Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""Setpoint hub"""; Flags: runhidden; Check: IsAdminInstallMode
+Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""Setpoint hub"" dir=in action=allow program=""{app}\{#AppExe}"" enable=yes profile=private"; Flags: runhidden; Check: IsAdminInstallMode; StatusMsg: "Allowing Setpoint through Windows Firewall (private networks)..."
 Filename: "{app}\{#AppExe}"; Description: "Launch {#AppName} now"; Flags: nowait postinstall skipifsilent
+
+[UninstallRun]
+Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""Setpoint hub"""; Flags: runhidden; Check: IsAdminInstallMode; RunOnceId: "SetpointFirewallRule"

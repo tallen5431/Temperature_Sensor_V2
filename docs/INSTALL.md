@@ -19,7 +19,16 @@ browser automatically at <http://localhost:8088>.
    automatically when you sign in. **Leave that second box ticked** — a hub
    that isn't running after a restart can't alert you.
 3. Launch **Setpoint** from the Start menu (or the desktop). The dashboard
-   opens in your browser.
+   opens in your browser. If **Windows Firewall** asks, tick **Private
+   networks** and click **Allow** — that is how your probes reach the hub.
+   (Choosing *Install for all users* in the installer adds this rule for you.)
+   Clicking the icon again later just opens the dashboard of the hub that is
+   already running.
+
+> **Should it survive a power cut with nobody around?** Out of the box it starts
+> when you sign in. To start it at boot before anyone signs in, and to have the
+> PC switch itself back on after a power cut, follow
+> [`../packaging/README.md`](../packaging/README.md#windows-start-at-boot-before-anyone-signs-in).
 
 > **"Windows protected your PC" (SmartScreen)?** This appears for apps that
 > aren't signed with a paid certificate. Click **More info → Run anyway**. (Signed

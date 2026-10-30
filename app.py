@@ -478,7 +478,8 @@ def _start_background_services(port: int):
         mdns = MdnsAdvert()
         try:
             ip = mdns.start(port)
-            log.info("mDNS advertising http://temps-hub.local:%s (ip %s)", port, ip)
+            log.info("mDNS advertising http://%s:%s (ip %s)",
+                     mdns.info.server.rstrip("."), port, ip)
         except Exception as e:
             log.warning("mDNS advertisement failed: %s", e)
             mdns = None
@@ -591,11 +592,31 @@ def main():
     except (ValueError, OSError):
         pass  # not the main thread (shouldn't happen) — best effort
 
-    cleanup = _start_background_services(port)
-
     # A double-clicked desktop install should open the dashboard on its own; a
     # headless/service install can set OPEN_BROWSER=0. Dev default stays off.
-    if os.getenv("OPEN_BROWSER", "1" if _FROZEN else "0") == "1":
+    open_browser = os.getenv("OPEN_BROWSER", "1" if _FROZEN else "0") == "1"
+
+    # Before starting anything: is a hub already running here? Starting the
+    # background services first is what made a second launch fire duplicate
+    # alerts (core/single_instance.py), so this has to come before them.
+    from core.single_instance import BUSY, HUB, probe_port
+    state, health = probe_port(port)
+    if state == HUB:
+        log.info("Setpoint v%s is already running on port %s — opening its dashboard "
+                 "instead of starting a second copy.", health.get("version"), port)
+        if open_browser:
+            import webbrowser
+            webbrowser.open(f"http://localhost:{port}")
+        return
+    if state == BUSY:
+        log.error("Port %s is already in use by another program, so Setpoint cannot "
+                  "start. Close that program, or set the PORT environment variable "
+                  "to a free port.", port)
+        sys.exit(2)
+
+    cleanup = _start_background_services(port)
+
+    if open_browser:
         import threading
         import webbrowser
         threading.Timer(2.0, lambda: webbrowser.open(f"http://localhost:{port}")).start()

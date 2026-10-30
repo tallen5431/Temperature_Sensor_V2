@@ -66,16 +66,46 @@ sudo systemctl enable --now temperature-hub
 journalctl -u temperature-hub -f      # view logs
 ```
 
-### Windows (service)
-The simplest reliable option is [NSSM](https://nssm.cc/). Copy the whole
-`dist\temperature-hub\` folder to `C:\Program Files\TemperatureHub\`, then:
+### Windows (start at boot, before anyone signs in)
+
+> ⚠️ **Read this first — it is how data gets "lost".** The hub keeps its data in
+> `%LOCALAPPDATA%\Setpoint` **of the account it runs as**. A service runs as a
+> different account (LocalSystem) by default, whose `%LOCALAPPDATA%` is somewhere
+> else entirely — so the hub starts as a brand-new install: empty history, a new
+> device token, and every provisioned probe rejected with 401 until it is
+> re-provisioned. Either run it as **your own account** (Option A), or point
+> `DATA_DIR` at the existing folder (Option B).
+
+**Option A — Task Scheduler, as your own account (no extra tools; recommended).**
+Task Scheduler → **Create Task** (not "Basic Task"):
+
+- **General:** *Run whether user is logged on or not*; *Run with highest privileges*;
+  the user is **your** account (so `%LOCALAPPDATA%\Setpoint` is the same folder).
+- **Triggers:** *At startup*, *Delay task for* 1 minute (lets the network come up).
+- **Actions:** *Start a program* → `%LOCALAPPDATA%\Programs\Setpoint\temperature-hub.exe`
+  (the per-user install location; `C:\Program Files\Setpoint\` for an all-users install).
+- **Settings:** **untick** *Stop the task if it runs longer than 3 days* — it is
+  ticked by default and would stop the hub every three days. Tick *If the task
+  fails, restart every* 1 minute, up to 999 times.
+- Then remove the installer's sign-in shortcut (`shell:startup` → *Setpoint*), or
+  leave it: a second launch only opens the running hub's dashboard.
+
+**Option B — a real service with [NSSM](https://nssm.cc/).** Set `DATA_DIR`
+explicitly so the service account uses your existing data:
 ```bat
-nssm install TemperatureHub "C:\Program Files\TemperatureHub\temperature-hub.exe"
-nssm set TemperatureHub AppDirectory "C:\Program Files\TemperatureHub"
-nssm start TemperatureHub
+nssm install Setpoint "C:\Program Files\Setpoint\temperature-hub.exe"
+nssm set Setpoint AppDirectory "C:\Program Files\Setpoint"
+nssm set Setpoint AppEnvironmentExtra DATA_DIR=C:\ProgramData\Setpoint OPEN_BROWSER=0
+nssm set Setpoint Start SERVICE_AUTO_START
+nssm start Setpoint
 ```
-Or, without extra tools, create a Task Scheduler task set to "Run whether user is
-logged on or not" with trigger "At startup".
+Before the first start, **move** `%LOCALAPPDATA%\Setpoint\*` into
+`C:\ProgramData\Setpoint\` (stop the desktop copy first) — that carries over the
+history, settings and device token, so probes keep posting.
+
+**Either way:** allow `temperature-hub.exe` through Windows Firewall on **Private**
+networks (an all-users install adds that rule itself), and set the BIOS/UEFI option
+*Restore on AC power loss* to **Power On** so the PC comes back after a power cut.
 
 ### macOS (launchd)
 Create `~/Library/LaunchAgents/com.yourbrand.temperaturehub.plist` with a
